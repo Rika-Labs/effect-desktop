@@ -202,11 +202,7 @@ export const useDesktopQuery = <A, E>(
     deps === undefined ? [reloads] : [...deps, reloads]
   )
 
-  useEffect(() => {
-    return () => {
-      queryOperation.dispose()
-    }
-  }, [queryOperation])
+  useEffect(() => () => queryOperation.dispose(), [queryOperation])
 
   return {
     state,

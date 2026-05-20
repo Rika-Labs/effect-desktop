@@ -292,19 +292,18 @@ const createMutationState = <R, ER, I, A, E>(
     operation.dispose()
   })
 
-  const runPromiseImpl = async (input?: I): Promise<Exit.Exit<A, E | ER>> => {
+  const runPromiseImpl = (input?: I): Promise<Exit.Exit<A, E | ER>> => {
     setState({ status: "running" })
-
-    const [exit, isLatest] = await operation.runLatestPromiseExit(makeEffect(input as I))
-
-    if (isLatest) {
-      setState(
-        Exit.isSuccess(exit)
-          ? { status: "success", value: exit.value }
-          : { status: "failure", cause: exit.cause }
-      )
-    }
-    return exit
+    return operation.runLatestPromiseExit(makeEffect(input as I)).then(([exit, isLatest]) => {
+      if (isLatest) {
+        setState(
+          Exit.isSuccess(exit)
+            ? { status: "success", value: exit.value }
+            : { status: "failure", cause: exit.cause }
+        )
+      }
+      return exit
+    })
   }
 
   return {

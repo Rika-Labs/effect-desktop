@@ -22,6 +22,7 @@ fn verifies_manifest_signed_by_current_key() {
     assert_eq!(verified.app_id, "dev.effect-desktop.inspector");
     assert_eq!(verified.version, "1.2.3");
     assert_eq!(verified.key_version, 5);
+    assert_eq!(verified.artifacts, vec![update_artifact()]);
 }
 
 #[test]
@@ -477,6 +478,17 @@ fn artifact() -> Value {
     })
 }
 
+fn update_artifact() -> UpdateArtifact {
+    UpdateArtifact {
+        platform: UpdatePlatform::MacosArm64,
+        kind: UpdateArtifactKind::Dmg,
+        url: "https://updates.example.invalid/app.dmg".to_string(),
+        size_bytes: 4,
+        sha256: "0".repeat(64),
+        signature: "ed25519:artifact".to_string(),
+    }
+}
+
 fn update_policy(
     channel: UpdateChannel,
     installed_version: &str,
@@ -506,6 +518,7 @@ fn verified_manifest(
         rollback,
         min_version: None,
         max_version: max_version.map(str::to_string),
+        artifacts: vec![update_artifact()],
     }
 }
 

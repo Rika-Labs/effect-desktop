@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { existsSync, readFileSync } from "node:fs"
+import { BunServices } from "@effect/platform-bun"
 import { makeHostProtocolInvalidStateError, RpcEndpoint, RpcSupport } from "@effect-desktop/bridge"
 import {
   Desktop,
@@ -7,7 +7,7 @@ import {
   MissingDesktopRpcClientError
 } from "@effect-desktop/core"
 import { AsyncResult, Atom } from "effect/unstable/reactivity"
-import { Cause, Effect, Exit, Option, Schema, Stream } from "effect"
+import { Cause, Effect, Exit, FileSystem, ManagedRuntime, Option, Schema, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
@@ -52,40 +52,54 @@ const reactPackageJsonUrl = new URL("../package.json", import.meta.url)
 const reactPackageRootUrl = new URL("../", import.meta.url)
 const reactPackageIndexUrl = new URL("index.ts", import.meta.url)
 
-test("React package exports point at checked-in source files", () => {
-  const packageJson = decodeReactPackageJson(readFileSync(reactPackageJsonUrl, "utf8"))
-  const missing: string[] = []
+const urlToPath = (url: URL): string => decodeURIComponent(url.pathname)
 
-  for (const [subpath, target] of Object.entries(packageJson.exports)) {
-    if (typeof target === "string") {
-      if (!existsSync(new URL(target, reactPackageRootUrl))) {
-        missing.push(`${subpath}:default:${target}`)
+const PlatformRuntime = ManagedRuntime.make(BunServices.layer)
+
+test("React package exports point at checked-in source files", () =>
+  PlatformRuntime.runPromise(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const packageJson = decodeReactPackageJson(
+        yield* fs.readFileString(urlToPath(reactPackageJsonUrl))
+      )
+      const missing: string[] = []
+
+      for (const [subpath, target] of Object.entries(packageJson.exports)) {
+        if (typeof target === "string") {
+          if (!(yield* fs.exists(urlToPath(new URL(target, reactPackageRootUrl))))) {
+            missing.push(`${subpath}:default:${target}`)
+          }
+          continue
+        }
+
+        for (const condition of ["types", "default"] as const) {
+          const relativePath = target[condition]
+          if (relativePath === undefined) {
+            missing.push(`${subpath}:${condition}:<missing condition>`)
+          } else if (!(yield* fs.exists(urlToPath(new URL(relativePath, reactPackageRootUrl))))) {
+            missing.push(`${subpath}:${condition}:${relativePath}`)
+          }
+        }
       }
-      continue
-    }
 
-    for (const condition of ["types", "default"] as const) {
-      const relativePath = target[condition]
-      if (relativePath === undefined) {
-        missing.push(`${subpath}:${condition}:<missing condition>`)
-      } else if (!existsSync(new URL(relativePath, reactPackageRootUrl))) {
-        missing.push(`${subpath}:${condition}:${relativePath}`)
-      }
-    }
-  }
+      expect(missing).toEqual([])
+    })
+  ))
 
-  expect(missing).toEqual([])
-})
+test("React package root does not export browser storage services", () =>
+  PlatformRuntime.runPromise(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const source = yield* fs.readFileString(urlToPath(reactPackageIndexUrl))
 
-test("React package root does not export browser storage services", () => {
-  const source = readFileSync(reactPackageIndexUrl, "utf8")
-
-  expect(source).not.toContain("BrowserKeyValueStore")
-  expect(source).not.toContain("IndexedDb")
-  expect(source).not.toContain("RendererSqlite")
-  expect(source).not.toContain("indexedDbStorage")
-  expect(source).not.toContain("keyValueStorage")
-})
+      expect(source).not.toContain("BrowserKeyValueStore")
+      expect(source).not.toContain("IndexedDb")
+      expect(source).not.toContain("RendererSqlite")
+      expect(source).not.toContain("indexedDbStorage")
+      expect(source).not.toContain("keyValueStorage")
+    })
+  ))
 
 const unavailableWindow: DesktopWindowClient = {
   create: () =>
@@ -96,20 +110,23 @@ const unavailableWindow: DesktopWindowClient = {
     Effect.fail(makeHostProtocolInvalidStateError("unavailable", "call", "window.destroy"))
 }
 
-test("disposeRuntime reports cleanup defects through onCleanupError", async () => {
-  const failures: Array<{ context: string; error: unknown }> = []
-  disposeRuntime(
-    {
-      disposeEffect: Effect.die(new Error("dispose failed"))
-    },
-    (error, context) => {
-      failures.push({ context, error })
-    }
-  )
+test("disposeRuntime reports cleanup defects through onCleanupError", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const failures: Array<{ context: string; error: unknown }> = []
+      disposeRuntime(
+        {
+          disposeEffect: Effect.die(new Error("dispose failed"))
+        },
+        (error, context) => {
+          failures.push({ context, error })
+        }
+      )
 
-  await Effect.runPromise(Effect.yieldNow)
-  expect(failures).toEqual([{ context: "runtime cleanup", error: expect.anything() }])
-})
+      yield* Effect.yieldNow
+      expect(failures).toEqual([{ context: "runtime cleanup", error: expect.anything() }])
+    })
+  ))
 
 const desktop: DesktopClient = Object.freeze({
   window: unavailableWindow
@@ -235,39 +252,60 @@ test("window lifecycle subpaths expose explicit destroy mutations", () => {
   ).toBe("<span>idle:idle</span>")
 })
 
-test("createUnavailableDesktopClient exposes lowercase renderer namespaces", async () => {
-  const client = createUnavailableDesktopClient("test unavailable")
-  const exit = await Effect.runPromiseExit(client.window.create())
+test("createUnavailableDesktopClient exposes lowercase renderer namespaces", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const client = createUnavailableDesktopClient("test unavailable")
+      const exit = yield* Effect.exit(client.window.create())
 
-  expect(Exit.isFailure(exit)).toBe(true)
-})
+      expect(Exit.isFailure(exit)).toBe(true)
+    })
+  ))
 
-test("useDesktopQuery defaults to reload-only dependencies for inline operations", () => {
-  const source = readFileSync(new URL("./hooks/desktop.ts", import.meta.url), "utf8")
+test("useDesktopQuery defaults to reload-only dependencies for inline operations", () =>
+  PlatformRuntime.runPromise(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const source = yield* fs.readFileString(
+        urlToPath(new URL("./hooks/desktop.ts", import.meta.url))
+      )
 
-  expect(source).toContain("deps === undefined ? [reloads] : [...deps, reloads]")
-  expect(source).not.toContain("deps === undefined ? [reloads, operation]")
-})
+      expect(source).toContain("deps === undefined ? [reloads] : [...deps, reloads]")
+      expect(source).not.toContain("deps === undefined ? [reloads, operation]")
+    })
+  ))
 
-test("React adapter lifecycle paths use the shared scoped framework helper", () => {
-  const desktopSource = readFileSync(new URL("./desktop.tsx", import.meta.url), "utf8")
-  const mutationSource = readFileSync(new URL("./mutation.ts", import.meta.url), "utf8")
-  const desktopHookSource = readFileSync(new URL("./hooks/desktop.ts", import.meta.url), "utf8")
-  const streamHookSource = readFileSync(new URL("./hooks/stream.ts", import.meta.url), "utf8")
+test("React adapter lifecycle paths use the shared scoped framework helper", () =>
+  PlatformRuntime.runPromise(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const desktopSource = yield* fs.readFileString(
+        urlToPath(new URL("./desktop.tsx", import.meta.url))
+      )
+      const mutationSource = yield* fs.readFileString(
+        urlToPath(new URL("./mutation.ts", import.meta.url))
+      )
+      const desktopHookSource = yield* fs.readFileString(
+        urlToPath(new URL("./hooks/desktop.ts", import.meta.url))
+      )
+      const streamHookSource = yield* fs.readFileString(
+        urlToPath(new URL("./hooks/stream.ts", import.meta.url))
+      )
 
-  expect(desktopSource).toContain("makeFrameworkRuntime(runtime)")
-  expect(desktopSource).toContain("Effect.runCallback(runtime.disposeEffect)")
-  expect(desktopSource).not.toContain("void runtime.dispose()")
-  expect(desktopSource).not.toContain("await frameworkRuntime.dispose()")
-  expect(mutationSource).toContain("makeFrameworkScopedOperation(runtime)")
-  expect(mutationSource).not.toContain("runIdRef")
-  expect(mutationSource).not.toContain("mountedRef")
-  expect(mutationSource).not.toContain("runFrameworkPromiseExit")
-  expect(desktopHookSource).toContain("makeFrameworkScopedOperation(defaultRuntime)")
-  expect(desktopHookSource).not.toContain("runFrameworkPromiseExit")
-  expect(streamHookSource).toContain("makeFrameworkScopedOperation(runtime)")
-  expect(streamHookSource).not.toContain("let active")
-})
+      expect(desktopSource).toContain("makeFrameworkRuntime(runtime)")
+      expect(desktopSource).toContain("Effect.runCallback(runtime.disposeEffect)")
+      expect(desktopSource).not.toContain("void runtime.dispose()")
+      expect(desktopSource).not.toContain("await frameworkRuntime.dispose()")
+      expect(mutationSource).toContain("makeFrameworkScopedOperation(runtime)")
+      expect(mutationSource).not.toContain("runIdRef")
+      expect(mutationSource).not.toContain("mountedRef")
+      expect(mutationSource).not.toContain("runFrameworkPromiseExit")
+      expect(desktopHookSource).toContain("makeFrameworkScopedOperation(defaultRuntime)")
+      expect(desktopHookSource).not.toContain("runFrameworkPromiseExit")
+      expect(streamHookSource).toContain("makeFrameworkScopedOperation(runtime)")
+      expect(streamHookSource).not.toContain("let active")
+    })
+  ))
 
 test("ReactDesktop.from exposes app-scoped RPC hooks from provided groups", () => {
   const ListNotes = Rpc.make("Notes.List", { success: Schema.Array(Schema.String) }).pipe(

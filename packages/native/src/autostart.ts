@@ -4,8 +4,6 @@ import {
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
-  type RpcCapabilityMetadata,
-  type RpcEndpointKind,
   RpcGroup
 } from "@effect-desktop/bridge"
 import { type DesktopRpcClient, type PermissionRegistry, P } from "@effect-desktop/core"
@@ -24,38 +22,37 @@ import { NativeSurface } from "./native-surface.js"
 export * from "./contracts/autostart.js"
 
 const Surface = "Autostart"
-const UnsupportedReason = "host-adapter-unimplemented"
-const AutostartSupport = NativeSurface.support.unsupported(UnsupportedReason, {
-  platforms: [
-    { platform: "macos", status: "unsupported", reason: UnsupportedReason },
-    { platform: "windows", status: "unsupported", reason: UnsupportedReason },
-    { platform: "linux", status: "unsupported", reason: UnsupportedReason }
-  ]
-})
+const AutostartSupport = NativeSurface.support.supported
 
 export type AutostartError = HostProtocolError
 
-export const AutostartIsEnabled = autostartRpc(
-  "isEnabled",
-  Schema.Void,
-  AutostartStatus,
-  P.nativeInvoke({ primitive: Surface, methods: ["isEnabled"] }),
-  "query"
-)
-export const AutostartEnable = autostartRpc(
-  "enable",
-  AutostartEnableInput,
-  AutostartStatus,
-  P.nativeInvoke({ primitive: Surface, methods: ["enable"] }),
-  "mutation"
-)
-export const AutostartDisable = autostartRpc(
-  "disable",
-  Schema.Void,
-  AutostartStatus,
-  P.nativeInvoke({ primitive: Surface, methods: ["disable"] }),
-  "mutation"
-)
+export const AutostartIsEnabled = NativeSurface.rpc(Surface, "isEnabled", {
+  payload: Schema.Void,
+  success: AutostartStatus,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: Surface, methods: ["isEnabled"] })
+  ),
+  endpoint: "query",
+  support: AutostartSupport
+})
+export const AutostartEnable = NativeSurface.rpc(Surface, "enable", {
+  payload: AutostartEnableInput,
+  success: AutostartStatus,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: Surface, methods: ["enable"] })
+  ),
+  endpoint: "mutation",
+  support: AutostartSupport
+})
+export const AutostartDisable = NativeSurface.rpc(Surface, "disable", {
+  payload: Schema.Void,
+  success: AutostartStatus,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: Surface, methods: ["disable"] })
+  ),
+  endpoint: "mutation",
+  support: AutostartSupport
+})
 
 export const AutostartRpcEvents = Object.freeze({
   Event: { payload: AutostartEvent }
@@ -168,26 +165,6 @@ const decodeAutostartEnableInput = (
   operation: string
 ): Effect.Effect<AutostartEnableInput, AutostartError> =>
   decodeNativeInput(AutostartEnableInput, input, operation)
-
-function autostartRpc<
-  const Method extends string,
-  Payload extends Schema.Codec<unknown, unknown, never, never>,
-  Success extends Schema.Codec<unknown, unknown, never, never>
->(
-  method: Method,
-  payload: Payload,
-  success: Success,
-  authority: RpcCapabilityMetadata,
-  endpoint: RpcEndpointKind
-) {
-  return NativeSurface.rpc(Surface, method, {
-    payload,
-    success,
-    authority: NativeSurface.authority.custom(authority),
-    endpoint,
-    support: AutostartSupport
-  })
-}
 
 const runAutostartRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,

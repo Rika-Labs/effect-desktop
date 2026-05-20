@@ -2,6 +2,7 @@
 // Host method adapters return the canonical HostProtocolError enum from the
 // wire contract. Boxing that error here would obscure the protocol surface.
 
+use crate::methods::crash_reporter;
 use host_protocol::{
     DiagnosticsBundleCollectPayload, DiagnosticsBundleCollectResultPayload,
     DiagnosticsBundleRedactPayload, DiagnosticsBundleRedactResultPayload,
@@ -411,10 +412,27 @@ fn collect_traces(context: SourceCollectionContext<'_>) -> SourceArtifact {
 }
 
 fn collect_crash_reports(context: SourceCollectionContext<'_>) -> SourceArtifact {
-    unavailable_source(
-        context,
-        "host crash reports are not connected to a crash report store",
-    )
+    match crash_reporter::diagnostics_reports() {
+        Ok(reports) => {
+            let item_count = reports.len() as u64;
+            SourceArtifact {
+                source: context.source,
+                item_count,
+                value: json!({
+                    "source": source_key(context.source),
+                    "collectedAt": context.collected_at,
+                    "status": SOURCE_STATUS_COLLECTED,
+                    "items": reports,
+                    "traceIdPresent": context.trace_id.is_some()
+                }),
+                evidence: Vec::new(),
+            }
+        }
+        Err(error) => unavailable_source(
+            context,
+            &format!("host crash reports could not be read: {error:?}"),
+        ),
+    }
 }
 
 fn collect_extension_health(context: SourceCollectionContext<'_>) -> SourceArtifact {
@@ -729,13 +747,7 @@ mod tests {
             "source records must not use placeholder metadata"
         );
         let parsed: Value = serde_json::from_str(&body).expect("bundle should be JSON");
-        for source in [
-            "logs",
-            "traces",
-            "crash-reports",
-            "extension-health",
-            "audit-events",
-        ] {
+        for source in ["logs", "traces", "extension-health", "audit-events"] {
             let artifact = &parsed["artifacts"][source];
             assert_eq!(artifact["status"], "unavailable");
             assert_eq!(artifact["unavailable"]["reason"], "collector-unavailable");
@@ -744,6 +756,10 @@ mod tests {
             assert_eq!(artifact["items"][0]["kind"], "source-unavailable");
             assert_eq!(artifact["traceIdPresent"], true);
         }
+        let crash_reports = &parsed["artifacts"]["crash-reports"];
+        assert_eq!(crash_reports["status"], "collected");
+        assert!(crash_reports["items"].as_array().is_some());
+        assert_eq!(crash_reports["traceIdPresent"], true);
     }
 
     #[test]

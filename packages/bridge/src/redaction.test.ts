@@ -156,7 +156,7 @@ test("SecretString hides credential display while retaining explicit unsafe acce
   const secret = makeSecretString("real-password", { label: "Credential" })
 
   expect(JSON.stringify(secret)).toBe('"<redacted:Credential>"')
-  expect(unsafeSecretString(secret)).toBe("real-password")
+  expect(secret.pipe(unsafeSecretString)).toBe("real-password")
 })
 
 test("redactForJson materializes Effect redacted values to JSON-safe strings", () => {

@@ -14,7 +14,6 @@ import {
   makeHostProtocolNotFoundError,
   makeHostWindowClient,
   makeStaleHandleError,
-  type RpcCapabilityMetadata,
   type RpcSupportMetadata,
   RpcGroup,
   type HostProtocolError,
@@ -38,10 +37,13 @@ export * from "./contracts/window.js"
 import {
   WindowCreateInput,
   WindowBounds,
+  WindowBoundsEvent,
   WindowBoundsInput,
+  WindowDisplayBoundsInput,
   WindowAlwaysOnTopInput,
   type WindowAttentionType,
   type WindowBoundsType,
+  WindowChildrenResult,
   type WindowCreateOptions,
   WindowDecorationsInput,
   WindowDisplayInput,
@@ -57,13 +59,21 @@ import {
   WindowRegistryEvent,
   WindowResizableInput,
   WindowRequestAttentionInput,
+  WindowShadowInput,
   WindowResource,
+  WindowSimpleFullscreenInput,
   WindowSkipTaskbarInput,
   WindowState,
   WindowStateEvent,
   WindowSubscribeEventsResult,
+  WindowTitleBarStyleInput,
+  type WindowTitleBarStyleValue,
+  WindowTitleBarTransparentInput,
   WindowTitleInput,
-  WindowTrafficLightsInput
+  WindowTransparentInput,
+  WindowTrafficLightsInput,
+  WindowVibrancyInput,
+  type WindowVibrancyMaterialInput
 } from "./contracts/window.js"
 
 const WindowTrafficLightsMacosOnlyReason = "traffic-light-placement-macos-only"
@@ -90,185 +100,419 @@ const WindowSkipTaskbarSupport = NativeSurface.support.partial(
     ]
   }
 ) satisfies RpcSupportMetadata
+const WindowVibrancyMacosOnlyReason = "vibrancy-macos-only"
+
+const WindowVibrancySupport = NativeSurface.support.partial(WindowVibrancyMacosOnlyReason, {
+  platforms: [
+    { platform: "macos", status: "supported" },
+    { platform: "windows", status: "unsupported", reason: WindowVibrancyMacosOnlyReason },
+    { platform: "linux", status: "unsupported", reason: WindowVibrancyMacosOnlyReason }
+  ]
+}) satisfies RpcSupportMetadata
+const WindowShadowMacosOnlyReason = "shadow-macos-only"
+
+const WindowShadowSupport = NativeSurface.support.partial(WindowShadowMacosOnlyReason, {
+  platforms: [
+    { platform: "macos", status: "supported" },
+    { platform: "windows", status: "unsupported", reason: WindowShadowMacosOnlyReason },
+    { platform: "linux", status: "unsupported", reason: WindowShadowMacosOnlyReason }
+  ]
+}) satisfies RpcSupportMetadata
+const WindowTitleBarStyleMacosOnlyReason = "titlebar-style-macos-only"
+
+const WindowTitleBarStyleSupport = NativeSurface.support.partial(
+  WindowTitleBarStyleMacosOnlyReason,
+  {
+    platforms: [
+      { platform: "macos", status: "supported" },
+      { platform: "windows", status: "unsupported", reason: WindowTitleBarStyleMacosOnlyReason },
+      { platform: "linux", status: "unsupported", reason: WindowTitleBarStyleMacosOnlyReason }
+    ]
+  }
+) satisfies RpcSupportMetadata
+const WindowTitleBarTransparentMacosOnlyReason = "titlebar-transparency-macos-only"
+
+const WindowTitleBarTransparentSupport = NativeSurface.support.partial(
+  WindowTitleBarTransparentMacosOnlyReason,
+  {
+    platforms: [
+      { platform: "macos", status: "supported" },
+      {
+        platform: "windows",
+        status: "unsupported",
+        reason: WindowTitleBarTransparentMacosOnlyReason
+      },
+      { platform: "linux", status: "unsupported", reason: WindowTitleBarTransparentMacosOnlyReason }
+    ]
+  }
+) satisfies RpcSupportMetadata
+const WindowTransparentMacosOnlyReason = "window-transparency-macos-only"
+
+const WindowTransparentSupport = NativeSurface.support.partial(WindowTransparentMacosOnlyReason, {
+  platforms: [
+    { platform: "macos", status: "supported" },
+    { platform: "windows", status: "unsupported", reason: WindowTransparentMacosOnlyReason },
+    { platform: "linux", status: "unsupported", reason: WindowTransparentMacosOnlyReason }
+  ]
+}) satisfies RpcSupportMetadata
+const WindowSimpleFullscreenMacosOnlyReason = "simple-fullscreen-macos-only"
+
+const WindowSimpleFullscreenSupport = NativeSurface.support.partial(
+  WindowSimpleFullscreenMacosOnlyReason,
+  {
+    platforms: [
+      { platform: "macos", status: "supported" },
+      { platform: "windows", status: "unsupported", reason: WindowSimpleFullscreenMacosOnlyReason },
+      { platform: "linux", status: "unsupported", reason: WindowSimpleFullscreenMacosOnlyReason }
+    ]
+  }
+) satisfies RpcSupportMetadata
+const WindowStateSupport = NativeSurface.support.supported satisfies RpcSupportMetadata
 const StrictParseOptions = { onExcessProperty: "error" } as const
 export type WindowError = HostProtocolError
 
-export const WindowCreate = windowRpc(
-  "create",
-  WindowCreateInput,
-  WindowResource,
-  P.nativeInvoke({ primitive: "Window", methods: ["create"] })
-)
-export const WindowClose = windowRpc(
-  "close",
-  WindowHandleInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["close"] })
-)
-export const WindowDestroy = windowRpc(
-  "destroy",
-  WindowHandleInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["destroy"] })
-)
-export const WindowShow = windowRpc(
-  "show",
-  WindowHandleInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["show"] })
-)
-export const WindowHide = windowRpc(
-  "hide",
-  WindowHandleInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["hide"] })
-)
-export const WindowFocus = windowRpc(
-  "focus",
-  WindowHandleInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["focus"] })
-)
-export const WindowGetCurrent = windowRpc(
-  "getCurrent",
-  Schema.Void,
-  WindowResource,
-  P.nativeInvoke({ primitive: "Window", methods: ["getCurrent"] })
-)
-export const WindowGetById = windowRpc(
-  "getById",
-  WindowLookupInput,
-  WindowResource,
-  P.nativeInvoke({ primitive: "Window", methods: ["getById"] })
-)
-export const WindowList = windowRpc(
-  "list",
-  Schema.Void,
-  WindowListResult,
-  P.nativeInvoke({ primitive: "Window", methods: ["list"] })
-)
-export const WindowGetParent = windowRpc(
-  "getParent",
-  WindowHandleInput,
-  WindowParentResult,
-  P.nativeInvoke({ primitive: "Window", methods: ["getParent"] })
-)
-export const WindowSubscribeEvents = windowRpc(
-  "subscribeEvents",
-  Schema.Void,
-  WindowSubscribeEventsResult,
-  P.nativeInvoke({ primitive: "Window", methods: ["subscribeEvents"] })
-)
-export const WindowGetBounds = windowRpc(
-  "getBounds",
-  WindowHandleInput,
-  WindowBounds,
-  P.nativeInvoke({ primitive: "Window", methods: ["getBounds"] })
-)
-export const WindowSetBounds = windowRpc(
-  "setBounds",
-  WindowBoundsInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["setBounds"] })
-)
-export const WindowCenter = windowRpc(
-  "center",
-  WindowHandleInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["center"] })
-)
-export const WindowCenterOnDisplay = windowRpc(
-  "centerOnDisplay",
-  WindowDisplayInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["centerOnDisplay"] })
-)
-export const WindowSetTitle = windowRpc(
-  "setTitle",
-  WindowTitleInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["setTitle"] })
-)
-export const WindowSetResizable = windowRpc(
-  "setResizable",
-  WindowResizableInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["setResizable"] })
-)
-export const WindowSetDecorations = windowRpc(
-  "setDecorations",
-  WindowDecorationsInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["setDecorations"] })
-)
-export const WindowSetTrafficLights = windowRpc(
-  "setTrafficLights",
-  WindowTrafficLightsInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["setTrafficLights"] }),
-  WindowTrafficLightsSupport
-)
-export const WindowSetAlwaysOnTop = windowRpc(
-  "setAlwaysOnTop",
-  WindowAlwaysOnTopInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["setAlwaysOnTop"] })
-)
-export const WindowSetSkipTaskbar = windowRpc(
-  "setSkipTaskbar",
-  WindowSkipTaskbarInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["setSkipTaskbar"] }),
-  WindowSkipTaskbarSupport
-)
-export const WindowSetProgress = windowRpc(
-  "setProgress",
-  WindowProgressInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["setProgress"] })
-)
-export const WindowRequestAttention = windowRpc(
-  "requestAttention",
-  WindowRequestAttentionInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["requestAttention"] })
-)
-export const WindowCancelAttention = windowRpc(
-  "cancelAttention",
-  WindowHandleInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["cancelAttention"] })
-)
-export const WindowMinimize = windowRpc(
-  "minimize",
-  WindowHandleInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["minimize"] })
-)
-export const WindowMaximize = windowRpc(
-  "maximize",
-  WindowHandleInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["maximize"] })
-)
-export const WindowRestore = windowRpc(
-  "restore",
-  WindowHandleInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["restore"] })
-)
-export const WindowSetFullscreen = windowRpc(
-  "setFullscreen",
-  WindowFullscreenInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Window", methods: ["setFullscreen"] })
-)
-export const WindowGetState = windowRpc(
-  "getState",
-  WindowHandleInput,
-  WindowState,
-  P.nativeInvoke({ primitive: "Window", methods: ["getState"] })
-)
+export const WindowCreate = NativeSurface.rpc("Window", "create", {
+  payload: WindowCreateInput,
+  success: WindowResource,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["create"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowClose = NativeSurface.rpc("Window", "close", {
+  payload: WindowHandleInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["close"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowDestroy = NativeSurface.rpc("Window", "destroy", {
+  payload: WindowHandleInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["destroy"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowShow = NativeSurface.rpc("Window", "show", {
+  payload: WindowHandleInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["show"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowHide = NativeSurface.rpc("Window", "hide", {
+  payload: WindowHandleInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["hide"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowFocus = NativeSurface.rpc("Window", "focus", {
+  payload: WindowHandleInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["focus"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowGetCurrent = NativeSurface.rpc("Window", "getCurrent", {
+  payload: Schema.Void,
+  success: WindowResource,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["getCurrent"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowGetById = NativeSurface.rpc("Window", "getById", {
+  payload: WindowLookupInput,
+  success: WindowResource,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["getById"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowList = NativeSurface.rpc("Window", "list", {
+  payload: Schema.Void,
+  success: WindowListResult,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["list"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowGetParent = NativeSurface.rpc("Window", "getParent", {
+  payload: WindowHandleInput,
+  success: WindowParentResult,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["getParent"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowGetChildren = NativeSurface.rpc("Window", "getChildren", {
+  payload: WindowHandleInput,
+  success: WindowChildrenResult,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["getChildren"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowSubscribeEvents = NativeSurface.rpc("Window", "subscribeEvents", {
+  payload: Schema.Void,
+  success: WindowSubscribeEventsResult,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["subscribeEvents"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowGetBounds = NativeSurface.rpc("Window", "getBounds", {
+  payload: WindowHandleInput,
+  success: WindowBounds,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["getBounds"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowSetBounds = NativeSurface.rpc("Window", "setBounds", {
+  payload: WindowBoundsInput,
+  success: WindowBounds,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["setBounds"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowSetBoundsOnDisplay = NativeSurface.rpc("Window", "setBoundsOnDisplay", {
+  payload: WindowDisplayBoundsInput,
+  success: WindowBounds,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["setBoundsOnDisplay"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowCenter = NativeSurface.rpc("Window", "center", {
+  payload: WindowHandleInput,
+  success: WindowBounds,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["center"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowCenterOnDisplay = NativeSurface.rpc("Window", "centerOnDisplay", {
+  payload: WindowDisplayInput,
+  success: WindowBounds,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["centerOnDisplay"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowSetTitle = NativeSurface.rpc("Window", "setTitle", {
+  payload: WindowTitleInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["setTitle"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowSetResizable = NativeSurface.rpc("Window", "setResizable", {
+  payload: WindowResizableInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["setResizable"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowSetDecorations = NativeSurface.rpc("Window", "setDecorations", {
+  payload: WindowDecorationsInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["setDecorations"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowSetTrafficLights = NativeSurface.rpc("Window", "setTrafficLights", {
+  payload: WindowTrafficLightsInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["setTrafficLights"] })
+  ),
+  endpoint: "mutation",
+  support: WindowTrafficLightsSupport
+})
+export const WindowSetVibrancy = NativeSurface.rpc("Window", "setVibrancy", {
+  payload: WindowVibrancyInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["setVibrancy"] })
+  ),
+  endpoint: "mutation",
+  support: WindowVibrancySupport
+})
+export const WindowClearVibrancy = NativeSurface.rpc("Window", "clearVibrancy", {
+  payload: WindowHandleInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["clearVibrancy"] })
+  ),
+  endpoint: "mutation",
+  support: WindowVibrancySupport
+})
+export const WindowSetShadow = NativeSurface.rpc("Window", "setShadow", {
+  payload: WindowShadowInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["setShadow"] })
+  ),
+  endpoint: "mutation",
+  support: WindowShadowSupport
+})
+export const WindowSetTitleBarStyle = NativeSurface.rpc("Window", "setTitleBarStyle", {
+  payload: WindowTitleBarStyleInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["setTitleBarStyle"] })
+  ),
+  endpoint: "mutation",
+  support: WindowTitleBarStyleSupport
+})
+export const WindowSetTitleBarTransparent = NativeSurface.rpc("Window", "setTitleBarTransparent", {
+  payload: WindowTitleBarTransparentInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["setTitleBarTransparent"] })
+  ),
+  endpoint: "mutation",
+  support: WindowTitleBarTransparentSupport
+})
+export const WindowSetTransparent = NativeSurface.rpc("Window", "setTransparent", {
+  payload: WindowTransparentInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["setTransparent"] })
+  ),
+  endpoint: "mutation",
+  support: WindowTransparentSupport
+})
+export const WindowSetAlwaysOnTop = NativeSurface.rpc("Window", "setAlwaysOnTop", {
+  payload: WindowAlwaysOnTopInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["setAlwaysOnTop"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowSetSkipTaskbar = NativeSurface.rpc("Window", "setSkipTaskbar", {
+  payload: WindowSkipTaskbarInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["setSkipTaskbar"] })
+  ),
+  endpoint: "mutation",
+  support: WindowSkipTaskbarSupport
+})
+export const WindowSetProgress = NativeSurface.rpc("Window", "setProgress", {
+  payload: WindowProgressInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["setProgress"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowRequestAttention = NativeSurface.rpc("Window", "requestAttention", {
+  payload: WindowRequestAttentionInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["requestAttention"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowCancelAttention = NativeSurface.rpc("Window", "cancelAttention", {
+  payload: WindowHandleInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["cancelAttention"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const WindowMinimize = NativeSurface.rpc("Window", "minimize", {
+  payload: WindowHandleInput,
+  success: WindowState,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["minimize"] })
+  ),
+  endpoint: "mutation",
+  support: WindowStateSupport
+})
+export const WindowMaximize = NativeSurface.rpc("Window", "maximize", {
+  payload: WindowHandleInput,
+  success: WindowState,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["maximize"] })
+  ),
+  endpoint: "mutation",
+  support: WindowStateSupport
+})
+export const WindowRestore = NativeSurface.rpc("Window", "restore", {
+  payload: WindowHandleInput,
+  success: WindowState,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["restore"] })
+  ),
+  endpoint: "mutation",
+  support: WindowStateSupport
+})
+export const WindowSetFullscreen = NativeSurface.rpc("Window", "setFullscreen", {
+  payload: WindowFullscreenInput,
+  success: WindowState,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["setFullscreen"] })
+  ),
+  endpoint: "mutation",
+  support: WindowStateSupport
+})
+export const WindowSetSimpleFullscreen = NativeSurface.rpc("Window", "setSimpleFullscreen", {
+  payload: WindowSimpleFullscreenInput,
+  success: WindowState,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["setSimpleFullscreen"] })
+  ),
+  endpoint: "mutation",
+  support: WindowSimpleFullscreenSupport
+})
+export const WindowGetState = NativeSurface.rpc("Window", "getState", {
+  payload: WindowHandleInput,
+  success: WindowState,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["getState"] })
+  ),
+  endpoint: "mutation",
+  support: WindowStateSupport
+})
 
 const makeWindowRpcGroup = () =>
   RpcGroup.make(
@@ -282,15 +526,23 @@ const makeWindowRpcGroup = () =>
     WindowGetById,
     WindowList,
     WindowGetParent,
+    WindowGetChildren,
     WindowSubscribeEvents,
     WindowGetBounds,
     WindowSetBounds,
+    WindowSetBoundsOnDisplay,
     WindowCenter,
     WindowCenterOnDisplay,
     WindowSetTitle,
     WindowSetResizable,
     WindowSetDecorations,
     WindowSetTrafficLights,
+    WindowSetVibrancy,
+    WindowClearVibrancy,
+    WindowSetShadow,
+    WindowSetTitleBarStyle,
+    WindowSetTitleBarTransparent,
+    WindowSetTransparent,
     WindowSetAlwaysOnTop,
     WindowSetSkipTaskbar,
     WindowSetProgress,
@@ -300,6 +552,7 @@ const makeWindowRpcGroup = () =>
     WindowMaximize,
     WindowRestore,
     WindowSetFullscreen,
+    WindowSetSimpleFullscreen,
     WindowGetState
   )
 
@@ -334,14 +587,22 @@ export const WindowMethodNames = Object.freeze([
   "getById",
   "list",
   "getParent",
+  "getChildren",
   "getBounds",
   "setBounds",
+  "setBoundsOnDisplay",
   "center",
   "centerOnDisplay",
   "setTitle",
   "setResizable",
   "setDecorations",
   "setTrafficLights",
+  "setVibrancy",
+  "clearVibrancy",
+  "setShadow",
+  "setTitleBarStyle",
+  "setTitleBarTransparent",
+  "setTransparent",
   "setAlwaysOnTop",
   "setSkipTaskbar",
   "setProgress",
@@ -351,6 +612,7 @@ export const WindowMethodNames = Object.freeze([
   "maximize",
   "restore",
   "setFullscreen",
+  "setSimpleFullscreen",
   "getState"
 ] as const)
 
@@ -372,16 +634,24 @@ export interface WindowClientApi {
   readonly getParent: (
     window: WindowHandle
   ) => Effect.Effect<WindowHandle | undefined, WindowError, never>
+  readonly getChildren: (
+    window: WindowHandle
+  ) => Effect.Effect<readonly WindowHandle[], WindowError, never>
   readonly getBounds: (window: WindowHandle) => Effect.Effect<WindowBounds, WindowError, never>
   readonly setBounds: (
     window: WindowHandle,
     bounds: WindowBoundsType
-  ) => Effect.Effect<void, WindowError, never>
-  readonly center: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
+  ) => Effect.Effect<WindowBounds, WindowError, never>
+  readonly setBoundsOnDisplay: (
+    window: WindowHandle,
+    displayId: string,
+    bounds: WindowBoundsType
+  ) => Effect.Effect<WindowBounds, WindowError, never>
+  readonly center: (window: WindowHandle) => Effect.Effect<WindowBounds, WindowError, never>
   readonly centerOnDisplay: (
     window: WindowHandle,
     displayId: string
-  ) => Effect.Effect<void, WindowError, never>
+  ) => Effect.Effect<WindowBounds, WindowError, never>
   readonly setTitle: (
     window: WindowHandle,
     title: string
@@ -397,6 +667,27 @@ export interface WindowClientApi {
   readonly setTrafficLights: (
     window: WindowHandle,
     trafficLights: { readonly x: number; readonly y: number }
+  ) => Effect.Effect<void, WindowError, never>
+  readonly setVibrancy: (
+    window: WindowHandle,
+    material: WindowVibrancyMaterialInput
+  ) => Effect.Effect<void, WindowError, never>
+  readonly clearVibrancy: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
+  readonly setShadow: (
+    window: WindowHandle,
+    hasShadow: boolean
+  ) => Effect.Effect<void, WindowError, never>
+  readonly setTitleBarStyle: (
+    window: WindowHandle,
+    titleBarStyle: WindowTitleBarStyleValue
+  ) => Effect.Effect<void, WindowError, never>
+  readonly setTitleBarTransparent: (
+    window: WindowHandle,
+    titleBarTransparent: boolean
+  ) => Effect.Effect<void, WindowError, never>
+  readonly setTransparent: (
+    window: WindowHandle,
+    transparent: boolean
   ) => Effect.Effect<void, WindowError, never>
   readonly setAlwaysOnTop: (
     window: WindowHandle,
@@ -415,13 +706,17 @@ export interface WindowClientApi {
     requestType: WindowAttentionType
   ) => Effect.Effect<void, WindowError, never>
   readonly cancelAttention: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
-  readonly minimize: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
-  readonly maximize: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
-  readonly restore: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
+  readonly minimize: (window: WindowHandle) => Effect.Effect<WindowState, WindowError, never>
+  readonly maximize: (window: WindowHandle) => Effect.Effect<WindowState, WindowError, never>
+  readonly restore: (window: WindowHandle) => Effect.Effect<WindowState, WindowError, never>
   readonly setFullscreen: (
     window: WindowHandle,
     fullscreen: boolean
-  ) => Effect.Effect<void, WindowError, never>
+  ) => Effect.Effect<WindowState, WindowError, never>
+  readonly setSimpleFullscreen: (
+    window: WindowHandle,
+    simpleFullscreen: boolean
+  ) => Effect.Effect<WindowState, WindowError, never>
   readonly getState: (window: WindowHandle) => Effect.Effect<WindowState, WindowError, never>
   readonly events: () => Stream.Stream<WindowEvent, WindowError, never>
 }
@@ -525,6 +820,11 @@ export const WindowHandlersLive = WindowRpcGroup.toLayer({
       const parent = yield* window.getParent(input.window)
       return new WindowParentResult(parent === undefined ? {} : { parent })
     }),
+  "Window.getChildren": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      return new WindowChildrenResult({ children: yield* window.getChildren(input.window) })
+    }),
   "Window.subscribeEvents": () =>
     Effect.succeed(new WindowSubscribeEventsResult({ subscribed: true })),
   "Window.getBounds": (input) =>
@@ -535,17 +835,22 @@ export const WindowHandlersLive = WindowRpcGroup.toLayer({
   "Window.setBounds": (input) =>
     Effect.gen(function* () {
       const window = yield* Window
-      yield* window.setBounds(input.window, input.bounds)
+      return yield* window.setBounds(input.window, input.bounds)
+    }),
+  "Window.setBoundsOnDisplay": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      return yield* window.setBoundsOnDisplay(input.window, input.displayId, input.bounds)
     }),
   "Window.center": (input) =>
     Effect.gen(function* () {
       const window = yield* Window
-      yield* window.center(input.window)
+      return yield* window.center(input.window)
     }),
   "Window.centerOnDisplay": (input) =>
     Effect.gen(function* () {
       const window = yield* Window
-      yield* window.centerOnDisplay(input.window, input.displayId)
+      return yield* window.centerOnDisplay(input.window, input.displayId)
     }),
   "Window.setTitle": (input) =>
     Effect.gen(function* () {
@@ -566,6 +871,36 @@ export const WindowHandlersLive = WindowRpcGroup.toLayer({
     Effect.gen(function* () {
       const window = yield* Window
       yield* window.setTrafficLights(input.window, input.trafficLights)
+    }),
+  "Window.setVibrancy": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.setVibrancy(input.window, input.material)
+    }),
+  "Window.clearVibrancy": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.clearVibrancy(input.window)
+    }),
+  "Window.setShadow": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.setShadow(input.window, input.hasShadow)
+    }),
+  "Window.setTitleBarStyle": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.setTitleBarStyle(input.window, input.titleBarStyle)
+    }),
+  "Window.setTitleBarTransparent": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.setTitleBarTransparent(input.window, input.titleBarTransparent)
+    }),
+  "Window.setTransparent": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      yield* window.setTransparent(input.window, input.transparent)
     }),
   "Window.setAlwaysOnTop": (input) =>
     Effect.gen(function* () {
@@ -595,22 +930,27 @@ export const WindowHandlersLive = WindowRpcGroup.toLayer({
   "Window.minimize": (input) =>
     Effect.gen(function* () {
       const window = yield* Window
-      yield* window.minimize(input.window)
+      return yield* window.minimize(input.window)
     }),
   "Window.maximize": (input) =>
     Effect.gen(function* () {
       const window = yield* Window
-      yield* window.maximize(input.window)
+      return yield* window.maximize(input.window)
     }),
   "Window.restore": (input) =>
     Effect.gen(function* () {
       const window = yield* Window
-      yield* window.restore(input.window)
+      return yield* window.restore(input.window)
     }),
   "Window.setFullscreen": (input) =>
     Effect.gen(function* () {
       const window = yield* Window
-      yield* window.setFullscreen(input.window, input.fullscreen)
+      return yield* window.setFullscreen(input.window, input.fullscreen)
+    }),
+  "Window.setSimpleFullscreen": (input) =>
+    Effect.gen(function* () {
+      const window = yield* Window
+      return yield* window.setSimpleFullscreen(input.window, input.simpleFullscreen)
     }),
   "Window.getState": (input) =>
     Effect.gen(function* () {
@@ -664,14 +1004,24 @@ const makeWindowService = (client: WindowClientApi): WindowServiceApi => {
     getById: (windowId) => client.getById(windowId),
     list: () => client.list(),
     getParent: (window) => client.getParent(window),
+    getChildren: (window) => client.getChildren(window),
     getBounds: (window) => client.getBounds(window),
     setBounds: (window, bounds) => client.setBounds(window, bounds),
+    setBoundsOnDisplay: (window, displayId, bounds) =>
+      client.setBoundsOnDisplay(window, displayId, bounds),
     center: (window) => client.center(window),
     centerOnDisplay: (window, displayId) => client.centerOnDisplay(window, displayId),
     setTitle: (window, title) => client.setTitle(window, title),
     setResizable: (window, resizable) => client.setResizable(window, resizable),
     setDecorations: (window, decorations) => client.setDecorations(window, decorations),
     setTrafficLights: (window, trafficLights) => client.setTrafficLights(window, trafficLights),
+    setVibrancy: (window, material) => client.setVibrancy(window, material),
+    clearVibrancy: (window) => client.clearVibrancy(window),
+    setShadow: (window, hasShadow) => client.setShadow(window, hasShadow),
+    setTitleBarStyle: (window, titleBarStyle) => client.setTitleBarStyle(window, titleBarStyle),
+    setTitleBarTransparent: (window, titleBarTransparent) =>
+      client.setTitleBarTransparent(window, titleBarTransparent),
+    setTransparent: (window, transparent) => client.setTransparent(window, transparent),
     setAlwaysOnTop: (window, alwaysOnTop) => client.setAlwaysOnTop(window, alwaysOnTop),
     setSkipTaskbar: (window, skipTaskbar) => client.setSkipTaskbar(window, skipTaskbar),
     setProgress: (window, input) => client.setProgress(window, input),
@@ -681,6 +1031,8 @@ const makeWindowService = (client: WindowClientApi): WindowServiceApi => {
     maximize: (window) => client.maximize(window),
     restore: (window) => client.restore(window),
     setFullscreen: (window, fullscreen) => client.setFullscreen(window, fullscreen),
+    setSimpleFullscreen: (window, simpleFullscreen) =>
+      client.setSimpleFullscreen(window, simpleFullscreen),
     getState: (window) => client.getState(window),
     events: () => client.events()
   }
@@ -770,6 +1122,23 @@ function windowClientFromRpcClient(
         )
         return decoded.parent
       }),
+    getChildren: (window) =>
+      Effect.gen(function* () {
+        const decodedInput = yield* decodeWindowHandleInput(window, "Window.getChildren")
+        const result = yield* runWindowRpc(
+          client["Window.getChildren"](decodedInput),
+          "Window.getChildren"
+        )
+        const decoded = yield* Schema.decodeUnknownEffect(WindowChildrenResult)(
+          result,
+          StrictParseOptions
+        ).pipe(
+          Effect.mapError((error) =>
+            makeHostProtocolInvalidOutputError("Window.getChildren", formatUnknownError(error))
+          )
+        )
+        return decoded.children
+      }),
     getBounds: (window) =>
       Effect.gen(function* () {
         const decoded = yield* decodeWindowHandleInput(window, "Window.getBounds")
@@ -779,13 +1148,40 @@ function windowClientFromRpcClient(
     setBounds: (window, bounds) =>
       Effect.gen(function* () {
         const decoded = yield* decodeWindowBoundsInput(window, bounds, "Window.setBounds")
-        yield* runWindowRpc(client["Window.setBounds"](decoded), "Window.setBounds")
+        const observed = yield* runWindowRpc(
+          client["Window.setBounds"](decoded),
+          "Window.setBounds"
+        )
+        return yield* decodeWindowBounds(observed, "Window.setBounds")
       }),
-    center: (window) => runWindowHandleRpc(client, "Window.center", window),
+    setBoundsOnDisplay: (window, displayId, bounds) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowDisplayBoundsInput(
+          window,
+          displayId,
+          bounds,
+          "Window.setBoundsOnDisplay"
+        )
+        const observed = yield* runWindowRpc(
+          client["Window.setBoundsOnDisplay"](decoded),
+          "Window.setBoundsOnDisplay"
+        )
+        return yield* decodeWindowBounds(observed, "Window.setBoundsOnDisplay")
+      }),
+    center: (window) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowHandleInput(window, "Window.center")
+        const observed = yield* runWindowRpc(client["Window.center"](decoded), "Window.center")
+        return yield* decodeWindowBounds(observed, "Window.center")
+      }),
     centerOnDisplay: (window, displayId) =>
       Effect.gen(function* () {
         const decoded = yield* decodeWindowDisplayInput(window, displayId, "Window.centerOnDisplay")
-        yield* runWindowRpc(client["Window.centerOnDisplay"](decoded), "Window.centerOnDisplay")
+        const observed = yield* runWindowRpc(
+          client["Window.centerOnDisplay"](decoded),
+          "Window.centerOnDisplay"
+        )
+        return yield* decodeWindowBounds(observed, "Window.centerOnDisplay")
       }),
     setTitle: (window, title) =>
       Effect.gen(function* () {
@@ -814,6 +1210,51 @@ function windowClientFromRpcClient(
           "Window.setTrafficLights"
         )
         yield* runWindowRpc(client["Window.setTrafficLights"](decoded), "Window.setTrafficLights")
+      }),
+    setVibrancy: (window, material) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowVibrancyInput(window, material, "Window.setVibrancy")
+        yield* runWindowRpc(client["Window.setVibrancy"](decoded), "Window.setVibrancy")
+      }),
+    clearVibrancy: (window) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowHandleInput(window, "Window.clearVibrancy")
+        yield* runWindowRpc(client["Window.clearVibrancy"](decoded), "Window.clearVibrancy")
+      }),
+    setShadow: (window, hasShadow) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowShadowInput(window, hasShadow, "Window.setShadow")
+        yield* runWindowRpc(client["Window.setShadow"](decoded), "Window.setShadow")
+      }),
+    setTitleBarStyle: (window, titleBarStyle) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowTitleBarStyleInput(
+          window,
+          titleBarStyle,
+          "Window.setTitleBarStyle"
+        )
+        yield* runWindowRpc(client["Window.setTitleBarStyle"](decoded), "Window.setTitleBarStyle")
+      }),
+    setTitleBarTransparent: (window, titleBarTransparent) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowTitleBarTransparentInput(
+          window,
+          titleBarTransparent,
+          "Window.setTitleBarTransparent"
+        )
+        yield* runWindowRpc(
+          client["Window.setTitleBarTransparent"](decoded),
+          "Window.setTitleBarTransparent"
+        )
+      }),
+    setTransparent: (window, transparent) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowTransparentInput(
+          window,
+          transparent,
+          "Window.setTransparent"
+        )
+        yield* runWindowRpc(client["Window.setTransparent"](decoded), "Window.setTransparent")
       }),
     setAlwaysOnTop: (window, alwaysOnTop) =>
       Effect.gen(function* () {
@@ -848,9 +1289,9 @@ function windowClientFromRpcClient(
         yield* runWindowRpc(client["Window.requestAttention"](decoded), "Window.requestAttention")
       }),
     cancelAttention: (window) => runWindowHandleRpc(client, "Window.cancelAttention", window),
-    minimize: (window) => runWindowHandleRpc(client, "Window.minimize", window),
-    maximize: (window) => runWindowHandleRpc(client, "Window.maximize", window),
-    restore: (window) => runWindowHandleRpc(client, "Window.restore", window),
+    minimize: (window) => runWindowStateHandleRpc(client, "Window.minimize", window),
+    maximize: (window) => runWindowStateHandleRpc(client, "Window.maximize", window),
+    restore: (window) => runWindowStateHandleRpc(client, "Window.restore", window),
     setFullscreen: (window, fullscreen) =>
       Effect.gen(function* () {
         const decoded = yield* decodeWindowFullscreenInput(
@@ -858,7 +1299,24 @@ function windowClientFromRpcClient(
           fullscreen,
           "Window.setFullscreen"
         )
-        yield* runWindowRpc(client["Window.setFullscreen"](decoded), "Window.setFullscreen")
+        const state = yield* runWindowRpc(
+          client["Window.setFullscreen"](decoded),
+          "Window.setFullscreen"
+        )
+        return yield* decodeWindowState(state, "Window.setFullscreen")
+      }),
+    setSimpleFullscreen: (window, simpleFullscreen) =>
+      Effect.gen(function* () {
+        const decoded = yield* decodeWindowSimpleFullscreenInput(
+          window,
+          simpleFullscreen,
+          "Window.setSimpleFullscreen"
+        )
+        const state = yield* runWindowRpc(
+          client["Window.setSimpleFullscreen"](decoded),
+          "Window.setSimpleFullscreen"
+        )
+        return yield* decodeWindowState(state, "Window.setSimpleFullscreen")
       }),
     getState: (window) =>
       Effect.gen(function* () {
@@ -883,7 +1341,6 @@ const runWindowHandleRpc = (
     | "Window.destroy"
     | "Window.hide"
     | "Window.focus"
-    | "Window.center"
     | "Window.cancelAttention"
     | "Window.minimize"
     | "Window.maximize"
@@ -893,6 +1350,17 @@ const runWindowHandleRpc = (
   Effect.gen(function* () {
     const decoded = yield* decodeWindowHandleInput(window, operation)
     yield* runWindowRpc(client[operation](decoded), operation)
+  })
+
+const runWindowStateHandleRpc = (
+  client: WindowRpcClient,
+  operation: "Window.minimize" | "Window.maximize" | "Window.restore",
+  window: WindowHandle
+): Effect.Effect<WindowState, WindowError, never> =>
+  Effect.gen(function* () {
+    const decoded = yield* decodeWindowHandleInput(window, operation)
+    const state = yield* runWindowRpc(client[operation](decoded), operation)
+    return yield* decodeWindowState(state, operation)
   })
 
 const decodeWindowHandleInput = (
@@ -911,6 +1379,21 @@ const decodeWindowBoundsInput = (
   operation: string
 ): Effect.Effect<WindowBoundsInput, WindowError, never> =>
   Schema.decodeUnknownEffect(WindowBoundsInput)({ window, bounds }, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
+  )
+
+const decodeWindowDisplayBoundsInput = (
+  window: WindowHandle,
+  displayId: string,
+  bounds: WindowBoundsType,
+  operation: string
+): Effect.Effect<WindowDisplayBoundsInput, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowDisplayBoundsInput)(
+    { window, displayId, bounds },
+    StrictParseOptions
+  ).pipe(
     Effect.mapError((error) =>
       makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
     )
@@ -970,6 +1453,70 @@ const decodeWindowTrafficLightsInput = (
 ): Effect.Effect<WindowTrafficLightsInput, WindowError, never> =>
   Schema.decodeUnknownEffect(WindowTrafficLightsInput)(
     { window, trafficLights },
+    StrictParseOptions
+  ).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
+  )
+
+const decodeWindowVibrancyInput = (
+  window: WindowHandle,
+  material: WindowVibrancyMaterialInput,
+  operation: string
+): Effect.Effect<WindowVibrancyInput, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowVibrancyInput)({ window, material }, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
+  )
+
+const decodeWindowShadowInput = (
+  window: WindowHandle,
+  hasShadow: boolean,
+  operation: string
+): Effect.Effect<WindowShadowInput, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowShadowInput)({ window, hasShadow }, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
+  )
+
+const decodeWindowTitleBarStyleInput = (
+  window: WindowHandle,
+  titleBarStyle: WindowTitleBarStyleValue,
+  operation: string
+): Effect.Effect<WindowTitleBarStyleInput, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowTitleBarStyleInput)(
+    { window, titleBarStyle },
+    StrictParseOptions
+  ).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
+  )
+
+const decodeWindowTitleBarTransparentInput = (
+  window: WindowHandle,
+  titleBarTransparent: boolean,
+  operation: string
+): Effect.Effect<WindowTitleBarTransparentInput, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowTitleBarTransparentInput)(
+    { window, titleBarTransparent },
+    StrictParseOptions
+  ).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
+  )
+
+const decodeWindowTransparentInput = (
+  window: WindowHandle,
+  transparent: boolean,
+  operation: string
+): Effect.Effect<WindowTransparentInput, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowTransparentInput)(
+    { window, transparent },
     StrictParseOptions
   ).pipe(
     Effect.mapError((error) =>
@@ -1052,6 +1599,20 @@ const decodeWindowFullscreenInput = (
     )
   )
 
+const decodeWindowSimpleFullscreenInput = (
+  window: WindowHandle,
+  simpleFullscreen: boolean,
+  operation: string
+): Effect.Effect<WindowSimpleFullscreenInput, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowSimpleFullscreenInput)(
+    { window, simpleFullscreen },
+    StrictParseOptions
+  ).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
+    )
+  )
+
 const decodeWindowBounds = (
   input: unknown,
   operation: string
@@ -1102,6 +1663,13 @@ const reconcileWindowEvent = (
         : stateEventWithWindow(event, window.value)
     }
 
+    if (event.type === "window-bounds-event") {
+      const window = yield* lookupWindowHandleForEvent(event.windowId, registry)
+      return Option.isNone(window)
+        ? boundsEventWithoutWindow(event)
+        : boundsEventWithWindow(event, window.value)
+    }
+
     const terminal = event.phase === "closed"
     if (event.terminal !== terminal) {
       return yield* Effect.fail(
@@ -1117,7 +1685,12 @@ const reconcileWindowEvent = (
       return eventWithWindow(event, window)
     }
 
-    if (event.phase === "focused") {
+    if (
+      event.phase === "focused" ||
+      event.phase === "shown" ||
+      event.phase === "hidden" ||
+      event.phase === "closeRequested"
+    ) {
       const window = yield* lookupWindowHandleForEvent(event.windowId, registry)
       return Option.isNone(window)
         ? eventWithoutWindow(event)
@@ -1225,6 +1798,21 @@ const stateEventWithoutWindow = (event: WindowStateEvent): WindowStateEvent =>
     type: event.type,
     windowId: event.windowId,
     state: event.state
+  })
+
+const boundsEventWithWindow = (event: WindowBoundsEvent, window: WindowHandle): WindowBoundsEvent =>
+  new WindowBoundsEvent({
+    type: event.type,
+    windowId: event.windowId,
+    window,
+    bounds: event.bounds
+  })
+
+const boundsEventWithoutWindow = (event: WindowBoundsEvent): WindowBoundsEvent =>
+  new WindowBoundsEvent({
+    type: event.type,
+    windowId: event.windowId,
+    bounds: event.bounds
   })
 
 const runWindowRpc = <A, E>(
@@ -1335,11 +1923,29 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
       Effect.gen(function* () {
         const { window } = yield* assertKnownFreshWindow(input, knownWindowIds, "Window.show")
         yield* host.show(window.id)
+        if (options.appEventRouter !== undefined) {
+          yield* options.appEventRouter
+            .windowShown(window.id)
+            .pipe(
+              Effect.mapError((error) =>
+                makeHostProtocolInvalidStateError(error.windowId, "shown", "Window.show")
+              )
+            )
+        }
       }),
     "Window.hide": (input: WindowHandleInput) =>
       Effect.gen(function* () {
         const { window } = yield* assertKnownFreshWindow(input, knownWindowIds, "Window.hide")
         yield* host.hide(window.id)
+        if (options.appEventRouter !== undefined) {
+          yield* options.appEventRouter
+            .windowHidden(window.id)
+            .pipe(
+              Effect.mapError((error) =>
+                makeHostProtocolInvalidStateError(error.windowId, "hidden", "Window.hide")
+              )
+            )
+        }
       }),
     "Window.focus": (input: WindowHandleInput) =>
       Effect.gen(function* () {
@@ -1411,6 +2017,27 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
         )
         return new WindowParentResult({ parent: parentWindow })
       }),
+    "Window.getChildren": (input: WindowHandleInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(
+          input,
+          knownWindowIds,
+          "Window.getChildren"
+        )
+        const listed = yield* host.getChildren(window.id)
+        const children = yield* Effect.forEach(
+          listed.windows,
+          ({ windowId }) =>
+            lookupKnownFreshWindow(
+              windowId,
+              knownWindowIds,
+              windowHandleById,
+              "Window.getChildren"
+            ),
+          { concurrency: "unbounded" }
+        )
+        return new WindowChildrenResult({ children })
+      }),
     "Window.subscribeEvents": () =>
       Effect.succeed(new WindowSubscribeEventsResult({ subscribed: true })),
     "Window.getBounds": (input: WindowHandleInput) =>
@@ -1426,12 +2053,28 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
           knownWindowIds,
           "Window.setBounds"
         )
-        yield* host.setBounds(window.id, toHostWindowBoundsInput(input.bounds))
+        const observed = yield* host.setBounds(window.id, toHostWindowBoundsInput(input.bounds))
+        return yield* decodeWindowBounds(observed, "Window.setBounds")
+      }),
+    "Window.setBoundsOnDisplay": (input: WindowDisplayBoundsInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(
+          { window: input.window },
+          knownWindowIds,
+          "Window.setBoundsOnDisplay"
+        )
+        const observed = yield* host.setBoundsOnDisplay(
+          window.id,
+          input.displayId,
+          toHostWindowBoundsInput(input.bounds)
+        )
+        return yield* decodeWindowBounds(observed, "Window.setBoundsOnDisplay")
       }),
     "Window.center": (input: WindowHandleInput) =>
       Effect.gen(function* () {
         const { window } = yield* assertKnownFreshWindow(input, knownWindowIds, "Window.center")
-        yield* host.center(window.id)
+        const observed = yield* host.center(window.id)
+        return yield* decodeWindowBounds(observed, "Window.center")
       }),
     "Window.centerOnDisplay": (input: WindowDisplayInput) =>
       Effect.gen(function* () {
@@ -1440,7 +2083,8 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
           knownWindowIds,
           "Window.centerOnDisplay"
         )
-        yield* host.centerOnDisplay(window.id, input.displayId)
+        const observed = yield* host.centerOnDisplay(window.id, input.displayId)
+        return yield* decodeWindowBounds(observed, "Window.centerOnDisplay")
       }),
     "Window.setTitle": (input: WindowTitleInput) =>
       Effect.gen(function* () {
@@ -1477,6 +2121,60 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
           "Window.setTrafficLights"
         )
         yield* host.setTrafficLights(window.id, input.trafficLights)
+      }),
+    "Window.setVibrancy": (input: WindowVibrancyInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(
+          { window: input.window },
+          knownWindowIds,
+          "Window.setVibrancy"
+        )
+        yield* host.setVibrancy(window.id, input.material)
+      }),
+    "Window.clearVibrancy": (input: WindowHandleInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(
+          { window: input.window },
+          knownWindowIds,
+          "Window.clearVibrancy"
+        )
+        yield* host.clearVibrancy(window.id)
+      }),
+    "Window.setShadow": (input: WindowShadowInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(
+          { window: input.window },
+          knownWindowIds,
+          "Window.setShadow"
+        )
+        yield* host.setShadow(window.id, input.hasShadow)
+      }),
+    "Window.setTitleBarStyle": (input: WindowTitleBarStyleInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(
+          { window: input.window },
+          knownWindowIds,
+          "Window.setTitleBarStyle"
+        )
+        yield* host.setTitleBarStyle(window.id, input.titleBarStyle)
+      }),
+    "Window.setTitleBarTransparent": (input: WindowTitleBarTransparentInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(
+          { window: input.window },
+          knownWindowIds,
+          "Window.setTitleBarTransparent"
+        )
+        yield* host.setTitleBarTransparent(window.id, input.titleBarTransparent)
+      }),
+    "Window.setTransparent": (input: WindowTransparentInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(
+          { window: input.window },
+          knownWindowIds,
+          "Window.setTransparent"
+        )
+        yield* host.setTransparent(window.id, input.transparent)
       }),
     "Window.setAlwaysOnTop": (input: WindowAlwaysOnTopInput) =>
       Effect.gen(function* () {
@@ -1526,17 +2224,20 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
     "Window.minimize": (input: WindowHandleInput) =>
       Effect.gen(function* () {
         const { window } = yield* assertKnownFreshWindow(input, knownWindowIds, "Window.minimize")
-        yield* host.minimize(window.id)
+        const state = yield* host.minimize(window.id)
+        return yield* decodeWindowState(state, "Window.minimize")
       }),
     "Window.maximize": (input: WindowHandleInput) =>
       Effect.gen(function* () {
         const { window } = yield* assertKnownFreshWindow(input, knownWindowIds, "Window.maximize")
-        yield* host.maximize(window.id)
+        const state = yield* host.maximize(window.id)
+        return yield* decodeWindowState(state, "Window.maximize")
       }),
     "Window.restore": (input: WindowHandleInput) =>
       Effect.gen(function* () {
         const { window } = yield* assertKnownFreshWindow(input, knownWindowIds, "Window.restore")
-        yield* host.restore(window.id)
+        const state = yield* host.restore(window.id)
+        return yield* decodeWindowState(state, "Window.restore")
       }),
     "Window.setFullscreen": (input: WindowFullscreenInput) =>
       Effect.gen(function* () {
@@ -1545,7 +2246,18 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
           knownWindowIds,
           "Window.setFullscreen"
         )
-        yield* host.setFullscreen(window.id, input.fullscreen)
+        const state = yield* host.setFullscreen(window.id, input.fullscreen)
+        return yield* decodeWindowState(state, "Window.setFullscreen")
+      }),
+    "Window.setSimpleFullscreen": (input: WindowSimpleFullscreenInput) =>
+      Effect.gen(function* () {
+        const { window } = yield* assertKnownFreshWindow(
+          { window: input.window },
+          knownWindowIds,
+          "Window.setSimpleFullscreen"
+        )
+        const state = yield* host.setSimpleFullscreen(window.id, input.simpleFullscreen)
+        return yield* decodeWindowState(state, "Window.setSimpleFullscreen")
       }),
     "Window.getState": (input: WindowHandleInput) =>
       Effect.gen(function* () {
@@ -1687,26 +2399,4 @@ const formatUnknownError = (error: unknown): string => {
   }
 
   return String(error)
-}
-
-type WindowRpcSuccess = Schema.Codec<unknown, unknown, never, never>
-
-function windowRpc<
-  const Method extends string,
-  Payload extends Schema.Codec<unknown, unknown, never, never>,
-  Success extends WindowRpcSuccess
->(
-  method: Method,
-  payload: Payload,
-  success: Success,
-  capability: RpcCapabilityMetadata,
-  support: RpcSupportMetadata = NativeSurface.support.supported
-) {
-  return NativeSurface.rpc("Window", method, {
-    payload,
-    success,
-    authority: NativeSurface.authority.custom(capability),
-    endpoint: "mutation",
-    support
-  })
 }

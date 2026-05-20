@@ -24,6 +24,12 @@ const HOST_STARTED_EVENT: &str = "host.started";
 const RUNTIME_READY_TIMEOUT: Duration = Duration::from_secs(10);
 const HOST_PROTOCOL_STDIO_ARG: &str = "--host-protocol-stdio";
 const WINDOW_SMOKE_TEST_ARG: &str = "--window-smoke-test";
+const RESIDENT_LIFECYCLE_SMOKE_TEST_ARG: &str = "--resident-lifecycle-smoke-test";
+const SYSTEM_APPEARANCE_SMOKE_TEST_ARG: &str = "--system-appearance-smoke-test";
+const APP_QUIT_SMOKE_TEST_ARG: &str = "--app-quit-smoke-test";
+const APP_FOCUS_SMOKE_TEST_ARG: &str = "--app-focus-smoke-test";
+const APP_RESTART_SMOKE_TEST_ARG: &str = "--app-restart-smoke-test";
+const SINGLE_INSTANCE_LOCK_SMOKE_TEST_ARG: &str = "--single-instance-lock-smoke-test";
 const WINDOW_SMOKE_TEST_ENV: &str = "EFFECT_DESKTOP_WINDOW_SMOKE_TEST";
 const STARTUP_WINDOWS_ENV: &str = "EFFECT_DESKTOP_STARTUP_WINDOWS";
 const WINDOW_SMOKE_TEST_STARTUP_WINDOWS: &str =
@@ -61,6 +67,21 @@ fn main() -> Result<()> {
         version = event.version,
         "host started"
     );
+
+    if matches!(run_mode, RunMode::SystemAppearanceSmokeTest) {
+        methods::system_appearance::run_main_thread_smoke()
+            .map_err(|error| anyhow::anyhow!("system appearance smoke failed: {error:?}"))?;
+        return Ok(());
+    }
+    if matches!(run_mode, RunMode::SingleInstanceLockSmokeTest) {
+        methods::app::run_single_instance_lock_smoke()
+            .map_err(|error| anyhow::anyhow!("single-instance lock smoke failed: {error:?}"))?;
+        return Ok(());
+    }
+    if matches!(run_mode, RunMode::AppRestartChildSmokeTest) {
+        window::run_app_restart_child_smoke()?;
+        return Ok(());
+    }
 
     let runtime_profile = runtime::RuntimeProfile::from_env()?;
     let runtime_policy = runtime::RestartPolicy::for_profile(runtime_profile);
@@ -120,7 +141,7 @@ fn packaged_runtime_config_for_exe(current_exe: &Path) -> Result<Option<runtime:
 }
 
 fn with_run_mode_env(config: runtime::RuntimeConfig, run_mode: RunMode) -> runtime::RuntimeConfig {
-    if matches!(run_mode, RunMode::WindowSmokeTest) {
+    if run_mode.is_smoke_test() {
         config
             .env(WINDOW_SMOKE_TEST_ENV, "1")
             .env(STARTUP_WINDOWS_ENV, WINDOW_SMOKE_TEST_STARTUP_WINDOWS)
@@ -166,6 +187,15 @@ fn parse_run_mode(args: impl IntoIterator<Item = String>) -> Result<RunMode> {
         match arg.as_str() {
             HOST_PROTOCOL_STDIO_ARG => run_mode = RunMode::HostProtocolStdio,
             WINDOW_SMOKE_TEST_ARG => run_mode = RunMode::WindowSmokeTest,
+            RESIDENT_LIFECYCLE_SMOKE_TEST_ARG => run_mode = RunMode::ResidentLifecycleSmokeTest,
+            SYSTEM_APPEARANCE_SMOKE_TEST_ARG => run_mode = RunMode::SystemAppearanceSmokeTest,
+            APP_QUIT_SMOKE_TEST_ARG => run_mode = RunMode::AppQuitSmokeTest,
+            APP_FOCUS_SMOKE_TEST_ARG => run_mode = RunMode::AppFocusSmokeTest,
+            APP_RESTART_SMOKE_TEST_ARG => run_mode = RunMode::AppRestartSmokeTest,
+            window::APP_RESTART_CHILD_SMOKE_TEST_ARG => {
+                run_mode = RunMode::AppRestartChildSmokeTest
+            }
+            SINGLE_INSTANCE_LOCK_SMOKE_TEST_ARG => run_mode = RunMode::SingleInstanceLockSmokeTest,
             unknown => bail!("unknown host argument: {unknown}"),
         }
     }
@@ -177,8 +207,11 @@ fn parse_run_mode(args: impl IntoIterator<Item = String>) -> Result<RunMode> {
 mod tests {
     use super::{
         packaged_runtime_config_for_exe, parse_run_mode, resolve_source_runtime_cwd_from_anchors,
-        runtime_config, startup_event, HOST_PROTOCOL_STDIO_ARG, HOST_STARTED_EVENT,
-        SOURCE_RUNTIME_ENTRY, STARTUP_WINDOWS_ENV, WINDOW_SMOKE_TEST_ARG, WINDOW_SMOKE_TEST_ENV,
+        runtime_config, startup_event, APP_FOCUS_SMOKE_TEST_ARG, APP_QUIT_SMOKE_TEST_ARG,
+        APP_RESTART_SMOKE_TEST_ARG, HOST_PROTOCOL_STDIO_ARG, HOST_STARTED_EVENT,
+        RESIDENT_LIFECYCLE_SMOKE_TEST_ARG, SINGLE_INSTANCE_LOCK_SMOKE_TEST_ARG,
+        SOURCE_RUNTIME_ENTRY, STARTUP_WINDOWS_ENV, SYSTEM_APPEARANCE_SMOKE_TEST_ARG,
+        WINDOW_SMOKE_TEST_ARG, WINDOW_SMOKE_TEST_ENV,
     };
     use crate::window::RunMode;
     use std::path::PathBuf;
@@ -219,6 +252,81 @@ mod tests {
     }
 
     #[test]
+    fn resident_lifecycle_smoke_test_arg_selects_resident_smoke_mode() {
+        assert_eq!(
+            parse_run_mode([
+                "host".to_string(),
+                RESIDENT_LIFECYCLE_SMOKE_TEST_ARG.to_string()
+            ])
+            .expect("run mode should parse"),
+            RunMode::ResidentLifecycleSmokeTest
+        );
+    }
+
+    #[test]
+    fn system_appearance_smoke_test_arg_selects_system_appearance_smoke_mode() {
+        assert_eq!(
+            parse_run_mode([
+                "host".to_string(),
+                SYSTEM_APPEARANCE_SMOKE_TEST_ARG.to_string()
+            ])
+            .expect("run mode should parse"),
+            RunMode::SystemAppearanceSmokeTest
+        );
+    }
+
+    #[test]
+    fn app_quit_smoke_test_arg_selects_app_quit_smoke_mode() {
+        assert_eq!(
+            parse_run_mode(["host".to_string(), APP_QUIT_SMOKE_TEST_ARG.to_string()])
+                .expect("run mode should parse"),
+            RunMode::AppQuitSmokeTest
+        );
+    }
+
+    #[test]
+    fn app_focus_smoke_test_arg_selects_app_focus_smoke_mode() {
+        assert_eq!(
+            parse_run_mode(["host".to_string(), APP_FOCUS_SMOKE_TEST_ARG.to_string()])
+                .expect("run mode should parse"),
+            RunMode::AppFocusSmokeTest
+        );
+    }
+
+    #[test]
+    fn app_restart_smoke_test_arg_selects_app_restart_smoke_mode() {
+        assert_eq!(
+            parse_run_mode(["host".to_string(), APP_RESTART_SMOKE_TEST_ARG.to_string()])
+                .expect("run mode should parse"),
+            RunMode::AppRestartSmokeTest
+        );
+    }
+
+    #[test]
+    fn app_restart_child_smoke_test_arg_selects_app_restart_child_smoke_mode() {
+        assert_eq!(
+            parse_run_mode([
+                "host".to_string(),
+                crate::window::APP_RESTART_CHILD_SMOKE_TEST_ARG.to_string()
+            ])
+            .expect("run mode should parse"),
+            RunMode::AppRestartChildSmokeTest
+        );
+    }
+
+    #[test]
+    fn single_instance_lock_smoke_test_arg_selects_single_instance_smoke_mode() {
+        assert_eq!(
+            parse_run_mode([
+                "host".to_string(),
+                SINGLE_INSTANCE_LOCK_SMOKE_TEST_ARG.to_string()
+            ])
+            .expect("run mode should parse"),
+            RunMode::SingleInstanceLockSmokeTest
+        );
+    }
+
+    #[test]
     fn unknown_arg_is_an_error() {
         let error = parse_run_mode(["host".to_string(), "--unknown".to_string()])
             .expect_err("unknown arg should fail");
@@ -254,6 +362,79 @@ mod tests {
             config_debug.contains(STARTUP_WINDOWS_ENV)
                 && config_debug.contains("Effect Desktop Smoke Test"),
             "window smoke runtime config should declare startup windows: {config_debug}"
+        );
+    }
+
+    #[test]
+    fn resident_lifecycle_smoke_mode_marks_runtime_environment() {
+        let config_debug = format!(
+            "{:?}",
+            runtime_config(RunMode::ResidentLifecycleSmokeTest)
+                .expect("runtime config should resolve")
+        );
+
+        assert!(
+            config_debug.contains(WINDOW_SMOKE_TEST_ENV) && config_debug.contains("\"1\""),
+            "resident smoke runtime config should set {WINDOW_SMOKE_TEST_ENV}: {config_debug}"
+        );
+        assert!(
+            config_debug.contains(STARTUP_WINDOWS_ENV)
+                && config_debug.contains("Effect Desktop Smoke Test"),
+            "resident smoke runtime config should declare startup windows: {config_debug}"
+        );
+    }
+
+    #[test]
+    fn app_quit_smoke_mode_marks_runtime_environment() {
+        let config_debug = format!(
+            "{:?}",
+            runtime_config(RunMode::AppQuitSmokeTest).expect("runtime config should resolve")
+        );
+
+        assert!(
+            config_debug.contains(WINDOW_SMOKE_TEST_ENV) && config_debug.contains("\"1\""),
+            "app quit smoke runtime config should set {WINDOW_SMOKE_TEST_ENV}: {config_debug}"
+        );
+        assert!(
+            config_debug.contains(STARTUP_WINDOWS_ENV)
+                && config_debug.contains("Effect Desktop Smoke Test"),
+            "app quit smoke runtime config should declare startup windows: {config_debug}"
+        );
+    }
+
+    #[test]
+    fn app_focus_smoke_mode_marks_runtime_environment() {
+        let config_debug = format!(
+            "{:?}",
+            runtime_config(RunMode::AppFocusSmokeTest).expect("runtime config should resolve")
+        );
+
+        assert!(
+            config_debug.contains(WINDOW_SMOKE_TEST_ENV) && config_debug.contains("\"1\""),
+            "app focus smoke runtime config should set {WINDOW_SMOKE_TEST_ENV}: {config_debug}"
+        );
+        assert!(
+            config_debug.contains(STARTUP_WINDOWS_ENV)
+                && config_debug.contains("Effect Desktop Smoke Test"),
+            "app focus smoke runtime config should declare startup windows: {config_debug}"
+        );
+    }
+
+    #[test]
+    fn app_restart_smoke_mode_marks_runtime_environment() {
+        let config_debug = format!(
+            "{:?}",
+            runtime_config(RunMode::AppRestartSmokeTest).expect("runtime config should resolve")
+        );
+
+        assert!(
+            config_debug.contains(WINDOW_SMOKE_TEST_ENV) && config_debug.contains("\"1\""),
+            "app restart smoke runtime config should set {WINDOW_SMOKE_TEST_ENV}: {config_debug}"
+        );
+        assert!(
+            config_debug.contains(STARTUP_WINDOWS_ENV)
+                && config_debug.contains("Effect Desktop Smoke Test"),
+            "app restart smoke runtime config should declare startup windows: {config_debug}"
         );
     }
 

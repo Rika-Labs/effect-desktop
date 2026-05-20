@@ -17,10 +17,7 @@ import {
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   HostProtocolUnsupportedError,
-  makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
-  makeHostProtocolInvalidOutputError,
-  type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
@@ -56,21 +53,19 @@ const ContextMenuHostUnsupportedSupport = NativeSurface.support.unsupported(
 export type ContextMenuError = HostProtocolError
 export type ContextMenuCommandBindingError = ContextMenuError | CommandRegistryError
 
-export const ContextMenuShow = contextMenuRpc(
-  "show",
-  ContextMenuShowInput,
-  P.nativeInvoke({ primitive: "ContextMenu", methods: ["show"] })
-)
-export const ContextMenuBuildFromTemplate = contextMenuRpc(
-  "buildFromTemplate",
-  ContextMenuBuildFromTemplateInput,
-  P.nativeInvoke({ primitive: "ContextMenu", methods: ["buildFromTemplate"] })
-)
-export const ContextMenuBindCommand = contextMenuRpc(
-  "bindCommand",
-  ContextMenuBindCommandInput,
-  P.nativeInvoke({ primitive: "ContextMenu", methods: ["bindCommand"] })
-)
+const contextMenuCapabilityFact = (method: "show" | "buildFromTemplate" | "bindCommand") =>
+  NativeSurface.capabilityFact("ContextMenu", method, {
+    authority: NativeSurface.authority.custom(
+      P.nativeInvoke({ primitive: "ContextMenu", methods: [method] })
+    ),
+    support: ContextMenuHostUnsupportedSupport
+  })
+
+export const ContextMenuCapabilityFacts = Object.freeze([
+  contextMenuCapabilityFact("show"),
+  contextMenuCapabilityFact("buildFromTemplate"),
+  contextMenuCapabilityFact("bindCommand")
+])
 
 export const ContextMenuRpcEvents = Object.freeze({
   Activated: { payload: ContextMenuActivatedEvent }
@@ -78,19 +73,11 @@ export const ContextMenuRpcEvents = Object.freeze({
 
 export type ContextMenuRpcEvents = typeof ContextMenuRpcEvents
 
-const ContextMenuRpcGroup = RpcGroup.make(
-  ContextMenuShow,
-  ContextMenuBuildFromTemplate,
-  ContextMenuBindCommand
-)
+const ContextMenuRpcGroup = RpcGroup.make()
 
 export const ContextMenuRpcs: RpcGroup.RpcGroup<ContextMenuRpc> = ContextMenuRpcGroup
 
-export const ContextMenuMethodNames = Object.freeze([
-  "show",
-  "buildFromTemplate",
-  "bindCommand"
-] as const)
+export const ContextMenuMethodNames = Object.freeze([] as const)
 
 export interface ContextMenuClientApi {
   readonly show: (input: ContextMenuShowOptions) => Effect.Effect<void, ContextMenuError, never>
@@ -207,26 +194,16 @@ export type ContextMenuRpc = RpcGroup.Rpcs<typeof ContextMenuRpcGroup>
 
 export type ContextMenuRpcHandlers = RpcGroup.HandlersFrom<ContextMenuRpc>
 
-export const ContextMenuHandlersLive = ContextMenuRpcGroup.toLayer({
-  "ContextMenu.show": (input) =>
-    Effect.gen(function* () {
-      const menu = yield* ContextMenu
-      yield* menu.show(input)
-    }),
-  "ContextMenu.buildFromTemplate": (input) =>
-    Effect.gen(function* () {
-      const menu = yield* ContextMenu
-      yield* menu.buildFromTemplate(input)
-    }),
-  "ContextMenu.bindCommand": () => Effect.fail(unsupportedError("ContextMenu.bindCommand"))
-})
+export const ContextMenuHandlersLive = ContextMenuRpcGroup.toLayer({})
 
 export const ContextMenuSurface = NativeSurface.make("ContextMenu", ContextMenuRpcGroup, {
   service: ContextMenuClient,
-  capabilities: ContextMenuMethodNames,
   handlers: ContextMenuHandlersLive,
-  client: (client) => contextMenuClientFromRpcClient(client, undefined),
-  bridgeClient: (client, exchange) => contextMenuClientFromRpcClient(client, exchange)
+  capabilityFacts: ContextMenuCapabilityFacts,
+  client: (client: DesktopRpcClient<ContextMenuRpc>) =>
+    contextMenuClientFromRpcClient(client, undefined),
+  bridgeClient: (client: DesktopRpcClient<ContextMenuRpc>, exchange: BridgeClientExchange) =>
+    contextMenuClientFromRpcClient(client, exchange)
 })
 
 export const makeHostContextMenuRpcRuntime = (
@@ -236,30 +213,21 @@ export const makeHostContextMenuRpcRuntime = (
   ContextMenuSurface.hostRuntime(handlers, runtimeOptions)
 
 const contextMenuClientFromRpcClient = (
-  client: DesktopRpcClient<ContextMenuRpc>,
+  _client: DesktopRpcClient<ContextMenuRpc>,
   exchange: BridgeClientExchange | undefined
 ): ContextMenuClientApi => {
   const contextMenuClient: ContextMenuClientApi = {
     show: (input) =>
       decodeContextMenuShowInput(toContextMenuShowInput(input)).pipe(
-        Effect.flatMap((decoded) =>
-          runContextMenuRpc(client["ContextMenu.show"](decoded), "ContextMenu.show")
-        )
+        Effect.flatMap(() => Effect.fail(unsupportedError("ContextMenu.show")))
       ),
     buildFromTemplate: (input) =>
       decodeContextMenuBuildFromTemplateInput(input).pipe(
-        Effect.flatMap((decoded) =>
-          runContextMenuRpc(
-            client["ContextMenu.buildFromTemplate"](decoded),
-            "ContextMenu.buildFromTemplate"
-          )
-        )
+        Effect.flatMap(() => Effect.fail(unsupportedError("ContextMenu.buildFromTemplate")))
       ),
     bindCommand: (itemId, commandId) =>
       decodeContextMenuBindCommandInput({ itemId, commandId }).pipe(
-        Effect.flatMap((decoded) =>
-          runContextMenuRpc(client["ContextMenu.bindCommand"](decoded), "ContextMenu.bindCommand")
-        )
+        Effect.flatMap(() => Effect.fail(unsupportedError("ContextMenu.bindCommand")))
       ),
     onActivated: () => subscribeContextMenuEvent(exchange, "ContextMenu.Activated")
   }
@@ -276,7 +244,7 @@ const subscribeContextMenuEvent = (
 const unsupportedError = (method: string): HostProtocolUnsupportedError =>
   new HostProtocolUnsupportedError({
     tag: "Unsupported",
-    reason: "ContextMenu command binding is available through the ContextMenu service",
+    reason: HostAdapterUnimplementedReason,
     message: `unsupported ContextMenu method: ${method}`,
     operation: method,
     recoverable: false
@@ -325,42 +293,6 @@ const decodeInput = <A>(
       makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
     )
   )
-
-function contextMenuRpc<
-  const Method extends string,
-  Payload extends Schema.Codec<unknown, unknown, never, never>
->(method: Method, payload: Payload, capability: RpcCapabilityMetadata) {
-  return NativeSurface.rpc("ContextMenu", method, {
-    payload,
-    success: Schema.Void,
-    authority: NativeSurface.authority.custom(capability),
-    endpoint: "mutation",
-    support: ContextMenuHostUnsupportedSupport
-  })
-}
-
-const runContextMenuRpc = <A, E>(
-  effect: Effect.Effect<A, E, never>,
-  operation: string
-): Effect.Effect<A, ContextMenuError, never> =>
-  effect.pipe(
-    Effect.mapError(mapContextMenuRpcClientError),
-    Effect.catchDefect((defect) =>
-      Effect.fail(makeHostProtocolInvalidOutputError(operation, formatUnknownError(defect)))
-    )
-  )
-
-const mapContextMenuRpcClientError = (error: unknown): ContextMenuError =>
-  isContextMenuError(error)
-    ? error
-    : makeHostProtocolInternalError("ContextMenu RPC client failed", "ContextMenu")
-
-const isContextMenuError = (error: unknown): error is ContextMenuError =>
-  typeof error === "object" &&
-  error !== null &&
-  "tag" in error &&
-  "operation" in error &&
-  "recoverable" in error
 
 const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) {

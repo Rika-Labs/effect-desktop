@@ -168,6 +168,28 @@ export {
   type NativeFileSystemServiceApi
 } from "./native-file-system.js"
 export {
+  makeHostNativeNetworkRpcRuntime,
+  makeNativeNetworkBridgeClientLayer,
+  makeNativeNetworkClientLayer,
+  makeNativeNetworkMemoryClient,
+  makeNativeNetworkServiceLayer,
+  makeNativeNetworkUnsupportedClient,
+  NativeNetwork,
+  NativeNetworkCapabilityFacts,
+  NativeNetworkClient,
+  NativeNetworkHandlersLive,
+  NativeNetworkLive,
+  NativeNetworkMethodNames,
+  NativeNetworkRpcEvents,
+  NativeNetworkRpcs,
+  NativeNetworkSurface,
+  type NativeNetworkClientApi,
+  type NativeNetworkError,
+  type NativeNetworkRpc,
+  type NativeNetworkRpcHandlers,
+  type NativeNetworkServiceApi
+} from "./native-network.js"
+export {
   classifyNativeBoundaryError,
   decodeNativeBoundaryError,
   encodeNativeBoundaryError,
@@ -204,6 +226,28 @@ export {
   type NativeParityMatrixSummaryType
 } from "./parity-matrix.js"
 export {
+  BrowsingData,
+  BrowsingDataCapabilityFacts,
+  BrowsingDataClient,
+  BrowsingDataHandlersLive,
+  BrowsingDataLive,
+  BrowsingDataMethodNames,
+  BrowsingDataRpcEvents,
+  BrowsingDataRpcs,
+  BrowsingDataSurface,
+  makeBrowsingDataBridgeClientLayer,
+  makeBrowsingDataClientLayer,
+  makeBrowsingDataMemoryClient,
+  makeBrowsingDataServiceLayer,
+  makeBrowsingDataUnsupportedClient,
+  makeHostBrowsingDataRpcRuntime,
+  type BrowsingDataClientApi,
+  type BrowsingDataError,
+  type BrowsingDataRpc,
+  type BrowsingDataRpcHandlers,
+  type BrowsingDataServiceApi
+} from "./browsing-data.js"
+export {
   Clipboard,
   ClipboardClient,
   ClipboardHandlersLive,
@@ -222,6 +266,7 @@ export {
 } from "./clipboard.js"
 export {
   ContextMenu,
+  ContextMenuCapabilityFacts,
   ContextMenuClient,
   ContextMenuHandlersLive,
   ContextMenuLive,
@@ -238,6 +283,28 @@ export {
   type ContextMenuRpcHandlers,
   type ContextMenuServiceApi
 } from "./context-menu.js"
+export {
+  CookieStore,
+  CookieStoreCapabilityFacts,
+  CookieStoreClient,
+  CookieStoreHandlersLive,
+  CookieStoreLive,
+  CookieStoreMethodNames,
+  CookieStoreRpcEvents,
+  CookieStoreRpcs,
+  CookieStoreSurface,
+  makeCookieStoreBridgeClientLayer,
+  makeCookieStoreClientLayer,
+  makeCookieStoreMemoryClient,
+  makeCookieStoreServiceLayer,
+  makeCookieStoreUnsupportedClient,
+  makeHostCookieStoreRpcRuntime,
+  type CookieStoreClientApi,
+  type CookieStoreError,
+  type CookieStoreRpc,
+  type CookieStoreRpcHandlers,
+  type CookieStoreServiceApi
+} from "./cookie-store.js"
 export {
   CrashReporter,
   CrashReporterClient,
@@ -257,6 +324,7 @@ export {
   type CrashReporterRpc,
   type CrashReporterRpcHandlers,
   type CrashReporterServiceApi,
+  type CrashReporterServiceOptions,
   type CrashReporterStartOptions
 } from "./crash-reporter.js"
 export {
@@ -361,6 +429,28 @@ export {
   type DialogServiceApi
 } from "./dialog.js"
 export {
+  Download,
+  DownloadCapabilityFacts,
+  DownloadClient,
+  DownloadHandlersLive,
+  DownloadLive,
+  DownloadMethodNames,
+  DownloadRpcEvents,
+  DownloadRpcs,
+  DownloadSurface,
+  makeDownloadBridgeClientLayer,
+  makeDownloadClientLayer,
+  makeDownloadMemoryClient,
+  makeDownloadServiceLayer,
+  makeDownloadUnsupportedClient,
+  makeHostDownloadRpcRuntime,
+  type DownloadClientApi,
+  type DownloadError,
+  type DownloadRpc,
+  type DownloadRpcHandlers,
+  type DownloadServiceApi
+} from "./download.js"
+export {
   EgressPolicy,
   EgressPolicyClient,
   EgressPolicyHandlersLive,
@@ -438,6 +528,7 @@ export {
   makeTransientWindowRoleServiceLayer,
   makeTransientWindowRoleUnsupportedClient,
   TransientWindowRole,
+  TransientWindowRoleCapabilityFacts,
   TransientWindowRoleClient,
   TransientWindowRoleHandlersLive,
   TransientWindowRoleLive,
@@ -447,14 +538,13 @@ export {
   TransientWindowRoleSurface,
   type TransientWindowRoleClientApi,
   type TransientWindowRoleError,
-  type TransientWindowRoleMemoryClientOptions,
   type TransientWindowRoleRpc,
   type TransientWindowRoleRpcHandlers,
-  type TransientWindowRoleServiceApi,
-  type TransientWindowRoleServiceOptions
+  type TransientWindowRoleServiceApi
 } from "./transient-window-role.js"
 export {
   ExecutionSandbox,
+  ExecutionSandboxCapabilityFacts,
   ExecutionSandboxClient,
   ExecutionSandboxHandlersLive,
   ExecutionSandboxLive,
@@ -470,11 +560,9 @@ export {
   makeHostExecutionSandboxRpcRuntime,
   type ExecutionSandboxClientApi,
   type ExecutionSandboxError,
-  type ExecutionSandboxMemoryClientOptions,
   type ExecutionSandboxRpc,
   type ExecutionSandboxRpcHandlers,
-  type ExecutionSandboxServiceApi,
-  type ExecutionSandboxServiceOptions
+  type ExecutionSandboxServiceApi
 } from "./execution-sandbox.js"
 export {
   LocalToolRuntime,
@@ -524,6 +612,7 @@ export {
 } from "./transactional-file-mutation.js"
 export {
   ScopedAccessGrant,
+  ScopedAccessGrantCapabilityFacts,
   ScopedAccessGrantClient,
   ScopedAccessGrantHandlersLive,
   ScopedAccessGrantLive,
@@ -539,14 +628,13 @@ export {
   makeScopedAccessGrantUnsupportedClient,
   type ScopedAccessGrantClientApi,
   type ScopedAccessGrantError,
-  type ScopedAccessGrantMemoryClientOptions,
   type ScopedAccessGrantRpc,
   type ScopedAccessGrantRpcHandlers,
-  type ScopedAccessGrantServiceApi,
-  type ScopedAccessGrantServiceOptions
+  type ScopedAccessGrantServiceApi
 } from "./scoped-access-grant.js"
 export {
   SelectionContext,
+  SelectionContextCapabilityFacts,
   SelectionContextClient,
   SelectionContextHandlersLive,
   SelectionContextLive,
@@ -562,14 +650,13 @@ export {
   makeSelectionContextUnsupportedClient,
   type SelectionContextClientApi,
   type SelectionContextError,
-  type SelectionContextMemoryClientOptions,
   type SelectionContextRpc,
   type SelectionContextRpcHandlers,
-  type SelectionContextServiceApi,
-  type SelectionContextServiceOptions
+  type SelectionContextServiceApi
 } from "./selection-context.js"
 export {
   FocusedApplicationContext,
+  FocusedApplicationContextCapabilityFacts,
   FocusedApplicationContextClient,
   FocusedApplicationContextHandlersLive,
   FocusedApplicationContextLive,
@@ -636,6 +723,7 @@ export {
 } from "./workspace-index.js"
 export {
   Dock,
+  DockCapabilityFacts,
   DockClient,
   DockHandlersLive,
   DockLive,
@@ -654,6 +742,7 @@ export {
 } from "./dock.js"
 export {
   GlobalShortcut,
+  GlobalShortcutCapabilityFacts,
   GlobalShortcutClient,
   GlobalShortcutHandlersLive,
   GlobalShortcutLive,
@@ -675,6 +764,7 @@ export {
 } from "./global-shortcut.js"
 export {
   Menu,
+  MenuCapabilityFacts,
   MenuClient,
   MenuHandlersLive,
   MenuLive,
@@ -693,6 +783,50 @@ export {
   type MenuRpcHandlers,
   type MenuServiceApi
 } from "./menu.js"
+export {
+  makeHostNetworkAuthRpcRuntime,
+  makeNetworkAuthBridgeClientLayer,
+  makeNetworkAuthClientLayer,
+  makeNetworkAuthMemoryClient,
+  makeNetworkAuthServiceLayer,
+  makeNetworkAuthUnsupportedClient,
+  NetworkAuth,
+  NetworkAuthCapabilityFacts,
+  NetworkAuthClient,
+  NetworkAuthHandlersLive,
+  NetworkAuthLive,
+  NetworkAuthMethodNames,
+  NetworkAuthRpcEvents,
+  NetworkAuthRpcs,
+  NetworkAuthSurface,
+  type NetworkAuthClientApi,
+  type NetworkAuthError,
+  type NetworkAuthRpc,
+  type NetworkAuthRpcHandlers,
+  type NetworkAuthServiceApi
+} from "./network-auth.js"
+export {
+  makeHostWebRequestRpcRuntime,
+  makeWebRequestBridgeClientLayer,
+  makeWebRequestClientLayer,
+  makeWebRequestMemoryClient,
+  makeWebRequestServiceLayer,
+  makeWebRequestUnsupportedClient,
+  WebRequest,
+  WebRequestCapabilityFacts,
+  WebRequestClient,
+  WebRequestHandlersLive,
+  WebRequestLive,
+  WebRequestMethodNames,
+  WebRequestRpcEvents,
+  WebRequestRpcs,
+  WebRequestSurface,
+  type WebRequestClientApi,
+  type WebRequestError,
+  type WebRequestRpc,
+  type WebRequestRpcHandlers,
+  type WebRequestServiceApi
+} from "./web-request.js"
 export {
   Notification,
   NotificationClient,
@@ -939,7 +1073,52 @@ export {
   type UpdaterServiceApi
 } from "./updater.js"
 export {
+  makeHostSessionPermissionRpcRuntime,
+  makeSessionPermissionBridgeClientLayer,
+  makeSessionPermissionClientLayer,
+  makeSessionPermissionMemoryClient,
+  makeSessionPermissionServiceLayer,
+  makeSessionPermissionUnsupportedClient,
+  SessionPermission,
+  SessionPermissionCapabilityFacts,
+  SessionPermissionClient,
+  SessionPermissionHandlersLive,
+  SessionPermissionLive,
+  SessionPermissionMethodNames,
+  SessionPermissionRpcEvents,
+  SessionPermissionRpcs,
+  SessionPermissionSurface,
+  type SessionPermissionClientApi,
+  type SessionPermissionError,
+  type SessionPermissionRpc,
+  type SessionPermissionRpcHandlers,
+  type SessionPermissionServiceApi
+} from "./session-permission.js"
+export {
+  makeHostSessionProfileRpcRuntime,
+  makeSessionProfileBridgeClientLayer,
+  makeSessionProfileClientLayer,
+  makeSessionProfileMemoryClient,
+  makeSessionProfileServiceLayer,
+  makeSessionProfileUnsupportedClient,
+  SessionProfile,
+  SessionProfileCapabilityFacts,
+  SessionProfileClient,
+  SessionProfileHandlersLive,
+  SessionProfileLive,
+  SessionProfileMethodNames,
+  SessionProfileRpcEvents,
+  SessionProfileRpcs,
+  SessionProfileSurface,
+  type SessionProfileClientApi,
+  type SessionProfileError,
+  type SessionProfileRpc,
+  type SessionProfileRpcHandlers,
+  type SessionProfileServiceApi
+} from "./session-profile.js"
+export {
   WebView,
+  WebViewCapabilityFacts,
   WebViewClient,
   WebViewHandlersLive,
   WebViewLive,

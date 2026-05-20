@@ -21,6 +21,7 @@ pub struct VerifiedManifest {
     pub rollback: bool,
     pub min_version: Option<String>,
     pub max_version: Option<String>,
+    pub artifacts: Vec<UpdateArtifact>,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
@@ -156,6 +157,7 @@ pub fn verify_manifest(
                 rollback: manifest.rollback.unwrap_or(false),
                 min_version: manifest.min_version,
                 max_version: manifest.max_version,
+                artifacts: manifest.artifacts,
             });
         }
     }

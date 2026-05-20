@@ -4,7 +4,7 @@
 
 use host_protocol::{HostProtocolError, WindowTitleBarStyle, WindowTrafficLights};
 use serde_json::Value;
-use tao::{window::Window, window::WindowBuilder};
+use tao::{monitor::MonitorHandle, window::Window, window::WindowBuilder};
 
 const MACOS_POLISH_OPERATION: &str = "MacosPolish";
 
@@ -47,7 +47,9 @@ impl MacosWindowPolish {
 
         Ok(Some(Self {
             title_bar_style: title_bar_style.unwrap_or(WindowTitleBarStyle::Default),
-            vibrancy: vibrancy.map(MacosVibrancyMaterial::parse).transpose()?,
+            vibrancy: vibrancy
+                .map(|value| MacosVibrancyMaterial::parse(value, MACOS_POLISH_OPERATION))
+                .transpose()?,
             traffic_lights: traffic_lights
                 .map(MacosTrafficLights::try_from)
                 .transpose()?,
@@ -71,7 +73,7 @@ impl MacosWindowPolish {
 }
 
 impl MacosVibrancyMaterial {
-    fn parse(value: &str) -> std::result::Result<Self, HostProtocolError> {
+    fn parse(value: &str, operation: &'static str) -> std::result::Result<Self, HostProtocolError> {
         match value.trim() {
             "appearanceBased" | "appearance-based" => Ok(Self::AppearanceBased),
             "contentBackground" | "content-background" => Ok(Self::ContentBackground),
@@ -83,10 +85,15 @@ impl MacosVibrancyMaterial {
             "sidebar" => Ok(Self::Sidebar),
             "titlebar" => Ok(Self::Titlebar),
             "windowBackground" | "window-background" => Ok(Self::WindowBackground),
-            "" => Err(invalid_argument("vibrancy", "must not be empty")),
-            _ => Err(invalid_argument(
+            "" => Err(invalid_argument_for_operation(
+                "vibrancy",
+                "must not be empty",
+                operation,
+            )),
+            _ => Err(invalid_argument_for_operation(
                 "vibrancy",
                 "unsupported macOS vibrancy material",
+                operation,
             )),
         }
     }
@@ -145,6 +152,47 @@ pub(crate) fn set_traffic_lights(
     platform::set_traffic_lights(window, traffic_lights)
 }
 
+pub(crate) fn set_vibrancy(
+    window: &Window,
+    material: &str,
+) -> std::result::Result<(), HostProtocolError> {
+    let material =
+        MacosVibrancyMaterial::parse(material, host_protocol::WINDOW_SET_VIBRANCY_METHOD)?;
+    platform::set_vibrancy(window, material)
+}
+
+pub(crate) fn clear_vibrancy(window: &Window) -> std::result::Result<(), HostProtocolError> {
+    platform::clear_vibrancy(window)
+}
+
+pub(crate) fn set_shadow(
+    window: &Window,
+    has_shadow: bool,
+) -> std::result::Result<(), HostProtocolError> {
+    platform::set_shadow(window, has_shadow)
+}
+
+pub(crate) fn set_title_bar_style(
+    window: &Window,
+    title_bar_style: WindowTitleBarStyle,
+) -> std::result::Result<(), HostProtocolError> {
+    platform::set_title_bar_style(window, title_bar_style)
+}
+
+pub(crate) fn set_title_bar_transparent(
+    window: &Window,
+    title_bar_transparent: bool,
+) -> std::result::Result<(), HostProtocolError> {
+    platform::set_title_bar_transparent(window, title_bar_transparent)
+}
+
+pub(crate) fn set_transparent(
+    window: &Window,
+    transparent: bool,
+) -> std::result::Result<(), HostProtocolError> {
+    platform::set_transparent(window, transparent)
+}
+
 pub(crate) fn set_dock_badge_label(
     window: &Window,
     label: Option<String>,
@@ -156,20 +204,77 @@ pub(crate) fn set_application_menu(template: Value) -> std::result::Result<(), H
     platform::set_application_menu(template)
 }
 
-pub(crate) fn set_dock_menu(template: Option<Value>) -> std::result::Result<(), HostProtocolError> {
-    platform::set_dock_menu(template)
+#[cfg_attr(test, allow(dead_code))]
+pub(crate) fn clear_application_menu() -> std::result::Result<(), HostProtocolError> {
+    platform::clear_application_menu()
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct MacosScreenWorkArea {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+
+impl MacosScreenWorkArea {
+    fn new(x: f64, y: f64, width: f64, height: f64) -> Self {
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
+    }
+
+    pub(crate) fn x(&self) -> f64 {
+        self.x
+    }
+
+    pub(crate) fn y(&self) -> f64 {
+        self.y
+    }
+
+    pub(crate) fn width(&self) -> f64 {
+        self.width
+    }
+
+    pub(crate) fn height(&self) -> f64 {
+        self.height
+    }
+}
+
+pub(crate) fn screen_work_area(monitor: &MonitorHandle) -> Option<MacosScreenWorkArea> {
+    platform::screen_work_area(monitor)
 }
 
 fn invalid_argument(field: &str, reason: &str) -> HostProtocolError {
-    HostProtocolError::invalid_argument(field, reason, MACOS_POLISH_OPERATION)
+    invalid_argument_for_operation(field, reason, MACOS_POLISH_OPERATION)
+}
+
+fn invalid_argument_for_operation(
+    field: &str,
+    reason: &str,
+    operation: &'static str,
+) -> HostProtocolError {
+    HostProtocolError::invalid_argument(field, reason, operation)
 }
 
 #[cfg(target_os = "macos")]
 mod platform {
-    use super::{HostProtocolError, MacosTrafficLights, MacosWindowPolish};
+    use super::{
+        HostProtocolError, MacosScreenWorkArea, MacosTrafficLights, MacosWindowPolish,
+        WindowTitleBarStyle,
+    };
+    use objc2::rc::Retained;
+    use objc2_app_kit::{
+        NSColor, NSScreen, NSWindow, NSWindowButton, NSWindowStyleMask, NSWindowTitleVisibility,
+    };
+    use std::ptr::NonNull;
     use tao::{
         dpi::LogicalPosition,
-        platform::macos::{WindowBuilderExtMacOS, WindowExtMacOS},
+        monitor::MonitorHandle,
+        platform::macos::{MonitorHandleExtMacOS, WindowBuilderExtMacOS, WindowExtMacOS},
         window::{Window, WindowBuilder},
     };
 
@@ -238,6 +343,155 @@ mod platform {
         Ok(())
     }
 
+    pub(super) fn set_vibrancy(
+        window: &Window,
+        material: super::MacosVibrancyMaterial,
+    ) -> std::result::Result<(), HostProtocolError> {
+        window_vibrancy::apply_vibrancy(
+            window,
+            vibrancy_material(material),
+            Some(window_vibrancy::NSVisualEffectState::FollowsWindowActiveState),
+            None,
+        )
+        .map_err(|error| {
+            HostProtocolError::internal(
+                format!("failed to apply macOS vibrancy: {error}"),
+                host_protocol::WINDOW_SET_VIBRANCY_METHOD,
+            )
+        })
+    }
+
+    pub(super) fn clear_vibrancy(window: &Window) -> std::result::Result<(), HostProtocolError> {
+        window_vibrancy::clear_vibrancy(window)
+            .map(|_| ())
+            .map_err(|error| {
+                HostProtocolError::internal(
+                    format!("failed to clear macOS vibrancy: {error}"),
+                    host_protocol::WINDOW_CLEAR_VIBRANCY_METHOD,
+                )
+            })
+    }
+
+    pub(super) fn set_shadow(
+        window: &Window,
+        has_shadow: bool,
+    ) -> std::result::Result<(), HostProtocolError> {
+        WindowExtMacOS::set_has_shadow(window, has_shadow);
+        Ok(())
+    }
+
+    pub(super) fn set_title_bar_style(
+        window: &Window,
+        title_bar_style: WindowTitleBarStyle,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let ns_window = ns_window(window, host_protocol::WINDOW_SET_TITLE_BAR_STYLE_METHOD)?;
+        match title_bar_style {
+            WindowTitleBarStyle::Default => {
+                set_style_mask(ns_window, |mask| {
+                    (mask
+                        | NSWindowStyleMask::Titled
+                        | NSWindowStyleMask::Closable
+                        | NSWindowStyleMask::Miniaturizable)
+                        & !NSWindowStyleMask::FullSizeContentView
+                });
+                ns_window.setTitlebarAppearsTransparent(false);
+                ns_window.setTitleVisibility(NSWindowTitleVisibility::Visible);
+                set_standard_buttons_hidden(ns_window, false);
+            }
+            WindowTitleBarStyle::Hidden => {
+                set_style_mask(ns_window, |mask| {
+                    (mask & !NSWindowStyleMask::Titled) & !NSWindowStyleMask::FullSizeContentView
+                });
+                ns_window.setTitlebarAppearsTransparent(false);
+                ns_window.setTitleVisibility(NSWindowTitleVisibility::Hidden);
+                set_standard_buttons_hidden(ns_window, true);
+            }
+            WindowTitleBarStyle::HiddenInset => {
+                set_style_mask(ns_window, |mask| {
+                    mask | NSWindowStyleMask::Titled
+                        | NSWindowStyleMask::Closable
+                        | NSWindowStyleMask::Miniaturizable
+                        | NSWindowStyleMask::FullSizeContentView
+                });
+                ns_window.setTitlebarAppearsTransparent(true);
+                ns_window.setTitleVisibility(NSWindowTitleVisibility::Hidden);
+                set_standard_buttons_hidden(ns_window, false);
+            }
+            WindowTitleBarStyle::CustomButtonsOnHover => {
+                set_style_mask(ns_window, |mask| {
+                    (mask
+                        | NSWindowStyleMask::Titled
+                        | NSWindowStyleMask::Closable
+                        | NSWindowStyleMask::Miniaturizable)
+                        & !NSWindowStyleMask::FullSizeContentView
+                });
+                ns_window.setTitlebarAppearsTransparent(false);
+                ns_window.setTitleVisibility(NSWindowTitleVisibility::Visible);
+                set_standard_buttons_hidden(ns_window, true);
+            }
+        }
+        Ok(())
+    }
+
+    pub(super) fn set_title_bar_transparent(
+        window: &Window,
+        title_bar_transparent: bool,
+    ) -> std::result::Result<(), HostProtocolError> {
+        WindowExtMacOS::set_titlebar_transparent(window, title_bar_transparent);
+        Ok(())
+    }
+
+    pub(super) fn set_transparent(
+        window: &Window,
+        transparent: bool,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let ns_window = ns_window(window, host_protocol::WINDOW_SET_TRANSPARENT_METHOD)?;
+        ns_window.setOpaque(!transparent);
+        let color = if transparent {
+            NSColor::clearColor()
+        } else {
+            NSColor::windowBackgroundColor()
+        };
+        ns_window.setBackgroundColor(Some(&color));
+        Ok(())
+    }
+
+    fn ns_window<'window>(
+        window: &'window Window,
+        operation: &'static str,
+    ) -> std::result::Result<&'window NSWindow, HostProtocolError> {
+        let pointer = window.ns_window();
+        let Some(pointer) = NonNull::new(pointer) else {
+            return Err(HostProtocolError::internal(
+                "tao returned a null NSWindow pointer",
+                operation,
+            ));
+        };
+
+        // Safety: Tao's macOS `WindowExtMacOS::ns_window` contract returns the
+        // live `NSWindow` backing this `Window` until the `Window` is destroyed.
+        Ok(unsafe { pointer.cast::<NSWindow>().as_ref() })
+    }
+
+    fn set_style_mask(
+        ns_window: &NSWindow,
+        update: impl FnOnce(NSWindowStyleMask) -> NSWindowStyleMask,
+    ) {
+        ns_window.setStyleMask(update(ns_window.styleMask()));
+    }
+
+    fn set_standard_buttons_hidden(ns_window: &NSWindow, hidden: bool) {
+        for titlebar_button in &[
+            NSWindowButton::MiniaturizeButton,
+            NSWindowButton::CloseButton,
+            NSWindowButton::ZoomButton,
+        ] {
+            if let Some(button) = ns_window.standardWindowButton(*titlebar_button) {
+                button.setHidden(hidden);
+            }
+        }
+    }
+
     pub(super) fn set_dock_badge_label(
         window: &Window,
         label: Option<String>,
@@ -254,12 +508,26 @@ mod platform {
         Ok(())
     }
 
-    pub(super) fn set_dock_menu(
-        _template: Option<serde_json::Value>,
-    ) -> std::result::Result<(), HostProtocolError> {
-        Err(HostProtocolError::unsupported(
-            "macOS Dock menu installation requires an NSApplication delegate bridge that is not part of this host adapter yet",
-            host_protocol::DOCK_SET_MENU_METHOD,
+    #[cfg_attr(test, allow(dead_code))]
+    pub(super) fn clear_application_menu() -> std::result::Result<(), HostProtocolError> {
+        let menu = muda::Menu::new();
+        menu.init_for_nsapp();
+        Ok(())
+    }
+
+    pub(super) fn screen_work_area(monitor: &MonitorHandle) -> Option<MacosScreenWorkArea> {
+        let screen = monitor.ns_screen()?;
+        // SAFETY: Tao returns this pointer with Retained::into_raw, transferring a
+        // retain count to the caller; from_raw balances that ownership locally.
+        let screen = unsafe { Retained::<NSScreen>::from_raw(screen.cast::<NSScreen>())? };
+        let scale = monitor.scale_factor();
+        let visible_frame = screen.visibleFrame();
+
+        Some(MacosScreenWorkArea::new(
+            visible_frame.origin.x * scale,
+            visible_frame.origin.y * scale,
+            visible_frame.size.width * scale,
+            visible_frame.size.height * scale,
         ))
     }
 
@@ -382,9 +650,9 @@ mod platform {
 
 #[cfg(not(target_os = "macos"))]
 mod platform {
-    use super::{HostProtocolError, MacosWindowPolish};
+    use super::{HostProtocolError, MacosScreenWorkArea, MacosWindowPolish};
     use host_protocol;
-    use tao::window::{Window, WindowBuilder};
+    use tao::{monitor::MonitorHandle, window::Window, window::WindowBuilder};
 
     pub(super) fn apply_window_builder_polish(
         builder: WindowBuilder,
@@ -420,6 +688,63 @@ mod platform {
         ))
     }
 
+    pub(super) fn set_vibrancy(
+        _window: &Window,
+        _material: super::MacosVibrancyMaterial,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            "window vibrancy is only supported on macOS",
+            host_protocol::WINDOW_SET_VIBRANCY_METHOD,
+        ))
+    }
+
+    pub(super) fn clear_vibrancy(_window: &Window) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            "window vibrancy is only supported on macOS",
+            host_protocol::WINDOW_CLEAR_VIBRANCY_METHOD,
+        ))
+    }
+
+    pub(super) fn set_shadow(
+        _window: &Window,
+        _has_shadow: bool,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            "window shadow control is only supported on macOS",
+            host_protocol::WINDOW_SET_SHADOW_METHOD,
+        ))
+    }
+
+    pub(super) fn set_title_bar_style(
+        _window: &Window,
+        _title_bar_style: host_protocol::WindowTitleBarStyle,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            "window titlebar style is only supported on macOS",
+            host_protocol::WINDOW_SET_TITLE_BAR_STYLE_METHOD,
+        ))
+    }
+
+    pub(super) fn set_title_bar_transparent(
+        _window: &Window,
+        _title_bar_transparent: bool,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            "window titlebar transparency is only supported on macOS",
+            host_protocol::WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD,
+        ))
+    }
+
+    pub(super) fn set_transparent(
+        _window: &Window,
+        _transparent: bool,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            "window transparency is only supported on macOS",
+            host_protocol::WINDOW_SET_TRANSPARENT_METHOD,
+        ))
+    }
+
     pub(super) fn set_dock_badge_label(
         _window: &Window,
         _label: Option<String>,
@@ -439,13 +764,15 @@ mod platform {
         ))
     }
 
-    pub(super) fn set_dock_menu(
-        _template: Option<serde_json::Value>,
-    ) -> std::result::Result<(), HostProtocolError> {
+    pub(super) fn clear_application_menu() -> std::result::Result<(), HostProtocolError> {
         Err(HostProtocolError::unsupported(
-            "Dock menus are macOS-only",
-            host_protocol::DOCK_SET_MENU_METHOD,
+            "application menus are macOS-only in the host adapter",
+            host_protocol::MENU_CLEAR_METHOD,
         ))
+    }
+
+    pub(super) fn screen_work_area(_monitor: &MonitorHandle) -> Option<MacosScreenWorkArea> {
+        None
     }
 }
 

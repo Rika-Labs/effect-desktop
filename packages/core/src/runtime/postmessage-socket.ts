@@ -52,23 +52,21 @@ const makePostMessageSocket: Effect.Effect<Socket.Socket> = Effect.gen(function*
     handler: (_: string | Uint8Array) => Effect.Effect<_, E, R> | void,
     opts?: { readonly onOpen?: Effect.Effect<void> | undefined }
   ): Effect.Effect<void, Socket.SocketError | E, R> =>
-    Effect.gen(function* () {
-      yield* Effect.race(
-        makeInbound(opts?.onOpen).pipe(
-          Stream.runForEach((item) => {
-            const result = handler(item)
-            return Effect.isEffect(result) ? result : Effect.void
-          })
-        ),
-        Deferred.await(closeSignal).pipe(
-          Effect.flatMap(() =>
-            Effect.fail(
-              new Socket.SocketError({ reason: new Socket.SocketCloseError({ code: 1000 }) })
-            )
+    Effect.race(
+      makeInbound(opts?.onOpen).pipe(
+        Stream.runForEach((item) => {
+          const result = handler(item)
+          return Effect.isEffect(result) ? result : Effect.void
+        })
+      ),
+      Deferred.await(closeSignal).pipe(
+        Effect.flatMap(() =>
+          Effect.fail(
+            new Socket.SocketError({ reason: new Socket.SocketCloseError({ code: 1000 }) })
           )
         )
       )
-    })
+    )
 
   const write = (
     chunk: Uint8Array | string | Socket.CloseEvent

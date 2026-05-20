@@ -10,19 +10,21 @@ effect_version: 4
 
 Crash reporter setup and breadcrumb collection.
 
-The TypeScript surface is present for contract and test-layer work, but the Rust
-host crash reporter adapter is not implemented. The native surface reports
-`unsupported` on macOS, Windows, and Linux until host crash capture, artifact
-storage, permission enforcement, and report inspection are implemented.
+The Rust host implements local breadcrumb collection, flushes breadcrumbs into
+inspectable JSON artifacts, rediscovers existing breadcrumb artifacts from disk,
+and reports those artifacts through `getReports`.
+The native surface reports `partial` on macOS, Windows, and Linux because host
+crash capture, minidumps, symbol handling, upload consent, and native crash hooks
+are still unavailable.
 
 ## Methods
 
 | Method             | Payload                   | Success                    | Runtime support |
 | ------------------ | ------------------------- | -------------------------- | --------------- |
-| `start`            | `{ enabled?: boolean }`   | `void`                     | unsupported     |
-| `recordBreadcrumb` | `CrashReporterBreadcrumb` | `void`                     | unsupported     |
-| `flush`            | `void`                    | `{ flushed: number >= 0 }` | unsupported     |
-| `getReports`       | `void`                    | `{ reports: Report[] }`    | unsupported     |
+| `start`            | `{ enabled?: boolean }`   | `void`                     | partial         |
+| `recordBreadcrumb` | `CrashReporterBreadcrumb` | `void`                     | partial         |
+| `flush`            | `void`                    | `{ flushed: number >= 0 }` | partial         |
+| `getReports`       | `void`                    | `{ reports: Report[] }`    | partial         |
 
 ## Types
 
@@ -33,13 +35,18 @@ storage, permission enforcement, and report inspection are implemented.
 
 `CrashReporterReport` — local crash artifact metadata with `reportId`,
 `artifactPath`, `createdAt`, `sizeBytes`, and `uploaded`. The production host
-does not populate this until durable crash artifact storage exists.
+populates this for flushed breadcrumb artifacts. `uploaded` is currently always
+`false`. `getReports` is backed by host-owned artifact discovery, so breadcrumb
+artifacts remain visible after a host restart. The host retains the newest 20
+breadcrumb artifacts and prunes older local breadcrumb artifacts on flush.
 
 ## Errors
 
-`CrashReporterError` is the host protocol error union. Until the host adapter is
-implemented, bridge calls decode through Rust `CrashReporter.*` routes and then
-fail closed as typed `Unsupported` rather than native crash capture.
+`CrashReporterError` is the host protocol error union. `recordBreadcrumb` and
+`flush` fail as `InvalidState` until `start({ enabled: true })` is called.
+The public service checks the declared `native.invoke` permission before host
+transport; denied calls fail as `PermissionDenied` and do not reach the native
+host.
 
 ## Redaction
 
@@ -47,8 +54,9 @@ Breadcrumb `details` pass through `RedactionFilter` before host transport.
 Secret-shaped fields are scrubbed.
 
 The in-memory test client can validate breadcrumbs and flush recorded entries,
-but it does not capture process crashes, persist crash artifacts, upload reports,
-or prove user consent boundaries.
+but it does not capture process crashes, upload reports, or prove symbol
+boundaries. The Rust host persists local breadcrumb artifacts; native crash
+artifacts remain future work.
 
 ## Related
 

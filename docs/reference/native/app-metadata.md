@@ -36,7 +36,11 @@ and `environment`. The environment contract exposes only variable names through
 `AppMetadataEnvironmentShape.variableNames`; it does not expose environment
 values.
 
-Launch reasons are `launch`, `open-file`, `open-url`, and `unknown`.
+Launch reasons are `launch`, `open-file`, `open-url`, and `unknown`. The Rust
+host classifies `reason` from argv as `open-file` when exactly one safe absolute
+file path is present, `open-url` when exactly one safe non-dangerous URL is
+present, `unknown` when intent-like argv is unsafe or ambiguous, and `launch`
+otherwise. This does not emit native open-file/open-url events by itself.
 
 ## Events
 

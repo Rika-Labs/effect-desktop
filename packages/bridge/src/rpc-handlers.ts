@@ -140,27 +140,25 @@ const dispatch = <Rpcs extends Rpc.Any, E extends HostProtocolError, R>(
       }
 
       let canceledBy: "renderer" | "runtime" | "host" = "runtime"
-      const exit = yield* Effect.gen(function* () {
-        const pending: PendingCall = {
-          fiber: undefined,
-          cancel: undefined,
-          cancelledBy: undefined
-        }
-        const fiber = yield* Effect.forkScoped(
-          runDispatch(group, handlers, terminalStates, pending, options, request)
-        )
-        pending.fiber = fiber
-        pendingCalls.set(request.id, pending)
+      const pending: PendingCall = {
+        fiber: undefined,
+        cancel: undefined,
+        cancelledBy: undefined
+      }
+      const fiber = yield* Effect.forkScoped(
+        runDispatch(group, handlers, terminalStates, pending, options, request)
+      )
+      pending.fiber = fiber
+      pendingCalls.set(request.id, pending)
 
-        return yield* Effect.exit(Fiber.join(fiber)).pipe(
-          Effect.ensuring(
-            Effect.sync(() => {
-              canceledBy = pending.cancelledBy ?? "runtime"
-              pendingCalls.delete(request.id)
-            })
-          )
+      const exit = yield* Effect.exit(Fiber.join(fiber)).pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            canceledBy = pending.cancelledBy ?? "runtime"
+            pendingCalls.delete(request.id)
+          })
         )
-      })
+      )
 
       if (Exit.isSuccess(exit)) {
         return exit.value

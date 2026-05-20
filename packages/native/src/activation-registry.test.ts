@@ -10,15 +10,15 @@ import {
   type NormalizedCapability,
   P
 } from "@effect-desktop/core"
-import { Cause, Effect, Exit, Fiber, Schema, Stream } from "effect"
+import { Cause, Effect, Exit, Fiber, ManagedRuntime, Schema, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 
 import {
   ActivationRegistry,
+  type ActivationRegistryClientApi,
   makeActivationRegistryMemoryClient,
   makeActivationRegistryServiceLayer,
-  makeActivationRegistryUnsupportedClient,
-  type ActivationRegistryClientApi
+  makeActivationRegistryUnsupportedClient
 } from "./activation-registry.js"
 import {
   ActivationActor,
@@ -51,377 +51,439 @@ const activationCommand = Rpc.make("activation.open", {
 }).pipe(RpcCapability(commandCapability))
 const activationCommandGroup = RpcGroup.make(activationCommand)
 
-test("ActivationRegistry registers surfaces as scoped resources", async () => {
-  const rows: AuditEvent[] = []
-  const runtime = await configuredRuntime(rows)
-  const client = await Effect.runPromise(makeActivationRegistryMemoryClient())
-
-  const result = await Effect.runPromise(
+test("ActivationRegistry registers surfaces as scoped resources", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
-      const registry = yield* ActivationRegistry
-      const handle = yield* registry.registerSurface(surfaceRegistration())
-      const listed = yield* registry.listSurfaces()
-      const resources = yield* runtime.resources.list()
-      return { handle, listed, resources }
-    }).pipe(Effect.provide(makeActivationRegistryServiceLayer(client, runtime)))
-  )
+      const rows: AuditEvent[] = []
+      const fixture = yield* configuredRuntime(rows)
+      const client = yield* makeActivationRegistryMemoryClient()
 
-  expect(result.handle).toMatchObject({
-    kind: "activation-surface",
-    id: "palette",
-    generation: 0,
-    ownerScope: "workspace:workspace-1",
-    state: "registered"
-  })
-  expect(result.listed.surfaces.map((entry) => entry.surfaceId)).toEqual(["palette"])
-  expect(result.resources.entries).toHaveLength(1)
-  expect(rows.some((row) => row.outcome === "registered")).toBe(true)
-})
-
-test("ActivationRegistry routes activation through CommandRegistry with permission context", async () => {
-  const rows: AuditEvent[] = []
-  const runtime = await configuredRuntime(rows)
-  const client = await Effect.runPromise(makeActivationRegistryMemoryClient())
-  const invocations: ActivationCommandInput[] = []
-
-  await Effect.runPromise(
-    runtime.commands.registerGroup(
-      commandRegistration((input) =>
-        Effect.sync(() => {
-          invocations.push(input)
-          return new ActivationCommandOutput({ ok: true })
-        })
-      )
-    )
-  )
-
-  const result = await Effect.runPromise(
-    Effect.gen(function* () {
-      const registry = yield* ActivationRegistry
-      yield* registry.registerSurface(surfaceRegistration())
-      const observedFiber = yield* registry
-        .events()
-        .pipe(
-          Stream.filter((event) => event.phase === "routed"),
-          Stream.take(1),
-          Stream.runHead
-        )
-        .pipe(Effect.forkChild({ startImmediately: true }))
-      const routed = yield* registry.routeActivation(routeRequest())
-      const observed = yield* Fiber.join(observedFiber)
-      return { routed, observed }
-    }).pipe(Effect.provide(makeActivationRegistryServiceLayer(client, runtime)))
-  )
-
-  expect(result.routed).toEqual({
-    surfaceId: "palette",
-    commandId: "activation.open",
-    routed: true
-  })
-  expect(invocations).toEqual([new ActivationCommandInput({ opened: true })])
-  expect(result.observed._tag).toBe("Some")
-  if (result.observed._tag === "Some") {
-    expect(result.observed.value).toMatchObject({
-      phase: "routed",
-      source: "global-shortcut",
-      payload: { opened: true },
-      actor: { kind: "window", id: "window-1" },
-      traceId: "route-1",
-      permissionContext: {
-        actor: { kind: "window", id: "window-1" },
-        traceId: "route-1"
-      }
-    })
-  }
-  expect(rows.some((row) => row.kind === "command-invoked")).toBe(true)
-})
-
-test("ActivationRegistry rejects malformed registration before client side effects", async () => {
-  const runtime = await configuredRuntime([])
-  const baseClient = await Effect.runPromise(makeActivationRegistryMemoryClient())
-  let calls = 0
-  const client: ActivationRegistryClientApi = {
-    ...baseClient,
-    registerSurface: (input) =>
-      Effect.sync(() => {
-        calls += 1
-      }).pipe(Effect.andThen(baseClient.registerSurface(input)))
-  }
-
-  const exit = await Effect.runPromise(
-    Effect.gen(function* () {
-      const registry = yield* ActivationRegistry
-      return yield* Effect.exit(
-        registry.registerSurface({
-          surfaceId: "",
-          source: "global-shortcut",
-          commandId: "activation.open",
-          actor: actor()
-        })
-      )
-    }).pipe(Effect.provide(makeActivationRegistryServiceLayer(client, runtime)))
-  )
-
-  expect(calls).toBe(0)
-  expectExitFailure(exit, (error) => {
-    expect(error).toMatchObject({
-      tag: "InvalidArgument",
-      operation: "ActivationRegistry.registerSurface"
-    })
-  })
-})
-
-test("ActivationRegistry denies before resource registration and client calls", async () => {
-  const rows: AuditEvent[] = []
-  const runtime = await configuredRuntime(rows, { declareActivation: false })
-  const baseClient = await Effect.runPromise(makeActivationRegistryMemoryClient())
-  let calls = 0
-  const client: ActivationRegistryClientApi = {
-    ...baseClient,
-    registerSurface: (input) =>
-      Effect.sync(() => {
-        calls += 1
-      }).pipe(Effect.andThen(baseClient.registerSurface(input)))
-  }
-
-  const exit = await Effect.runPromise(
-    Effect.gen(function* () {
-      const registry = yield* ActivationRegistry
-      return yield* Effect.exit(registry.registerSurface(surfaceRegistration()))
-    }).pipe(Effect.provide(makeActivationRegistryServiceLayer(client, runtime)))
-  )
-
-  const resources = await Effect.runPromise(runtime.resources.list())
-  expect(calls).toBe(0)
-  expect(resources.entries).toHaveLength(0)
-  expect(rows.some((row) => row.kind === "permission-denied")).toBe(true)
-  expectExitFailure(exit, (error) => {
-    expect(error).toMatchObject({
-      tag: "PermissionDenied",
-      operation: "ActivationRegistry.registerSurface"
-    })
-  })
-})
-
-test("ActivationRegistry unsupported client returns typed unsupported failures", async () => {
-  const runtime = await configuredRuntime([])
-  const result = await Effect.runPromise(
-    Effect.gen(function* () {
-      const registry = yield* ActivationRegistry
-      const register = yield* Effect.exit(registry.registerSurface(surfaceRegistration()))
-      const unregister = yield* Effect.exit(
-        registry.unregisterSurface({ surfaceId: "palette", traceId: "trace-unregister" })
-      )
-      const list = yield* Effect.exit(registry.listSurfaces())
-      return { register, unregister, list }
-    }).pipe(
-      Effect.provide(
-        makeActivationRegistryServiceLayer(makeActivationRegistryUnsupportedClient(), runtime)
-      )
-    )
-  )
-
-  expectExitFailure(result.register, (error) => {
-    expect(error).toMatchObject({
-      tag: "Unsupported",
-      operation: "ActivationRegistry.registerSurface"
-    })
-  })
-  expectExitFailure(result.unregister, (error) => {
-    expect(error).toMatchObject({
-      tag: "Unsupported",
-      operation: "ActivationRegistry.unregisterSurface"
-    })
-  })
-  expectExitFailure(result.list, (error) => {
-    expect(error).toMatchObject({
-      tag: "Unsupported",
-      operation: "ActivationRegistry.listSurfaces"
-    })
-  })
-})
-
-test("ActivationRegistry rejects unknown unregister without supported host side effects", async () => {
-  const runtime = await configuredRuntime([])
-  const baseClient = await Effect.runPromise(makeActivationRegistryMemoryClient())
-  let calls = 0
-  const client: ActivationRegistryClientApi = {
-    ...baseClient,
-    unregisterSurface: (input) =>
-      Effect.sync(() => {
-        calls += 1
-      }).pipe(Effect.andThen(baseClient.unregisterSurface(input)))
-  }
-
-  const exit = await Effect.runPromise(
-    Effect.gen(function* () {
-      const registry = yield* ActivationRegistry
-      return yield* Effect.exit(
-        registry.unregisterSurface({ surfaceId: "palette", traceId: "trace-unregister" })
-      )
-    }).pipe(Effect.provide(makeActivationRegistryServiceLayer(client, runtime)))
-  )
-
-  expect(calls).toBe(0)
-  expectExitFailure(exit, (error) => {
-    expect(error).toMatchObject({
-      tag: "InvalidArgument",
-      operation: "ActivationRegistry.unregisterSurface"
-    })
-  })
-})
-
-test("ActivationRegistry cleans resource when host registration fails", async () => {
-  const runtime = await configuredRuntime([])
-  const failure = new HostProtocolInternalError({
-    tag: "Internal",
-    message: "host failed",
-    operation: "ActivationRegistry.registerSurface",
-    recoverable: false
-  })
-  const client = await Effect.runPromise(
-    makeActivationRegistryMemoryClient({ failure: { registerSurface: failure } })
-  )
-
-  const exit = await Effect.runPromise(
-    Effect.gen(function* () {
-      const registry = yield* ActivationRegistry
-      return yield* Effect.exit(registry.registerSurface(surfaceRegistration()))
-    }).pipe(Effect.provide(makeActivationRegistryServiceLayer(client, runtime)))
-  )
-
-  const resources = await Effect.runPromise(runtime.resources.list())
-  expect(resources.entries).toHaveLength(0)
-  expectExitFailure(exit, (error) => {
-    expect(error).toMatchObject({
-      tag: "Internal",
-      operation: "ActivationRegistry.registerSurface"
-    })
-  })
-})
-
-test("ActivationRegistry unregisters host when committed registration output is invalid", async () => {
-  const runtime = await configuredRuntime([])
-  const baseClient = await Effect.runPromise(makeActivationRegistryMemoryClient())
-  let unregisterCalls = 0
-  const client: ActivationRegistryClientApi = {
-    ...baseClient,
-    registerSurface: (input) =>
-      baseClient.registerSurface(input).pipe(
-        Effect.map((handle) => ({
-          ...handle,
-          id: makeResourceId("wrong-surface")
-        }))
-      ),
-    unregisterSurface: (input) =>
-      Effect.sync(() => {
-        unregisterCalls += 1
-      }).pipe(Effect.andThen(baseClient.unregisterSurface(input)))
-  }
-
-  const exit = await Effect.runPromise(
-    Effect.gen(function* () {
-      const registry = yield* ActivationRegistry
-      return yield* Effect.exit(registry.registerSurface(surfaceRegistration()))
-    }).pipe(Effect.provide(makeActivationRegistryServiceLayer(client, runtime)))
-  )
-
-  const resources = await Effect.runPromise(runtime.resources.list())
-  expect(unregisterCalls).toBe(1)
-  expect(resources.entries).toHaveLength(0)
-  expectExitFailure(exit, (error) => {
-    expect(error).toMatchObject({
-      tag: "Internal",
-      operation: "ActivationRegistry.registerSurface"
-    })
-  })
-})
-
-test("ActivationRegistry resource disposal removes the surface and unregisters the host", async () => {
-  const runtime = await configuredRuntime([])
-  const baseClient = await Effect.runPromise(makeActivationRegistryMemoryClient())
-  let unregisterCalls = 0
-  const client: ActivationRegistryClientApi = {
-    ...baseClient,
-    unregisterSurface: (input) =>
-      Effect.sync(() => {
-        unregisterCalls += 1
-      }).pipe(Effect.andThen(baseClient.unregisterSurface(input)))
-  }
-
-  const result = await Effect.runPromise(
-    Effect.gen(function* () {
-      const registry = yield* ActivationRegistry
-      const handle = yield* registry.registerSurface(surfaceRegistration())
-      yield* runtime.resources.dispose(handle.id)
-      const listed = yield* registry.listSurfaces()
-      const resources = yield* runtime.resources.list()
-      return { listed, resources }
-    }).pipe(Effect.provide(makeActivationRegistryServiceLayer(client, runtime)))
-  )
-
-  expect(unregisterCalls).toBe(1)
-  expect(result.listed.surfaces).toHaveLength(0)
-  expect(result.resources.entries).toHaveLength(0)
-})
-
-test("ActivationRegistry rejects actor and permission context mismatches before command side effects", async () => {
-  const runtime = await configuredRuntime([])
-  const client = await Effect.runPromise(makeActivationRegistryMemoryClient())
-  let calls = 0
-
-  await Effect.runPromise(
-    runtime.commands.registerGroup(
-      commandRegistration((input) =>
-        Effect.sync(() => {
-          calls += 1
-          return new ActivationCommandOutput({ ok: input.opened })
-        })
-      )
-    )
-  )
-
-  const exit = await Effect.runPromise(
-    Effect.gen(function* () {
-      const registry = yield* ActivationRegistry
-      yield* registry.registerSurface(surfaceRegistration())
-      return yield* Effect.exit(
-        registry.routeActivation(
-          new ActivationRouteRequest({
-            surfaceId: "palette",
-            payload: { opened: true },
-            actor: new ActivationActor({ kind: "window", id: "window-1" }),
-            traceId: "route-1",
-            permissionContext: new ActivationPermissionContext({
-              actor: new ActivationActor({ kind: "window", id: "window-2" }),
-              traceId: "route-1"
-            })
+      const runtime = ManagedRuntime.make(makeActivationRegistryServiceLayer(client, fixture))
+      const result = yield* Effect.promise(() =>
+        runtime.runPromise(
+          Effect.gen(function* () {
+            const registry = yield* ActivationRegistry
+            const handle = yield* registry.registerSurface(surfaceRegistration())
+            const listed = yield* registry.listSurfaces()
+            const resources = yield* fixture.resources.list()
+            return { handle, listed, resources }
           })
         )
       )
-    }).pipe(Effect.provide(makeActivationRegistryServiceLayer(client, runtime)))
-  )
+      yield* Effect.promise(() => runtime.dispose())
 
-  expect(calls).toBe(0)
-  expectExitFailure(exit, (error) => {
-    expect(error).toMatchObject({
-      tag: "InvalidArgument",
-      operation: "ActivationRegistry.routeActivation"
+      expect(result.handle).toMatchObject({
+        kind: "activation-surface",
+        id: "palette",
+        generation: 0,
+        ownerScope: "workspace:workspace-1",
+        state: "registered"
+      })
+      expect(result.listed.surfaces.map((entry) => entry.surfaceId)).toEqual(["palette"])
+      expect(result.resources.entries).toHaveLength(1)
+      expect(rows.some((row) => row.outcome === "registered")).toBe(true)
     })
-  })
-})
+  ))
 
-const configuredRuntime = async (
+test("ActivationRegistry routes activation through CommandRegistry with permission context", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const rows: AuditEvent[] = []
+      const fixture = yield* configuredRuntime(rows)
+      const client = yield* makeActivationRegistryMemoryClient()
+      const invocations: ActivationCommandInput[] = []
+
+      yield* fixture.commands.registerGroup(
+        commandRegistration((input) =>
+          Effect.sync(() => {
+            invocations.push(input)
+            return new ActivationCommandOutput({ ok: true })
+          })
+        )
+      )
+
+      const runtime = ManagedRuntime.make(makeActivationRegistryServiceLayer(client, fixture))
+      const result = yield* Effect.promise(() =>
+        runtime.runPromise(
+          Effect.gen(function* () {
+            const registry = yield* ActivationRegistry
+            yield* registry.registerSurface(surfaceRegistration())
+            const observedFiber = yield* registry.events().pipe(
+              Stream.filter((event) => event.phase === "routed"),
+              Stream.take(1),
+              Stream.runHead,
+              Effect.forkChild({ startImmediately: true })
+            )
+            const routed = yield* registry.routeActivation(routeRequest())
+            const observed = yield* Fiber.join(observedFiber)
+            return { routed, observed }
+          })
+        )
+      )
+      yield* Effect.promise(() => runtime.dispose())
+
+      expect(result.routed).toEqual({
+        surfaceId: "palette",
+        commandId: "activation.open",
+        routed: true
+      })
+      expect(invocations).toEqual([new ActivationCommandInput({ opened: true })])
+      expect(result.observed._tag).toBe("Some")
+      if (result.observed._tag === "Some") {
+        expect(result.observed.value).toMatchObject({
+          phase: "routed",
+          source: "global-shortcut",
+          payload: { opened: true },
+          actor: { kind: "window", id: "window-1" },
+          traceId: "route-1",
+          permissionContext: {
+            actor: { kind: "window", id: "window-1" },
+            traceId: "route-1"
+          }
+        })
+      }
+      expect(rows.some((row) => row.kind === "command-invoked")).toBe(true)
+    })
+  ))
+
+test("ActivationRegistry rejects malformed registration before client side effects", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const fixture = yield* configuredRuntime([])
+      const baseClient = yield* makeActivationRegistryMemoryClient()
+      let calls = 0
+      const client: ActivationRegistryClientApi = {
+        ...baseClient,
+        registerSurface: (input) =>
+          Effect.sync(() => {
+            calls += 1
+          }).pipe(Effect.andThen(baseClient.registerSurface(input)))
+      }
+
+      const runtime = ManagedRuntime.make(makeActivationRegistryServiceLayer(client, fixture))
+      const exit = yield* Effect.promise(() =>
+        runtime.runPromise(
+          Effect.gen(function* () {
+            const registry = yield* ActivationRegistry
+            return yield* Effect.exit(
+              registry.registerSurface({
+                surfaceId: "",
+                source: "global-shortcut",
+                commandId: "activation.open",
+                actor: actor()
+              })
+            )
+          })
+        )
+      )
+      yield* Effect.promise(() => runtime.dispose())
+
+      expect(calls).toBe(0)
+      expectExitFailure(exit, (error) => {
+        expect(error).toMatchObject({
+          tag: "InvalidArgument",
+          operation: "ActivationRegistry.registerSurface"
+        })
+      })
+    })
+  ))
+
+test("ActivationRegistry denies before resource registration and client calls", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const rows: AuditEvent[] = []
+      const fixture = yield* configuredRuntime(rows, { declareActivation: false })
+      const baseClient = yield* makeActivationRegistryMemoryClient()
+      let calls = 0
+      const client: ActivationRegistryClientApi = {
+        ...baseClient,
+        registerSurface: (input) =>
+          Effect.sync(() => {
+            calls += 1
+          }).pipe(Effect.andThen(baseClient.registerSurface(input)))
+      }
+
+      const runtime = ManagedRuntime.make(makeActivationRegistryServiceLayer(client, fixture))
+      const exit = yield* Effect.promise(() =>
+        runtime.runPromise(
+          Effect.gen(function* () {
+            const registry = yield* ActivationRegistry
+            return yield* Effect.exit(registry.registerSurface(surfaceRegistration()))
+          })
+        )
+      )
+      yield* Effect.promise(() => runtime.dispose())
+
+      const resources = yield* fixture.resources.list()
+      expect(calls).toBe(0)
+      expect(resources.entries).toHaveLength(0)
+      expect(rows.some((row) => row.kind === "permission-denied")).toBe(true)
+      expectExitFailure(exit, (error) => {
+        expect(error).toMatchObject({
+          tag: "PermissionDenied",
+          operation: "ActivationRegistry.registerSurface"
+        })
+      })
+    })
+  ))
+
+test("ActivationRegistry unsupported client returns typed unsupported failures", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const fixture = yield* configuredRuntime([])
+      const runtime = ManagedRuntime.make(
+        makeActivationRegistryServiceLayer(makeActivationRegistryUnsupportedClient(), fixture)
+      )
+      const result = yield* Effect.promise(() =>
+        runtime.runPromise(
+          Effect.gen(function* () {
+            const registry = yield* ActivationRegistry
+            const register = yield* Effect.exit(registry.registerSurface(surfaceRegistration()))
+            const unregister = yield* Effect.exit(
+              registry.unregisterSurface({ surfaceId: "palette", traceId: "trace-unregister" })
+            )
+            const list = yield* Effect.exit(registry.listSurfaces())
+            return { register, unregister, list }
+          })
+        )
+      )
+      yield* Effect.promise(() => runtime.dispose())
+
+      expectExitFailure(result.register, (error) => {
+        expect(error).toMatchObject({
+          tag: "Unsupported",
+          operation: "ActivationRegistry.registerSurface"
+        })
+      })
+      expectExitFailure(result.unregister, (error) => {
+        expect(error).toMatchObject({
+          tag: "Unsupported",
+          operation: "ActivationRegistry.unregisterSurface"
+        })
+      })
+      expectExitFailure(result.list, (error) => {
+        expect(error).toMatchObject({
+          tag: "Unsupported",
+          operation: "ActivationRegistry.listSurfaces"
+        })
+      })
+    })
+  ))
+
+test("ActivationRegistry rejects unknown unregister without supported host side effects", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const fixture = yield* configuredRuntime([])
+      const baseClient = yield* makeActivationRegistryMemoryClient()
+      let calls = 0
+      const client: ActivationRegistryClientApi = {
+        ...baseClient,
+        unregisterSurface: (input) =>
+          Effect.sync(() => {
+            calls += 1
+          }).pipe(Effect.andThen(baseClient.unregisterSurface(input)))
+      }
+
+      const runtime = ManagedRuntime.make(makeActivationRegistryServiceLayer(client, fixture))
+      const exit = yield* Effect.promise(() =>
+        runtime.runPromise(
+          Effect.gen(function* () {
+            const registry = yield* ActivationRegistry
+            return yield* Effect.exit(
+              registry.unregisterSurface({ surfaceId: "palette", traceId: "trace-unregister" })
+            )
+          })
+        )
+      )
+      yield* Effect.promise(() => runtime.dispose())
+
+      expect(calls).toBe(0)
+      expectExitFailure(exit, (error) => {
+        expect(error).toMatchObject({
+          tag: "InvalidArgument",
+          operation: "ActivationRegistry.unregisterSurface"
+        })
+      })
+    })
+  ))
+
+test("ActivationRegistry cleans resource when host registration fails", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const fixture = yield* configuredRuntime([])
+      const failure = new HostProtocolInternalError({
+        tag: "Internal",
+        message: "host failed",
+        operation: "ActivationRegistry.registerSurface",
+        recoverable: false
+      })
+      const client = yield* makeActivationRegistryMemoryClient({
+        failure: { registerSurface: failure }
+      })
+
+      const runtime = ManagedRuntime.make(makeActivationRegistryServiceLayer(client, fixture))
+      const exit = yield* Effect.promise(() =>
+        runtime.runPromise(
+          Effect.gen(function* () {
+            const registry = yield* ActivationRegistry
+            return yield* Effect.exit(registry.registerSurface(surfaceRegistration()))
+          })
+        )
+      )
+      yield* Effect.promise(() => runtime.dispose())
+
+      const resources = yield* fixture.resources.list()
+      expect(resources.entries).toHaveLength(0)
+      expectExitFailure(exit, (error) => {
+        expect(error).toMatchObject({
+          tag: "Internal",
+          operation: "ActivationRegistry.registerSurface"
+        })
+      })
+    })
+  ))
+
+test("ActivationRegistry unregisters host when committed registration output is invalid", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const fixture = yield* configuredRuntime([])
+      const baseClient = yield* makeActivationRegistryMemoryClient()
+      let unregisterCalls = 0
+      const client: ActivationRegistryClientApi = {
+        ...baseClient,
+        registerSurface: (input) =>
+          baseClient.registerSurface(input).pipe(
+            Effect.map((handle) => ({
+              ...handle,
+              id: makeResourceId("wrong-surface")
+            }))
+          ),
+        unregisterSurface: (input) =>
+          Effect.sync(() => {
+            unregisterCalls += 1
+          }).pipe(Effect.andThen(baseClient.unregisterSurface(input)))
+      }
+
+      const runtime = ManagedRuntime.make(makeActivationRegistryServiceLayer(client, fixture))
+      const exit = yield* Effect.promise(() =>
+        runtime.runPromise(
+          Effect.gen(function* () {
+            const registry = yield* ActivationRegistry
+            return yield* Effect.exit(registry.registerSurface(surfaceRegistration()))
+          })
+        )
+      )
+      yield* Effect.promise(() => runtime.dispose())
+
+      const resources = yield* fixture.resources.list()
+      expect(unregisterCalls).toBe(1)
+      expect(resources.entries).toHaveLength(0)
+      expectExitFailure(exit, (error) => {
+        expect(error).toMatchObject({
+          tag: "Internal",
+          operation: "ActivationRegistry.registerSurface"
+        })
+      })
+    })
+  ))
+
+test("ActivationRegistry resource disposal removes the surface and unregisters the host", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const fixture = yield* configuredRuntime([])
+      const baseClient = yield* makeActivationRegistryMemoryClient()
+      let unregisterCalls = 0
+      const client: ActivationRegistryClientApi = {
+        ...baseClient,
+        unregisterSurface: (input) =>
+          Effect.sync(() => {
+            unregisterCalls += 1
+          }).pipe(Effect.andThen(baseClient.unregisterSurface(input)))
+      }
+
+      const runtime = ManagedRuntime.make(makeActivationRegistryServiceLayer(client, fixture))
+      const result = yield* Effect.promise(() =>
+        runtime.runPromise(
+          Effect.gen(function* () {
+            const registry = yield* ActivationRegistry
+            const handle = yield* registry.registerSurface(surfaceRegistration())
+            yield* fixture.resources.dispose(handle.id)
+            const listed = yield* registry.listSurfaces()
+            const resources = yield* fixture.resources.list()
+            return { listed, resources }
+          })
+        )
+      )
+      yield* Effect.promise(() => runtime.dispose())
+
+      expect(unregisterCalls).toBe(1)
+      expect(result.listed.surfaces).toHaveLength(0)
+      expect(result.resources.entries).toHaveLength(0)
+    })
+  ))
+
+test("ActivationRegistry rejects actor and permission context mismatches before command side effects", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const fixture = yield* configuredRuntime([])
+      const client = yield* makeActivationRegistryMemoryClient()
+      let calls = 0
+
+      yield* fixture.commands.registerGroup(
+        commandRegistration((input) =>
+          Effect.sync(() => {
+            calls += 1
+            return new ActivationCommandOutput({ ok: input.opened })
+          })
+        )
+      )
+
+      const runtime = ManagedRuntime.make(makeActivationRegistryServiceLayer(client, fixture))
+      const exit = yield* Effect.promise(() =>
+        runtime.runPromise(
+          Effect.gen(function* () {
+            const registry = yield* ActivationRegistry
+            yield* registry.registerSurface(surfaceRegistration())
+            return yield* Effect.exit(
+              registry.routeActivation(
+                new ActivationRouteRequest({
+                  surfaceId: "palette",
+                  payload: { opened: true },
+                  actor: new ActivationActor({ kind: "window", id: "window-1" }),
+                  traceId: "route-1",
+                  permissionContext: new ActivationPermissionContext({
+                    actor: new ActivationActor({ kind: "window", id: "window-2" }),
+                    traceId: "route-1"
+                  })
+                })
+              )
+            )
+          })
+        )
+      )
+      yield* Effect.promise(() => runtime.dispose())
+
+      expect(calls).toBe(0)
+      expectExitFailure(exit, (error) => {
+        expect(error).toMatchObject({
+          tag: "InvalidArgument",
+          operation: "ActivationRegistry.routeActivation"
+        })
+      })
+    })
+  ))
+
+const configuredRuntime = (
   rows: AuditEvent[],
   options: { readonly declareActivation?: boolean } = {}
-) => {
-  const audit = memoryAudit(rows)
-  const permissions = await Effect.runPromise(makePermissionRegistry({ audit }))
-  const resources = await Effect.runPromise(makeResourceRegistry())
-  const commands = await Effect.runPromise(makeCommandRegistry(resources, permissions, { audit }))
-  const declareActivation = options.declareActivation ?? true
-  await Effect.runPromise(
-    Effect.all([
+) =>
+  Effect.gen(function* () {
+    const audit = memoryAudit(rows)
+    const permissions = yield* makePermissionRegistry({ audit })
+    const resources = yield* makeResourceRegistry()
+    const commands = yield* makeCommandRegistry(resources, permissions, { audit })
+    const declareActivation = options.declareActivation ?? true
+    yield* Effect.all([
       ...(declareActivation
         ? [
             permissions.declare(
@@ -434,10 +496,9 @@ const configuredRuntime = async (
         : []),
       permissions.declare(commandCapability)
     ])
-  )
-  rows.length = 0
-  return { permissions, resources, commands, audit }
-}
+    rows.length = 0
+    return { permissions, resources, commands, audit }
+  })
 
 const memoryAudit = (rows: AuditEvent[]): AuditEventsApi => ({
   emit: (event: AuditEvent) =>

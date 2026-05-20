@@ -1,17 +1,21 @@
 import { expect, test } from "bun:test"
-import { makeHostProtocolInternalError } from "@effect-desktop/bridge"
+import { type BridgeClientExchange, makeHostProtocolInternalError } from "@effect-desktop/bridge"
 import {
   type AuditEvent,
   makePermissionRegistry,
   makeResourceRegistry,
-  P,
-  ResourceInvalidArgumentError,
-  type ResourceRegistryApi
+  P
 } from "@effect-desktop/core"
-import { Cause, Effect, Exit, Option, Stream } from "effect"
+import { Cause, Effect, Exit, type Layer, ManagedRuntime, Stream } from "effect"
 
+import { makeNativeCapabilityManifest } from "./capabilities.js"
 import {
   FocusedApplicationContext,
+  FocusedApplicationContextCapabilityFacts,
+  FocusedApplicationContextClient,
+  FocusedApplicationContextRpcs,
+  FocusedApplicationContextSurface,
+  makeFocusedApplicationContextBridgeClientLayer,
   makeFocusedApplicationContextMemoryClient,
   makeFocusedApplicationContextServiceLayer,
   makeFocusedApplicationContextUnsupportedClient,
@@ -19,221 +23,211 @@ import {
 } from "./focused-application-context.js"
 import {
   FocusedApplicationContextActor,
-  FocusedApplicationContextSnapshotRequest,
-  FocusedApplicationContextStopWatchingRequest,
-  FocusedApplicationContextWatchRequest
+  FocusedApplicationContextSnapshotRequest
 } from "./contracts/focused-application-context.js"
 
-test("FocusedApplicationContext snapshots expose focused surface metadata only", async () => {
-  const rows: AuditEvent[] = []
-  const permissions = await configuredPermissions(rows)
-  const resources = await Effect.runPromise(makeResourceRegistry())
-  const client = await Effect.runPromise(makeFocusedApplicationContextMemoryClient())
+const UnsupportedMethods = ["watch", "stopWatching"] as const
 
-  const result = await Effect.runPromise(
-    Effect.gen(function* () {
-      const context = yield* FocusedApplicationContext
-      return yield* context.snapshot(
-        new FocusedApplicationContextSnapshotRequest({ actor: actor() })
-      )
-    }).pipe(
-      Effect.provide(
-        makeFocusedApplicationContextServiceLayer(client, {
-          permissions,
-          audit: memoryAudit(rows),
-          resources
-        })
-      )
-    )
-  )
-
-  expect(result.application.applicationId).toBe("memory-app")
-  expect(result.window?.title).toBe("Memory Window")
-  expect(rows.some((row) => row.source === "FocusedApplicationContext.snapshot")).toBe(true)
-})
-
-test("FocusedApplicationContext denies before host side effects", async () => {
-  const permissions = await Effect.runPromise(makePermissionRegistry())
-  const resources = await Effect.runPromise(makeResourceRegistry())
-  const baseClient = await Effect.runPromise(makeFocusedApplicationContextMemoryClient())
-  let calls = 0
-  const client: FocusedApplicationContextClientApi = {
-    ...baseClient,
-    snapshot: (input) =>
-      Effect.sync(() => {
-        calls += 1
-      }).pipe(Effect.andThen(baseClient.snapshot(input)))
+test("FocusedApplicationContext exposes only snapshot and isSupported as callable RPCs", () => {
+  const callableTags = Array.from(FocusedApplicationContextRpcs.requests.keys()).toSorted()
+  expect(callableTags).toEqual([
+    "FocusedApplicationContext.isSupported",
+    "FocusedApplicationContext.snapshot"
+  ])
+  for (const method of UnsupportedMethods) {
+    expect(callableTags).not.toContain(`FocusedApplicationContext.${method}`)
   }
-
-  const exit = await Effect.runPromise(
-    Effect.gen(function* () {
-      const context = yield* FocusedApplicationContext
-      return yield* Effect.exit(
-        context.snapshot(new FocusedApplicationContextSnapshotRequest({ actor: actor() }))
-      )
-    }).pipe(
-      Effect.provide(makeFocusedApplicationContextServiceLayer(client, { permissions, resources }))
-    )
-  )
-
-  expect(calls).toBe(0)
-  expectExitFailure(exit, (error) => {
-    expect(error).toMatchObject({
-      tag: "PermissionDenied",
-      operation: "FocusedApplicationContext.snapshot"
-    })
-  })
 })
 
-test("FocusedApplicationContext surfaces injected host failure and audits failure", async () => {
-  const rows: AuditEvent[] = []
-  const permissions = await configuredPermissions(rows)
-  const resources = await Effect.runPromise(makeResourceRegistry())
-  const failure = makeHostProtocolInternalError("host failed", "FocusedApplicationContext.snapshot")
-  const client = await Effect.runPromise(
-    makeFocusedApplicationContextMemoryClient({ failure: { snapshot: failure } })
+test("FocusedApplicationContext declares watch and stopWatching as non-callable capability facts", () => {
+  const factTags = FocusedApplicationContextCapabilityFacts.map((fact) => fact.tag).toSorted()
+  expect(factTags).toEqual(
+    UnsupportedMethods.map((method) => `FocusedApplicationContext.${method}`).toSorted()
   )
+  for (const fact of FocusedApplicationContextCapabilityFacts) {
+    expect(fact.support.status).toBe("unsupported")
+  }
+})
 
-  const exit = await Effect.runPromise(
+test("FocusedApplicationContext capability facts surface in the manifest and stay non-callable", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
-      const context = yield* FocusedApplicationContext
-      return yield* Effect.exit(
-        context.snapshot(new FocusedApplicationContextSnapshotRequest({ actor: actor() }))
+      const manifest = yield* makeNativeCapabilityManifest([
+        { schemaDocs: FocusedApplicationContextSurface.schemaDocs }
+      ])
+      const byTag = new Map(manifest.map((fact) => [fact.tag, fact] as const))
+
+      for (const method of UnsupportedMethods) {
+        const fact = byTag.get(`FocusedApplicationContext.${method}`)
+        expect(fact).toBeDefined()
+        expect(fact?.support.status).toBe("unsupported")
+      }
+
+      const callableTags = FocusedApplicationContextSurface.schemaDocs
+        .filter((doc) => doc.callable)
+        .map((doc) => doc.tag)
+        .toSorted()
+      expect(callableTags).toEqual([
+        "FocusedApplicationContext.isSupported",
+        "FocusedApplicationContext.snapshot"
+      ])
+
+      const nonCallableTags = FocusedApplicationContextSurface.schemaDocs
+        .filter((doc) => !doc.callable)
+        .map((doc) => doc.tag)
+        .toSorted()
+      expect(nonCallableTags).toEqual(
+        UnsupportedMethods.map((method) => `FocusedApplicationContext.${method}`).toSorted()
       )
-    }).pipe(
-      Effect.provide(
+    })
+  ))
+
+test("FocusedApplicationContext snapshots expose focused surface metadata only", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const rows: AuditEvent[] = []
+      const permissions = yield* configuredPermissions(rows)
+      const resources = yield* makeResourceRegistry()
+      const client = yield* makeFocusedApplicationContextMemoryClient()
+
+      const result = yield* runScoped(
+        Effect.gen(function* () {
+          const context = yield* FocusedApplicationContext
+          return yield* context.snapshot(
+            new FocusedApplicationContextSnapshotRequest({ actor: actor() })
+          )
+        }),
         makeFocusedApplicationContextServiceLayer(client, {
           permissions,
           audit: memoryAudit(rows),
           resources
         })
       )
-    )
-  )
 
-  expectExitFailure(exit, (error) => {
-    expect(error).toMatchObject({
-      tag: "Internal",
-      operation: "FocusedApplicationContext.snapshot"
+      expect(result.application.applicationId).toBe("memory-app")
+      expect(result.window?.title).toBe("Memory Window")
+      expect(rows.some((row) => row.source === "FocusedApplicationContext.snapshot")).toBe(true)
     })
-  })
-  expect(rows.some((row) => row.outcome === "failed")).toBe(true)
-})
+  ))
 
-test("FocusedApplicationContext watches focus through substitutable events", async () => {
-  const permissions = await configuredPermissions([])
-  const resources = await Effect.runPromise(makeResourceRegistry())
-  const client = await Effect.runPromise(
-    makeFocusedApplicationContextMemoryClient({ nextWatchId: () => "watch-1" })
-  )
-
-  const result = await Effect.runPromise(
+test("FocusedApplicationContext denies before host side effects", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
-      const context = yield* FocusedApplicationContext
-      const watch = yield* context.watch(
-        new FocusedApplicationContextWatchRequest({ actor: actor() })
+      const permissions = yield* makePermissionRegistry()
+      const resources = yield* makeResourceRegistry()
+      const baseClient = yield* makeFocusedApplicationContextMemoryClient()
+      let calls = 0
+      const client: FocusedApplicationContextClientApi = {
+        ...baseClient,
+        snapshot: (input) =>
+          Effect.sync(() => {
+            calls += 1
+          }).pipe(Effect.andThen(baseClient.snapshot(input)))
+      }
+
+      const exit = yield* runScoped(
+        Effect.gen(function* () {
+          const context = yield* FocusedApplicationContext
+          return yield* Effect.exit(
+            context.snapshot(new FocusedApplicationContextSnapshotRequest({ actor: actor() }))
+          )
+        }),
+        makeFocusedApplicationContextServiceLayer(client, { permissions, resources })
       )
-      const event = yield* context.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
-      return { event, watch }
-    }).pipe(
-      Effect.provide(
-        makeFocusedApplicationContextServiceLayer(client, {
-          permissions,
-          nextWatchId: () => "watch-1",
-          resources
+
+      expect(calls).toBe(0)
+      expectExitFailure(exit, (error) => {
+        expect(error).toMatchObject({
+          tag: "PermissionDenied",
+          operation: "FocusedApplicationContext.snapshot"
         })
-      )
-    )
-  )
-
-  expect(result.watch).toMatchObject({ watchId: "watch-1", active: true })
-  expect(result.event).toMatchObject({ phase: "watch-started", watchId: "watch-1" })
-})
-
-test("FocusedApplicationContext releases watches when their resource scope closes", async () => {
-  const rows: AuditEvent[] = []
-  const permissions = await configuredPermissions(rows)
-  const resources = await Effect.runPromise(makeResourceRegistry())
-  const client = await Effect.runPromise(makeFocusedApplicationContextMemoryClient())
-
-  const result = await Effect.runPromise(
-    Effect.gen(function* () {
-      const context = yield* FocusedApplicationContext
-      const watch = yield* context.watch(
-        new FocusedApplicationContextWatchRequest({
-          actor: actor(),
-          ownerScope: "scope-focused-app",
-          watchId: "watch-resource"
-        })
-      )
-      const beforeClose = yield* resources.list()
-      yield* resources.closeScope("scope-focused-app")
-      const afterClose = yield* resources.list()
-      const stopAfterCleanup = yield* client.stopWatching({
-        actor: actor(),
-        watchId: "watch-resource"
       })
-      return { afterClose, beforeClose, stopAfterCleanup, watch }
-    }).pipe(
-      Effect.provide(
+    })
+  ))
+
+test("FocusedApplicationContext surfaces injected host failure and audits failure", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const rows: AuditEvent[] = []
+      const permissions = yield* configuredPermissions(rows)
+      const resources = yield* makeResourceRegistry()
+      const failure = makeHostProtocolInternalError(
+        "host failed",
+        "FocusedApplicationContext.snapshot"
+      )
+      const client = yield* makeFocusedApplicationContextMemoryClient({
+        failure: { snapshot: failure }
+      })
+
+      const exit = yield* runScoped(
+        Effect.gen(function* () {
+          const context = yield* FocusedApplicationContext
+          return yield* Effect.exit(
+            context.snapshot(new FocusedApplicationContextSnapshotRequest({ actor: actor() }))
+          )
+        }),
         makeFocusedApplicationContextServiceLayer(client, {
           permissions,
           audit: memoryAudit(rows),
           resources
         })
       )
-    )
-  )
 
-  expect(result.watch.watchId).toBe("watch-resource")
-  expect(result.beforeClose.entries).toHaveLength(1)
-  expect(result.afterClose.entries).toHaveLength(0)
-  expect(result.stopAfterCleanup.stopped).toBe(false)
-  expect(rows.some((row) => JSON.stringify(row.details).includes("released-by-scope"))).toBe(true)
-})
-
-test("FocusedApplicationContext rejects malformed input before client calls", async () => {
-  const permissions = await configuredPermissions([])
-  const resources = await Effect.runPromise(makeResourceRegistry())
-  const baseClient = await Effect.runPromise(makeFocusedApplicationContextMemoryClient())
-  let calls = 0
-  const client: FocusedApplicationContextClientApi = {
-    ...baseClient,
-    snapshot: (input) =>
-      Effect.sync(() => {
-        calls += 1
-      }).pipe(Effect.andThen(baseClient.snapshot(input)))
-  }
-
-  const exit = await Effect.runPromise(
-    Effect.gen(function* () {
-      const context = yield* FocusedApplicationContext
-      return yield* Effect.exit(context.snapshot({ actor: actor(), traceId: "\0" }))
-    }).pipe(
-      Effect.provide(makeFocusedApplicationContextServiceLayer(client, { permissions, resources }))
-    )
-  )
-
-  expect(calls).toBe(0)
-  expectExitFailure(exit, (error) => {
-    expect(error).toMatchObject({
-      tag: "InvalidArgument",
-      operation: "FocusedApplicationContext.snapshot"
+      expectExitFailure(exit, (error) => {
+        expect(error).toMatchObject({
+          tag: "Internal",
+          operation: "FocusedApplicationContext.snapshot"
+        })
+      })
+      expect(rows.some((row) => row.outcome === "failed")).toBe(true)
     })
-  })
-})
+  ))
 
-test("FocusedApplicationContext unsupported client fails through public service layer", async () => {
-  const permissions = await configuredPermissions([])
-  const resources = await Effect.runPromise(makeResourceRegistry())
-  const exit = await Effect.runPromise(
+test("FocusedApplicationContext rejects malformed input before client calls", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
-      const context = yield* FocusedApplicationContext
-      return yield* Effect.exit(
-        context.snapshot(new FocusedApplicationContextSnapshotRequest({ actor: actor() }))
+      const permissions = yield* configuredPermissions([])
+      const resources = yield* makeResourceRegistry()
+      const baseClient = yield* makeFocusedApplicationContextMemoryClient()
+      let calls = 0
+      const client: FocusedApplicationContextClientApi = {
+        ...baseClient,
+        snapshot: (input) =>
+          Effect.sync(() => {
+            calls += 1
+          }).pipe(Effect.andThen(baseClient.snapshot(input)))
+      }
+
+      const exit = yield* runScoped(
+        Effect.gen(function* () {
+          const context = yield* FocusedApplicationContext
+          return yield* Effect.exit(context.snapshot({ actor: actor(), traceId: "\0" }))
+        }),
+        makeFocusedApplicationContextServiceLayer(client, { permissions, resources })
       )
-    }).pipe(
-      Effect.provide(
+
+      expect(calls).toBe(0)
+      expectExitFailure(exit, (error) => {
+        expect(error).toMatchObject({
+          tag: "InvalidArgument",
+          operation: "FocusedApplicationContext.snapshot"
+        })
+      })
+    })
+  ))
+
+test("FocusedApplicationContext unsupported client fails through public service layer", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const permissions = yield* configuredPermissions([])
+      const resources = yield* makeResourceRegistry()
+      const exit = yield* runScoped(
+        Effect.gen(function* () {
+          const context = yield* FocusedApplicationContext
+          return yield* Effect.exit(
+            context.snapshot(new FocusedApplicationContextSnapshotRequest({ actor: actor() }))
+          )
+        }),
         makeFocusedApplicationContextServiceLayer(
           makeFocusedApplicationContextUnsupportedClient(),
           {
@@ -242,140 +236,56 @@ test("FocusedApplicationContext unsupported client fails through public service 
           }
         )
       )
-    )
-  )
 
-  expectExitFailure(exit, (error) => {
-    expect(error).toMatchObject({
-      tag: "Unsupported",
-      operation: "FocusedApplicationContext.snapshot"
-    })
-  })
-})
-
-test("FocusedApplicationContext stopWatching is permissioned and idempotent", async () => {
-  const permissions = await configuredPermissions([])
-  const resources = await Effect.runPromise(makeResourceRegistry())
-  const client = await Effect.runPromise(makeFocusedApplicationContextMemoryClient())
-
-  const result = await Effect.runPromise(
-    Effect.gen(function* () {
-      const context = yield* FocusedApplicationContext
-      yield* context.watch(
-        new FocusedApplicationContextWatchRequest({ actor: actor(), watchId: "watch-stop" })
-      )
-      const first = yield* context.stopWatching(
-        new FocusedApplicationContextStopWatchingRequest({ actor: actor(), watchId: "watch-stop" })
-      )
-      const second = yield* context.stopWatching(
-        new FocusedApplicationContextStopWatchingRequest({ actor: actor(), watchId: "watch-stop" })
-      )
-      return { first, second }
-    }).pipe(
-      Effect.provide(makeFocusedApplicationContextServiceLayer(client, { permissions, resources }))
-    )
-  )
-
-  expect(result.first).toMatchObject({ watchId: "watch-stop", stopped: true })
-  expect(result.second).toMatchObject({ watchId: "watch-stop", stopped: false })
-})
-
-test("FocusedApplicationContext does not start host watch when resource registration fails", async () => {
-  const permissions = await configuredPermissions([])
-  const baseResources = await Effect.runPromise(makeResourceRegistry())
-  const baseClient = await Effect.runPromise(makeFocusedApplicationContextMemoryClient())
-  let watchCalls = 0
-  const resources: ResourceRegistryApi = {
-    ...baseResources,
-    register: () =>
-      Effect.fail(
-        new ResourceInvalidArgumentError({
-          operation: "ResourceRegistry.register",
-          field: "id",
-          message: "registration unavailable"
+      expectExitFailure(exit, (error) => {
+        expect(error).toMatchObject({
+          tag: "Unsupported",
+          operation: "FocusedApplicationContext.snapshot"
         })
-      )
-  }
-  const client: FocusedApplicationContextClientApi = {
-    ...baseClient,
-    watch: (input) =>
-      Effect.sync(() => {
-        watchCalls += 1
-      }).pipe(Effect.andThen(baseClient.watch(input)))
-  }
-
-  const exit = await Effect.runPromise(
-    Effect.gen(function* () {
-      const context = yield* FocusedApplicationContext
-      return yield* Effect.exit(
-        context.watch(
-          new FocusedApplicationContextWatchRequest({ actor: actor(), watchId: "watch-register" })
-        )
-      )
-    }).pipe(
-      Effect.provide(makeFocusedApplicationContextServiceLayer(client, { permissions, resources }))
-    )
-  )
-
-  expect(watchCalls).toBe(0)
-  expectExitFailure(exit, (error) => {
-    expect(error).toMatchObject({
-      tag: "Internal",
-      operation: "FocusedApplicationContext.watch"
+      })
     })
-  })
-})
+  ))
 
-test("FocusedApplicationContext disposes registered watch when host watch fails", async () => {
-  const permissions = await configuredPermissions([])
-  const resources = await Effect.runPromise(makeResourceRegistry())
-  const failure = makeHostProtocolInternalError("host failed", "FocusedApplicationContext.watch")
-  const client = await Effect.runPromise(
-    makeFocusedApplicationContextMemoryClient({ failure: { watch: failure } })
-  )
-
-  const result = await Effect.runPromise(
+test("FocusedApplicationContext bridge client fails event stream as unsupported before subscribing", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
-      const context = yield* FocusedApplicationContext
-      const exit = yield* Effect.exit(
-        context.watch(
-          new FocusedApplicationContextWatchRequest({ actor: actor(), watchId: "watch-fails" })
-        )
-      )
-      const resourcesAfterFailure = yield* resources.list()
-      return { exit, resourcesAfterFailure }
-    }).pipe(
-      Effect.provide(makeFocusedApplicationContextServiceLayer(client, { permissions, resources }))
-    )
-  )
+      const subscriptions: string[] = []
+      const exchange: BridgeClientExchange = {
+        request: () => Effect.die("unexpected request"),
+        subscribe: (method) => {
+          subscriptions.push(method)
+          return Stream.empty
+        }
+      }
 
-  expect(result.resourcesAfterFailure.entries).toHaveLength(0)
-  expectExitFailure(result.exit, (error) => {
-    expect(error).toMatchObject({
-      tag: "Internal",
-      operation: "FocusedApplicationContext.watch"
+      const exit = yield* runScoped(
+        Effect.gen(function* () {
+          const client = yield* FocusedApplicationContextClient
+          return yield* Effect.exit(client.events().pipe(Stream.take(1), Stream.runCollect))
+        }),
+        makeFocusedApplicationContextBridgeClientLayer(exchange)
+      )
+
+      expectExitFailure(exit, (error) => {
+        expect(error).toMatchObject({
+          tag: "Unsupported",
+          reason: "host-adapter-unimplemented",
+          operation: "FocusedApplicationContext.Event"
+        })
+      })
+      expect(subscriptions).toEqual([])
     })
-  })
-})
+  ))
 
-const configuredPermissions = async (rows: AuditEvent[]) => {
-  const permissions = await Effect.runPromise(makePermissionRegistry())
-  await Effect.runPromise(
-    Effect.all([
-      permissions.declare(
-        P.nativeInvoke({ primitive: "FocusedApplicationContext", methods: ["snapshot"] })
-      ),
-      permissions.declare(
-        P.nativeInvoke({ primitive: "FocusedApplicationContext", methods: ["watch"] })
-      ),
-      permissions.declare(
-        P.nativeInvoke({ primitive: "FocusedApplicationContext", methods: ["stopWatching"] })
-      )
-    ])
-  )
-  rows.length = 0
-  return permissions
-}
+const configuredPermissions = (rows: AuditEvent[]) =>
+  Effect.gen(function* () {
+    const permissions = yield* makePermissionRegistry()
+    yield* permissions.declare(
+      P.nativeInvoke({ primitive: "FocusedApplicationContext", methods: ["snapshot"] })
+    )
+    rows.length = 0
+    return permissions
+  })
 
 const memoryAudit = (rows: AuditEvent[]) => ({
   emit: (event: AuditEvent) =>
@@ -386,6 +296,17 @@ const memoryAudit = (rows: AuditEvent[]) => ({
 })
 
 const actor = () => new FocusedApplicationContextActor({ kind: "workspace", id: "workspace-1" })
+
+const runScoped = <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  layer: Layer.Layer<R, never, never>
+): Effect.Effect<A, E, never> =>
+  Effect.gen(function* () {
+    const runtime = ManagedRuntime.make(layer)
+    const result = yield* Effect.promise(() => runtime.runPromise(effect))
+    yield* Effect.promise(() => runtime.dispose())
+    return result
+  })
 
 const expectExitFailure = <A>(
   exit: Exit.Exit<A, unknown>,

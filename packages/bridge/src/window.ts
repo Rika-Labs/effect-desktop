@@ -8,11 +8,13 @@ import {
   WINDOW_CENTER_ON_DISPLAY_METHOD,
   WINDOW_CREATE_METHOD,
   WINDOW_CANCEL_ATTENTION_METHOD,
+  WINDOW_CLEAR_VIBRANCY_METHOD,
   WINDOW_DESTROY_METHOD,
   WINDOW_EVENT_METHOD,
   WINDOW_FOCUS_METHOD,
   WINDOW_GET_BOUNDS_METHOD,
   WINDOW_GET_BY_ID_METHOD,
+  WINDOW_GET_CHILDREN_METHOD,
   WINDOW_GET_CURRENT_METHOD,
   WINDOW_GET_PARENT_METHOD,
   WINDOW_GET_STATE_METHOD,
@@ -24,13 +26,20 @@ import {
   WINDOW_REQUEST_ATTENTION_METHOD,
   WINDOW_SET_ALWAYS_ON_TOP_METHOD,
   WINDOW_SET_BOUNDS_METHOD,
+  WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD,
   WINDOW_SET_DECORATIONS_METHOD,
   WINDOW_SET_FULLSCREEN_METHOD,
   WINDOW_SET_PROGRESS_METHOD,
   WINDOW_SET_RESIZABLE_METHOD,
+  WINDOW_SET_SHADOW_METHOD,
+  WINDOW_SET_SIMPLE_FULLSCREEN_METHOD,
   WINDOW_SET_SKIP_TASKBAR_METHOD,
+  WINDOW_SET_TITLE_BAR_STYLE_METHOD,
+  WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD,
   WINDOW_SET_TITLE_METHOD,
+  WINDOW_SET_TRANSPARENT_METHOD,
   WINDOW_SET_TRAFFIC_LIGHTS_METHOD,
+  WINDOW_SET_VIBRANCY_METHOD,
   WINDOW_SHOW_METHOD,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
@@ -72,7 +81,14 @@ const WindowTrafficLights = Schema.Struct({
 })
 const WindowProgressState = Schema.Literals(["none", "normal", "indeterminate", "paused", "error"])
 const WindowAttentionType = Schema.Literals(["critical", "informational"])
-const WindowRegistryEventPhase = Schema.Literals(["opened", "focused", "closed"])
+const WindowRegistryEventPhase = Schema.Literals([
+  "opened",
+  "shown",
+  "hidden",
+  "focused",
+  "closeRequested",
+  "closed"
+])
 const UInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 const WindowResourcePayload = Schema.Struct({
   kind: Schema.Literal("window"),
@@ -120,6 +136,12 @@ export class WindowParentResponse extends Schema.Class<WindowParentResponse>(
   parentWindowId: Schema.optionalKey(Schema.NonEmptyString)
 }) {}
 
+export class WindowChildrenResponse extends Schema.Class<WindowChildrenResponse>(
+  "WindowChildrenResponse"
+)({
+  windows: Schema.Array(WindowLookupResponse)
+}) {}
+
 export class WindowRegistryEventPayload extends Schema.Class<WindowRegistryEventPayload>(
   "WindowRegistryEventPayload"
 )({
@@ -133,7 +155,8 @@ export class WindowRegistryEventPayload extends Schema.Class<WindowRegistryEvent
 export class WindowStatePayload extends Schema.Class<WindowStatePayload>("WindowStatePayload")({
   minimized: Schema.Boolean,
   maximized: Schema.Boolean,
-  fullscreen: Schema.Boolean
+  fullscreen: Schema.Boolean,
+  simpleFullscreen: Schema.Boolean
 }) {}
 
 export class WindowStateEventPayload extends Schema.Class<WindowStateEventPayload>(
@@ -163,6 +186,14 @@ export class WindowSetBoundsPayload extends Schema.Class<WindowSetBoundsPayload>
   "WindowSetBoundsPayload"
 )({
   windowId: Schema.NonEmptyString,
+  bounds: WindowBoundsPayload
+}) {}
+
+export class WindowSetBoundsOnDisplayPayload extends Schema.Class<WindowSetBoundsOnDisplayPayload>(
+  "WindowSetBoundsOnDisplayPayload"
+)({
+  windowId: Schema.NonEmptyString,
+  displayId: Schema.NonEmptyString,
   bounds: WindowBoundsPayload
 }) {}
 
@@ -199,6 +230,47 @@ export class WindowSetTrafficLightsPayload extends Schema.Class<WindowSetTraffic
 )({
   windowId: Schema.NonEmptyString,
   trafficLights: WindowTrafficLights
+}) {}
+
+export class WindowSetVibrancyPayload extends Schema.Class<WindowSetVibrancyPayload>(
+  "WindowSetVibrancyPayload"
+)({
+  windowId: Schema.NonEmptyString,
+  material: WindowVibrancyMaterial
+}) {}
+
+export class WindowClearVibrancyPayload extends Schema.Class<WindowClearVibrancyPayload>(
+  "WindowClearVibrancyPayload"
+)({
+  windowId: Schema.NonEmptyString
+}) {}
+
+export class WindowSetShadowPayload extends Schema.Class<WindowSetShadowPayload>(
+  "WindowSetShadowPayload"
+)({
+  windowId: Schema.NonEmptyString,
+  hasShadow: Schema.Boolean
+}) {}
+
+export class WindowSetTitleBarStylePayload extends Schema.Class<WindowSetTitleBarStylePayload>(
+  "WindowSetTitleBarStylePayload"
+)({
+  windowId: Schema.NonEmptyString,
+  titleBarStyle: WindowTitleBarStyle
+}) {}
+
+export class WindowSetTitleBarTransparentPayload extends Schema.Class<WindowSetTitleBarTransparentPayload>(
+  "WindowSetTitleBarTransparentPayload"
+)({
+  windowId: Schema.NonEmptyString,
+  titleBarTransparent: Schema.Boolean
+}) {}
+
+export class WindowSetTransparentPayload extends Schema.Class<WindowSetTransparentPayload>(
+  "WindowSetTransparentPayload"
+)({
+  windowId: Schema.NonEmptyString,
+  transparent: Schema.Boolean
 }) {}
 
 export class WindowSetAlwaysOnTopPayload extends Schema.Class<WindowSetAlwaysOnTopPayload>(
@@ -240,6 +312,13 @@ export class WindowSetFullscreenPayload extends Schema.Class<WindowSetFullscreen
   fullscreen: Schema.Boolean
 }) {}
 
+export class WindowSetSimpleFullscreenPayload extends Schema.Class<WindowSetSimpleFullscreenPayload>(
+  "WindowSetSimpleFullscreenPayload"
+)({
+  windowId: Schema.NonEmptyString,
+  simpleFullscreen: Schema.Boolean
+}) {}
+
 export interface WindowCreateInput {
   readonly title?: string
   readonly width?: number
@@ -263,6 +342,8 @@ export interface WindowProgressInput {
   readonly desktopFilename?: string
 }
 
+export type WindowVibrancyInput = Schema.Schema.Type<typeof WindowVibrancyMaterial>
+export type WindowTitleBarStyleInput = Schema.Schema.Type<typeof WindowTitleBarStyle>
 export type WindowAttentionTypeInput = Schema.Schema.Type<typeof WindowAttentionType>
 
 export interface HostWindowExchange {
@@ -289,18 +370,28 @@ export interface HostWindowClient {
   readonly getParent: (
     windowId: string
   ) => Effect.Effect<WindowParentResponse, HostProtocolError, never>
+  readonly getChildren: (
+    windowId: string
+  ) => Effect.Effect<WindowChildrenResponse, HostProtocolError, never>
   readonly getBounds: (
     windowId: string
   ) => Effect.Effect<WindowBoundsPayload, HostProtocolError, never>
   readonly setBounds: (
     windowId: string,
     bounds: WindowBoundsInput
-  ) => Effect.Effect<void, HostProtocolError, never>
-  readonly center: (windowId: string) => Effect.Effect<void, HostProtocolError, never>
+  ) => Effect.Effect<WindowBoundsPayload, HostProtocolError, never>
+  readonly setBoundsOnDisplay: (
+    windowId: string,
+    displayId: string,
+    bounds: WindowBoundsInput
+  ) => Effect.Effect<WindowBoundsPayload, HostProtocolError, never>
+  readonly center: (
+    windowId: string
+  ) => Effect.Effect<WindowBoundsPayload, HostProtocolError, never>
   readonly centerOnDisplay: (
     windowId: string,
     displayId: string
-  ) => Effect.Effect<void, HostProtocolError, never>
+  ) => Effect.Effect<WindowBoundsPayload, HostProtocolError, never>
   readonly setTitle: (
     windowId: string,
     title: string
@@ -316,6 +407,27 @@ export interface HostWindowClient {
   readonly setTrafficLights: (
     windowId: string,
     trafficLights: Schema.Schema.Type<typeof WindowTrafficLights>
+  ) => Effect.Effect<void, HostProtocolError, never>
+  readonly setVibrancy: (
+    windowId: string,
+    material: WindowVibrancyInput
+  ) => Effect.Effect<void, HostProtocolError, never>
+  readonly clearVibrancy: (windowId: string) => Effect.Effect<void, HostProtocolError, never>
+  readonly setShadow: (
+    windowId: string,
+    hasShadow: boolean
+  ) => Effect.Effect<void, HostProtocolError, never>
+  readonly setTitleBarStyle: (
+    windowId: string,
+    titleBarStyle: WindowTitleBarStyleInput
+  ) => Effect.Effect<void, HostProtocolError, never>
+  readonly setTitleBarTransparent: (
+    windowId: string,
+    titleBarTransparent: boolean
+  ) => Effect.Effect<void, HostProtocolError, never>
+  readonly setTransparent: (
+    windowId: string,
+    transparent: boolean
   ) => Effect.Effect<void, HostProtocolError, never>
   readonly setAlwaysOnTop: (
     windowId: string,
@@ -334,13 +446,23 @@ export interface HostWindowClient {
     requestType: WindowAttentionTypeInput
   ) => Effect.Effect<void, HostProtocolError, never>
   readonly cancelAttention: (windowId: string) => Effect.Effect<void, HostProtocolError, never>
-  readonly minimize: (windowId: string) => Effect.Effect<void, HostProtocolError, never>
-  readonly maximize: (windowId: string) => Effect.Effect<void, HostProtocolError, never>
-  readonly restore: (windowId: string) => Effect.Effect<void, HostProtocolError, never>
+  readonly minimize: (
+    windowId: string
+  ) => Effect.Effect<WindowStatePayload, HostProtocolError, never>
+  readonly maximize: (
+    windowId: string
+  ) => Effect.Effect<WindowStatePayload, HostProtocolError, never>
+  readonly restore: (
+    windowId: string
+  ) => Effect.Effect<WindowStatePayload, HostProtocolError, never>
   readonly setFullscreen: (
     windowId: string,
     fullscreen: boolean
-  ) => Effect.Effect<void, HostProtocolError, never>
+  ) => Effect.Effect<WindowStatePayload, HostProtocolError, never>
+  readonly setSimpleFullscreen: (
+    windowId: string,
+    simpleFullscreen: boolean
+  ) => Effect.Effect<WindowStatePayload, HostProtocolError, never>
   readonly getState: (
     windowId: string
   ) => Effect.Effect<WindowStatePayload, HostProtocolError, never>
@@ -417,6 +539,15 @@ export const makeHostWindowClient = (
         )
         return yield* decodeParentResponse(response.payload, WINDOW_GET_PARENT_METHOD)
       }),
+    getChildren: (windowId) =>
+      Effect.gen(function* () {
+        const payload = yield* encodeWindowIdPayload(windowId, WINDOW_GET_CHILDREN_METHOD)
+        const request = yield* makeRequest(WINDOW_GET_CHILDREN_METHOD, resolved, payload)
+        const response = yield* requireSuccess(
+          yield* requireMatchingResponse(request, yield* exchange.request(request))
+        )
+        return yield* decodeChildrenResponse(response.payload, WINDOW_GET_CHILDREN_METHOD)
+      }),
     getBounds: (windowId) =>
       Effect.gen(function* () {
         const payload = yield* encodeWindowIdPayload(windowId, WINDOW_GET_BOUNDS_METHOD)
@@ -430,19 +561,37 @@ export const makeHostWindowClient = (
       Effect.gen(function* () {
         const payload = yield* encodeSetBoundsPayload(windowId, bounds)
         const request = yield* makeRequest(WINDOW_SET_BOUNDS_METHOD, resolved, payload)
-        yield* requireSuccess(
+        const response = yield* requireSuccess(
           yield* requireMatchingResponse(request, yield* exchange.request(request))
         )
+        return yield* decodeBoundsResponse(response.payload, WINDOW_SET_BOUNDS_METHOD)
+      }),
+    setBoundsOnDisplay: (windowId, displayId, bounds) =>
+      Effect.gen(function* () {
+        const payload = yield* encodeSetBoundsOnDisplayPayload(windowId, displayId, bounds)
+        const request = yield* makeRequest(WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD, resolved, payload)
+        const response = yield* requireSuccess(
+          yield* requireMatchingResponse(request, yield* exchange.request(request))
+        )
+        return yield* decodeBoundsResponse(response.payload, WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD)
       }),
     center: (windowId) =>
-      sendWindowLifecycleCommand(windowId, WINDOW_CENTER_METHOD, exchange, resolved),
+      Effect.gen(function* () {
+        const payload = yield* encodeWindowIdPayload(windowId, WINDOW_CENTER_METHOD)
+        const request = yield* makeRequest(WINDOW_CENTER_METHOD, resolved, payload)
+        const response = yield* requireSuccess(
+          yield* requireMatchingResponse(request, yield* exchange.request(request))
+        )
+        return yield* decodeBoundsResponse(response.payload, WINDOW_CENTER_METHOD)
+      }),
     centerOnDisplay: (windowId, displayId) =>
       Effect.gen(function* () {
         const payload = yield* encodeCenterOnDisplayPayload(windowId, displayId)
         const request = yield* makeRequest(WINDOW_CENTER_ON_DISPLAY_METHOD, resolved, payload)
-        yield* requireSuccess(
+        const response = yield* requireSuccess(
           yield* requireMatchingResponse(request, yield* exchange.request(request))
         )
+        return yield* decodeBoundsResponse(response.payload, WINDOW_CENTER_ON_DISPLAY_METHOD)
       }),
     setTitle: (windowId, title) =>
       Effect.gen(function* () {
@@ -472,6 +621,58 @@ export const makeHostWindowClient = (
       Effect.gen(function* () {
         const payload = yield* encodeSetTrafficLightsPayload(windowId, trafficLights)
         const request = yield* makeRequest(WINDOW_SET_TRAFFIC_LIGHTS_METHOD, resolved, payload)
+        yield* requireSuccess(
+          yield* requireMatchingResponse(request, yield* exchange.request(request))
+        )
+      }),
+    setVibrancy: (windowId, material) =>
+      Effect.gen(function* () {
+        const payload = yield* encodeSetVibrancyPayload(windowId, material)
+        const request = yield* makeRequest(WINDOW_SET_VIBRANCY_METHOD, resolved, payload)
+        yield* requireSuccess(
+          yield* requireMatchingResponse(request, yield* exchange.request(request))
+        )
+      }),
+    clearVibrancy: (windowId) =>
+      Effect.gen(function* () {
+        const payload = yield* encodeClearVibrancyPayload(windowId)
+        const request = yield* makeRequest(WINDOW_CLEAR_VIBRANCY_METHOD, resolved, payload)
+        yield* requireSuccess(
+          yield* requireMatchingResponse(request, yield* exchange.request(request))
+        )
+      }),
+    setShadow: (windowId, hasShadow) =>
+      Effect.gen(function* () {
+        const payload = yield* encodeSetShadowPayload(windowId, hasShadow)
+        const request = yield* makeRequest(WINDOW_SET_SHADOW_METHOD, resolved, payload)
+        yield* requireSuccess(
+          yield* requireMatchingResponse(request, yield* exchange.request(request))
+        )
+      }),
+    setTitleBarStyle: (windowId, titleBarStyle) =>
+      Effect.gen(function* () {
+        const payload = yield* encodeSetTitleBarStylePayload(windowId, titleBarStyle)
+        const request = yield* makeRequest(WINDOW_SET_TITLE_BAR_STYLE_METHOD, resolved, payload)
+        yield* requireSuccess(
+          yield* requireMatchingResponse(request, yield* exchange.request(request))
+        )
+      }),
+    setTitleBarTransparent: (windowId, titleBarTransparent) =>
+      Effect.gen(function* () {
+        const payload = yield* encodeSetTitleBarTransparentPayload(windowId, titleBarTransparent)
+        const request = yield* makeRequest(
+          WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD,
+          resolved,
+          payload
+        )
+        yield* requireSuccess(
+          yield* requireMatchingResponse(request, yield* exchange.request(request))
+        )
+      }),
+    setTransparent: (windowId, transparent) =>
+      Effect.gen(function* () {
+        const payload = yield* encodeSetTransparentPayload(windowId, transparent)
+        const request = yield* makeRequest(WINDOW_SET_TRANSPARENT_METHOD, resolved, payload)
         yield* requireSuccess(
           yield* requireMatchingResponse(request, yield* exchange.request(request))
         )
@@ -511,18 +712,28 @@ export const makeHostWindowClient = (
     cancelAttention: (windowId) =>
       sendWindowLifecycleCommand(windowId, WINDOW_CANCEL_ATTENTION_METHOD, exchange, resolved),
     minimize: (windowId) =>
-      sendWindowLifecycleCommand(windowId, WINDOW_MINIMIZE_METHOD, exchange, resolved),
+      sendWindowStateCommand(windowId, WINDOW_MINIMIZE_METHOD, exchange, resolved),
     maximize: (windowId) =>
-      sendWindowLifecycleCommand(windowId, WINDOW_MAXIMIZE_METHOD, exchange, resolved),
+      sendWindowStateCommand(windowId, WINDOW_MAXIMIZE_METHOD, exchange, resolved),
     restore: (windowId) =>
-      sendWindowLifecycleCommand(windowId, WINDOW_RESTORE_METHOD, exchange, resolved),
+      sendWindowStateCommand(windowId, WINDOW_RESTORE_METHOD, exchange, resolved),
     setFullscreen: (windowId, fullscreen) =>
       Effect.gen(function* () {
         const payload = yield* encodeSetFullscreenPayload(windowId, fullscreen)
         const request = yield* makeRequest(WINDOW_SET_FULLSCREEN_METHOD, resolved, payload)
-        yield* requireSuccess(
+        const response = yield* requireSuccess(
           yield* requireMatchingResponse(request, yield* exchange.request(request))
         )
+        return yield* decodeStateResponse(response.payload, WINDOW_SET_FULLSCREEN_METHOD)
+      }),
+    setSimpleFullscreen: (windowId, simpleFullscreen) =>
+      Effect.gen(function* () {
+        const payload = yield* encodeSetSimpleFullscreenPayload(windowId, simpleFullscreen)
+        const request = yield* makeRequest(WINDOW_SET_SIMPLE_FULLSCREEN_METHOD, resolved, payload)
+        const response = yield* requireSuccess(
+          yield* requireMatchingResponse(request, yield* exchange.request(request))
+        )
+        return yield* decodeStateResponse(response.payload, WINDOW_SET_SIMPLE_FULLSCREEN_METHOD)
       }),
     getState: (windowId) =>
       Effect.gen(function* () {
@@ -555,6 +766,21 @@ const sendWindowLifecycleCommand = (
     const payload = yield* encodeWindowIdPayload(windowId, method)
     const request = yield* makeRequest(method, options, payload)
     yield* requireSuccess(yield* requireMatchingResponse(request, yield* exchange.request(request)))
+  })
+
+const sendWindowStateCommand = (
+  windowId: string,
+  method: string,
+  exchange: HostWindowExchange,
+  options: ResolvedHostWindowClientOptions
+): Effect.Effect<WindowStatePayload, HostProtocolError, never> =>
+  Effect.gen(function* () {
+    const payload = yield* encodeWindowIdPayload(windowId, method)
+    const request = yield* makeRequest(method, options, payload)
+    const response = yield* requireSuccess(
+      yield* requireMatchingResponse(request, yield* exchange.request(request))
+    )
+    return yield* decodeStateResponse(response.payload, method)
   })
 
 const requireMatchingResponse = (
@@ -596,9 +822,13 @@ const decodeUnknownWindowDestroyPayload = Schema.decodeUnknownSync(WindowDestroy
 const decodeUnknownWindowLookupResponse = Schema.decodeUnknownSync(WindowLookupResponse)
 const decodeUnknownWindowListResponse = Schema.decodeUnknownSync(WindowListResponse)
 const decodeUnknownWindowParentResponse = Schema.decodeUnknownSync(WindowParentResponse)
+const decodeUnknownWindowChildrenResponse = Schema.decodeUnknownSync(WindowChildrenResponse)
 const decodeUnknownWindowEventPayload = Schema.decodeUnknownSync(WindowEventPayload)
 const decodeUnknownWindowBoundsPayload = Schema.decodeUnknownSync(WindowBoundsPayload)
 const decodeUnknownWindowSetBoundsPayload = Schema.decodeUnknownSync(WindowSetBoundsPayload)
+const decodeUnknownWindowSetBoundsOnDisplayPayload = Schema.decodeUnknownSync(
+  WindowSetBoundsOnDisplayPayload
+)
 const decodeUnknownWindowCenterOnDisplayPayload = Schema.decodeUnknownSync(
   WindowCenterOnDisplayPayload
 )
@@ -609,6 +839,18 @@ const decodeUnknownWindowSetDecorationsPayload = Schema.decodeUnknownSync(
 )
 const decodeUnknownWindowSetTrafficLightsPayload = Schema.decodeUnknownSync(
   WindowSetTrafficLightsPayload
+)
+const decodeUnknownWindowSetVibrancyPayload = Schema.decodeUnknownSync(WindowSetVibrancyPayload)
+const decodeUnknownWindowClearVibrancyPayload = Schema.decodeUnknownSync(WindowClearVibrancyPayload)
+const decodeUnknownWindowSetShadowPayload = Schema.decodeUnknownSync(WindowSetShadowPayload)
+const decodeUnknownWindowSetTitleBarStylePayload = Schema.decodeUnknownSync(
+  WindowSetTitleBarStylePayload
+)
+const decodeUnknownWindowSetTitleBarTransparentPayload = Schema.decodeUnknownSync(
+  WindowSetTitleBarTransparentPayload
+)
+const decodeUnknownWindowSetTransparentPayload = Schema.decodeUnknownSync(
+  WindowSetTransparentPayload
 )
 const decodeUnknownWindowSetAlwaysOnTopPayload = Schema.decodeUnknownSync(
   WindowSetAlwaysOnTopPayload
@@ -621,6 +863,9 @@ const decodeUnknownWindowRequestAttentionPayload = Schema.decodeUnknownSync(
   WindowRequestAttentionPayload
 )
 const decodeUnknownWindowSetFullscreenPayload = Schema.decodeUnknownSync(WindowSetFullscreenPayload)
+const decodeUnknownWindowSetSimpleFullscreenPayload = Schema.decodeUnknownSync(
+  WindowSetSimpleFullscreenPayload
+)
 const decodeUnknownWindowStatePayload = Schema.decodeUnknownSync(WindowStatePayload)
 
 const encodeCreatePayload = (
@@ -655,6 +900,20 @@ const encodeSetBoundsPayload = (
   Effect.try({
     try: () => decodeUnknownWindowSetBoundsPayload({ windowId, bounds }, StrictParseOptions),
     catch: (error) => invalidArgument("payload", error, WINDOW_SET_BOUNDS_METHOD)
+  })
+
+const encodeSetBoundsOnDisplayPayload = (
+  windowId: string,
+  displayId: string,
+  bounds: WindowBoundsInput
+): Effect.Effect<WindowSetBoundsOnDisplayPayload, HostProtocolError, never> =>
+  Effect.try({
+    try: () =>
+      decodeUnknownWindowSetBoundsOnDisplayPayload(
+        { windowId, displayId, bounds },
+        StrictParseOptions
+      ),
+    catch: (error) => invalidArgument("payload", error, WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD)
   })
 
 const encodeCenterOnDisplayPayload = (
@@ -703,6 +962,65 @@ const encodeSetTrafficLightsPayload = (
     try: () =>
       decodeUnknownWindowSetTrafficLightsPayload({ windowId, trafficLights }, StrictParseOptions),
     catch: (error) => invalidArgument("payload", error, WINDOW_SET_TRAFFIC_LIGHTS_METHOD)
+  })
+
+const encodeSetVibrancyPayload = (
+  windowId: string,
+  material: WindowVibrancyInput
+): Effect.Effect<WindowSetVibrancyPayload, HostProtocolError, never> =>
+  Effect.try({
+    try: () => decodeUnknownWindowSetVibrancyPayload({ windowId, material }, StrictParseOptions),
+    catch: (error) => invalidArgument("payload", error, WINDOW_SET_VIBRANCY_METHOD)
+  })
+
+const encodeClearVibrancyPayload = (
+  windowId: string
+): Effect.Effect<WindowClearVibrancyPayload, HostProtocolError, never> =>
+  Effect.try({
+    try: () => decodeUnknownWindowClearVibrancyPayload({ windowId }, StrictParseOptions),
+    catch: (error) => invalidArgument("payload", error, WINDOW_CLEAR_VIBRANCY_METHOD)
+  })
+
+const encodeSetShadowPayload = (
+  windowId: string,
+  hasShadow: boolean
+): Effect.Effect<WindowSetShadowPayload, HostProtocolError, never> =>
+  Effect.try({
+    try: () => decodeUnknownWindowSetShadowPayload({ windowId, hasShadow }, StrictParseOptions),
+    catch: (error) => invalidArgument("payload", error, WINDOW_SET_SHADOW_METHOD)
+  })
+
+const encodeSetTitleBarStylePayload = (
+  windowId: string,
+  titleBarStyle: WindowTitleBarStyleInput
+): Effect.Effect<WindowSetTitleBarStylePayload, HostProtocolError, never> =>
+  Effect.try({
+    try: () =>
+      decodeUnknownWindowSetTitleBarStylePayload({ windowId, titleBarStyle }, StrictParseOptions),
+    catch: (error) => invalidArgument("payload", error, WINDOW_SET_TITLE_BAR_STYLE_METHOD)
+  })
+
+const encodeSetTitleBarTransparentPayload = (
+  windowId: string,
+  titleBarTransparent: boolean
+): Effect.Effect<WindowSetTitleBarTransparentPayload, HostProtocolError, never> =>
+  Effect.try({
+    try: () =>
+      decodeUnknownWindowSetTitleBarTransparentPayload(
+        { windowId, titleBarTransparent },
+        StrictParseOptions
+      ),
+    catch: (error) => invalidArgument("payload", error, WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD)
+  })
+
+const encodeSetTransparentPayload = (
+  windowId: string,
+  transparent: boolean
+): Effect.Effect<WindowSetTransparentPayload, HostProtocolError, never> =>
+  Effect.try({
+    try: () =>
+      decodeUnknownWindowSetTransparentPayload({ windowId, transparent }, StrictParseOptions),
+    catch: (error) => invalidArgument("payload", error, WINDOW_SET_TRANSPARENT_METHOD)
   })
 
 const encodeSetAlwaysOnTopPayload = (
@@ -763,6 +1081,19 @@ const encodeSetFullscreenPayload = (
     catch: (error) => invalidArgument("payload", error, WINDOW_SET_FULLSCREEN_METHOD)
   })
 
+const encodeSetSimpleFullscreenPayload = (
+  windowId: string,
+  simpleFullscreen: boolean
+): Effect.Effect<WindowSetSimpleFullscreenPayload, HostProtocolError, never> =>
+  Effect.try({
+    try: () =>
+      decodeUnknownWindowSetSimpleFullscreenPayload(
+        { windowId, simpleFullscreen },
+        StrictParseOptions
+      ),
+    catch: (error) => invalidArgument("payload", error, WINDOW_SET_SIMPLE_FULLSCREEN_METHOD)
+  })
+
 const decodeCreateResponse = (
   payload: unknown
 ): Effect.Effect<WindowCreateResponse, HostProtocolError, never> =>
@@ -796,6 +1127,15 @@ const decodeParentResponse = (
 ): Effect.Effect<WindowParentResponse, HostProtocolError, never> =>
   Effect.try({
     try: () => decodeUnknownWindowParentResponse(payload, StrictParseOptions),
+    catch: (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
+  })
+
+const decodeChildrenResponse = (
+  payload: unknown,
+  operation: string
+): Effect.Effect<WindowChildrenResponse, HostProtocolError, never> =>
+  Effect.try({
+    try: () => decodeUnknownWindowChildrenResponse(payload, StrictParseOptions),
     catch: (error) => makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
   })
 
@@ -868,9 +1208,12 @@ const makeRequest = (
     )
   )
 
+let windowClientRequestSeq = 0
+let windowClientTraceSeq = 0
+
 const resolveOptions = (options: HostWindowClientOptions): ResolvedHostWindowClientOptions => ({
-  nextRequestId: options.nextRequestId ?? (() => `request-${globalThis.crypto.randomUUID()}`),
-  nextTraceId: options.nextTraceId ?? (() => `trace-${globalThis.crypto.randomUUID()}`),
+  nextRequestId: options.nextRequestId ?? (() => `request-window-${++windowClientRequestSeq}`),
+  nextTraceId: options.nextTraceId ?? (() => `trace-window-${++windowClientTraceSeq}`),
   now: options.now
 })
 

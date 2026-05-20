@@ -10,17 +10,26 @@ effect_version: 4
 
 Product-neutral broker for the focused desktop surface. Snapshots expose application, window, process, package, and display metadata only.
 
-The public service is Layer-first and test-substitutable. The TypeScript service validates Schema contracts before transport, checks `native.invoke` permissions before host side effects, audits privileged use, records security-relevant failures, emits typed events, and registers long-lived watches with `ResourceRegistry` before starting the host watch. If registration or host start fails, no watch remains owned by the service.
+The public service is Layer-first and test-substitutable. The TypeScript service validates Schema contracts before transport, checks `native.invoke` permissions before host side effects, audits privileged use, records security-relevant failures, and emits typed events.
 
 ## Methods
 
-| Method         | Payload                                      | Success                                          |
-| -------------- | -------------------------------------------- | ------------------------------------------------ |
-| `snapshot`     | `{ actor, traceId? }`                        | `{ application, window?, display?, observedAt }` |
-| `watch`        | `{ actor, watchId?, ownerScope?, traceId? }` | `{ watchId, active }`                            |
-| `stopWatching` | `{ actor, watchId, traceId? }`               | `{ watchId, stopped }`                           |
-| `isSupported`  | `void`                                       | `{ supported, reason? }`                         |
-| `events`       | `void`                                       | stream of focused context events                 |
+The callable RPCs on this surface are the metadata snapshot and the support query:
+
+| Method        | Payload               | Success                                          |
+| ------------- | --------------------- | ------------------------------------------------ |
+| `snapshot`    | `{ actor, traceId? }` | `{ application, window?, display?, observedAt }` |
+| `isSupported` | `void`                | `{ supported, reason? }`                         |
+| `events`      | `void`                | stream of focused context events                 |
+
+## Capability facts (non-callable)
+
+`watch` and `stopWatching` are not callable RPCs. They are advertised in the native capability manifest as capability facts with `support.status: "unsupported"` and reason `host-adapter-unimplemented`, but no host adapter can be invoked. They describe the intended watch lifecycle until the host can publish focus lifecycle events.
+
+| Capability fact | Intended role                                   |
+| --------------- | ----------------------------------------------- |
+| `watch`         | Start a long-lived focused-context watch.       |
+| `stopWatching`  | Stop a previously started watch and release it. |
 
 ## Snapshot
 
@@ -33,19 +42,21 @@ The snapshot is metadata only:
 
 ## Support
 
-The current Rust host adapter is intentionally fail-closed while OS focused-surface adapters are not implemented.
+The Rust host adapter now implements `snapshot` on macOS through `NSWorkspace.frontmostApplication`.
+That path reports focused application metadata only; focused window/display metadata, watch lifecycle, and host-originated focus events remain unsupported.
 
-| Platform | Status        | Reason                       |
-| -------- | ------------- | ---------------------------- |
-| macOS    | `unsupported` | `host-adapter-unimplemented` |
-| Windows  | `unsupported` | `host-adapter-unimplemented` |
-| Linux    | `unsupported` | `host-adapter-unimplemented` |
+| Method / fact  | macOS                                          | Windows       | Linux         |
+| -------------- | ---------------------------------------------- | ------------- | ------------- |
+| `snapshot`     | `partial` (`macos-frontmost-application-only`) | `unsupported` | `unsupported` |
+| `watch`        | `unsupported` (capability fact)                | `unsupported` | `unsupported` |
+| `stopWatching` | `unsupported` (capability fact)                | `unsupported` | `unsupported` |
 
-`isSupported` returns `{ supported: false, reason: "host-adapter-unimplemented" }`. Host requests decode and validate payloads, then return typed `Unsupported`; invalid payloads are rejected before the unsupported response.
+`isSupported` still returns `{ supported: false, reason: "host-adapter-unimplemented" }` until the host provides snapshot, watch lifecycle, and event delivery for the surface. The `watch` and `stopWatching` capability facts carry `support.status: "unsupported"` with reason `host-adapter-unimplemented` and are not invocable.
+The bridge-backed `FocusedApplicationContext.Event` stream also fails as typed `Unsupported` before opening a host subscription until the native watch adapter can publish focus lifecycle events.
 
 ## Testing
 
-Use `makeFocusedApplicationContextMemoryClient()` for deterministic snapshot, watch, cleanup, and event tests without native UI. Use `makeFocusedApplicationContextUnsupportedClient()` when a test needs the typed unsupported path.
+Use `makeFocusedApplicationContextMemoryClient()` for deterministic snapshot and event tests without native UI. Use `makeFocusedApplicationContextUnsupportedClient()` when a test needs the typed unsupported path.
 
 ## Related
 

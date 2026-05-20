@@ -47,7 +47,6 @@ import {
   type DisplayCaptureSource
 } from "./contracts/display-capture.js"
 import { isSupportedImageHeader, PNG_HEADER } from "./contracts/image.js"
-import { subscribeNativeEvent } from "./event-stream.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 
@@ -55,10 +54,11 @@ export * from "./contracts/display-capture.js"
 
 const Surface = "DisplayCapture"
 const UnsupportedReason = "host-adapter-unimplemented"
+const MacOsScreencaptureReason = "macos-screencapture-adapter"
 const DisplayCaptureEventMethod = "DisplayCapture.Event"
-const UnsupportedSupport = NativeSurface.support.unsupported(UnsupportedReason, {
+const HostCaptureSupport = NativeSurface.support.partial(MacOsScreencaptureReason, {
   platforms: [
-    { platform: "macos", status: "unsupported", reason: UnsupportedReason },
+    { platform: "macos", status: "supported" },
     { platform: "windows", status: "unsupported", reason: UnsupportedReason },
     { platform: "linux", status: "unsupported", reason: UnsupportedReason }
   ]
@@ -318,7 +318,7 @@ export const makeDisplayCaptureUnsupportedClient = (): DisplayCaptureClientApi =
       Effect.succeed(
         new DisplayCaptureSupportedResult({ supported: false, reason: UnsupportedReason })
       ),
-    events: () => Stream.fail(unsupportedError("DisplayCapture.events"))
+    events: () => Stream.fail(unsupportedError(DisplayCaptureEventMethod))
   } satisfies DisplayCaptureClientApi)
 
 const makeDisplayCaptureService = (
@@ -364,7 +364,7 @@ const captureWithPolicy = (
 
 const displayCaptureClientFromRpcClient = (
   client: DesktopRpcClient<DisplayCaptureRpc>,
-  exchange: BridgeClientExchange | undefined
+  _exchange: BridgeClientExchange | undefined
 ): DisplayCaptureClientApi =>
   Object.freeze({
     captureDisplay: (input) =>
@@ -405,10 +405,7 @@ const displayCaptureClientFromRpcClient = (
         client["DisplayCapture.isSupported"](undefined),
         "DisplayCapture.isSupported"
       ),
-    events: () =>
-      subscribeNativeEvent(exchange, DisplayCaptureEventMethod, DisplayCaptureEvent).pipe(
-        Stream.mapError(narrowDisplayCaptureError)
-      )
+    events: () => Stream.fail(unsupportedError(DisplayCaptureEventMethod))
   } satisfies DisplayCaptureClientApi)
 
 function displayCaptureRpc<
@@ -421,7 +418,7 @@ function displayCaptureRpc<
     success,
     authority: NativeSurface.authority.custom(cap),
     endpoint: "mutation",
-    support: UnsupportedSupport
+    support: HostCaptureSupport
   })
 }
 

@@ -36,15 +36,22 @@ The policy is data:
 
 ## Support
 
-The current Rust host adapter is intentionally fail-closed while native OS intake adapters are not implemented.
+The Rust host adapter supports the product-neutral intake path where the caller
+passes bounded bytes in `items`. The host validates the policy, stages bytes
+privately for the intake lifetime, returns metadata, rejects expired handles,
+disposes staged state, and emits `ingested`, `disposed`, and expiry `failed`
+events.
 
-| Platform | Status        | Reason                       |
-| -------- | ------------- | ---------------------------- |
-| macOS    | `unsupported` | `host-adapter-unimplemented` |
-| Windows  | `unsupported` | `host-adapter-unimplemented` |
-| Linux    | `unsupported` | `host-adapter-unimplemented` |
+| Platform | Status      |
+| -------- | ----------- |
+| macOS    | `supported` |
+| Windows  | `supported` |
+| Linux    | `supported` |
 
-`isSupported` returns `{ supported: false, reason: "host-adapter-unimplemented" }`. Mutating host requests decode and validate payloads, then return typed `Unsupported`; invalid payloads are rejected before the unsupported response.
+`isSupported` returns `{ supported: true }`. Host requests decode and validate
+payloads before staging bytes or reading stored metadata. Missing handles return
+typed `NotFound`; expired handles are removed and rejected with typed
+`InvalidArgument`.
 
 ## Testing
 

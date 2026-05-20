@@ -1,4 +1,6 @@
 import { Clock, Context, Data, Effect, Layer, Option, PubSub, Schema, Stream } from "effect"
+import type { FileSystem } from "effect/FileSystem"
+import type { Path } from "effect/Path"
 import { KeyValueStore } from "effect/unstable/persistence"
 
 import type { PermissionRegistry } from "./permission-registry.js"
@@ -213,32 +215,22 @@ const kvSet = (
     )
   )
 
+const encodeUnknownJson = Schema.encodeUnknownEffect(Schema.fromJsonString(Schema.Unknown))
+
 const encodeJsonText = (
   value: unknown,
   field: string,
   operation: string
 ): Effect.Effect<string, SettingsInvalidArgumentError, never> =>
-  Effect.try({
-    try: () => JSON.stringify(value),
-    catch: (error) =>
-      new SettingsInvalidArgumentError({
-        operation,
-        field,
-        message: formatUnknownError(error),
-        cause: Option.some(error)
-      })
-  }).pipe(
-    Effect.flatMap((json) =>
-      typeof json === "string"
-        ? Effect.succeed(json)
-        : Effect.fail(
-            new SettingsInvalidArgumentError({
-              operation,
-              field,
-              message: "value is not JSON-serializable",
-              cause: Option.none()
-            })
-          )
+  encodeUnknownJson(value).pipe(
+    Effect.mapError(
+      (error) =>
+        new SettingsInvalidArgumentError({
+          operation,
+          field,
+          message: formatUnknownError(error),
+          cause: Option.some(error)
+        })
     )
   )
 
@@ -381,13 +373,15 @@ export const makeSettings = (
   )
 }
 
-export class Settings extends Context.Service<Settings, SettingsApi>()("Settings") {
+export class Settings extends Context.Service<Settings, SettingsApi>()(
+  "@effect-desktop/core/runtime/settings"
+) {
   static layer(
     options: SettingsOptions
   ): Layer.Layer<
     Settings,
     SettingsError | SqlitePolicyError,
-    ResourceOwner | PermissionRegistry | ResourceRegistry
+    ResourceOwner | PermissionRegistry | ResourceRegistry | FileSystem | Path
   > {
     return Layer.unwrap(
       Effect.gen(function* () {
@@ -402,7 +396,7 @@ export class Settings extends Context.Service<Settings, SettingsApi>()("Settings
   ): Layer.Layer<
     Settings,
     SettingsError | SqlitePolicyError,
-    ResourceOwner | PermissionRegistry | ResourceRegistry
+    ResourceOwner | PermissionRegistry | ResourceRegistry | FileSystem | Path
   > {
     return Settings.layer(options)
   }
@@ -418,7 +412,7 @@ const settingsLayer = (
 ): Layer.Layer<
   Settings,
   SettingsError | SqlitePolicyError,
-  ResourceOwner | PermissionRegistry | ResourceRegistry
+  ResourceOwner | PermissionRegistry | ResourceRegistry | FileSystem | Path
 > =>
   settingsFromKv(options, ownerScope).pipe(
     Layer.provide(KeyValueStore.layerSql()),
@@ -483,14 +477,12 @@ const makeStore = (
         if (resolved.defaultValue !== undefined) {
           return resolved.defaultValue
         }
-        return yield* Effect.fail(
-          new SettingsInvalidArgumentError({
-            operation: "Settings.getOrDefault",
-            field: resolved.name,
-            message: "setting key has no default value",
-            cause: Option.none()
-          })
-        )
+        return yield* new SettingsInvalidArgumentError({
+          operation: "Settings.getOrDefault",
+          field: resolved.name,
+          message: "setting key has no default value",
+          cause: Option.none()
+        })
       }),
     set: <A>(
       key: string | SettingKey<A>,
@@ -649,13 +641,11 @@ const runMigrations = (
           nonAdvancing === undefined
             ? `missing migration from ${version} to ${to}`
             : `non-advancing migration from ${version} to ${nonAdvancing.to}`
-        return yield* Effect.fail(
-          new SettingsMigrationFailedError({
-            schemaVersion: to,
-            operation: "Settings.migrate",
-            cause: Option.some(cause)
-          })
-        )
+        return yield* new SettingsMigrationFailedError({
+          schemaVersion: to,
+          operation: "Settings.migrate",
+          cause: Option.some(cause)
+        })
       }
 
       yield* migration.migrate(migrationContext(kv, namespace)).pipe(
@@ -762,14 +752,12 @@ const resolveSettingKey = <A>(
       return { ...key, name }
     }
     if (schema === undefined) {
-      return yield* Effect.fail(
-        new SettingsInvalidArgumentError({
-          operation,
-          field: key,
-          message: "schema is required when using a raw setting key",
-          cause: Option.none()
-        })
-      )
+      return yield* new SettingsInvalidArgumentError({
+        operation,
+        field: key,
+        message: "schema is required when using a raw setting key",
+        cause: Option.none()
+      })
     }
     return {
       name: yield* decodeKey(key, operation),
@@ -815,7 +803,7 @@ const decodeMutationOptions = (
   operation: string
 ): Effect.Effect<SettingsMutationOptions | undefined, SettingsInvalidArgumentError, never> => {
   if (options === undefined) {
-    return Effect.succeed(undefined)
+    return Effect.succeed(undefined as SettingsMutationOptions | undefined)
   }
 
   return Schema.decodeUnknownEffect(SettingsMutationOptionsSchema)(options).pipe(

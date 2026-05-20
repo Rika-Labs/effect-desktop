@@ -103,7 +103,9 @@ export const makeSidecar = (
     } satisfies SidecarApi)
   )
 
-export class Sidecar extends Context.Service<Sidecar, SidecarApi>()("Sidecar") {}
+export class Sidecar extends Context.Service<Sidecar, SidecarApi>()(
+  "@effect-desktop/core/runtime/sidecar"
+) {}
 
 export const SidecarLive = Layer.effect(
   Sidecar,

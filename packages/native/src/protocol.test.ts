@@ -4,7 +4,7 @@ import {
   type BridgeClientResponse,
   HostProtocolRequestEnvelope
 } from "@effect-desktop/bridge"
-import { Cause, Effect, Exit, Layer } from "effect"
+import { Cause, Effect, Exit, Layer, ManagedRuntime } from "effect"
 
 import { Protocol, ProtocolLive, ProtocolSurface } from "./index.js"
 
@@ -39,39 +39,39 @@ const protocolExchange = (
   }
 })
 
-test("Protocol bridge client validates asset roots as absolute local paths", async () => {
+test("Protocol bridge client validates asset roots as absolute local paths", () => {
   const requests: HostProtocolRequestEnvelope[] = []
-  await Effect.runPromise(
-    Effect.gen(function* () {
-      const client = yield* Protocol
+  return Effect.runPromise(
+    runScoped(
+      Effect.gen(function* () {
+        const client = yield* Protocol
 
-      yield* client.serveAsset({ scheme: "assets", root: "/app/assets" })
-      const emptyRootExit = yield* Effect.exit(client.serveAsset({ scheme: "assets", root: "" }))
-      const relativeRootExit = yield* Effect.exit(
-        client.serveAsset({ scheme: "assets", root: "relative/assets" })
-      )
-      const traversalRootExit = yield* Effect.exit(
-        client.serveAsset({ scheme: "assets", root: "../outside" })
-      )
-      const fileUrlRootExit = yield* Effect.exit(
-        client.serveAsset({ scheme: "assets", root: "file:///tmp/assets" })
-      )
-      const controlRootExit = yield* Effect.exit(
-        client.serveAsset({ scheme: "assets", root: "/app/assets/\u0000bad" })
-      )
+        yield* client.serveAsset({ scheme: "assets", root: "/app/assets" })
+        const emptyRootExit = yield* Effect.exit(client.serveAsset({ scheme: "assets", root: "" }))
+        const relativeRootExit = yield* Effect.exit(
+          client.serveAsset({ scheme: "assets", root: "relative/assets" })
+        )
+        const traversalRootExit = yield* Effect.exit(
+          client.serveAsset({ scheme: "assets", root: "../outside" })
+        )
+        const fileUrlRootExit = yield* Effect.exit(
+          client.serveAsset({ scheme: "assets", root: "file:///tmp/assets" })
+        )
+        const controlRootExit = yield* Effect.exit(
+          client.serveAsset({ scheme: "assets", root: "/app/assets/\u0000bad" })
+        )
 
-      expectExitFailure(emptyRootExit, (error) => hasErrorTag(error, "InvalidArgument"))
-      expectExitFailure(relativeRootExit, (error) => hasErrorTag(error, "InvalidArgument"))
-      expectExitFailure(traversalRootExit, (error) => hasErrorTag(error, "InvalidArgument"))
-      expectExitFailure(fileUrlRootExit, (error) => hasErrorTag(error, "InvalidArgument"))
-      expectExitFailure(controlRootExit, (error) => hasErrorTag(error, "InvalidArgument"))
-      expect(requests.map((request) => [request.method, request.payload])).toEqual([
-        ["Protocol.serveAsset", { scheme: "assets", root: "/app/assets" }]
-      ])
-    }).pipe(
-      Effect.provide(
+        expectExitFailure(emptyRootExit, (error) => hasErrorTag(error, "InvalidArgument"))
+        expectExitFailure(relativeRootExit, (error) => hasErrorTag(error, "InvalidArgument"))
+        expectExitFailure(traversalRootExit, (error) => hasErrorTag(error, "InvalidArgument"))
+        expectExitFailure(fileUrlRootExit, (error) => hasErrorTag(error, "InvalidArgument"))
+        expectExitFailure(controlRootExit, (error) => hasErrorTag(error, "InvalidArgument"))
+        expect(requests.map((request) => [request.method, request.payload])).toEqual([
+          ["Protocol.serveAsset", { scheme: "assets", root: "/app/assets" }]
+        ])
+      }),
+      ProtocolLive.pipe(
         Layer.provide(
-          ProtocolLive,
           ProtocolSurface.bridgeClientLayer(
             protocolExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
@@ -80,3 +80,14 @@ test("Protocol bridge client validates asset roots as absolute local paths", asy
     )
   )
 })
+
+const runScoped = <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  layer: Layer.Layer<R, never, never>
+): Effect.Effect<A, E, never> =>
+  Effect.gen(function* () {
+    const runtime = ManagedRuntime.make(layer)
+    const result = yield* Effect.promise(() => runtime.runPromise(effect))
+    yield* Effect.promise(() => runtime.dispose())
+    return result
+  })

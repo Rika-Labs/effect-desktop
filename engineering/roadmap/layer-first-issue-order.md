@@ -110,6 +110,12 @@ Pick these first as one foundation batch:
 
 This batch creates the invariant. The rest of the roadmap should be implemented against it.
 
+## Architecture Debt Follow-Ups
+
+|                                  Issue | Status | Why here                                                                                                                                                        |
+| -------------------------------------: | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| #1421 Remove Window `windowRpc` helper | Open   | Removes a shallow `NativeSurface.rpc` wrapper that spans the Window parity surface and will simplify later Window lifecycle, bounds, chrome, and state tickets. |
+
 ## Execution Progress
 
 | Issue                                                          | Status      | Evidence                                                                                                                                                                                             |
@@ -187,3 +193,18 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 | #1295 Remove Solid and Vue endpoint support casts over generated hooks       | Removes Solid/Vue `unknown as` recovery around generated endpoint support.        | Completes the renderer-adapter version of the #1294 cleanup after #1278 exposed the same cast pattern outside React.       |
 | #1296 Remove core Desktop runtime Layer variance casts                       | Removes core `as unknown as` recovery around dynamic Layer composition.           | Keeps the post-#1278 descriptor/runtime split type-preserving without hiding Effect Layer requirements behind casts.       |
 | #1312 Remove Effect RPC boundary type assertions                             | Removes bridge/core `unknown as` recovery around Effect RPC and Layer wiring.     | Keeps heterogeneous desktop RPC registration type-preserving without hiding Effect RPC contracts behind casts.             |
+
+## Native Parity Follow-ups
+
+These issues remain open after the 2026-05-18 native parity pass. The current code keeps unsupported host behavior fail-closed with typed `Unsupported` results and documents the support truth in `docs/reference/native/parity-matrix.md`.
+
+| Order | Issues                                                 | Dependency reason                                                                                                                                                                                           |
+| ----: | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|     1 | #1406, #1371, #1372                                    | OS-enforced execution isolation must exist before process, sidecar, utility process, or worker parity can claim filesystem/network isolation.                                                               |
+|     2 | #1331, #1332, #1333, #1334                             | Updater, crash reporting, power monitor, and system appearance need platform adapters with artifact/event ownership before support metadata can become true.                                                |
+|     3 | #1335, #1336, #1337, #1338, #1339, #1340               | App lifecycle, single-instance, deep-link, association, recent document, and autostart work touches OS process/application state and must stay host-owned.                                                  |
+|     4 | #1342, #1343, #1344, #1345, #1346, #1347               | Window parity should continue on the existing `Window` boundary; avoid adding separate window lifecycle, placement, chrome, z-order, or ownership wrapper surfaces.                                         |
+|     5 | #1350, #1351, #1352, #1353, #1354, #1355, #1356        | WebView parity needs host-routed resource ownership, policy, preload isolation, inspection, document output, runtime events, and frame identity before higher browser services build on it.                 |
+|     6 | #1357, #1358, #1359, #1360, #1361, #1362, #1363, #1364 | Session/profile handles should land before cookie store, browsing data, browser permissions, downloads, network auth, web request interception, and native network transport.                               |
+|     7 | #1366, #1367, #1368, #1369, #1370                      | Menu/context commands, dock/taskbar, shortcuts, safe storage, and filesystem watchers are platform adapters over existing contracts; keep unsupported paths explicit until host behavior is real.           |
+|     8 | #1408, #1409                                           | Attachment intake and selection/document context are privacy-sensitive host adapters; support should only turn true after native intake/context sources, lifecycle cleanup, and event streams are verified. |

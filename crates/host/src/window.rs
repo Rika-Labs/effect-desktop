@@ -2,19 +2,26 @@
 // Host method boundaries return the canonical HostProtocolError enum from the
 // wire contract. Boxing that error here would obscure the protocol surface.
 
-use crate::{macos, webview, windows};
+use crate::methods::resident_lifecycle::{self, ResidentWindowCloseAction};
+use crate::{linux, macos, webview, windows};
 use anyhow::Result;
 use host_protocol::{
-    HostProtocolEnvelope, HostProtocolError, ScreenBoundsPayload, ScreenDisplayPayload,
+    AppBeforeQuitEventPayload, DockProgressState, DockSetProgressPayload, HostProtocolEnvelope,
+    HostProtocolError, ScreenBoundsPayload, ScreenDisplayPayload,
     ScreenDisplaysChangedEventPayload, ScreenDisplaysResultPayload, ScreenMethodPayload,
     ScreenPointPayload, ScreenSupportedPayload, TrayActivatedEventPayload, TrayResourcePayload,
-    WindowAttentionType, WindowBoundsPayload, WindowCreatePayload, WindowCreateResponse,
-    WindowListResponse, WindowLookupResponse, WindowParentResponse, WindowProgressState,
-    WindowRegistryEventPayload, WindowRegistryEventPhase, WindowSetProgressPayload,
-    WindowStateEventPayload, WindowStatePayload, WindowTrafficLights,
+    WindowAttentionType, WindowBoundsEventPayload, WindowBoundsPayload, WindowCreatePayload,
+    WindowCreateResponse, WindowListResponse, WindowLookupResponse, WindowParentResponse,
+    WindowProgressState, WindowRegistryEventPayload, WindowRegistryEventPhase,
+    WindowSetProgressPayload, WindowStateEventPayload, WindowStatePayload, WindowTitleBarStyle,
+    WindowTrafficLights,
 };
 use std::{
+    cell::RefCell,
     collections::{HashMap, HashSet, VecDeque},
+    fs,
+    process::{Command, Stdio},
+    rc::Rc,
     sync::{
         mpsc::{self, Receiver, RecvTimeoutError, Sender},
         Arc, LazyLock, Mutex,
@@ -43,12 +50,34 @@ const WINDOW_EXIT_REQUESTED_EVENT: &str = "host.window.exit_requested";
 const WINDOW_METHOD_REPLY_TIMEOUT: Duration = Duration::from_secs(120);
 const WINDOW_COMMAND_IDLE_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const WINDOW_SMOKE_TEST_TIMEOUT: Duration = Duration::from_secs(150);
+pub(crate) const APP_RESTART_CHILD_SMOKE_TEST_ARG: &str = "--app-restart-child-smoke-test";
+pub(crate) const APP_RESTART_SMOKE_MARKER_ENV: &str = "EFFECT_DESKTOP_APP_RESTART_SMOKE_MARKER";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum RunMode {
     Interactive,
     HostProtocolStdio,
     WindowSmokeTest,
+    ResidentLifecycleSmokeTest,
+    SystemAppearanceSmokeTest,
+    AppQuitSmokeTest,
+    AppFocusSmokeTest,
+    AppRestartSmokeTest,
+    AppRestartChildSmokeTest,
+    SingleInstanceLockSmokeTest,
+}
+
+impl RunMode {
+    pub(crate) fn is_smoke_test(self) -> bool {
+        matches!(
+            self,
+            RunMode::WindowSmokeTest
+                | RunMode::ResidentLifecycleSmokeTest
+                | RunMode::AppQuitSmokeTest
+                | RunMode::AppFocusSmokeTest
+                | RunMode::AppRestartSmokeTest
+        )
+    }
 }
 
 #[derive(Clone)]
@@ -62,6 +91,10 @@ struct WindowMethodPortState {
 }
 
 pub(crate) trait WindowMethodHandler: Send + Sync {
+    fn quit(&self, exit_code: u8) -> std::result::Result<(), HostProtocolError>;
+
+    fn restart(&self, args: &[String]) -> std::result::Result<(), HostProtocolError>;
+
     fn create(
         &self,
         request: WindowCreateRequest,
@@ -89,6 +122,11 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
         window_id: &str,
     ) -> std::result::Result<WindowParentResponse, HostProtocolError>;
 
+    fn get_children(
+        &self,
+        window_id: &str,
+    ) -> std::result::Result<WindowListResponse, HostProtocolError>;
+
     fn get_bounds(
         &self,
         window_id: &str,
@@ -98,15 +136,25 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
         &self,
         window_id: &str,
         bounds: &WindowBoundsPayload,
-    ) -> std::result::Result<(), HostProtocolError>;
+    ) -> std::result::Result<WindowBoundsPayload, HostProtocolError>;
 
-    fn center(&self, window_id: &str) -> std::result::Result<(), HostProtocolError>;
+    fn set_bounds_on_display(
+        &self,
+        window_id: &str,
+        display_id: &str,
+        bounds: &WindowBoundsPayload,
+    ) -> std::result::Result<WindowBoundsPayload, HostProtocolError>;
+
+    fn center(
+        &self,
+        window_id: &str,
+    ) -> std::result::Result<WindowBoundsPayload, HostProtocolError>;
 
     fn center_on_display(
         &self,
         window_id: &str,
         display_id: &str,
-    ) -> std::result::Result<(), HostProtocolError>;
+    ) -> std::result::Result<WindowBoundsPayload, HostProtocolError>;
 
     fn set_title(&self, window_id: &str, title: &str)
         -> std::result::Result<(), HostProtocolError>;
@@ -127,6 +175,38 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
         &self,
         window_id: &str,
         traffic_lights: &WindowTrafficLights,
+    ) -> std::result::Result<(), HostProtocolError>;
+
+    fn set_vibrancy(
+        &self,
+        window_id: &str,
+        material: &str,
+    ) -> std::result::Result<(), HostProtocolError>;
+
+    fn clear_vibrancy(&self, window_id: &str) -> std::result::Result<(), HostProtocolError>;
+
+    fn set_shadow(
+        &self,
+        window_id: &str,
+        has_shadow: bool,
+    ) -> std::result::Result<(), HostProtocolError>;
+
+    fn set_title_bar_style(
+        &self,
+        window_id: &str,
+        title_bar_style: WindowTitleBarStyle,
+    ) -> std::result::Result<(), HostProtocolError>;
+
+    fn set_title_bar_transparent(
+        &self,
+        window_id: &str,
+        title_bar_transparent: bool,
+    ) -> std::result::Result<(), HostProtocolError>;
+
+    fn set_transparent(
+        &self,
+        window_id: &str,
+        transparent: bool,
     ) -> std::result::Result<(), HostProtocolError>;
 
     fn set_always_on_top(
@@ -155,17 +235,32 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
 
     fn cancel_attention(&self, window_id: &str) -> std::result::Result<(), HostProtocolError>;
 
-    fn minimize(&self, window_id: &str) -> std::result::Result<(), HostProtocolError>;
+    fn minimize(
+        &self,
+        window_id: &str,
+    ) -> std::result::Result<WindowStatePayload, HostProtocolError>;
 
-    fn maximize(&self, window_id: &str) -> std::result::Result<(), HostProtocolError>;
+    fn maximize(
+        &self,
+        window_id: &str,
+    ) -> std::result::Result<WindowStatePayload, HostProtocolError>;
 
-    fn restore(&self, window_id: &str) -> std::result::Result<(), HostProtocolError>;
+    fn restore(
+        &self,
+        window_id: &str,
+    ) -> std::result::Result<WindowStatePayload, HostProtocolError>;
 
     fn set_fullscreen(
         &self,
         window_id: &str,
         fullscreen: bool,
-    ) -> std::result::Result<(), HostProtocolError>;
+    ) -> std::result::Result<WindowStatePayload, HostProtocolError>;
+
+    fn set_simple_fullscreen(
+        &self,
+        window_id: &str,
+        simple_fullscreen: bool,
+    ) -> std::result::Result<WindowStatePayload, HostProtocolError>;
 
     fn get_state(
         &self,
@@ -178,12 +273,12 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
         operation: &'static str,
     ) -> std::result::Result<(), HostProtocolError>;
 
-    fn request_dock_attention(&self, critical: bool) -> std::result::Result<(), HostProtocolError>;
-
-    fn set_dock_menu(
+    fn set_dock_progress(
         &self,
-        template: Option<serde_json::Value>,
+        progress: &DockSetProgressPayload,
     ) -> std::result::Result<(), HostProtocolError>;
+
+    fn request_dock_attention(&self, critical: bool) -> std::result::Result<(), HostProtocolError>;
 
     fn set_application_menu(
         &self,
@@ -248,6 +343,146 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
         &self,
         method: ScreenMethodPayload,
     ) -> std::result::Result<ScreenSupportedPayload, HostProtocolError>;
+
+    fn create_webview(
+        &self,
+        _request: WebViewCreateRequest,
+    ) -> std::result::Result<WebViewResourcePayload, HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            host_protocol::WEBVIEW_UNSUPPORTED_REASON,
+            host_protocol::WEBVIEW_CREATE_METHOD,
+        ))
+    }
+
+    fn load_webview_route(
+        &self,
+        _request: WebViewLoadRouteRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            host_protocol::WEBVIEW_UNSUPPORTED_REASON,
+            host_protocol::WEBVIEW_LOAD_ROUTE_METHOD,
+        ))
+    }
+
+    fn load_webview_url(
+        &self,
+        _request: WebViewLoadUrlRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            host_protocol::WEBVIEW_UNSUPPORTED_REASON,
+            host_protocol::WEBVIEW_LOAD_URL_METHOD,
+        ))
+    }
+
+    fn reload_webview(
+        &self,
+        _handle: WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            host_protocol::WEBVIEW_UNSUPPORTED_REASON,
+            host_protocol::WEBVIEW_RELOAD_METHOD,
+        ))
+    }
+
+    fn stop_webview(
+        &self,
+        _handle: WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            host_protocol::WEBVIEW_UNSUPPORTED_REASON,
+            host_protocol::WEBVIEW_STOP_METHOD,
+        ))
+    }
+
+    fn go_back_webview(
+        &self,
+        _handle: WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            host_protocol::WEBVIEW_UNSUPPORTED_REASON,
+            host_protocol::WEBVIEW_GO_BACK_METHOD,
+        ))
+    }
+
+    fn go_forward_webview(
+        &self,
+        _handle: WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            host_protocol::WEBVIEW_UNSUPPORTED_REASON,
+            host_protocol::WEBVIEW_GO_FORWARD_METHOD,
+        ))
+    }
+
+    fn get_webview_navigation_state(
+        &self,
+        _handle: WebViewHandleRequest,
+    ) -> std::result::Result<WebViewNavigationStatePayload, HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            host_protocol::WEBVIEW_UNSUPPORTED_REASON,
+            host_protocol::WEBVIEW_GET_NAVIGATION_STATE_METHOD,
+        ))
+    }
+
+    fn print_webview(
+        &self,
+        _handle: WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            host_protocol::WEBVIEW_UNSUPPORTED_REASON,
+            host_protocol::WEBVIEW_PRINT_METHOD,
+        ))
+    }
+
+    fn set_webview_zoom(
+        &self,
+        _request: WebViewSetZoomRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            host_protocol::WEBVIEW_UNSUPPORTED_REASON,
+            host_protocol::WEBVIEW_SET_ZOOM_METHOD,
+        ))
+    }
+
+    fn open_webview_devtools(
+        &self,
+        _handle: WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            host_protocol::WEBVIEW_UNSUPPORTED_REASON,
+            host_protocol::WEBVIEW_OPEN_DEVTOOLS_METHOD,
+        ))
+    }
+
+    fn close_webview_devtools(
+        &self,
+        _handle: WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            host_protocol::WEBVIEW_UNSUPPORTED_REASON,
+            host_protocol::WEBVIEW_CLOSE_DEVTOOLS_METHOD,
+        ))
+    }
+
+    fn set_webview_navigation_policy(
+        &self,
+        _request: WebViewSetNavigationPolicyRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            host_protocol::WEBVIEW_UNSUPPORTED_REASON,
+            host_protocol::WEBVIEW_SET_NAVIGATION_POLICY_METHOD,
+        ))
+    }
+
+    fn destroy_webview(
+        &self,
+        _handle: WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            host_protocol::WEBVIEW_UNSUPPORTED_REASON,
+            host_protocol::WEBVIEW_DESTROY_METHOD,
+        ))
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -257,6 +492,194 @@ pub(crate) struct WindowCreateRequest {
     height: f64,
     parent_window_id: Option<String>,
     macos_polish: Option<macos::MacosWindowPolish>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum WebViewNavigationDecision {
+    Block,
+    OpenExternal,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct WebViewNavigationPolicy {
+    allowed_origins: Vec<String>,
+    on_disallowed: WebViewNavigationDecision,
+}
+
+impl WebViewNavigationPolicy {
+    pub(crate) fn new(
+        allowed_origins: Vec<String>,
+        on_disallowed: WebViewNavigationDecision,
+    ) -> Self {
+        Self {
+            allowed_origins,
+            on_disallowed,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct WebViewCreateRequest {
+    window_id: String,
+    url: String,
+    policy: WebViewNavigationPolicy,
+    isolation: Option<WebViewIsolationPolicy>,
+}
+
+impl WebViewCreateRequest {
+    pub(crate) fn new(
+        window_id: String,
+        url: String,
+        policy: WebViewNavigationPolicy,
+        isolation: Option<WebViewIsolationPolicy>,
+    ) -> Self {
+        Self {
+            window_id,
+            url,
+            policy,
+            isolation,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct WebViewIsolationPolicy {
+    exposed_apis: Vec<WebViewExposedApi>,
+}
+
+impl WebViewIsolationPolicy {
+    pub(crate) fn new(exposed_apis: Vec<WebViewExposedApi>) -> Self {
+        Self { exposed_apis }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct WebViewExposedApi {
+    name: String,
+    methods: Vec<String>,
+}
+
+impl WebViewExposedApi {
+    pub(crate) fn new(name: String, methods: Vec<String>) -> Self {
+        Self { name, methods }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct WebViewHandleRequest {
+    id: String,
+    generation: u64,
+    owner_scope: String,
+}
+
+impl WebViewHandleRequest {
+    pub(crate) fn new(id: String, generation: u64, owner_scope: String) -> Self {
+        Self {
+            id,
+            generation,
+            owner_scope,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct WebViewLoadRouteRequest {
+    handle: WebViewHandleRequest,
+    route: String,
+}
+
+impl WebViewLoadRouteRequest {
+    pub(crate) fn new(handle: WebViewHandleRequest, route: String) -> Self {
+        Self { handle, route }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct WebViewLoadUrlRequest {
+    handle: WebViewHandleRequest,
+    url: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct WebViewSetNavigationPolicyRequest {
+    handle: WebViewHandleRequest,
+    policy: WebViewNavigationPolicy,
+}
+
+impl WebViewSetNavigationPolicyRequest {
+    pub(crate) fn new(handle: WebViewHandleRequest, policy: WebViewNavigationPolicy) -> Self {
+        Self { handle, policy }
+    }
+}
+
+impl WebViewLoadUrlRequest {
+    pub(crate) fn new(handle: WebViewHandleRequest, url: String) -> Self {
+        Self { handle, url }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct WebViewSetZoomRequest {
+    handle: WebViewHandleRequest,
+    zoom: f64,
+}
+
+impl WebViewSetZoomRequest {
+    pub(crate) fn new(handle: WebViewHandleRequest, zoom: f64) -> Self {
+        Self { handle, zoom }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct WebViewResourcePayload {
+    id: String,
+    generation: u64,
+    owner_scope: String,
+}
+
+impl WebViewResourcePayload {
+    fn new(id: String, generation: u64, owner_scope: String) -> Self {
+        Self {
+            id,
+            generation,
+            owner_scope,
+        }
+    }
+
+    pub(crate) fn into_json(self) -> serde_json::Value {
+        serde_json::json!({
+            "kind": "webview",
+            "id": self.id,
+            "generation": self.generation,
+            "ownerScope": self.owner_scope,
+            "state": "open"
+        })
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct WebViewNavigationStatePayload {
+    can_go_back: bool,
+    can_go_forward: bool,
+    loading: bool,
+}
+
+impl WebViewNavigationStatePayload {
+    fn new(can_go_back: bool, can_go_forward: bool, loading: bool) -> Self {
+        Self {
+            can_go_back,
+            can_go_forward,
+            loading,
+        }
+    }
+
+    pub(crate) fn into_json(self) -> serde_json::Value {
+        serde_json::json!({
+            "canGoBack": self.can_go_back,
+            "canGoForward": self.can_go_forward,
+            "loading": self.loading
+        })
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -271,6 +694,14 @@ pub(crate) struct TrayCreateRequest {
 enum HostEvent {}
 
 enum WindowCommand {
+    Quit {
+        exit_code: u8,
+        reply: Sender<WindowCommandReply>,
+    },
+    Restart {
+        args: Vec<String>,
+        reply: Sender<WindowCommandReply>,
+    },
     Create {
         request: WindowCreateRequest,
         reply: Sender<WindowCommandReply>,
@@ -305,12 +736,22 @@ enum WindowCommand {
         window_id: String,
         reply: Sender<WindowCommandReply>,
     },
+    GetChildren {
+        window_id: String,
+        reply: Sender<WindowCommandReply>,
+    },
     GetBounds {
         window_id: String,
         reply: Sender<WindowCommandReply>,
     },
     SetBounds {
         window_id: String,
+        bounds: WindowBoundsPayload,
+        reply: Sender<WindowCommandReply>,
+    },
+    SetBoundsOnDisplay {
+        window_id: String,
+        display_id: String,
         bounds: WindowBoundsPayload,
         reply: Sender<WindowCommandReply>,
     },
@@ -341,6 +782,35 @@ enum WindowCommand {
     SetTrafficLights {
         window_id: String,
         traffic_lights: WindowTrafficLights,
+        reply: Sender<WindowCommandReply>,
+    },
+    SetVibrancy {
+        window_id: String,
+        material: String,
+        reply: Sender<WindowCommandReply>,
+    },
+    ClearVibrancy {
+        window_id: String,
+        reply: Sender<WindowCommandReply>,
+    },
+    SetShadow {
+        window_id: String,
+        has_shadow: bool,
+        reply: Sender<WindowCommandReply>,
+    },
+    SetTitleBarStyle {
+        window_id: String,
+        title_bar_style: WindowTitleBarStyle,
+        reply: Sender<WindowCommandReply>,
+    },
+    SetTitleBarTransparent {
+        window_id: String,
+        title_bar_transparent: bool,
+        reply: Sender<WindowCommandReply>,
+    },
+    SetTransparent {
+        window_id: String,
+        transparent: bool,
         reply: Sender<WindowCommandReply>,
     },
     SetAlwaysOnTop {
@@ -384,6 +854,11 @@ enum WindowCommand {
         fullscreen: bool,
         reply: Sender<WindowCommandReply>,
     },
+    SetSimpleFullscreen {
+        window_id: String,
+        simple_fullscreen: bool,
+        reply: Sender<WindowCommandReply>,
+    },
     GetState {
         window_id: String,
         reply: Sender<WindowCommandReply>,
@@ -393,12 +868,12 @@ enum WindowCommand {
         operation: &'static str,
         reply: Sender<WindowCommandReply>,
     },
-    RequestDockAttention {
-        critical: bool,
+    SetDockProgress {
+        progress: DockSetProgressPayload,
         reply: Sender<WindowCommandReply>,
     },
-    SetDockMenu {
-        template: Option<serde_json::Value>,
+    RequestDockAttention {
+        critical: bool,
         reply: Sender<WindowCommandReply>,
     },
     SetApplicationMenu {
@@ -441,6 +916,62 @@ enum WindowCommand {
     ClearRuntimeTrays {
         reply: Sender<WindowCommandReply>,
     },
+    CreateWebView {
+        request: WebViewCreateRequest,
+        reply: Sender<WindowCommandReply>,
+    },
+    LoadWebViewRoute {
+        request: WebViewLoadRouteRequest,
+        reply: Sender<WindowCommandReply>,
+    },
+    LoadWebViewUrl {
+        request: WebViewLoadUrlRequest,
+        reply: Sender<WindowCommandReply>,
+    },
+    ReloadWebView {
+        handle: WebViewHandleRequest,
+        reply: Sender<WindowCommandReply>,
+    },
+    StopWebView {
+        handle: WebViewHandleRequest,
+        reply: Sender<WindowCommandReply>,
+    },
+    GoBackWebView {
+        handle: WebViewHandleRequest,
+        reply: Sender<WindowCommandReply>,
+    },
+    GoForwardWebView {
+        handle: WebViewHandleRequest,
+        reply: Sender<WindowCommandReply>,
+    },
+    GetWebViewNavigationState {
+        handle: WebViewHandleRequest,
+        reply: Sender<WindowCommandReply>,
+    },
+    PrintWebView {
+        handle: WebViewHandleRequest,
+        reply: Sender<WindowCommandReply>,
+    },
+    SetWebViewZoom {
+        request: WebViewSetZoomRequest,
+        reply: Sender<WindowCommandReply>,
+    },
+    OpenWebViewDevTools {
+        handle: WebViewHandleRequest,
+        reply: Sender<WindowCommandReply>,
+    },
+    CloseWebViewDevTools {
+        handle: WebViewHandleRequest,
+        reply: Sender<WindowCommandReply>,
+    },
+    SetWebViewNavigationPolicy {
+        request: WebViewSetNavigationPolicyRequest,
+        reply: Sender<WindowCommandReply>,
+    },
+    DestroyWebView {
+        handle: WebViewHandleRequest,
+        reply: Sender<WindowCommandReply>,
+    },
     GetScreenDisplays {
         reply: Sender<WindowCommandReply>,
     },
@@ -468,8 +999,8 @@ enum WindowCommandResponse {
     WindowBounds(WindowBoundsPayload),
     WindowState(WindowStatePayload),
     DockBadgeLabelSet,
+    DockProgressSet,
     DockAttentionRequested,
-    DockMenuSet,
     MenuSet,
     TrayCreated(TrayResourcePayload),
     TrayUpdated,
@@ -478,11 +1009,14 @@ enum WindowCommandResponse {
     ScreenDisplay(ScreenDisplayPayload),
     ScreenPoint(ScreenPointPayload),
     ScreenSupported(ScreenSupportedPayload),
+    WebViewCreated(WebViewResourcePayload),
+    WebViewNavigationState(WebViewNavigationStatePayload),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum WindowLifecycleEvent {
     CloseRequested,
+    AppQuitRequested(u8),
     WindowCreateFailed,
     SmokeTimedOut,
     SmokeExitRequested,
@@ -494,6 +1028,109 @@ struct NativeWindowResources {
     _webview: webview::HostWebView,
 }
 
+struct NativeWebViewResources {
+    _webview: webview::HostWebView,
+    generation: u64,
+    owner_scope: String,
+    policy: SharedWebViewNavigationPolicy,
+    navigation: SharedWebViewNavigationState,
+}
+
+type SharedWebViewNavigationPolicy = Rc<RefCell<WebViewNavigationPolicy>>;
+type SharedWebViewNavigationState = Rc<RefCell<WebViewNavigationState>>;
+type WebViewDragDropPayload = (&'static str, Option<Vec<String>>, Option<(i32, i32)>);
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct WebViewNavigationState {
+    history: Vec<String>,
+    index: usize,
+    loading: bool,
+}
+
+impl WebViewNavigationState {
+    fn new(url: String) -> Self {
+        Self {
+            history: vec![url],
+            index: 0,
+            loading: false,
+        }
+    }
+
+    fn can_go_back(&self) -> bool {
+        self.index > 0
+    }
+
+    fn can_go_forward(&self) -> bool {
+        self.index + 1 < self.history.len()
+    }
+
+    fn mark_loading(&mut self, url: &str) {
+        self.loading = true;
+        self.record_navigation(url);
+    }
+
+    fn mark_finished(&mut self, url: &str) {
+        self.loading = false;
+        self.record_navigation(url);
+    }
+
+    fn mark_stopped(&mut self) {
+        self.loading = false;
+    }
+
+    fn move_back(&mut self) -> bool {
+        if !self.can_go_back() {
+            return false;
+        }
+        self.index -= 1;
+        self.loading = true;
+        true
+    }
+
+    fn move_forward(&mut self) -> bool {
+        if !self.can_go_forward() {
+            return false;
+        }
+        self.index += 1;
+        self.loading = true;
+        true
+    }
+
+    fn to_payload(&self) -> WebViewNavigationStatePayload {
+        WebViewNavigationStatePayload::new(self.can_go_back(), self.can_go_forward(), self.loading)
+    }
+
+    fn record_navigation(&mut self, url: &str) {
+        if self
+            .history
+            .get(self.index)
+            .is_some_and(|current| current == url)
+        {
+            return;
+        }
+        if self.index > 0
+            && self
+                .history
+                .get(self.index - 1)
+                .is_some_and(|prev| prev == url)
+        {
+            self.index -= 1;
+            return;
+        }
+        if self
+            .history
+            .get(self.index + 1)
+            .is_some_and(|next| next == url)
+        {
+            self.index += 1;
+            return;
+        }
+        self.history.truncate(self.index + 1);
+        self.history.push(url.to_string());
+        self.index = self.history.len() - 1;
+    }
+}
+
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 struct NativeTrayResources {
     _tray: tray_icon::TrayIcon,
@@ -503,7 +1140,7 @@ struct NativeTrayResources {
 
 struct WindowRegistry {
     windows: HashMap<String, NativeWindowResources>,
-    window_states: HashMap<String, WindowStatePayload>,
+    webviews: HashMap<String, NativeWebViewResources>,
     window_id_by_native_id: HashMap<WindowId, String>,
     window_order: Vec<String>,
     focused_window_id: Option<String>,
@@ -520,6 +1157,8 @@ static TRAY_EVENT_HANDLES: LazyLock<Mutex<HashMap<String, TrayResourcePayload>>>
 static SCREEN_EVENT_SENDER: LazyLock<Mutex<Option<Sender<HostProtocolEnvelope>>>> =
     LazyLock::new(|| Mutex::new(None));
 static WINDOW_EVENT_SENDER: LazyLock<Mutex<Option<Sender<HostProtocolEnvelope>>>> =
+    LazyLock::new(|| Mutex::new(None));
+static WEBVIEW_EVENT_SENDER: LazyLock<Mutex<Option<Sender<HostProtocolEnvelope>>>> =
     LazyLock::new(|| Mutex::new(None));
 
 impl WindowMethodPort {
@@ -599,8 +1238,8 @@ impl WindowMethodPort {
             | WindowCommandResponse::WindowBounds(_)
             | WindowCommandResponse::WindowState(_)
             | WindowCommandResponse::DockBadgeLabelSet
+            | WindowCommandResponse::DockProgressSet
             | WindowCommandResponse::DockAttentionRequested
-            | WindowCommandResponse::DockMenuSet
             | WindowCommandResponse::MenuSet
             | WindowCommandResponse::TrayCreated(_)
             | WindowCommandResponse::TrayUpdated
@@ -608,8 +1247,76 @@ impl WindowMethodPort {
             | WindowCommandResponse::ScreenDisplays(_)
             | WindowCommandResponse::ScreenDisplay(_)
             | WindowCommandResponse::ScreenPoint(_)
-            | WindowCommandResponse::ScreenSupported(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::ScreenSupported(_)
+            | WindowCommandResponse::WebViewCreated(_)
+            | WindowCommandResponse::WebViewNavigationState(_) => Err(HostProtocolError::internal(
                 "window lifecycle command received unrelated response",
+                operation,
+            )),
+        }
+    }
+
+    fn expect_window_state_response(
+        &self,
+        reply: Receiver<WindowCommandReply>,
+        operation: &'static str,
+    ) -> std::result::Result<WindowStatePayload, HostProtocolError> {
+        match self.recv_reply(reply)? {
+            WindowCommandResponse::WindowState(state) => Ok(state),
+            WindowCommandResponse::Created(_)
+            | WindowCommandResponse::Destroyed
+            | WindowCommandResponse::WindowUpdated
+            | WindowCommandResponse::WindowLookup(_)
+            | WindowCommandResponse::WindowList(_)
+            | WindowCommandResponse::WindowParent(_)
+            | WindowCommandResponse::WindowBounds(_)
+            | WindowCommandResponse::DockBadgeLabelSet
+            | WindowCommandResponse::DockProgressSet
+            | WindowCommandResponse::DockAttentionRequested
+            | WindowCommandResponse::MenuSet
+            | WindowCommandResponse::TrayCreated(_)
+            | WindowCommandResponse::TrayUpdated
+            | WindowCommandResponse::TrayDestroyed
+            | WindowCommandResponse::ScreenDisplays(_)
+            | WindowCommandResponse::ScreenDisplay(_)
+            | WindowCommandResponse::ScreenPoint(_)
+            | WindowCommandResponse::ScreenSupported(_)
+            | WindowCommandResponse::WebViewCreated(_)
+            | WindowCommandResponse::WebViewNavigationState(_) => Err(HostProtocolError::internal(
+                "window state command received unrelated response",
+                operation,
+            )),
+        }
+    }
+
+    fn expect_window_bounds_response(
+        &self,
+        reply: Receiver<WindowCommandReply>,
+        operation: &'static str,
+    ) -> std::result::Result<WindowBoundsPayload, HostProtocolError> {
+        match self.recv_reply(reply)? {
+            WindowCommandResponse::WindowBounds(bounds) => Ok(bounds),
+            WindowCommandResponse::Created(_)
+            | WindowCommandResponse::Destroyed
+            | WindowCommandResponse::WindowUpdated
+            | WindowCommandResponse::WindowLookup(_)
+            | WindowCommandResponse::WindowList(_)
+            | WindowCommandResponse::WindowParent(_)
+            | WindowCommandResponse::WindowState(_)
+            | WindowCommandResponse::DockBadgeLabelSet
+            | WindowCommandResponse::DockProgressSet
+            | WindowCommandResponse::DockAttentionRequested
+            | WindowCommandResponse::MenuSet
+            | WindowCommandResponse::TrayCreated(_)
+            | WindowCommandResponse::TrayUpdated
+            | WindowCommandResponse::TrayDestroyed
+            | WindowCommandResponse::ScreenDisplays(_)
+            | WindowCommandResponse::ScreenDisplay(_)
+            | WindowCommandResponse::ScreenPoint(_)
+            | WindowCommandResponse::ScreenSupported(_)
+            | WindowCommandResponse::WebViewCreated(_)
+            | WindowCommandResponse::WebViewNavigationState(_) => Err(HostProtocolError::internal(
+                "window placement command received unrelated response",
                 operation,
             )),
         }
@@ -617,6 +1324,26 @@ impl WindowMethodPort {
 }
 
 impl WindowMethodHandler for WindowMethodPort {
+    fn quit(&self, exit_code: u8) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::Quit {
+            exit_code,
+            reply: reply_tx,
+        })?;
+
+        self.expect_window_void_response(reply_rx, host_protocol::APP_QUIT_METHOD)
+    }
+
+    fn restart(&self, args: &[String]) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::Restart {
+            args: args.to_vec(),
+            reply: reply_tx,
+        })?;
+
+        self.expect_window_void_response(reply_rx, host_protocol::APP_RESTART_METHOD)
+    }
+
     fn create(
         &self,
         request: WindowCreateRequest,
@@ -633,12 +1360,12 @@ impl WindowMethodHandler for WindowMethodPort {
                 "window create received dock badge response",
                 host_protocol::WINDOW_CREATE_METHOD,
             )),
-            WindowCommandResponse::DockAttentionRequested => Err(HostProtocolError::internal(
-                "window create received dock attention response",
+            WindowCommandResponse::DockProgressSet => Err(HostProtocolError::internal(
+                "window create received dock progress response",
                 host_protocol::WINDOW_CREATE_METHOD,
             )),
-            WindowCommandResponse::DockMenuSet => Err(HostProtocolError::internal(
-                "window create received dock menu response",
+            WindowCommandResponse::DockAttentionRequested => Err(HostProtocolError::internal(
+                "window create received dock attention response",
                 host_protocol::WINDOW_CREATE_METHOD,
             )),
             WindowCommandResponse::MenuSet => Err(HostProtocolError::internal(
@@ -679,7 +1406,9 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenDisplays(_)
             | WindowCommandResponse::ScreenDisplay(_)
             | WindowCommandResponse::ScreenPoint(_)
-            | WindowCommandResponse::ScreenSupported(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::ScreenSupported(_)
+            | WindowCommandResponse::WebViewCreated(_)
+            | WindowCommandResponse::WebViewNavigationState(_) => Err(HostProtocolError::internal(
                 "window create received tray response",
                 host_protocol::WINDOW_CREATE_METHOD,
             )),
@@ -699,12 +1428,12 @@ impl WindowMethodHandler for WindowMethodPort {
                 "window destroy received dock badge response",
                 host_protocol::WINDOW_DESTROY_METHOD,
             )),
-            WindowCommandResponse::DockAttentionRequested => Err(HostProtocolError::internal(
-                "window destroy received dock attention response",
+            WindowCommandResponse::DockProgressSet => Err(HostProtocolError::internal(
+                "window destroy received dock progress response",
                 host_protocol::WINDOW_DESTROY_METHOD,
             )),
-            WindowCommandResponse::DockMenuSet => Err(HostProtocolError::internal(
-                "window destroy received dock menu response",
+            WindowCommandResponse::DockAttentionRequested => Err(HostProtocolError::internal(
+                "window destroy received dock attention response",
                 host_protocol::WINDOW_DESTROY_METHOD,
             )),
             WindowCommandResponse::MenuSet => Err(HostProtocolError::internal(
@@ -745,7 +1474,9 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenDisplays(_)
             | WindowCommandResponse::ScreenDisplay(_)
             | WindowCommandResponse::ScreenPoint(_)
-            | WindowCommandResponse::ScreenSupported(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::ScreenSupported(_)
+            | WindowCommandResponse::WebViewCreated(_)
+            | WindowCommandResponse::WebViewNavigationState(_) => Err(HostProtocolError::internal(
                 "window destroy received tray response",
                 host_protocol::WINDOW_DESTROY_METHOD,
             )),
@@ -816,6 +1547,25 @@ impl WindowMethodHandler for WindowMethodPort {
         }
     }
 
+    fn get_children(
+        &self,
+        window_id: &str,
+    ) -> std::result::Result<WindowListResponse, HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::GetChildren {
+            window_id: window_id.to_string(),
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WindowList(response) => Ok(response),
+            _ => Err(HostProtocolError::internal(
+                "window get children received unrelated response",
+                host_protocol::WINDOW_GET_CHILDREN_METHOD,
+            )),
+        }
+    }
+
     fn show(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
         let (reply_tx, reply_rx) = mpsc::channel();
         self.enqueue_command(WindowCommand::Show {
@@ -866,8 +1616,8 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::WindowParent(_)
             | WindowCommandResponse::WindowState(_)
             | WindowCommandResponse::DockBadgeLabelSet
+            | WindowCommandResponse::DockProgressSet
             | WindowCommandResponse::DockAttentionRequested
-            | WindowCommandResponse::DockMenuSet
             | WindowCommandResponse::MenuSet
             | WindowCommandResponse::TrayCreated(_)
             | WindowCommandResponse::TrayUpdated
@@ -875,7 +1625,9 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenDisplays(_)
             | WindowCommandResponse::ScreenDisplay(_)
             | WindowCommandResponse::ScreenPoint(_)
-            | WindowCommandResponse::ScreenSupported(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::ScreenSupported(_)
+            | WindowCommandResponse::WebViewCreated(_)
+            | WindowCommandResponse::WebViewNavigationState(_) => Err(HostProtocolError::internal(
                 "window get bounds received unrelated response",
                 host_protocol::WINDOW_GET_BOUNDS_METHOD,
             )),
@@ -886,7 +1638,7 @@ impl WindowMethodHandler for WindowMethodPort {
         &self,
         window_id: &str,
         bounds: &WindowBoundsPayload,
-    ) -> std::result::Result<(), HostProtocolError> {
+    ) -> std::result::Result<WindowBoundsPayload, HostProtocolError> {
         let (reply_tx, reply_rx) = mpsc::channel();
         self.enqueue_command(WindowCommand::SetBounds {
             window_id: window_id.to_string(),
@@ -894,24 +1646,47 @@ impl WindowMethodHandler for WindowMethodPort {
             reply: reply_tx,
         })?;
 
-        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_SET_BOUNDS_METHOD)
+        self.expect_window_bounds_response(reply_rx, host_protocol::WINDOW_SET_BOUNDS_METHOD)
     }
 
-    fn center(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+    fn set_bounds_on_display(
+        &self,
+        window_id: &str,
+        display_id: &str,
+        bounds: &WindowBoundsPayload,
+    ) -> std::result::Result<WindowBoundsPayload, HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetBoundsOnDisplay {
+            window_id: window_id.to_string(),
+            display_id: display_id.to_string(),
+            bounds: bounds.clone(),
+            reply: reply_tx,
+        })?;
+
+        self.expect_window_bounds_response(
+            reply_rx,
+            host_protocol::WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD,
+        )
+    }
+
+    fn center(
+        &self,
+        window_id: &str,
+    ) -> std::result::Result<WindowBoundsPayload, HostProtocolError> {
         let (reply_tx, reply_rx) = mpsc::channel();
         self.enqueue_command(WindowCommand::Center {
             window_id: window_id.to_string(),
             reply: reply_tx,
         })?;
 
-        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_CENTER_METHOD)
+        self.expect_window_bounds_response(reply_rx, host_protocol::WINDOW_CENTER_METHOD)
     }
 
     fn center_on_display(
         &self,
         window_id: &str,
         display_id: &str,
-    ) -> std::result::Result<(), HostProtocolError> {
+    ) -> std::result::Result<WindowBoundsPayload, HostProtocolError> {
         let (reply_tx, reply_rx) = mpsc::channel();
         self.enqueue_command(WindowCommand::CenterOnDisplay {
             window_id: window_id.to_string(),
@@ -919,7 +1694,7 @@ impl WindowMethodHandler for WindowMethodPort {
             reply: reply_tx,
         })?;
 
-        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_CENTER_ON_DISPLAY_METHOD)
+        self.expect_window_bounds_response(reply_rx, host_protocol::WINDOW_CENTER_ON_DISPLAY_METHOD)
     }
 
     fn set_title(
@@ -980,6 +1755,94 @@ impl WindowMethodHandler for WindowMethodPort {
         })?;
 
         self.expect_window_void_response(reply_rx, host_protocol::WINDOW_SET_TRAFFIC_LIGHTS_METHOD)
+    }
+
+    fn set_vibrancy(
+        &self,
+        window_id: &str,
+        material: &str,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetVibrancy {
+            window_id: window_id.to_string(),
+            material: material.to_string(),
+            reply: reply_tx,
+        })?;
+
+        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_SET_VIBRANCY_METHOD)
+    }
+
+    fn clear_vibrancy(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::ClearVibrancy {
+            window_id: window_id.to_string(),
+            reply: reply_tx,
+        })?;
+
+        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_CLEAR_VIBRANCY_METHOD)
+    }
+
+    fn set_shadow(
+        &self,
+        window_id: &str,
+        has_shadow: bool,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetShadow {
+            window_id: window_id.to_string(),
+            has_shadow,
+            reply: reply_tx,
+        })?;
+
+        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_SET_SHADOW_METHOD)
+    }
+
+    fn set_title_bar_style(
+        &self,
+        window_id: &str,
+        title_bar_style: WindowTitleBarStyle,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetTitleBarStyle {
+            window_id: window_id.to_string(),
+            title_bar_style,
+            reply: reply_tx,
+        })?;
+
+        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_SET_TITLE_BAR_STYLE_METHOD)
+    }
+
+    fn set_title_bar_transparent(
+        &self,
+        window_id: &str,
+        title_bar_transparent: bool,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetTitleBarTransparent {
+            window_id: window_id.to_string(),
+            title_bar_transparent,
+            reply: reply_tx,
+        })?;
+
+        self.expect_window_void_response(
+            reply_rx,
+            host_protocol::WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD,
+        )
+    }
+
+    fn set_transparent(
+        &self,
+        window_id: &str,
+        transparent: bool,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetTransparent {
+            window_id: window_id.to_string(),
+            transparent,
+            reply: reply_tx,
+        })?;
+
+        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_SET_TRANSPARENT_METHOD)
     }
 
     fn set_always_on_top(
@@ -1052,41 +1915,50 @@ impl WindowMethodHandler for WindowMethodPort {
         self.expect_window_void_response(reply_rx, host_protocol::WINDOW_CANCEL_ATTENTION_METHOD)
     }
 
-    fn minimize(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+    fn minimize(
+        &self,
+        window_id: &str,
+    ) -> std::result::Result<WindowStatePayload, HostProtocolError> {
         let (reply_tx, reply_rx) = mpsc::channel();
         self.enqueue_command(WindowCommand::Minimize {
             window_id: window_id.to_string(),
             reply: reply_tx,
         })?;
 
-        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_MINIMIZE_METHOD)
+        self.expect_window_state_response(reply_rx, host_protocol::WINDOW_MINIMIZE_METHOD)
     }
 
-    fn maximize(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+    fn maximize(
+        &self,
+        window_id: &str,
+    ) -> std::result::Result<WindowStatePayload, HostProtocolError> {
         let (reply_tx, reply_rx) = mpsc::channel();
         self.enqueue_command(WindowCommand::Maximize {
             window_id: window_id.to_string(),
             reply: reply_tx,
         })?;
 
-        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_MAXIMIZE_METHOD)
+        self.expect_window_state_response(reply_rx, host_protocol::WINDOW_MAXIMIZE_METHOD)
     }
 
-    fn restore(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+    fn restore(
+        &self,
+        window_id: &str,
+    ) -> std::result::Result<WindowStatePayload, HostProtocolError> {
         let (reply_tx, reply_rx) = mpsc::channel();
         self.enqueue_command(WindowCommand::Restore {
             window_id: window_id.to_string(),
             reply: reply_tx,
         })?;
 
-        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_RESTORE_METHOD)
+        self.expect_window_state_response(reply_rx, host_protocol::WINDOW_RESTORE_METHOD)
     }
 
     fn set_fullscreen(
         &self,
         window_id: &str,
         fullscreen: bool,
-    ) -> std::result::Result<(), HostProtocolError> {
+    ) -> std::result::Result<WindowStatePayload, HostProtocolError> {
         let (reply_tx, reply_rx) = mpsc::channel();
         self.enqueue_command(WindowCommand::SetFullscreen {
             window_id: window_id.to_string(),
@@ -1094,7 +1966,25 @@ impl WindowMethodHandler for WindowMethodPort {
             reply: reply_tx,
         })?;
 
-        self.expect_window_void_response(reply_rx, host_protocol::WINDOW_SET_FULLSCREEN_METHOD)
+        self.expect_window_state_response(reply_rx, host_protocol::WINDOW_SET_FULLSCREEN_METHOD)
+    }
+
+    fn set_simple_fullscreen(
+        &self,
+        window_id: &str,
+        simple_fullscreen: bool,
+    ) -> std::result::Result<WindowStatePayload, HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetSimpleFullscreen {
+            window_id: window_id.to_string(),
+            simple_fullscreen,
+            reply: reply_tx,
+        })?;
+
+        self.expect_window_state_response(
+            reply_rx,
+            host_protocol::WINDOW_SET_SIMPLE_FULLSCREEN_METHOD,
+        )
     }
 
     fn get_state(
@@ -1117,8 +2007,8 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::WindowParent(_)
             | WindowCommandResponse::WindowBounds(_)
             | WindowCommandResponse::DockBadgeLabelSet
+            | WindowCommandResponse::DockProgressSet
             | WindowCommandResponse::DockAttentionRequested
-            | WindowCommandResponse::DockMenuSet
             | WindowCommandResponse::MenuSet
             | WindowCommandResponse::TrayCreated(_)
             | WindowCommandResponse::TrayUpdated
@@ -1126,7 +2016,9 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenDisplays(_)
             | WindowCommandResponse::ScreenDisplay(_)
             | WindowCommandResponse::ScreenPoint(_)
-            | WindowCommandResponse::ScreenSupported(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::ScreenSupported(_)
+            | WindowCommandResponse::WebViewCreated(_)
+            | WindowCommandResponse::WebViewNavigationState(_) => Err(HostProtocolError::internal(
                 "window get state received unrelated response",
                 host_protocol::WINDOW_GET_STATE_METHOD,
             )),
@@ -1156,7 +2048,7 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::WindowBounds(_)
             | WindowCommandResponse::WindowState(_)
             | WindowCommandResponse::DockAttentionRequested
-            | WindowCommandResponse::DockMenuSet
+            | WindowCommandResponse::DockProgressSet
             | WindowCommandResponse::MenuSet
             | WindowCommandResponse::TrayCreated(_)
             | WindowCommandResponse::TrayUpdated
@@ -1164,9 +2056,49 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenDisplays(_)
             | WindowCommandResponse::ScreenDisplay(_)
             | WindowCommandResponse::ScreenPoint(_)
-            | WindowCommandResponse::ScreenSupported(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::ScreenSupported(_)
+            | WindowCommandResponse::WebViewCreated(_)
+            | WindowCommandResponse::WebViewNavigationState(_) => Err(HostProtocolError::internal(
                 "dock badge command received window response",
                 operation,
+            )),
+        }
+    }
+
+    fn set_dock_progress(
+        &self,
+        progress: &DockSetProgressPayload,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetDockProgress {
+            progress: progress.clone(),
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::DockProgressSet => Ok(()),
+            WindowCommandResponse::Created(_)
+            | WindowCommandResponse::Destroyed
+            | WindowCommandResponse::WindowUpdated
+            | WindowCommandResponse::WindowLookup(_)
+            | WindowCommandResponse::WindowList(_)
+            | WindowCommandResponse::WindowParent(_)
+            | WindowCommandResponse::WindowBounds(_)
+            | WindowCommandResponse::WindowState(_)
+            | WindowCommandResponse::DockBadgeLabelSet
+            | WindowCommandResponse::DockAttentionRequested
+            | WindowCommandResponse::MenuSet
+            | WindowCommandResponse::TrayCreated(_)
+            | WindowCommandResponse::TrayUpdated
+            | WindowCommandResponse::TrayDestroyed
+            | WindowCommandResponse::ScreenDisplays(_)
+            | WindowCommandResponse::ScreenDisplay(_)
+            | WindowCommandResponse::ScreenPoint(_)
+            | WindowCommandResponse::ScreenSupported(_)
+            | WindowCommandResponse::WebViewCreated(_)
+            | WindowCommandResponse::WebViewNavigationState(_) => Err(HostProtocolError::internal(
+                "dock set progress received unrelated response",
+                host_protocol::DOCK_SET_PROGRESS_METHOD,
             )),
         }
     }
@@ -1189,7 +2121,7 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::WindowBounds(_)
             | WindowCommandResponse::WindowState(_)
             | WindowCommandResponse::DockBadgeLabelSet
-            | WindowCommandResponse::DockMenuSet
+            | WindowCommandResponse::DockProgressSet
             | WindowCommandResponse::MenuSet
             | WindowCommandResponse::TrayCreated(_)
             | WindowCommandResponse::TrayUpdated
@@ -1197,45 +2129,11 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenDisplays(_)
             | WindowCommandResponse::ScreenDisplay(_)
             | WindowCommandResponse::ScreenPoint(_)
-            | WindowCommandResponse::ScreenSupported(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::ScreenSupported(_)
+            | WindowCommandResponse::WebViewCreated(_)
+            | WindowCommandResponse::WebViewNavigationState(_) => Err(HostProtocolError::internal(
                 "dock attention command received window response",
                 host_protocol::DOCK_REQUEST_ATTENTION_METHOD,
-            )),
-        }
-    }
-
-    fn set_dock_menu(
-        &self,
-        template: Option<serde_json::Value>,
-    ) -> std::result::Result<(), HostProtocolError> {
-        let (reply_tx, reply_rx) = mpsc::channel();
-        self.enqueue_command(WindowCommand::SetDockMenu {
-            template,
-            reply: reply_tx,
-        })?;
-
-        match self.recv_reply(reply_rx)? {
-            WindowCommandResponse::DockMenuSet => Ok(()),
-            WindowCommandResponse::Created(_)
-            | WindowCommandResponse::Destroyed
-            | WindowCommandResponse::WindowUpdated
-            | WindowCommandResponse::WindowLookup(_)
-            | WindowCommandResponse::WindowList(_)
-            | WindowCommandResponse::WindowParent(_)
-            | WindowCommandResponse::WindowBounds(_)
-            | WindowCommandResponse::WindowState(_)
-            | WindowCommandResponse::DockBadgeLabelSet
-            | WindowCommandResponse::DockAttentionRequested
-            | WindowCommandResponse::MenuSet
-            | WindowCommandResponse::TrayCreated(_)
-            | WindowCommandResponse::TrayUpdated
-            | WindowCommandResponse::TrayDestroyed
-            | WindowCommandResponse::ScreenDisplays(_)
-            | WindowCommandResponse::ScreenDisplay(_)
-            | WindowCommandResponse::ScreenPoint(_)
-            | WindowCommandResponse::ScreenSupported(_) => Err(HostProtocolError::internal(
-                "dock menu command received window response",
-                host_protocol::DOCK_SET_MENU_METHOD,
             )),
         }
     }
@@ -1261,7 +2159,7 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::WindowBounds(_)
             | WindowCommandResponse::WindowState(_)
             | WindowCommandResponse::DockBadgeLabelSet
-            | WindowCommandResponse::DockMenuSet
+            | WindowCommandResponse::DockProgressSet
             | WindowCommandResponse::DockAttentionRequested
             | WindowCommandResponse::TrayCreated(_)
             | WindowCommandResponse::TrayUpdated
@@ -1269,7 +2167,9 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenDisplays(_)
             | WindowCommandResponse::ScreenDisplay(_)
             | WindowCommandResponse::ScreenPoint(_)
-            | WindowCommandResponse::ScreenSupported(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::ScreenSupported(_)
+            | WindowCommandResponse::WebViewCreated(_)
+            | WindowCommandResponse::WebViewNavigationState(_) => Err(HostProtocolError::internal(
                 "application menu command received window response",
                 host_protocol::MENU_SET_APPLICATION_MENU_METHOD,
             )),
@@ -1299,7 +2199,7 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::WindowBounds(_)
             | WindowCommandResponse::WindowState(_)
             | WindowCommandResponse::DockBadgeLabelSet
-            | WindowCommandResponse::DockMenuSet
+            | WindowCommandResponse::DockProgressSet
             | WindowCommandResponse::DockAttentionRequested
             | WindowCommandResponse::TrayCreated(_)
             | WindowCommandResponse::TrayUpdated
@@ -1307,7 +2207,9 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenDisplays(_)
             | WindowCommandResponse::ScreenDisplay(_)
             | WindowCommandResponse::ScreenPoint(_)
-            | WindowCommandResponse::ScreenSupported(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::ScreenSupported(_)
+            | WindowCommandResponse::WebViewCreated(_)
+            | WindowCommandResponse::WebViewNavigationState(_) => Err(HostProtocolError::internal(
                 "window menu command received window response",
                 host_protocol::MENU_SET_WINDOW_MENU_METHOD,
             )),
@@ -1445,6 +2347,272 @@ impl WindowMethodHandler for WindowMethodPort {
             response => Err(unexpected_tray_response(
                 response,
                 "host.runtime.tray.disconnect",
+            )),
+        }
+    }
+
+    fn create_webview(
+        &self,
+        request: WebViewCreateRequest,
+    ) -> std::result::Result<WebViewResourcePayload, HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::CreateWebView {
+            request,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WebViewCreated(webview) => Ok(webview),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::WEBVIEW_CREATE_METHOD,
+            )),
+        }
+    }
+
+    fn load_webview_route(
+        &self,
+        request: WebViewLoadRouteRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::LoadWebViewRoute {
+            request,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WindowUpdated => Ok(()),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::WEBVIEW_LOAD_ROUTE_METHOD,
+            )),
+        }
+    }
+
+    fn load_webview_url(
+        &self,
+        request: WebViewLoadUrlRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::LoadWebViewUrl {
+            request,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WindowUpdated => Ok(()),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::WEBVIEW_LOAD_URL_METHOD,
+            )),
+        }
+    }
+
+    fn reload_webview(
+        &self,
+        handle: WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::ReloadWebView {
+            handle,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WindowUpdated => Ok(()),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::WEBVIEW_RELOAD_METHOD,
+            )),
+        }
+    }
+
+    fn stop_webview(
+        &self,
+        handle: WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::StopWebView {
+            handle,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WindowUpdated => Ok(()),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::WEBVIEW_STOP_METHOD,
+            )),
+        }
+    }
+
+    fn go_back_webview(
+        &self,
+        handle: WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::GoBackWebView {
+            handle,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WindowUpdated => Ok(()),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::WEBVIEW_GO_BACK_METHOD,
+            )),
+        }
+    }
+
+    fn go_forward_webview(
+        &self,
+        handle: WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::GoForwardWebView {
+            handle,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WindowUpdated => Ok(()),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::WEBVIEW_GO_FORWARD_METHOD,
+            )),
+        }
+    }
+
+    fn get_webview_navigation_state(
+        &self,
+        handle: WebViewHandleRequest,
+    ) -> std::result::Result<WebViewNavigationStatePayload, HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::GetWebViewNavigationState {
+            handle,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WebViewNavigationState(state) => Ok(state),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::WEBVIEW_GET_NAVIGATION_STATE_METHOD,
+            )),
+        }
+    }
+
+    fn print_webview(
+        &self,
+        handle: WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::PrintWebView {
+            handle,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WindowUpdated => Ok(()),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::WEBVIEW_PRINT_METHOD,
+            )),
+        }
+    }
+
+    fn set_webview_zoom(
+        &self,
+        request: WebViewSetZoomRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetWebViewZoom {
+            request,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WindowUpdated => Ok(()),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::WEBVIEW_SET_ZOOM_METHOD,
+            )),
+        }
+    }
+
+    fn open_webview_devtools(
+        &self,
+        handle: WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::OpenWebViewDevTools {
+            handle,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WindowUpdated => Ok(()),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::WEBVIEW_OPEN_DEVTOOLS_METHOD,
+            )),
+        }
+    }
+
+    fn close_webview_devtools(
+        &self,
+        handle: WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::CloseWebViewDevTools {
+            handle,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WindowUpdated => Ok(()),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::WEBVIEW_CLOSE_DEVTOOLS_METHOD,
+            )),
+        }
+    }
+
+    fn set_webview_navigation_policy(
+        &self,
+        request: WebViewSetNavigationPolicyRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetWebViewNavigationPolicy {
+            request,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WindowUpdated => Ok(()),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::WEBVIEW_SET_NAVIGATION_POLICY_METHOD,
+            )),
+        }
+    }
+
+    fn destroy_webview(
+        &self,
+        handle: WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::DestroyWebView {
+            handle,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::Destroyed => Ok(()),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::WEBVIEW_DESTROY_METHOD,
             )),
         }
     }
@@ -1633,7 +2801,7 @@ impl WindowRegistry {
     fn new() -> Self {
         Self {
             windows: HashMap::new(),
-            window_states: HashMap::new(),
+            webviews: HashMap::new(),
             window_id_by_native_id: HashMap::new(),
             window_order: Vec::new(),
             focused_window_id: None,
@@ -1681,11 +2849,10 @@ impl WindowRegistry {
             title = request.title(),
             width = request.width(),
             height = request.height(),
-            smoke = matches!(mode, RunMode::WindowSmokeTest),
+            smoke = mode.is_smoke_test(),
             "host window opened"
         );
 
-        let initial_state = tao_window_state(&window);
         let webview = webview::attach_app_webview(&window).map_err(|error| *error)?;
         let native_window_id = window.id();
         self.windows.insert(
@@ -1695,7 +2862,6 @@ impl WindowRegistry {
                 _webview: webview,
             },
         );
-        self.window_states.insert(window_id.clone(), initial_state);
         self.track_window_opened(&window_id, native_window_id);
         if let Some(parent_window_id) = parent_window_id {
             self.child_window_ids_by_parent_id
@@ -1802,7 +2968,6 @@ impl WindowRegistry {
         if let Some(resources) = self.windows.remove(window_id) {
             self.window_id_by_native_id.remove(&resources._window.id());
         }
-        self.window_states.remove(window_id);
         self.forget_window_id(window_id);
         if let Some(parent_window_id) = self.parent_window_id_by_child_id.remove(window_id) {
             if let Some(siblings) = self
@@ -1820,11 +2985,21 @@ impl WindowRegistry {
     }
 
     fn show(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
-        self.set_visible(window_id, true, host_protocol::WINDOW_SHOW_METHOD)
+        self.set_visible(
+            window_id,
+            true,
+            WindowRegistryEventPhase::Shown,
+            host_protocol::WINDOW_SHOW_METHOD,
+        )
     }
 
     fn hide(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
-        self.set_visible(window_id, false, host_protocol::WINDOW_HIDE_METHOD)
+        self.set_visible(
+            window_id,
+            false,
+            WindowRegistryEventPhase::Hidden,
+            host_protocol::WINDOW_HIDE_METHOD,
+        )
     }
 
     fn focus(&mut self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
@@ -1887,6 +3062,37 @@ impl WindowRegistry {
         }
     }
 
+    fn emit_native_window_close_requested(&self, native_window_id: WindowId) {
+        let Some(window_id) = self.window_id_by_native_id.get(&native_window_id).cloned() else {
+            return;
+        };
+        if let Err(error) =
+            emit_window_registry_event(&window_id, WindowRegistryEventPhase::CloseRequested)
+        {
+            warn!(
+                event = "host.window.event_emit_failed",
+                error = ?error,
+                window_id,
+                "failed to emit native window close-requested event"
+            );
+        }
+    }
+
+    #[cfg_attr(test, allow(dead_code))]
+    fn native_window_close_requested_to_background(&mut self, native_window_id: WindowId) {
+        let Some(window_id) = self.window_id_by_native_id.get(&native_window_id).cloned() else {
+            return;
+        };
+        if let Err(error) = self.hide(&window_id) {
+            warn!(
+                event = "host.window.background_hide_failed",
+                error = ?error,
+                window_id,
+                "failed to hide window for resident lifecycle close request"
+            );
+        }
+    }
+
     fn emit_focused_window_event(&self, window_id: &str) {
         if let Err(error) = emit_window_registry_event(window_id, WindowRegistryEventPhase::Focused)
         {
@@ -1941,6 +3147,31 @@ impl WindowRegistry {
         ))
     }
 
+    fn get_children(
+        &self,
+        window_id: &str,
+    ) -> std::result::Result<WindowListResponse, HostProtocolError> {
+        if !self.windows.contains_key(window_id) {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                host_protocol::WINDOW_GET_CHILDREN_METHOD,
+            ));
+        }
+        let mut child_window_ids = self
+            .child_window_ids_by_parent_id
+            .get(window_id)
+            .map(|children| children.iter().cloned().collect::<Vec<_>>())
+            .unwrap_or_default();
+        child_window_ids.sort();
+        Ok(WindowListResponse::new(
+            child_window_ids
+                .into_iter()
+                .filter(|child_window_id| self.windows.contains_key(child_window_id.as_str()))
+                .map(WindowLookupResponse::new)
+                .collect(),
+        ))
+    }
+
     fn get_by_id_with_operation(
         &self,
         window_id: &str,
@@ -1972,7 +3203,7 @@ impl WindowRegistry {
         &self,
         window_id: &str,
         bounds: &WindowBoundsPayload,
-    ) -> std::result::Result<(), HostProtocolError> {
+    ) -> std::result::Result<WindowBoundsPayload, HostProtocolError> {
         let Some(resources) = self.windows.get(window_id) else {
             return Err(HostProtocolError::not_found(
                 format!("Window:{window_id}"),
@@ -1980,16 +3211,63 @@ impl WindowRegistry {
             ));
         };
 
+        let clipped_bounds = resources
+            ._window
+            .current_monitor()
+            .map(|monitor| clip_window_bounds_to_monitor_work_area(bounds, &monitor))
+            .unwrap_or_else(|| bounds.clone());
+
         resources
             ._window
-            .set_outer_position(LogicalPosition::new(bounds.x(), bounds.y()));
-        resources
-            ._window
-            .set_inner_size(LogicalSize::new(bounds.width(), bounds.height()));
-        Ok(())
+            .set_outer_position(LogicalPosition::new(clipped_bounds.x(), clipped_bounds.y()));
+        resources._window.set_inner_size(LogicalSize::new(
+            clipped_bounds.width(),
+            clipped_bounds.height(),
+        ));
+        window_bounds(&resources._window, host_protocol::WINDOW_SET_BOUNDS_METHOD)
     }
 
-    fn center(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+    fn set_bounds_on_display(
+        &self,
+        window_id: &str,
+        display_id: &str,
+        bounds: &WindowBoundsPayload,
+    ) -> std::result::Result<WindowBoundsPayload, HostProtocolError> {
+        let Some(resources) = self.windows.get(window_id) else {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                host_protocol::WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD,
+            ));
+        };
+        let Some(monitor) = resources
+            ._window
+            .available_monitors()
+            .find(|monitor| screen_display_id(monitor) == display_id)
+        else {
+            return Err(HostProtocolError::not_found(
+                format!("ScreenDisplay:{display_id}"),
+                host_protocol::WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD,
+            ));
+        };
+        let bounds = display_relative_bounds_to_physical_position(
+            bounds,
+            &monitor,
+            host_protocol::WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD,
+        )?;
+        resources._window.set_outer_position(bounds.position);
+        resources
+            ._window
+            .set_inner_size(LogicalSize::new(bounds.size.width, bounds.size.height));
+        window_bounds(
+            &resources._window,
+            host_protocol::WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD,
+        )
+    }
+
+    fn center(
+        &self,
+        window_id: &str,
+    ) -> std::result::Result<WindowBoundsPayload, HostProtocolError> {
         let Some(resources) = self.windows.get(window_id) else {
             return Err(HostProtocolError::not_found(
                 format!("Window:{window_id}"),
@@ -2006,14 +3284,14 @@ impl WindowRegistry {
         resources
             ._window
             .set_outer_position(LogicalPosition::new(bounds.x(), bounds.y()));
-        Ok(())
+        window_bounds(&resources._window, host_protocol::WINDOW_CENTER_METHOD)
     }
 
     fn center_on_display(
         &self,
         window_id: &str,
         display_id: &str,
-    ) -> std::result::Result<(), HostProtocolError> {
+    ) -> std::result::Result<WindowBoundsPayload, HostProtocolError> {
         let Some(resources) = self.windows.get(window_id) else {
             return Err(HostProtocolError::not_found(
                 format!("Window:{window_id}"),
@@ -2036,7 +3314,10 @@ impl WindowRegistry {
             host_protocol::WINDOW_CENTER_ON_DISPLAY_METHOD,
         )?;
         resources._window.set_outer_position(position);
-        Ok(())
+        window_bounds(
+            &resources._window,
+            host_protocol::WINDOW_CENTER_ON_DISPLAY_METHOD,
+        )
     }
 
     fn set_title(
@@ -2100,6 +3381,92 @@ impl WindowRegistry {
         };
 
         macos::set_traffic_lights(&resources._window, traffic_lights)
+    }
+
+    fn set_vibrancy(
+        &self,
+        window_id: &str,
+        material: &str,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let Some(resources) = self.windows.get(window_id) else {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                host_protocol::WINDOW_SET_VIBRANCY_METHOD,
+            ));
+        };
+
+        macos::set_vibrancy(&resources._window, material)
+    }
+
+    fn clear_vibrancy(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+        let Some(resources) = self.windows.get(window_id) else {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                host_protocol::WINDOW_CLEAR_VIBRANCY_METHOD,
+            ));
+        };
+
+        macos::clear_vibrancy(&resources._window)
+    }
+
+    fn set_shadow(
+        &self,
+        window_id: &str,
+        has_shadow: bool,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let Some(resources) = self.windows.get(window_id) else {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                host_protocol::WINDOW_SET_SHADOW_METHOD,
+            ));
+        };
+
+        macos::set_shadow(&resources._window, has_shadow)
+    }
+
+    fn set_title_bar_transparent(
+        &self,
+        window_id: &str,
+        title_bar_transparent: bool,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let Some(resources) = self.windows.get(window_id) else {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                host_protocol::WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD,
+            ));
+        };
+
+        macos::set_title_bar_transparent(&resources._window, title_bar_transparent)
+    }
+
+    fn set_title_bar_style(
+        &self,
+        window_id: &str,
+        title_bar_style: WindowTitleBarStyle,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let Some(resources) = self.windows.get(window_id) else {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                host_protocol::WINDOW_SET_TITLE_BAR_STYLE_METHOD,
+            ));
+        };
+
+        macos::set_title_bar_style(&resources._window, title_bar_style)
+    }
+
+    fn set_transparent(
+        &self,
+        window_id: &str,
+        transparent: bool,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let Some(resources) = self.windows.get(window_id) else {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                host_protocol::WINDOW_SET_TRANSPARENT_METHOD,
+            ));
+        };
+
+        macos::set_transparent(&resources._window, transparent)
     }
 
     fn set_always_on_top(
@@ -2183,7 +3550,10 @@ impl WindowRegistry {
         Ok(())
     }
 
-    fn minimize(&mut self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+    fn minimize(
+        &mut self,
+        window_id: &str,
+    ) -> std::result::Result<WindowStatePayload, HostProtocolError> {
         let Some(resources) = self.windows.get(window_id) else {
             return Err(HostProtocolError::not_found(
                 format!("Window:{window_id}"),
@@ -2192,13 +3562,20 @@ impl WindowRegistry {
         };
 
         resources._window.set_minimized(true);
-        self.update_window_state(window_id, |state| {
-            WindowStatePayload::new(true, state.maximized(), state.fullscreen())
-        });
-        Ok(())
+        let observed = tao_window_state(&resources._window);
+        ensure_window_state(
+            &observed,
+            observed.minimized(),
+            "minimized=true",
+            host_protocol::WINDOW_MINIMIZE_METHOD,
+        )?;
+        Ok(observed)
     }
 
-    fn maximize(&mut self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+    fn maximize(
+        &mut self,
+        window_id: &str,
+    ) -> std::result::Result<WindowStatePayload, HostProtocolError> {
         let Some(resources) = self.windows.get(window_id) else {
             return Err(HostProtocolError::not_found(
                 format!("Window:{window_id}"),
@@ -2207,13 +3584,20 @@ impl WindowRegistry {
         };
 
         resources._window.set_maximized(true);
-        self.update_window_state(window_id, |state| {
-            WindowStatePayload::new(state.minimized(), true, state.fullscreen())
-        });
-        Ok(())
+        let observed = tao_window_state(&resources._window);
+        ensure_window_state(
+            &observed,
+            observed.maximized(),
+            "maximized=true",
+            host_protocol::WINDOW_MAXIMIZE_METHOD,
+        )?;
+        Ok(observed)
     }
 
-    fn restore(&mut self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+    fn restore(
+        &mut self,
+        window_id: &str,
+    ) -> std::result::Result<WindowStatePayload, HostProtocolError> {
         let Some(resources) = self.windows.get(window_id) else {
             return Err(HostProtocolError::not_found(
                 format!("Window:{window_id}"),
@@ -2224,18 +3608,25 @@ impl WindowRegistry {
         resources._window.set_minimized(false);
         resources._window.set_maximized(false);
         resources._window.set_fullscreen(None);
-        self.window_states.insert(
-            window_id.to_string(),
-            WindowStatePayload::new(false, false, false),
-        );
-        Ok(())
+        clear_simple_fullscreen(&resources._window)?;
+        let observed = tao_window_state(&resources._window);
+        ensure_window_state(
+            &observed,
+            !observed.minimized()
+                && !observed.maximized()
+                && !observed.fullscreen()
+                && !observed.simple_fullscreen(),
+            "restored",
+            host_protocol::WINDOW_RESTORE_METHOD,
+        )?;
+        Ok(observed)
     }
 
     fn set_fullscreen(
         &mut self,
         window_id: &str,
         fullscreen: bool,
-    ) -> std::result::Result<(), HostProtocolError> {
+    ) -> std::result::Result<WindowStatePayload, HostProtocolError> {
         let Some(resources) = self.windows.get(window_id) else {
             return Err(HostProtocolError::not_found(
                 format!("Window:{window_id}"),
@@ -2248,10 +3639,49 @@ impl WindowRegistry {
         } else {
             None
         });
-        self.update_window_state(window_id, |state| {
-            WindowStatePayload::new(state.minimized(), state.maximized(), fullscreen)
-        });
-        Ok(())
+        let observed = tao_window_state(&resources._window);
+        ensure_window_state(
+            &observed,
+            observed.fullscreen() == fullscreen,
+            if fullscreen {
+                "fullscreen=true"
+            } else {
+                "fullscreen=false"
+            },
+            host_protocol::WINDOW_SET_FULLSCREEN_METHOD,
+        )?;
+        Ok(observed)
+    }
+
+    fn set_simple_fullscreen(
+        &mut self,
+        window_id: &str,
+        simple_fullscreen: bool,
+    ) -> std::result::Result<WindowStatePayload, HostProtocolError> {
+        let Some(resources) = self.windows.get(window_id) else {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{window_id}"),
+                host_protocol::WINDOW_SET_SIMPLE_FULLSCREEN_METHOD,
+            ));
+        };
+
+        set_simple_fullscreen(
+            &resources._window,
+            simple_fullscreen,
+            host_protocol::WINDOW_SET_SIMPLE_FULLSCREEN_METHOD,
+        )?;
+        let observed = tao_window_state(&resources._window);
+        ensure_window_state(
+            &observed,
+            observed.simple_fullscreen() == simple_fullscreen,
+            if simple_fullscreen {
+                "simpleFullscreen=true"
+            } else {
+                "simpleFullscreen=false"
+            },
+            host_protocol::WINDOW_SET_SIMPLE_FULLSCREEN_METHOD,
+        )?;
+        Ok(observed)
     }
 
     fn get_state(
@@ -2266,10 +3696,6 @@ impl WindowRegistry {
         window_id: &str,
         operation: &'static str,
     ) -> std::result::Result<WindowStatePayload, HostProtocolError> {
-        if let Some(state) = self.window_states.get(window_id) {
-            return Ok(state.clone());
-        }
-
         let Some(resources) = self.windows.get(window_id) else {
             return Err(HostProtocolError::not_found(
                 format!("Window:{window_id}"),
@@ -2280,43 +3706,41 @@ impl WindowRegistry {
         Ok(tao_window_state(&resources._window))
     }
 
-    fn update_window_state(
-        &mut self,
-        window_id: &str,
-        update: impl FnOnce(&WindowStatePayload) -> WindowStatePayload,
-    ) {
-        let current = self
-            .window_states
-            .get(window_id)
-            .cloned()
-            .or_else(|| {
-                self.windows
-                    .get(window_id)
-                    .map(|resources| tao_window_state(&resources._window))
-            })
-            .unwrap_or_else(|| WindowStatePayload::new(false, false, false));
-        self.window_states
-            .insert(window_id.to_string(), update(&current));
+    fn emit_observed_window_state(&self, window_id: &str, state: &WindowStatePayload) {
+        if let Err(error) = emit_window_state_event(window_id, state.clone()) {
+            warn!(
+                event = "host.window.event_emit_failed",
+                error = ?error,
+                window_id,
+                "failed to emit window state event"
+            );
+        }
     }
 
-    fn emit_window_state_snapshot(&self, window_id: &str, operation: &'static str) {
-        match self.window_state(window_id, operation) {
-            Ok(state) => {
-                if let Err(error) = emit_window_state_event(window_id, state) {
+    fn emit_native_window_bounds_event(&self, native_window_id: WindowId) {
+        let Some(window_id) = self.window_id_by_native_id.get(&native_window_id).cloned() else {
+            return;
+        };
+        let Some(resources) = self.windows.get(&window_id) else {
+            return;
+        };
+        match window_bounds(&resources._window, host_protocol::WINDOW_EVENT) {
+            Ok(bounds) => {
+                if let Err(error) = emit_window_bounds_event(&window_id, bounds) {
                     warn!(
                         event = "host.window.event_emit_failed",
                         error = ?error,
                         window_id,
-                        "failed to emit window state event"
+                        "failed to emit window bounds event"
                     );
                 }
             }
             Err(error) => {
                 warn!(
-                    event = "host.window.state_event_failed",
+                    event = "host.window.bounds_event_failed",
                     error = ?error,
                     window_id,
-                    "failed to read window state for event"
+                    "failed to read window bounds for event"
                 );
             }
         }
@@ -2326,6 +3750,7 @@ impl WindowRegistry {
         &self,
         window_id: &str,
         visible: bool,
+        phase: WindowRegistryEventPhase,
         operation: &'static str,
     ) -> std::result::Result<(), HostProtocolError> {
         let Some(resources) = self.windows.get(window_id) else {
@@ -2336,6 +3761,14 @@ impl WindowRegistry {
         };
 
         resources._window.set_visible(visible);
+        if let Err(error) = emit_window_registry_event(window_id, phase) {
+            warn!(
+                event = "host.window.event_emit_failed",
+                error = ?error,
+                window_id,
+                "failed to emit native window visibility event"
+            );
+        }
         Ok(())
     }
 
@@ -2352,6 +3785,23 @@ impl WindowRegistry {
         };
 
         macos::set_dock_badge_label(&resources._window, label)
+    }
+
+    fn set_dock_progress(
+        &self,
+        progress: &DockSetProgressPayload,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let Some(resources) = self.windows.values().next() else {
+            return Err(HostProtocolError::not_found(
+                "Window:firstResponder",
+                host_protocol::DOCK_SET_PROGRESS_METHOD,
+            ));
+        };
+
+        resources
+            ._window
+            .set_progress_bar(to_tao_dock_progress(progress)?);
+        Ok(())
     }
 
     fn request_dock_attention(&self, critical: bool) -> std::result::Result<(), HostProtocolError> {
@@ -2376,13 +3826,6 @@ impl WindowRegistry {
         template: serde_json::Value,
     ) -> std::result::Result<(), HostProtocolError> {
         macos::set_application_menu(template)
-    }
-
-    fn set_dock_menu(
-        &self,
-        template: Option<serde_json::Value>,
-    ) -> std::result::Result<(), HostProtocolError> {
-        macos::set_dock_menu(template)
     }
 
     fn set_window_menu(
@@ -2605,6 +4048,294 @@ impl WindowRegistry {
         Ok(())
     }
 
+    fn create_webview(
+        &mut self,
+        request: WebViewCreateRequest,
+    ) -> std::result::Result<WebViewResourcePayload, HostProtocolError> {
+        let Some(window) = self.windows.get(&request.window_id) else {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{}", request.window_id),
+                host_protocol::WEBVIEW_CREATE_METHOD,
+            ));
+        };
+
+        if !origin_allowed(&request.url, &request.policy) {
+            return Err(webview_permission_denied(
+                "WebView.create denied by origin policy",
+                host_protocol::WEBVIEW_CREATE_METHOD,
+            ));
+        }
+
+        let webview_id = Uuid::now_v7().to_string();
+        let owner_scope = format!("window:{}", request.window_id);
+        let navigation = Rc::new(RefCell::new(WebViewNavigationState::new(
+            request.url.clone(),
+        )));
+        let policy = Rc::new(RefCell::new(request.policy));
+        let navigation_for_policy = Rc::clone(&navigation);
+        let navigation_for_load = Rc::clone(&navigation);
+        let policy_for_handler = Rc::clone(&policy);
+        let policy_for_new_window = Rc::clone(&policy);
+        let webview_id_for_navigation = webview_id.clone();
+        let webview_id_for_page_load = webview_id.clone();
+        let webview_id_for_drag_drop = webview_id.clone();
+        let webview_id_for_new_window = webview_id.clone();
+        let owner_scope_for_event = owner_scope.clone();
+        let owner_scope_for_page_load = owner_scope.clone();
+        let owner_scope_for_drag_drop = owner_scope.clone();
+        let owner_scope_for_new_window = owner_scope.clone();
+        let isolation = request
+            .isolation
+            .map(|policy| webview_isolation(&webview_id, &owner_scope, policy));
+        let webview = webview::attach_child_webview(
+            &window._window,
+            webview::ChildWebViewRequest {
+                url: request.url,
+                navigation_handler: Box::new(move |url| {
+                    if !origin_allowed(&url, &policy_for_handler.borrow()) {
+                        emit_webview_navigation_blocked_event(
+                            &webview_id_for_navigation,
+                            &owner_scope_for_event,
+                            &url,
+                            "origin-policy",
+                        );
+                        return false;
+                    }
+                    navigation_for_policy.borrow_mut().mark_loading(&url);
+                    true
+                }),
+                new_window_handler: Box::new(move |url, _features| {
+                    if !origin_allowed(&url, &policy_for_new_window.borrow()) {
+                        emit_webview_navigation_blocked_event(
+                            &webview_id_for_new_window,
+                            &owner_scope_for_new_window,
+                            &url,
+                            "popup-policy",
+                        );
+                    }
+                    wry::NewWindowResponse::Deny
+                }),
+                isolation,
+                page_load_handler: Box::new(move |event, url| match event {
+                    wry::PageLoadEvent::Started => {
+                        navigation_for_load.borrow_mut().mark_loading(&url);
+                        emit_webview_runtime_event(
+                            &webview_id_for_page_load,
+                            &owner_scope_for_page_load,
+                            "page-load-started",
+                            Some(&url),
+                            None,
+                            None,
+                            None,
+                        );
+                    }
+                    wry::PageLoadEvent::Finished => {
+                        navigation_for_load.borrow_mut().mark_finished(&url);
+                        emit_webview_runtime_event(
+                            &webview_id_for_page_load,
+                            &owner_scope_for_page_load,
+                            "page-load-finished",
+                            Some(&url),
+                            None,
+                            None,
+                            None,
+                        );
+                    }
+                }),
+                drag_drop_handler: Box::new(move |event| {
+                    let (phase, paths, position) = webview_drag_drop_event_payload(event);
+                    emit_webview_runtime_event(
+                        &webview_id_for_drag_drop,
+                        &owner_scope_for_drag_drop,
+                        phase,
+                        None,
+                        None,
+                        paths.as_deref(),
+                        position,
+                    );
+                    true
+                }),
+            },
+        )
+        .map_err(|error| *error)?;
+
+        self.webviews.insert(
+            webview_id.clone(),
+            NativeWebViewResources {
+                _webview: webview,
+                generation: 0,
+                owner_scope: owner_scope.clone(),
+                policy,
+                navigation,
+            },
+        );
+
+        Ok(WebViewResourcePayload::new(webview_id, 0, owner_scope))
+    }
+
+    fn load_webview_route(
+        &mut self,
+        request: WebViewLoadRouteRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let url = format!("app://localhost{}", request.route);
+        self.load_webview_url(WebViewLoadUrlRequest::new(request.handle, url))
+    }
+
+    fn load_webview_url(
+        &mut self,
+        request: WebViewLoadUrlRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let resources =
+            self.webview_resources(&request.handle, host_protocol::WEBVIEW_LOAD_URL_METHOD)?;
+        if !origin_allowed(&request.url, &resources.policy.borrow()) {
+            return Err(webview_permission_denied(
+                "WebView.loadUrl denied by origin policy",
+                host_protocol::WEBVIEW_LOAD_URL_METHOD,
+            ));
+        }
+        resources
+            ._webview
+            .load_url(&request.url)
+            .map_err(|error| webview_host_error(error, host_protocol::WEBVIEW_LOAD_URL_METHOD))?;
+        resources.navigation.borrow_mut().mark_loading(&request.url);
+        Ok(())
+    }
+
+    fn reload_webview(
+        &mut self,
+        handle: &WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let resources = self.webview_resources(handle, host_protocol::WEBVIEW_RELOAD_METHOD)?;
+        resources
+            ._webview
+            .reload()
+            .map_err(|error| webview_host_error(error, host_protocol::WEBVIEW_RELOAD_METHOD))?;
+        resources.navigation.borrow_mut().loading = true;
+        Ok(())
+    }
+
+    fn stop_webview(
+        &mut self,
+        handle: &WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let resources = self.webview_resources(handle, host_protocol::WEBVIEW_STOP_METHOD)?;
+        resources
+            ._webview
+            .evaluate_script("window.stop()")
+            .map_err(|error| webview_host_error(error, host_protocol::WEBVIEW_STOP_METHOD))?;
+        resources.navigation.borrow_mut().mark_stopped();
+        Ok(())
+    }
+
+    fn go_back_webview(
+        &mut self,
+        handle: &WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let resources = self.webview_resources(handle, host_protocol::WEBVIEW_GO_BACK_METHOD)?;
+        resources
+            ._webview
+            .evaluate_script("history.back()")
+            .map_err(|error| webview_host_error(error, host_protocol::WEBVIEW_GO_BACK_METHOD))?;
+        resources.navigation.borrow_mut().move_back();
+        Ok(())
+    }
+
+    fn go_forward_webview(
+        &mut self,
+        handle: &WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let resources = self.webview_resources(handle, host_protocol::WEBVIEW_GO_FORWARD_METHOD)?;
+        resources
+            ._webview
+            .evaluate_script("history.forward()")
+            .map_err(|error| webview_host_error(error, host_protocol::WEBVIEW_GO_FORWARD_METHOD))?;
+        resources.navigation.borrow_mut().move_forward();
+        Ok(())
+    }
+
+    fn get_webview_navigation_state(
+        &self,
+        handle: &WebViewHandleRequest,
+    ) -> std::result::Result<WebViewNavigationStatePayload, HostProtocolError> {
+        let resources =
+            self.webview_resources(handle, host_protocol::WEBVIEW_GET_NAVIGATION_STATE_METHOD)?;
+        Ok(resources.navigation.borrow().to_payload())
+    }
+
+    fn print_webview(
+        &self,
+        handle: &WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let resources = self.webview_resources(handle, host_protocol::WEBVIEW_PRINT_METHOD)?;
+        webview::print(&resources._webview)
+    }
+
+    fn set_webview_zoom(
+        &self,
+        request: &WebViewSetZoomRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let resources =
+            self.webview_resources(&request.handle, host_protocol::WEBVIEW_SET_ZOOM_METHOD)?;
+        webview::zoom(&resources._webview, request.zoom)
+    }
+
+    fn open_webview_devtools(
+        &self,
+        handle: &WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let resources =
+            self.webview_resources(handle, host_protocol::WEBVIEW_OPEN_DEVTOOLS_METHOD)?;
+        webview::open_devtools(&resources._webview)
+    }
+
+    fn close_webview_devtools(
+        &self,
+        handle: &WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let resources =
+            self.webview_resources(handle, host_protocol::WEBVIEW_CLOSE_DEVTOOLS_METHOD)?;
+        webview::close_devtools(&resources._webview)
+    }
+
+    fn set_webview_navigation_policy(
+        &mut self,
+        request: WebViewSetNavigationPolicyRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let resources = self.webview_resources(
+            &request.handle,
+            host_protocol::WEBVIEW_SET_NAVIGATION_POLICY_METHOD,
+        )?;
+        *resources.policy.borrow_mut() = request.policy;
+        Ok(())
+    }
+
+    fn destroy_webview(
+        &mut self,
+        handle: &WebViewHandleRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let resources = self.webviews.get(&handle.id).ok_or_else(|| {
+            HostProtocolError::not_found(
+                format!("WebView:{}", handle.id),
+                host_protocol::WEBVIEW_DESTROY_METHOD,
+            )
+        })?;
+        validate_webview_handle(handle, resources, host_protocol::WEBVIEW_DESTROY_METHOD)?;
+        self.webviews.remove(&handle.id);
+        Ok(())
+    }
+
+    fn webview_resources(
+        &self,
+        handle: &WebViewHandleRequest,
+        operation: &'static str,
+    ) -> std::result::Result<&NativeWebViewResources, HostProtocolError> {
+        let resources = self.webviews.get(&handle.id).ok_or_else(|| {
+            HostProtocolError::not_found(format!("WebView:{}", handle.id), operation)
+        })?;
+        validate_webview_handle(handle, resources, operation)?;
+        Ok(resources)
+    }
+
     fn screen_displays(
         &self,
         target: &EventLoopWindowTarget<HostEvent>,
@@ -2713,16 +4444,28 @@ impl WindowRegistry {
                 WindowLifecycleEvent::SmokeTimedOut => {
                     lifecycle = WindowLifecycleEvent::SmokeTimedOut
                 }
-                WindowLifecycleEvent::SmokeExitRequested
+                WindowLifecycleEvent::AppQuitRequested(exit_code)
                     if !matches!(
                         lifecycle,
                         WindowLifecycleEvent::WindowCreateFailed
                             | WindowLifecycleEvent::SmokeTimedOut
                     ) =>
                 {
+                    lifecycle = WindowLifecycleEvent::AppQuitRequested(exit_code);
+                }
+                WindowLifecycleEvent::SmokeExitRequested
+                    if !matches!(
+                        lifecycle,
+                        WindowLifecycleEvent::WindowCreateFailed
+                            | WindowLifecycleEvent::SmokeTimedOut
+                            | WindowLifecycleEvent::AppQuitRequested(_)
+                    ) =>
+                {
                     lifecycle = WindowLifecycleEvent::SmokeExitRequested;
                 }
-                WindowLifecycleEvent::CloseRequested | WindowLifecycleEvent::Other => {}
+                WindowLifecycleEvent::CloseRequested
+                | WindowLifecycleEvent::AppQuitRequested(_)
+                | WindowLifecycleEvent::Other => {}
                 WindowLifecycleEvent::SmokeExitRequested => {}
             }
         }
@@ -2737,19 +4480,47 @@ impl WindowRegistry {
         command: WindowCommand,
     ) -> WindowLifecycleEvent {
         match command {
+            WindowCommand::Quit { exit_code, reply } => {
+                send_window_command_reply(reply, Ok(WindowCommandResponse::WindowUpdated));
+                WindowLifecycleEvent::AppQuitRequested(exit_code)
+            }
+            WindowCommand::Restart { args, reply } => match restart_current_process(&args) {
+                Ok(()) => {
+                    send_window_command_reply(reply, Ok(WindowCommandResponse::WindowUpdated));
+                    WindowLifecycleEvent::AppQuitRequested(0)
+                }
+                Err(error) => {
+                    send_window_command_reply(reply, Err(error));
+                    WindowLifecycleEvent::Other
+                }
+            },
             WindowCommand::Create { request, reply } => {
-                let result = self
-                    .create(target, request, mode)
-                    .map(WindowCommandResponse::Created);
-                let lifecycle = lifecycle_for_create_result(&result);
+                let result = self.create(target, request, mode);
+                let lifecycle = match &result {
+                    Ok(created) if matches!(mode, RunMode::ResidentLifecycleSmokeTest) => {
+                        self.run_resident_lifecycle_smoke(created.window_id())
+                    }
+                    Ok(created) if matches!(mode, RunMode::AppQuitSmokeTest) => {
+                        self.run_app_quit_smoke(created.window_id())
+                    }
+                    Ok(created) if matches!(mode, RunMode::AppFocusSmokeTest) => {
+                        self.run_app_focus_smoke(created.window_id())
+                    }
+                    Ok(created) if matches!(mode, RunMode::AppRestartSmokeTest) => {
+                        self.run_app_restart_smoke(created.window_id())
+                    }
+                    _ => lifecycle_for_create_result(
+                        &result.clone().map(WindowCommandResponse::Created),
+                    ),
+                };
+                let result = result.map(WindowCommandResponse::Created);
                 send_window_command_reply(reply, result);
                 lifecycle
             }
             WindowCommand::Destroy { window_id, reply } => {
                 let result = self.destroy(&window_id);
-                let exit_after_destroy = result.is_ok()
-                    && matches!(mode, RunMode::WindowSmokeTest)
-                    && self.windows.is_empty();
+                let exit_after_destroy =
+                    result.is_ok() && mode.is_smoke_test() && self.windows.is_empty();
                 send_window_command_reply(reply, result.map(|()| WindowCommandResponse::Destroyed));
 
                 if exit_after_destroy {
@@ -2806,6 +4577,13 @@ impl WindowRegistry {
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
             }
+            WindowCommand::GetChildren { window_id, reply } => {
+                let result = self
+                    .get_children(&window_id)
+                    .map(WindowCommandResponse::WindowList);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
             WindowCommand::GetBounds { window_id, reply } => {
                 let result = self
                     .get_bounds(&window_id)
@@ -2820,14 +4598,26 @@ impl WindowRegistry {
             } => {
                 let result = self
                     .set_bounds(&window_id, &bounds)
-                    .map(|()| WindowCommandResponse::WindowUpdated);
+                    .map(WindowCommandResponse::WindowBounds);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::SetBoundsOnDisplay {
+                window_id,
+                display_id,
+                bounds,
+                reply,
+            } => {
+                let result = self
+                    .set_bounds_on_display(&window_id, &display_id, &bounds)
+                    .map(WindowCommandResponse::WindowBounds);
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
             }
             WindowCommand::Center { window_id, reply } => {
                 let result = self
                     .center(&window_id)
-                    .map(|()| WindowCommandResponse::WindowUpdated);
+                    .map(WindowCommandResponse::WindowBounds);
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
             }
@@ -2838,7 +4628,7 @@ impl WindowRegistry {
             } => {
                 let result = self
                     .center_on_display(&window_id, &display_id)
-                    .map(|()| WindowCommandResponse::WindowUpdated);
+                    .map(WindowCommandResponse::WindowBounds);
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
             }
@@ -2882,6 +4672,68 @@ impl WindowRegistry {
             } => {
                 let result = self
                     .set_traffic_lights(&window_id, &traffic_lights)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::SetVibrancy {
+                window_id,
+                material,
+                reply,
+            } => {
+                let result = self
+                    .set_vibrancy(&window_id, &material)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::ClearVibrancy { window_id, reply } => {
+                let result = self
+                    .clear_vibrancy(&window_id)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::SetShadow {
+                window_id,
+                has_shadow,
+                reply,
+            } => {
+                let result = self
+                    .set_shadow(&window_id, has_shadow)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::SetTitleBarStyle {
+                window_id,
+                title_bar_style,
+                reply,
+            } => {
+                let result = self
+                    .set_title_bar_style(&window_id, title_bar_style)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::SetTitleBarTransparent {
+                window_id,
+                title_bar_transparent,
+                reply,
+            } => {
+                let result = self
+                    .set_title_bar_transparent(&window_id, title_bar_transparent)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::SetTransparent {
+                window_id,
+                transparent,
+                reply,
+            } => {
+                let result = self
+                    .set_transparent(&window_id, transparent)
                     .map(|()| WindowCommandResponse::WindowUpdated);
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
@@ -2938,42 +4790,27 @@ impl WindowRegistry {
                 WindowLifecycleEvent::Other
             }
             WindowCommand::Minimize { window_id, reply } => {
-                let result = self
-                    .minimize(&window_id)
-                    .map(|()| WindowCommandResponse::WindowUpdated);
-                if result.is_ok() {
-                    self.emit_window_state_snapshot(
-                        &window_id,
-                        host_protocol::WINDOW_MINIMIZE_METHOD,
-                    );
+                let result = self.minimize(&window_id);
+                if let Ok(state) = &result {
+                    self.emit_observed_window_state(&window_id, state);
                 }
-                send_window_command_reply(reply, result);
+                send_window_command_reply(reply, result.map(WindowCommandResponse::WindowState));
                 WindowLifecycleEvent::Other
             }
             WindowCommand::Maximize { window_id, reply } => {
-                let result = self
-                    .maximize(&window_id)
-                    .map(|()| WindowCommandResponse::WindowUpdated);
-                if result.is_ok() {
-                    self.emit_window_state_snapshot(
-                        &window_id,
-                        host_protocol::WINDOW_MAXIMIZE_METHOD,
-                    );
+                let result = self.maximize(&window_id);
+                if let Ok(state) = &result {
+                    self.emit_observed_window_state(&window_id, state);
                 }
-                send_window_command_reply(reply, result);
+                send_window_command_reply(reply, result.map(WindowCommandResponse::WindowState));
                 WindowLifecycleEvent::Other
             }
             WindowCommand::Restore { window_id, reply } => {
-                let result = self
-                    .restore(&window_id)
-                    .map(|()| WindowCommandResponse::WindowUpdated);
-                if result.is_ok() {
-                    self.emit_window_state_snapshot(
-                        &window_id,
-                        host_protocol::WINDOW_RESTORE_METHOD,
-                    );
+                let result = self.restore(&window_id);
+                if let Ok(state) = &result {
+                    self.emit_observed_window_state(&window_id, state);
                 }
-                send_window_command_reply(reply, result);
+                send_window_command_reply(reply, result.map(WindowCommandResponse::WindowState));
                 WindowLifecycleEvent::Other
             }
             WindowCommand::SetFullscreen {
@@ -2981,16 +4818,23 @@ impl WindowRegistry {
                 fullscreen,
                 reply,
             } => {
-                let result = self
-                    .set_fullscreen(&window_id, fullscreen)
-                    .map(|()| WindowCommandResponse::WindowUpdated);
-                if result.is_ok() {
-                    self.emit_window_state_snapshot(
-                        &window_id,
-                        host_protocol::WINDOW_SET_FULLSCREEN_METHOD,
-                    );
+                let result = self.set_fullscreen(&window_id, fullscreen);
+                if let Ok(state) = &result {
+                    self.emit_observed_window_state(&window_id, state);
                 }
-                send_window_command_reply(reply, result);
+                send_window_command_reply(reply, result.map(WindowCommandResponse::WindowState));
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::SetSimpleFullscreen {
+                window_id,
+                simple_fullscreen,
+                reply,
+            } => {
+                let result = self.set_simple_fullscreen(&window_id, simple_fullscreen);
+                if let Ok(state) = &result {
+                    self.emit_observed_window_state(&window_id, state);
+                }
+                send_window_command_reply(reply, result.map(WindowCommandResponse::WindowState));
                 WindowLifecycleEvent::Other
             }
             WindowCommand::GetState { window_id, reply } => {
@@ -3011,17 +4855,17 @@ impl WindowRegistry {
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
             }
+            WindowCommand::SetDockProgress { progress, reply } => {
+                let result = self
+                    .set_dock_progress(&progress)
+                    .map(|()| WindowCommandResponse::DockProgressSet);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
             WindowCommand::RequestDockAttention { critical, reply } => {
                 let result = self
                     .request_dock_attention(critical)
                     .map(|()| WindowCommandResponse::DockAttentionRequested);
-                send_window_command_reply(reply, result);
-                WindowLifecycleEvent::Other
-            }
-            WindowCommand::SetDockMenu { template, reply } => {
-                let result = self
-                    .set_dock_menu(template)
-                    .map(|()| WindowCommandResponse::DockMenuSet);
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
             }
@@ -3096,6 +4940,104 @@ impl WindowRegistry {
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
             }
+            WindowCommand::CreateWebView { request, reply } => {
+                let result = self
+                    .create_webview(request)
+                    .map(WindowCommandResponse::WebViewCreated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::LoadWebViewRoute { request, reply } => {
+                let result = self
+                    .load_webview_route(request)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::LoadWebViewUrl { request, reply } => {
+                let result = self
+                    .load_webview_url(request)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::ReloadWebView { handle, reply } => {
+                let result = self
+                    .reload_webview(&handle)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::StopWebView { handle, reply } => {
+                let result = self
+                    .stop_webview(&handle)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::GoBackWebView { handle, reply } => {
+                let result = self
+                    .go_back_webview(&handle)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::GoForwardWebView { handle, reply } => {
+                let result = self
+                    .go_forward_webview(&handle)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::GetWebViewNavigationState { handle, reply } => {
+                let result = self
+                    .get_webview_navigation_state(&handle)
+                    .map(WindowCommandResponse::WebViewNavigationState);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::PrintWebView { handle, reply } => {
+                let result = self
+                    .print_webview(&handle)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::SetWebViewZoom { request, reply } => {
+                let result = self
+                    .set_webview_zoom(&request)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::OpenWebViewDevTools { handle, reply } => {
+                let result = self
+                    .open_webview_devtools(&handle)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::CloseWebViewDevTools { handle, reply } => {
+                let result = self
+                    .close_webview_devtools(&handle)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::SetWebViewNavigationPolicy { request, reply } => {
+                let result = self
+                    .set_webview_navigation_policy(request)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::DestroyWebView { handle, reply } => {
+                let result = self
+                    .destroy_webview(&handle)
+                    .map(|()| WindowCommandResponse::Destroyed);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
             WindowCommand::GetScreenDisplays { reply } => {
                 let result = self
                     .screen_displays(target, host_protocol::SCREEN_GET_DISPLAYS_METHOD)
@@ -3123,6 +5065,170 @@ impl WindowRegistry {
             }
         }
     }
+
+    fn run_resident_lifecycle_smoke(&mut self, window_id: &str) -> WindowLifecycleEvent {
+        let Some(resources) = self.windows.get(window_id) else {
+            warn!(
+                event = "host.resident_lifecycle.smoke_failed",
+                window_id,
+                reason = "missing-window",
+                "resident lifecycle smoke could not find created window"
+            );
+            return WindowLifecycleEvent::WindowCreateFailed;
+        };
+        let native_window_id = resources._window.id();
+
+        let lifecycle_event = handle_native_window_close_requested(self, native_window_id);
+        let Some(resources) = self.windows.get(window_id) else {
+            warn!(
+                event = "host.resident_lifecycle.smoke_failed",
+                window_id,
+                reason = "window-destroyed",
+                "resident lifecycle smoke close request destroyed the window"
+            );
+            return WindowLifecycleEvent::WindowCreateFailed;
+        };
+        let visible = resources._window.is_visible();
+        if !matches!(lifecycle_event, WindowLifecycleEvent::Other) || visible {
+            warn!(
+                event = "host.resident_lifecycle.smoke_failed",
+                window_id,
+                visible,
+                lifecycle = ?lifecycle_event,
+                "resident lifecycle smoke close request did not hide and retain the window"
+            );
+            return WindowLifecycleEvent::WindowCreateFailed;
+        }
+
+        info!(
+            event = "host.resident_lifecycle.smoke_verified",
+            window_id,
+            visible,
+            retained = true,
+            "resident lifecycle close-to-background smoke verified"
+        );
+        WindowLifecycleEvent::SmokeExitRequested
+    }
+
+    fn run_app_quit_smoke(&self, window_id: &str) -> WindowLifecycleEvent {
+        if !self.windows.contains_key(window_id) {
+            warn!(
+                event = "host.app_lifecycle.quit_smoke_failed",
+                window_id,
+                reason = "missing-window",
+                "app quit smoke could not find created window"
+            );
+            return WindowLifecycleEvent::WindowCreateFailed;
+        }
+
+        info!(
+            event = "host.app_lifecycle.quit_smoke_verified",
+            window_id,
+            exit_code = 0,
+            "app quit smoke verified"
+        );
+        WindowLifecycleEvent::AppQuitRequested(0)
+    }
+
+    fn run_app_focus_smoke(&mut self, window_id: &str) -> WindowLifecycleEvent {
+        match self.focus(window_id) {
+            Ok(()) => {
+                info!(
+                    event = "host.app_lifecycle.focus_smoke_verified",
+                    window_id, "app focus smoke verified"
+                );
+                WindowLifecycleEvent::SmokeExitRequested
+            }
+            Err(error) => {
+                warn!(
+                    event = "host.app_lifecycle.focus_smoke_failed",
+                    window_id,
+                    error = ?error,
+                    "app focus smoke could not focus the created window"
+                );
+                WindowLifecycleEvent::WindowCreateFailed
+            }
+        }
+    }
+
+    fn run_app_restart_smoke(&self, window_id: &str) -> WindowLifecycleEvent {
+        if !self.windows.contains_key(window_id) {
+            warn!(
+                event = "host.app_lifecycle.restart_smoke_failed",
+                window_id,
+                reason = "missing-window",
+                "app restart smoke could not find created window"
+            );
+            return WindowLifecycleEvent::WindowCreateFailed;
+        }
+
+        let args = vec![APP_RESTART_CHILD_SMOKE_TEST_ARG.to_string()];
+        match restart_current_process(&args) {
+            Ok(()) => {
+                info!(
+                    event = "host.app_lifecycle.restart_smoke_verified",
+                    window_id,
+                    args = ?args,
+                    "app restart smoke verified"
+                );
+                WindowLifecycleEvent::AppQuitRequested(0)
+            }
+            Err(error) => {
+                warn!(
+                    event = "host.app_lifecycle.restart_smoke_failed",
+                    window_id,
+                    error = ?error,
+                    "app restart smoke could not launch replacement process"
+                );
+                WindowLifecycleEvent::WindowCreateFailed
+            }
+        }
+    }
+}
+
+pub(crate) fn run_app_restart_child_smoke() -> Result<()> {
+    let marker = std::env::var_os(APP_RESTART_SMOKE_MARKER_ENV).ok_or_else(|| {
+        anyhow::anyhow!("{APP_RESTART_SMOKE_MARKER_ENV} is required for restart child smoke")
+    })?;
+    let marker = std::path::PathBuf::from(marker);
+    fs::write(&marker, "restarted\n").map_err(|error| {
+        anyhow::anyhow!(
+            "failed to write app restart child smoke marker {}: {error}",
+            marker.display()
+        )
+    })?;
+    info!(
+        event = "host.app_lifecycle.restart_child_smoke_verified",
+        marker = %marker.display(),
+        "app restart child smoke verified"
+    );
+    Ok(())
+}
+
+fn restart_current_process(args: &[String]) -> std::result::Result<(), HostProtocolError> {
+    let executable = std::env::current_exe().map_err(|error| {
+        HostProtocolError::internal(
+            format!("failed to resolve current executable for restart: {error}"),
+            host_protocol::APP_RESTART_METHOD,
+        )
+    })?;
+
+    Command::new(&executable)
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| {
+            HostProtocolError::internal(
+                format!(
+                    "failed to launch restart process {}: {error}",
+                    executable.display()
+                ),
+                host_protocol::APP_RESTART_METHOD,
+            )
+        })
 }
 
 fn lifecycle_for_create_result(result: &WindowCommandReply) -> WindowLifecycleEvent {
@@ -3130,6 +5236,172 @@ fn lifecycle_for_create_result(result: &WindowCommandReply) -> WindowLifecycleEv
         WindowLifecycleEvent::WindowCreateFailed
     } else {
         WindowLifecycleEvent::Other
+    }
+}
+
+fn validate_webview_handle(
+    handle: &WebViewHandleRequest,
+    resources: &NativeWebViewResources,
+    operation: &'static str,
+) -> std::result::Result<(), HostProtocolError> {
+    if handle.generation != resources.generation {
+        return Err(HostProtocolError::invalid_argument(
+            "webview.generation",
+            "must match the live WebView generation",
+            operation,
+        ));
+    }
+    if handle.owner_scope != resources.owner_scope {
+        return Err(HostProtocolError::invalid_argument(
+            "webview.ownerScope",
+            "must match the live WebView owner scope",
+            operation,
+        ));
+    }
+    Ok(())
+}
+
+fn origin_allowed(url: &str, policy: &WebViewNavigationPolicy) -> bool {
+    match policy.on_disallowed {
+        WebViewNavigationDecision::Block | WebViewNavigationDecision::OpenExternal => {}
+    }
+    origin_for_url(url).as_deref().is_some_and(|origin| {
+        policy
+            .allowed_origins
+            .iter()
+            .any(|allowed| allowed == origin)
+    })
+}
+
+fn webview_isolation(
+    webview_id: &str,
+    owner_scope: &str,
+    policy: WebViewIsolationPolicy,
+) -> webview::ChildWebViewIsolation {
+    let manifest = serde_json::json!(policy
+        .exposed_apis
+        .iter()
+        .map(|api| serde_json::json!({ "name": api.name.clone(), "methods": api.methods.clone() }))
+        .collect::<Vec<_>>());
+    let initialization_script = webview_isolation_script(&manifest.to_string());
+    let webview_id = webview_id.to_string();
+    let owner_scope = owner_scope.to_string();
+    webview::ChildWebViewIsolation {
+        initialization_script,
+        ipc_handler: Box::new(move |request| {
+            handle_webview_isolation_ipc(&webview_id, &owner_scope, &policy, request.body());
+        }),
+    }
+}
+
+fn webview_isolation_script(manifest_json: &str) -> String {
+    format!(
+        r#"(() => {{
+  const rawIpc = window.ipc;
+  const manifest = {manifest_json};
+  const exposed = Object.create(null);
+  for (const entry of manifest) {{
+    const api = Object.create(null);
+    for (const method of entry.methods) {{
+      Object.defineProperty(api, method, {{
+        enumerable: true,
+        value: (payload = null) => {{
+          rawIpc.postMessage(JSON.stringify({{
+            kind: "effect-desktop.webview-api",
+            api: entry.name,
+            method,
+            payload: JSON.stringify(payload)
+          }}));
+        }}
+      }});
+    }}
+    Object.defineProperty(exposed, entry.name, {{
+      enumerable: true,
+      value: Object.freeze(api)
+    }});
+  }}
+  Object.defineProperty(window, "EffectDesktop", {{
+    configurable: false,
+    enumerable: false,
+    writable: false,
+    value: Object.freeze(exposed)
+  }});
+  try {{
+    Object.defineProperty(window, "ipc", {{
+      configurable: false,
+      enumerable: false,
+      writable: false,
+      value: undefined
+    }});
+  }} catch (_error) {{}}
+}})();"#
+    )
+}
+
+fn handle_webview_isolation_ipc(
+    webview_id: &str,
+    owner_scope: &str,
+    policy: &WebViewIsolationPolicy,
+    body: &str,
+) {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(body) else {
+        return;
+    };
+    let Some(object) = value.as_object() else {
+        return;
+    };
+    if object.get("kind").and_then(serde_json::Value::as_str) != Some("effect-desktop.webview-api")
+    {
+        return;
+    }
+    let Some(api) = object.get("api").and_then(serde_json::Value::as_str) else {
+        return;
+    };
+    let Some(method) = object.get("method").and_then(serde_json::Value::as_str) else {
+        return;
+    };
+    if !policy
+        .exposed_apis
+        .iter()
+        .any(|entry| entry.name == api && entry.methods.iter().any(|name| name == method))
+    {
+        return;
+    }
+    let payload = object
+        .get("payload")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("null");
+    if payload.contains('\0') {
+        return;
+    }
+    emit_webview_api_call_event(webview_id, owner_scope, api, method, payload);
+}
+
+fn origin_for_url(url: &str) -> Option<String> {
+    let (scheme, rest) = url.split_once("://")?;
+    let authority = rest
+        .split(['/', '?', '#'])
+        .next()
+        .filter(|value| !value.is_empty())?;
+    Some(format!("{scheme}://{authority}"))
+}
+
+fn webview_host_error(error: wry::Error, operation: &'static str) -> HostProtocolError {
+    HostProtocolError::internal(format!("WebView host operation failed: {error}"), operation)
+}
+
+fn webview_permission_denied(message: &'static str, operation: &'static str) -> HostProtocolError {
+    HostProtocolError::PermissionDenied {
+        capability: "WebView.navigation".to_string(),
+        resource: None,
+        message: message.to_string(),
+        operation: operation.to_string(),
+        platform: None,
+        code: None,
+        cause: None,
+        recoverable: HostProtocolError::recoverable_default("PermissionDenied").expect("known tag"),
+        remediation: None,
+        docs_url: None,
     }
 }
 
@@ -3147,10 +5419,10 @@ fn unexpected_tray_response(
         WindowCommandResponse::WindowBounds(_) => "tray command received window bounds response",
         WindowCommandResponse::WindowState(_) => "tray command received window state response",
         WindowCommandResponse::DockBadgeLabelSet => "tray command received dock badge response",
+        WindowCommandResponse::DockProgressSet => "tray command received dock progress response",
         WindowCommandResponse::DockAttentionRequested => {
             "tray command received dock attention response"
         }
-        WindowCommandResponse::DockMenuSet => "tray command received dock menu response",
         WindowCommandResponse::MenuSet => "tray command received menu response",
         WindowCommandResponse::TrayCreated(_) => "tray command received create response",
         WindowCommandResponse::TrayUpdated => "tray command received update response",
@@ -3159,6 +5431,42 @@ fn unexpected_tray_response(
         | WindowCommandResponse::ScreenDisplay(_)
         | WindowCommandResponse::ScreenPoint(_)
         | WindowCommandResponse::ScreenSupported(_) => "tray command received screen response",
+        WindowCommandResponse::WebViewCreated(_)
+        | WindowCommandResponse::WebViewNavigationState(_) => {
+            "tray command received webview response"
+        }
+    };
+    HostProtocolError::internal(message, operation)
+}
+
+fn unexpected_webview_response(
+    response: WindowCommandResponse,
+    operation: &'static str,
+) -> HostProtocolError {
+    let message = match response {
+        WindowCommandResponse::Created(_) => "webview command received window create response",
+        WindowCommandResponse::Destroyed => "webview command received window destroy response",
+        WindowCommandResponse::WindowUpdated => "webview command received window update response",
+        WindowCommandResponse::WindowLookup(_) => "webview command received window lookup response",
+        WindowCommandResponse::WindowList(_) => "webview command received window list response",
+        WindowCommandResponse::WindowParent(_) => "webview command received window parent response",
+        WindowCommandResponse::WindowBounds(_) => "webview command received window bounds response",
+        WindowCommandResponse::WindowState(_) => "webview command received window state response",
+        WindowCommandResponse::DockBadgeLabelSet
+        | WindowCommandResponse::DockProgressSet
+        | WindowCommandResponse::DockAttentionRequested => "webview command received dock response",
+        WindowCommandResponse::MenuSet => "webview command received menu response",
+        WindowCommandResponse::TrayCreated(_)
+        | WindowCommandResponse::TrayUpdated
+        | WindowCommandResponse::TrayDestroyed => "webview command received tray response",
+        WindowCommandResponse::ScreenDisplays(_)
+        | WindowCommandResponse::ScreenDisplay(_)
+        | WindowCommandResponse::ScreenPoint(_)
+        | WindowCommandResponse::ScreenSupported(_) => "webview command received screen response",
+        WindowCommandResponse::WebViewCreated(_) => "webview command received create response",
+        WindowCommandResponse::WebViewNavigationState(_) => {
+            "webview command received navigation state response"
+        }
     };
     HostProtocolError::internal(message, operation)
 }
@@ -3177,10 +5485,10 @@ fn unexpected_screen_response(
         WindowCommandResponse::WindowBounds(_) => "screen command received window bounds response",
         WindowCommandResponse::WindowState(_) => "screen command received window state response",
         WindowCommandResponse::DockBadgeLabelSet => "screen command received dock badge response",
+        WindowCommandResponse::DockProgressSet => "screen command received dock progress response",
         WindowCommandResponse::DockAttentionRequested => {
             "screen command received dock attention response"
         }
-        WindowCommandResponse::DockMenuSet => "screen command received dock menu response",
         WindowCommandResponse::MenuSet => "screen command received menu response",
         WindowCommandResponse::TrayCreated(_)
         | WindowCommandResponse::TrayUpdated
@@ -3189,6 +5497,10 @@ fn unexpected_screen_response(
         WindowCommandResponse::ScreenDisplay(_) => "screen command received display response",
         WindowCommandResponse::ScreenPoint(_) => "screen command received point response",
         WindowCommandResponse::ScreenSupported(_) => "screen command received support response",
+        WindowCommandResponse::WebViewCreated(_)
+        | WindowCommandResponse::WebViewNavigationState(_) => {
+            "screen command received webview response"
+        }
     };
     HostProtocolError::internal(message, operation)
 }
@@ -3219,7 +5531,107 @@ fn tao_window_state(window: &Window) -> WindowStatePayload {
         window.is_minimized(),
         window.is_maximized(),
         window.fullscreen().is_some(),
+        simple_fullscreen(window),
     )
+}
+
+fn ensure_window_state(
+    observed: &WindowStatePayload,
+    accepted: bool,
+    attempted: &'static str,
+    operation: &'static str,
+) -> std::result::Result<(), HostProtocolError> {
+    if accepted {
+        return Ok(());
+    }
+
+    Err(HostProtocolError::InvalidState {
+        current: format_window_state(observed),
+        attempted: attempted.to_string(),
+        message: "window state transition was not confirmed by host-observed state".to_string(),
+        operation: operation.to_string(),
+        platform: None,
+        code: None,
+        cause: None,
+        recoverable: HostProtocolError::recoverable_default("InvalidState").expect("known tag"),
+        remediation: Some("retry after reading Window.getState, or treat the transition as unsupported on this compositor".to_string()),
+        docs_url: None,
+    })
+}
+
+fn format_window_state(state: &WindowStatePayload) -> String {
+    format!(
+        "minimized={},maximized={},fullscreen={},simpleFullscreen={}",
+        state.minimized(),
+        state.maximized(),
+        state.fullscreen(),
+        state.simple_fullscreen()
+    )
+}
+
+#[cfg(target_os = "macos")]
+fn simple_fullscreen(window: &Window) -> bool {
+    use tao::platform::macos::WindowExtMacOS;
+
+    WindowExtMacOS::simple_fullscreen(window)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn simple_fullscreen(_window: &Window) -> bool {
+    false
+}
+
+#[cfg(target_os = "macos")]
+fn set_simple_fullscreen(
+    window: &Window,
+    simple_fullscreen: bool,
+    operation: &'static str,
+) -> std::result::Result<(), HostProtocolError> {
+    use tao::platform::macos::WindowExtMacOS;
+
+    if WindowExtMacOS::set_simple_fullscreen(window, simple_fullscreen) {
+        Ok(())
+    } else {
+        Err(HostProtocolError::InvalidState {
+            current: "native-fullscreen-or-unchanged".to_string(),
+            attempted: if simple_fullscreen {
+                "simple-fullscreen"
+            } else {
+                "not-simple-fullscreen"
+            }
+            .to_string(),
+            message: "window simple fullscreen transition was rejected".to_string(),
+            operation: operation.to_string(),
+            platform: None,
+            code: None,
+            cause: None,
+            recoverable: false,
+            remediation: None,
+            docs_url: None,
+        })
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn set_simple_fullscreen(
+    _window: &Window,
+    _simple_fullscreen: bool,
+    operation: &'static str,
+) -> std::result::Result<(), HostProtocolError> {
+    Err(HostProtocolError::unsupported(
+        "simple-fullscreen-macos-only",
+        operation,
+    ))
+}
+
+#[cfg(target_os = "macos")]
+fn clear_simple_fullscreen(window: &Window) -> std::result::Result<(), HostProtocolError> {
+    set_simple_fullscreen(window, false, host_protocol::WINDOW_RESTORE_METHOD)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn clear_simple_fullscreen(_window: &Window) -> std::result::Result<(), HostProtocolError> {
+    Ok(())
 }
 
 #[cfg(windows)]
@@ -3273,6 +5685,58 @@ fn to_tao_progress_state(state: WindowProgressState) -> ProgressState {
     }
 }
 
+fn to_tao_dock_progress(
+    progress: &DockSetProgressPayload,
+) -> std::result::Result<ProgressBarState, HostProtocolError> {
+    let progress_value = match progress.value() {
+        serde_json::Value::Null => None,
+        serde_json::Value::Number(number) => {
+            let Some(value) = number.as_f64() else {
+                return Err(HostProtocolError::invalid_argument(
+                    "value",
+                    "must be null or a finite number between 0 and 1",
+                    host_protocol::DOCK_SET_PROGRESS_METHOD,
+                ));
+            };
+            if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+                return Err(HostProtocolError::invalid_argument(
+                    "value",
+                    "must be null or a finite number between 0 and 1",
+                    host_protocol::DOCK_SET_PROGRESS_METHOD,
+                ));
+            }
+            Some((value * 100.0).round() as u64)
+        }
+        _ => {
+            return Err(HostProtocolError::invalid_argument(
+                "value",
+                "must be null or a finite number between 0 and 1",
+                host_protocol::DOCK_SET_PROGRESS_METHOD,
+            ));
+        }
+    };
+    let state = match progress.options().and_then(|options| options.state()) {
+        Some(state) => Some(to_tao_dock_progress_state(state)),
+        None if progress_value.is_some() => Some(ProgressState::Normal),
+        None => Some(ProgressState::None),
+    };
+
+    Ok(ProgressBarState {
+        state,
+        progress: progress_value,
+        desktop_filename: None,
+    })
+}
+
+fn to_tao_dock_progress_state(state: DockProgressState) -> ProgressState {
+    match state {
+        DockProgressState::Normal => ProgressState::Normal,
+        DockProgressState::Indeterminate => ProgressState::Indeterminate,
+        DockProgressState::Paused => ProgressState::Paused,
+        DockProgressState::Error => ProgressState::Error,
+    }
+}
+
 fn to_tao_attention_type(request_type: WindowAttentionType) -> UserAttentionType {
     match request_type {
         WindowAttentionType::Critical => UserAttentionType::Critical,
@@ -3286,7 +5750,7 @@ fn apply_window_parent(
 ) -> std::result::Result<WindowBuilder, HostProtocolError> {
     #[cfg(target_os = "macos")]
     {
-        return macos::apply_window_parent(builder, parent);
+        macos::apply_window_parent(builder, parent)
     }
 
     #[cfg(windows)]
@@ -3311,6 +5775,112 @@ fn centered_window_bounds(
     centered_window_bounds_for_operation(window, monitor, host_protocol::WINDOW_CENTER_METHOD)
 }
 
+fn clip_window_bounds_to_monitor_work_area(
+    bounds: &WindowBoundsPayload,
+    monitor: &MonitorHandle,
+) -> WindowBoundsPayload {
+    let scale = monitor.scale_factor();
+    if !scale.is_finite() || scale <= 0.0 {
+        return bounds.clone();
+    }
+
+    let work_area = LogicalScreenArea::from_physical(monitor_work_area(monitor), scale);
+    clip_window_bounds_to_logical_area(bounds, work_area)
+}
+
+fn clip_window_bounds_to_logical_area(
+    bounds: &WindowBoundsPayload,
+    area: LogicalScreenArea,
+) -> WindowBoundsPayload {
+    if area.width <= 0.0 || area.height <= 0.0 {
+        return bounds.clone();
+    }
+
+    let width = bounds.width().min(area.width);
+    let height = bounds.height().min(area.height);
+    let max_x = area.x + area.width - width;
+    let max_y = area.y + area.height - height;
+
+    WindowBoundsPayload::new(
+        bounds.x().clamp(area.x, max_x),
+        bounds.y().clamp(area.y, max_y),
+        width,
+        height,
+    )
+}
+
+fn display_relative_bounds_to_physical_position(
+    bounds: &WindowBoundsPayload,
+    monitor: &MonitorHandle,
+    operation: &'static str,
+) -> std::result::Result<DisplayRelativeWindowBounds, HostProtocolError> {
+    let scale = monitor.scale_factor();
+    if !scale.is_finite() || scale <= 0.0 {
+        return Err(HostProtocolError::internal(
+            "target display scale factor is invalid",
+            operation,
+        ));
+    }
+
+    let work_area = monitor_work_area(monitor);
+    let logical_work_area = LogicalScreenArea {
+        x: 0.0,
+        y: 0.0,
+        width: f64::from(work_area.width) / scale,
+        height: f64::from(work_area.height) / scale,
+    };
+    let clipped = clip_window_bounds_to_logical_area(bounds, logical_work_area);
+    let position = PhysicalPosition::new(
+        display_relative_physical_axis(work_area.x, clipped.x(), scale, "x", operation)?,
+        display_relative_physical_axis(work_area.y, clipped.y(), scale, "y", operation)?,
+    );
+
+    Ok(DisplayRelativeWindowBounds {
+        position,
+        size: LogicalSize::new(clipped.width(), clipped.height()),
+    })
+}
+
+fn display_relative_physical_axis(
+    origin: i32,
+    relative: f64,
+    scale: f64,
+    axis: &str,
+    operation: &'static str,
+) -> std::result::Result<i32, HostProtocolError> {
+    rounded_i32(f64::from(origin) + (relative * scale)).ok_or_else(|| {
+        HostProtocolError::internal(
+            format!("computed display-relative {axis} position is outside host coordinate range"),
+            operation,
+        )
+    })
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct DisplayRelativeWindowBounds {
+    position: PhysicalPosition<i32>,
+    size: LogicalSize<f64>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct LogicalScreenArea {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+
+impl LogicalScreenArea {
+    fn from_physical(area: PhysicalScreenArea, scale: f64) -> Self {
+        Self {
+            x: f64::from(area.x) / scale,
+            y: f64::from(area.y) / scale,
+            width: f64::from(area.width) / scale,
+            height: f64::from(area.height) / scale,
+        }
+    }
+}
+
 fn centered_window_bounds_for_operation(
     window: &Window,
     monitor: &MonitorHandle,
@@ -3318,12 +5888,11 @@ fn centered_window_bounds_for_operation(
 ) -> std::result::Result<WindowBoundsPayload, HostProtocolError> {
     let current = window_bounds(window, operation)?;
     let scale = monitor.scale_factor();
-    let position = monitor.position();
-    let size = monitor.size();
-    let monitor_x = f64::from(position.x) / scale;
-    let monitor_y = f64::from(position.y) / scale;
-    let monitor_width = f64::from(size.width) / scale;
-    let monitor_height = f64::from(size.height) / scale;
+    let work_area = monitor_work_area(monitor);
+    let monitor_x = f64::from(work_area.x) / scale;
+    let monitor_y = f64::from(work_area.y) / scale;
+    let monitor_width = f64::from(work_area.width) / scale;
+    let monitor_height = f64::from(work_area.height) / scale;
 
     Ok(WindowBoundsPayload::new(
         monitor_x + ((monitor_width - current.width()) / 2.0),
@@ -3338,19 +5907,18 @@ fn centered_window_physical_position_for_operation(
     monitor: &MonitorHandle,
     operation: &'static str,
 ) -> std::result::Result<PhysicalPosition<i32>, HostProtocolError> {
-    let monitor_position = monitor.position();
-    let monitor_size = monitor.size();
+    let work_area = monitor_work_area(monitor);
     let window_size = window.inner_size();
     let x = centered_physical_axis(
-        monitor_position.x,
-        monitor_size.width,
+        work_area.x,
+        work_area.width,
         window_size.width,
         "x",
         operation,
     )?;
     let y = centered_physical_axis(
-        monitor_position.y,
-        monitor_size.height,
+        work_area.y,
+        work_area.height,
         window_size.height,
         "y",
         operation,
@@ -3381,15 +5949,97 @@ fn screen_display_payload(
     monitor: &MonitorHandle,
     primary: bool,
 ) -> ScreenDisplayPayload {
+    let bounds = screen_bounds_payload(monitor_bounds(monitor));
+    let work_area = screen_bounds_payload(monitor_work_area(monitor));
+    ScreenDisplayPayload::new(id, bounds, work_area, monitor.scale_factor(), primary)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct PhysicalScreenArea {
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+}
+
+fn monitor_bounds(monitor: &MonitorHandle) -> PhysicalScreenArea {
     let position = monitor.position();
     let size = monitor.size();
-    let bounds = ScreenBoundsPayload::new(
-        f64::from(position.x),
-        f64::from(position.y),
-        f64::from(size.width),
-        f64::from(size.height),
-    );
-    ScreenDisplayPayload::new(id, bounds.clone(), bounds, monitor.scale_factor(), primary)
+    PhysicalScreenArea {
+        x: position.x,
+        y: position.y,
+        width: size.width,
+        height: size.height,
+    }
+}
+
+fn monitor_work_area(monitor: &MonitorHandle) -> PhysicalScreenArea {
+    macos::screen_work_area(monitor)
+        .and_then(|work_area| {
+            PhysicalScreenArea::new(
+                work_area.x(),
+                work_area.y(),
+                work_area.width(),
+                work_area.height(),
+            )
+        })
+        .or_else(|| {
+            windows::screen_work_area(monitor).and_then(|work_area| {
+                PhysicalScreenArea::new(
+                    work_area.x(),
+                    work_area.y(),
+                    work_area.width(),
+                    work_area.height(),
+                )
+            })
+        })
+        .or_else(|| {
+            linux::screen_work_area(monitor).and_then(|work_area| {
+                PhysicalScreenArea::new(
+                    work_area.x(),
+                    work_area.y(),
+                    work_area.width(),
+                    work_area.height(),
+                )
+            })
+        })
+        .unwrap_or_else(|| monitor_bounds(monitor))
+}
+
+impl PhysicalScreenArea {
+    fn new(x: f64, y: f64, width: f64, height: f64) -> Option<Self> {
+        Some(Self {
+            x: rounded_i32(x)?,
+            y: rounded_i32(y)?,
+            width: rounded_u32(width)?,
+            height: rounded_u32(height)?,
+        })
+    }
+}
+
+fn rounded_i32(value: f64) -> Option<i32> {
+    let rounded = value.round();
+    if !rounded.is_finite() || rounded < f64::from(i32::MIN) || rounded > f64::from(i32::MAX) {
+        return None;
+    }
+    Some(rounded as i32)
+}
+
+fn rounded_u32(value: f64) -> Option<u32> {
+    let rounded = value.round();
+    if !rounded.is_finite() || rounded < 0.0 || rounded > f64::from(u32::MAX) {
+        return None;
+    }
+    Some(rounded as u32)
+}
+
+fn screen_bounds_payload(area: PhysicalScreenArea) -> ScreenBoundsPayload {
+    ScreenBoundsPayload::new(
+        f64::from(area.x),
+        f64::from(area.y),
+        f64::from(area.width),
+        f64::from(area.height),
+    )
 }
 
 fn screen_display_id(monitor: &MonitorHandle) -> String {
@@ -3514,6 +6164,19 @@ pub(crate) fn install_window_event_sender(
     Ok(())
 }
 
+pub(crate) fn install_webview_event_sender(
+    sender: Sender<HostProtocolEnvelope>,
+) -> std::result::Result<(), HostProtocolError> {
+    let mut current = WEBVIEW_EVENT_SENDER.lock().map_err(|_| {
+        HostProtocolError::internal(
+            "webview event sender mutex poisoned",
+            "host.runtime.webview.connect",
+        )
+    })?;
+    *current = Some(sender);
+    Ok(())
+}
+
 pub(crate) fn clear_screen_runtime_event_state() -> std::result::Result<(), HostProtocolError> {
     let mut sender = SCREEN_EVENT_SENDER.lock().map_err(|_| {
         HostProtocolError::internal(
@@ -3530,6 +6193,17 @@ pub(crate) fn clear_window_runtime_event_state() -> std::result::Result<(), Host
         HostProtocolError::internal(
             "window event sender mutex poisoned",
             "host.runtime.window.disconnect",
+        )
+    })?;
+    *sender = None;
+    Ok(())
+}
+
+pub(crate) fn clear_webview_runtime_event_state() -> std::result::Result<(), HostProtocolError> {
+    let mut sender = WEBVIEW_EVENT_SENDER.lock().map_err(|_| {
+        HostProtocolError::internal(
+            "webview event sender mutex poisoned",
+            "host.runtime.webview.disconnect",
         )
     })?;
     *sender = None;
@@ -3562,6 +6236,19 @@ fn window_event_sender(
         })
 }
 
+fn webview_event_sender(
+) -> std::result::Result<Option<Sender<HostProtocolEnvelope>>, HostProtocolError> {
+    WEBVIEW_EVENT_SENDER
+        .lock()
+        .map(|sender| sender.clone())
+        .map_err(|_| {
+            HostProtocolError::internal(
+                "webview event sender mutex poisoned",
+                "host.runtime.webview.event",
+            )
+        })
+}
+
 fn emit_window_registry_event(
     window_id: &str,
     phase: WindowRegistryEventPhase,
@@ -3581,6 +6268,167 @@ fn emit_window_registry_event(
             payload: Some(payload),
         })
         .map_err(|_error| HostProtocolError::host_unavailable(host_protocol::WINDOW_EVENT))
+}
+
+fn emit_webview_navigation_blocked_event(
+    webview_id: &str,
+    owner_scope: &str,
+    url: &str,
+    reason: &str,
+) {
+    let sender = match webview_event_sender() {
+        Ok(Some(sender)) => sender,
+        Ok(None) => return,
+        Err(error) => {
+            warn!(
+                event = "host.webview.navigation_blocked_event_sender_failed",
+                error = ?error,
+                "failed to read webview event sender"
+            );
+            return;
+        }
+    };
+    let payload = serde_json::json!({
+        "webview": {
+            "kind": "webview",
+            "id": webview_id,
+            "generation": 0,
+            "ownerScope": owner_scope,
+            "state": "open"
+        },
+        "url": url,
+        "reason": reason
+    });
+    let timestamp = timestamp_millis();
+    let _ = sender.send(HostProtocolEnvelope::Event {
+        method: host_protocol::WEBVIEW_NAVIGATION_BLOCKED_EVENT.to_string(),
+        timestamp,
+        trace_id: format!("webview-navigation-blocked-{webview_id}-{timestamp}"),
+        window_id: None,
+        payload: Some(payload),
+    });
+}
+
+fn emit_webview_api_call_event(
+    webview_id: &str,
+    owner_scope: &str,
+    api: &str,
+    method: &str,
+    payload: &str,
+) {
+    let sender = match webview_event_sender() {
+        Ok(Some(sender)) => sender,
+        Ok(None) => return,
+        Err(error) => {
+            warn!(
+                event = "host.webview.api_call_event_sender_failed",
+                error = ?error,
+                "failed to read webview event sender"
+            );
+            return;
+        }
+    };
+    let event_payload = serde_json::json!({
+        "webview": {
+            "kind": "webview",
+            "id": webview_id,
+            "generation": 0,
+            "ownerScope": owner_scope,
+            "state": "open"
+        },
+        "api": api,
+        "method": method,
+        "payload": payload
+    });
+    let timestamp = timestamp_millis();
+    let _ = sender.send(HostProtocolEnvelope::Event {
+        method: host_protocol::WEBVIEW_API_CALL_EVENT.to_string(),
+        timestamp,
+        trace_id: format!("webview-api-call-{webview_id}-{timestamp}"),
+        window_id: None,
+        payload: Some(event_payload),
+    });
+}
+
+fn emit_webview_runtime_event(
+    webview_id: &str,
+    owner_scope: &str,
+    phase: &str,
+    url: Option<&str>,
+    reason: Option<&str>,
+    paths: Option<&[String]>,
+    position: Option<(i32, i32)>,
+) {
+    let sender = match webview_event_sender() {
+        Ok(Some(sender)) => sender,
+        Ok(None) => return,
+        Err(error) => {
+            warn!(
+                event = "host.webview.runtime_event_sender_failed",
+                error = ?error,
+                "failed to read webview event sender"
+            );
+            return;
+        }
+    };
+    let mut payload = serde_json::json!({
+        "webview": {
+            "kind": "webview",
+            "id": webview_id,
+            "generation": 0,
+            "ownerScope": owner_scope,
+            "state": "open"
+        },
+        "phase": phase
+    });
+    if let Some(url) = url {
+        payload["url"] = serde_json::json!(url);
+    }
+    if let Some(reason) = reason {
+        payload["reason"] = serde_json::json!(reason);
+    }
+    if let Some(paths) = paths {
+        payload["paths"] = serde_json::json!(paths);
+    }
+    if let Some((x, y)) = position {
+        payload["position"] = serde_json::json!({ "x": x, "y": y });
+    }
+    let timestamp = timestamp_millis();
+    let _ = sender.send(HostProtocolEnvelope::Event {
+        method: host_protocol::WEBVIEW_RUNTIME_EVENT.to_string(),
+        timestamp,
+        trace_id: format!("webview-runtime-{webview_id}-{phase}-{timestamp}"),
+        window_id: None,
+        payload: Some(payload),
+    });
+}
+
+fn webview_drag_drop_event_payload(event: wry::DragDropEvent) -> WebViewDragDropPayload {
+    match event {
+        wry::DragDropEvent::Enter { paths, position } => (
+            "drag-enter",
+            Some(
+                paths
+                    .into_iter()
+                    .map(|path| path.display().to_string())
+                    .collect(),
+            ),
+            Some(position),
+        ),
+        wry::DragDropEvent::Over { position } => ("drag-over", None, Some(position)),
+        wry::DragDropEvent::Drop { paths, position } => (
+            "drag-drop",
+            Some(
+                paths
+                    .into_iter()
+                    .map(|path| path.display().to_string())
+                    .collect(),
+            ),
+            Some(position),
+        ),
+        wry::DragDropEvent::Leave => ("drag-leave", None, None),
+        _ => ("failed", None, None),
+    }
 }
 
 fn emit_window_state_event(
@@ -3603,6 +6451,62 @@ fn emit_window_state_event(
             payload: Some(payload),
         })
         .map_err(|_error| HostProtocolError::host_unavailable(host_protocol::WINDOW_EVENT))
+}
+
+fn emit_window_bounds_event(
+    window_id: &str,
+    bounds: WindowBoundsPayload,
+) -> std::result::Result<(), HostProtocolError> {
+    let Some(sender) = window_event_sender()? else {
+        return Ok(());
+    };
+    let payload = serde_json::to_value(WindowBoundsEventPayload::new(window_id, bounds)).map_err(
+        |error| HostProtocolError::invalid_output(host_protocol::WINDOW_EVENT, error.to_string()),
+    )?;
+    sender
+        .send(HostProtocolEnvelope::Event {
+            method: host_protocol::WINDOW_EVENT.to_string(),
+            timestamp: timestamp_millis(),
+            trace_id: format!("window-bounds-event-{}", Uuid::now_v7()),
+            window_id: Some(window_id.to_string()),
+            payload: Some(payload),
+        })
+        .map_err(|_error| HostProtocolError::host_unavailable(host_protocol::WINDOW_EVENT))
+}
+
+fn warn_if_before_quit_event_failed(source: &'static str) {
+    if let Err(error) = emit_app_before_quit_event(source) {
+        warn!(
+            event = "host.app.before_quit_event_failed",
+            error = ?error,
+            source,
+            "failed to emit app before-quit event"
+        );
+    }
+}
+
+fn emit_app_before_quit_event(source: &'static str) -> std::result::Result<(), HostProtocolError> {
+    let Some(sender) = window_event_sender()? else {
+        return Ok(());
+    };
+    let trace_id = format!("app-before-quit-{source}-{}", Uuid::now_v7());
+    let payload = serde_json::to_value(AppBeforeQuitEventPayload::new(trace_id.clone())).map_err(
+        |error| {
+            HostProtocolError::invalid_output(
+                host_protocol::APP_BEFORE_QUIT_EVENT,
+                error.to_string(),
+            )
+        },
+    )?;
+    sender
+        .send(HostProtocolEnvelope::Event {
+            method: host_protocol::APP_BEFORE_QUIT_EVENT.to_string(),
+            timestamp: timestamp_millis(),
+            trace_id,
+            window_id: None,
+            payload: Some(payload),
+        })
+        .map_err(|_error| HostProtocolError::host_unavailable(host_protocol::APP_BEFORE_QUIT_EVENT))
 }
 
 fn timestamp_millis() -> u64 {
@@ -3768,7 +6672,6 @@ fn validate_tray_handle(
             operation,
         ));
     }
-
     Ok(())
 }
 
@@ -3821,7 +6724,7 @@ fn build_tray_menu(
     let menu = tray_icon::menu::Menu::new();
     let items = menu_items(value, "menu.items", operation)?;
     for item in items {
-        append_menu_item(&menu, &item, operation)?;
+        append_menu_item(&menu, item, operation)?;
     }
     Ok(menu)
 }
@@ -4010,6 +6913,9 @@ pub(crate) fn run_main_window(mode: RunMode, window_methods: WindowMethodPort) -
     let command_source = window_methods.clone();
     let mut registry = WindowRegistry::new();
     let smoke_deadline = smoke_deadline_for_mode(mode, Instant::now());
+    if matches!(mode, RunMode::ResidentLifecycleSmokeTest) {
+        enable_resident_lifecycle_smoke_policy().map_err(|error| anyhow::anyhow!("{error:?}"))?;
+    }
 
     event_loop.run(move |event, target, control_flow| {
         let lifecycle_event = match event {
@@ -4022,6 +6928,14 @@ pub(crate) fn run_main_window(mode: RunMode, window_methods: WindowMethodPort) -
                 ..
             } => {
                 registry.track_native_window_focused(window_id);
+                WindowLifecycleEvent::Other
+            }
+            Event::WindowEvent {
+                window_id,
+                event: WindowEvent::Moved(_) | WindowEvent::Resized(_),
+                ..
+            } => {
+                registry.emit_native_window_bounds_event(window_id);
                 WindowLifecycleEvent::Other
             }
             Event::WindowEvent {
@@ -4063,8 +6977,37 @@ fn handle_native_window_close_requested(
     registry: &mut WindowRegistry,
     native_window_id: WindowId,
 ) -> WindowLifecycleEvent {
-    registry.native_window_close_requested(native_window_id);
-    WindowLifecycleEvent::CloseRequested
+    registry.emit_native_window_close_requested(native_window_id);
+    match resident_lifecycle::window_close_action() {
+        ResidentWindowCloseAction::DestroyAndExit => {
+            registry.native_window_close_requested(native_window_id);
+            WindowLifecycleEvent::CloseRequested
+        }
+        ResidentWindowCloseAction::DestroyAndKeepRunning => {
+            registry.native_window_close_requested(native_window_id);
+            WindowLifecycleEvent::Other
+        }
+        ResidentWindowCloseAction::HideAndKeepRunning => {
+            registry.native_window_close_requested_to_background(native_window_id);
+            WindowLifecycleEvent::Other
+        }
+    }
+}
+
+fn enable_resident_lifecycle_smoke_policy() -> std::result::Result<(), HostProtocolError> {
+    resident_lifecycle::enable(
+        Some(serde_json::json!({
+            "policy": {
+                "process": "keep-running",
+                "windows": "close-to-background",
+                "background": "tray",
+                "launchAtLogin": false
+            },
+            "traceId": "resident-lifecycle-smoke"
+        })),
+        None,
+    )
+    .map(|_| ())
 }
 
 fn is_screen_displays_changed_event(event: &Event<'_, HostEvent>) -> bool {
@@ -4081,12 +7024,33 @@ fn is_screen_displays_changed_window_event(event: &WindowEvent<'_>) -> bool {
 fn control_flow_for_lifecycle_event(event: WindowLifecycleEvent) -> ControlFlow {
     match event {
         WindowLifecycleEvent::CloseRequested => {
+            warn_if_before_quit_event_failed("close-requested");
             info!(
                 event = WINDOW_EXIT_REQUESTED_EVENT,
                 source = "close-requested",
                 "host window exit requested"
             );
             ControlFlow::Exit
+        }
+        WindowLifecycleEvent::AppQuitRequested(0) => {
+            warn_if_before_quit_event_failed("app-quit");
+            info!(
+                event = WINDOW_EXIT_REQUESTED_EVENT,
+                source = "app-quit",
+                exit_code = 0,
+                "host app quit requested"
+            );
+            ControlFlow::Exit
+        }
+        WindowLifecycleEvent::AppQuitRequested(exit_code) => {
+            warn_if_before_quit_event_failed("app-quit");
+            info!(
+                event = WINDOW_EXIT_REQUESTED_EVENT,
+                source = "app-quit",
+                exit_code,
+                "host app quit requested"
+            );
+            ControlFlow::ExitWithCode(i32::from(exit_code))
         }
         WindowLifecycleEvent::WindowCreateFailed => {
             warn!(
@@ -4117,7 +7081,7 @@ fn control_flow_for_lifecycle_event(event: WindowLifecycleEvent) -> ControlFlow 
 }
 
 fn smoke_deadline_for_mode(mode: RunMode, now: Instant) -> Option<Instant> {
-    if matches!(mode, RunMode::WindowSmokeTest) {
+    if mode.is_smoke_test() {
         Some(now + WINDOW_SMOKE_TEST_TIMEOUT)
     } else {
         None
@@ -4130,7 +7094,7 @@ fn lifecycle_event_with_smoke_timeout(
     deadline: Option<Instant>,
     now: Instant,
 ) -> WindowLifecycleEvent {
-    if !matches!(event, WindowLifecycleEvent::Other) || !matches!(mode, RunMode::WindowSmokeTest) {
+    if !matches!(event, WindowLifecycleEvent::Other) || !mode.is_smoke_test() {
         return event;
     }
 
@@ -4173,18 +7137,26 @@ mod tests {
     #[cfg(target_os = "linux")]
     use super::linux_wayland_pointer_unsupported_from_env;
     use super::{
-        centered_physical_axis, clear_window_runtime_event_state, control_flow_for_lifecycle_event,
-        control_flow_for_window_state, emit_window_registry_event,
-        handle_native_window_close_requested, install_window_event_sender,
+        centered_physical_axis, clear_webview_runtime_event_state,
+        clear_window_runtime_event_state, clip_window_bounds_to_logical_area,
+        control_flow_for_lifecycle_event, control_flow_for_window_state,
+        display_relative_physical_axis, emit_webview_api_call_event,
+        emit_webview_navigation_blocked_event, emit_webview_runtime_event,
+        emit_window_registry_event, handle_native_window_close_requested,
+        handle_webview_isolation_ipc, install_webview_event_sender, install_window_event_sender,
         is_screen_displays_changed_window_event, lifecycle_event_with_smoke_timeout,
-        lifecycle_for_create_result, smoke_deadline_for_mode, unsupported_screen,
-        validate_positive_finite, RunMode, WindowCommand, WindowCommandResponse,
+        lifecycle_for_create_result, resident_lifecycle, rounded_i32, rounded_u32,
+        screen_bounds_payload, smoke_deadline_for_mode, to_tao_dock_progress, unsupported_screen,
+        validate_positive_finite, LogicalScreenArea, PhysicalScreenArea, RunMode,
+        WebViewExposedApi, WebViewIsolationPolicy, WebViewNavigationDecision,
+        WebViewNavigationPolicy, WebViewNavigationState, WindowCommand, WindowCommandResponse,
         WindowCreateRequest, WindowId, WindowLifecycleEvent, WindowMethodPort, WindowRegistry,
         WINDOW_COMMAND_IDLE_POLL_INTERVAL, WINDOW_SMOKE_TEST_TIMEOUT,
     };
     use host_protocol::{
-        HostProtocolEnvelope, HostProtocolError, WindowCreatePayload, WindowCreateResponse,
-        WindowRegistryEventPhase,
+        DockProgressState, DockSetProgressOptionsPayload, DockSetProgressPayload,
+        HostProtocolEnvelope, HostProtocolError, WindowBoundsPayload, WindowCreatePayload,
+        WindowCreateResponse, WindowRegistryEventPhase,
     };
     use std::collections::HashSet;
     use std::sync::{mpsc, Mutex};
@@ -4195,6 +7167,7 @@ mod tests {
     use tao::dpi::PhysicalSize;
     use tao::event::WindowEvent;
     use tao::event_loop::ControlFlow;
+    use tao::window::ProgressState;
 
     struct WindowEventSenderGuard;
 
@@ -4202,6 +7175,219 @@ mod tests {
         fn drop(&mut self) {
             let _ = clear_window_runtime_event_state();
         }
+    }
+
+    #[test]
+    fn webview_navigation_state_tracks_host_history() {
+        let mut state = WebViewNavigationState::new("app://localhost/".to_string());
+        assert!(!state.can_go_back());
+        assert!(!state.can_go_forward());
+
+        state.mark_loading("app://localhost/settings");
+        assert!(state.can_go_back());
+        assert!(!state.can_go_forward());
+        assert!(state.to_payload().loading);
+
+        assert!(state.move_back());
+        assert!(!state.can_go_back());
+        assert!(state.can_go_forward());
+
+        assert!(state.move_forward());
+        state.mark_finished("app://localhost/settings");
+        let payload = state.to_payload();
+        assert!(payload.can_go_back);
+        assert!(!payload.can_go_forward);
+        assert!(!payload.loading);
+    }
+
+    #[test]
+    fn webview_origin_policy_matches_exact_origins() {
+        let policy = WebViewNavigationPolicy::new(
+            vec![
+                "app://localhost".to_string(),
+                "https://example.com".to_string(),
+            ],
+            WebViewNavigationDecision::Block,
+        );
+
+        assert!(super::origin_allowed("app://localhost/settings", &policy));
+        assert!(super::origin_allowed("https://example.com/path", &policy));
+        assert!(!super::origin_allowed(
+            "https://evil.example.com/path",
+            &policy
+        ));
+    }
+
+    #[test]
+    fn webview_navigation_blocked_event_uses_typed_payload() {
+        let _guard = WINDOW_EVENT_TEST_LOCK.lock().expect("window event lock");
+        let (sender, receiver) = mpsc::channel();
+        install_webview_event_sender(sender).expect("webview event sender should install");
+
+        emit_webview_navigation_blocked_event(
+            "webview-1",
+            "window:window-1",
+            "https://evil.example.com/path",
+            "origin-policy",
+        );
+
+        let event = receiver
+            .recv()
+            .expect("navigation blocked event should be emitted");
+        clear_webview_runtime_event_state().expect("webview event sender should clear");
+        let HostProtocolEnvelope::Event {
+            method, payload, ..
+        } = event
+        else {
+            panic!("expected event envelope");
+        };
+        assert_eq!(method, host_protocol::WEBVIEW_NAVIGATION_BLOCKED_EVENT);
+        assert_eq!(
+            payload.expect("event should include payload"),
+            serde_json::json!({
+                "webview": {
+                    "kind": "webview",
+                    "id": "webview-1",
+                    "generation": 0,
+                    "ownerScope": "window:window-1",
+                    "state": "open"
+                },
+                "url": "https://evil.example.com/path",
+                "reason": "origin-policy"
+            })
+        );
+    }
+
+    #[test]
+    fn webview_api_call_event_uses_typed_payload() {
+        let _guard = WINDOW_EVENT_TEST_LOCK.lock().expect("window event lock");
+        let (sender, receiver) = mpsc::channel();
+        install_webview_event_sender(sender).expect("webview event sender should install");
+
+        emit_webview_api_call_event(
+            "webview-1",
+            "window:window-1",
+            "desktop",
+            "ping",
+            "{\"ok\":true}",
+        );
+
+        let event = receiver.recv().expect("api call event should be emitted");
+        clear_webview_runtime_event_state().expect("webview event sender should clear");
+        let HostProtocolEnvelope::Event {
+            method, payload, ..
+        } = event
+        else {
+            panic!("expected event envelope");
+        };
+        assert_eq!(method, host_protocol::WEBVIEW_API_CALL_EVENT);
+        assert_eq!(
+            payload.expect("event should include payload"),
+            serde_json::json!({
+                "webview": {
+                    "kind": "webview",
+                    "id": "webview-1",
+                    "generation": 0,
+                    "ownerScope": "window:window-1",
+                    "state": "open"
+                },
+                "api": "desktop",
+                "method": "ping",
+                "payload": "{\"ok\":true}"
+            })
+        );
+    }
+
+    #[test]
+    fn webview_runtime_event_uses_typed_payload() {
+        let _guard = WINDOW_EVENT_TEST_LOCK.lock().expect("window event lock");
+        let (sender, receiver) = mpsc::channel();
+        install_webview_event_sender(sender).expect("webview event sender should install");
+
+        emit_webview_runtime_event(
+            "webview-1",
+            "window:window-1",
+            "drag-drop",
+            None,
+            None,
+            Some(&["/tmp/report.txt".to_string()]),
+            Some((12, 24)),
+        );
+
+        let event = receiver.recv().expect("runtime event should be emitted");
+        clear_webview_runtime_event_state().expect("webview event sender should clear");
+        let HostProtocolEnvelope::Event {
+            method, payload, ..
+        } = event
+        else {
+            panic!("expected event envelope");
+        };
+        assert_eq!(method, host_protocol::WEBVIEW_RUNTIME_EVENT);
+        assert_eq!(
+            payload.expect("event should include payload"),
+            serde_json::json!({
+                "webview": {
+                    "kind": "webview",
+                    "id": "webview-1",
+                    "generation": 0,
+                    "ownerScope": "window:window-1",
+                    "state": "open"
+                },
+                "phase": "drag-drop",
+                "paths": ["/tmp/report.txt"],
+                "position": { "x": 12, "y": 24 }
+            })
+        );
+    }
+
+    #[test]
+    fn webview_isolation_ipc_emits_only_declared_api_calls() {
+        let _guard = WINDOW_EVENT_TEST_LOCK.lock().expect("window event lock");
+        let (sender, receiver) = mpsc::channel();
+        install_webview_event_sender(sender).expect("webview event sender should install");
+        let policy = WebViewIsolationPolicy::new(vec![WebViewExposedApi::new(
+            "desktop".to_string(),
+            vec!["ping".to_string()],
+        )]);
+
+        handle_webview_isolation_ipc(
+            "webview-1",
+            "window:window-1",
+            &policy,
+            r#"{"kind":"effect-desktop.webview-api","api":"desktop","method":"ping","payload":"{\"ok\":true}"}"#,
+        );
+        handle_webview_isolation_ipc(
+            "webview-1",
+            "window:window-1",
+            &policy,
+            r#"{"kind":"effect-desktop.webview-api","api":"desktop","method":"deleteEverything","payload":"{}"}"#,
+        );
+
+        let event = receiver.recv().expect("declared api call should emit");
+        assert!(receiver.try_recv().is_err());
+        clear_webview_runtime_event_state().expect("webview event sender should clear");
+        let HostProtocolEnvelope::Event {
+            method, payload, ..
+        } = event
+        else {
+            panic!("expected event envelope");
+        };
+        assert_eq!(method, host_protocol::WEBVIEW_API_CALL_EVENT);
+        assert_eq!(
+            payload.expect("event should include payload"),
+            serde_json::json!({
+                "webview": {
+                    "kind": "webview",
+                    "id": "webview-1",
+                    "generation": 0,
+                    "ownerScope": "window:window-1",
+                    "state": "open"
+                },
+                "api": "desktop",
+                "method": "ping",
+                "payload": "{\"ok\":true}"
+            })
+        );
     }
 
     fn install_test_window_event_sender(
@@ -4217,6 +7403,83 @@ mod tests {
             control_flow_for_lifecycle_event(WindowLifecycleEvent::CloseRequested),
             ControlFlow::Exit
         );
+    }
+
+    #[test]
+    fn app_quit_requested_exits_with_requested_status() {
+        assert_eq!(
+            control_flow_for_lifecycle_event(WindowLifecycleEvent::AppQuitRequested(0)),
+            ControlFlow::Exit
+        );
+        assert_eq!(
+            control_flow_for_lifecycle_event(WindowLifecycleEvent::AppQuitRequested(7)),
+            ControlFlow::ExitWithCode(7)
+        );
+    }
+
+    #[test]
+    fn app_quit_requested_emits_before_quit_event() {
+        let _guard = WINDOW_EVENT_TEST_LOCK
+            .lock()
+            .expect("window event test lock should not be poisoned");
+        let (receiver, _event_sender_guard) = install_test_window_event_sender();
+
+        assert_eq!(
+            control_flow_for_lifecycle_event(WindowLifecycleEvent::AppQuitRequested(0)),
+            ControlFlow::Exit
+        );
+
+        let event = receiver
+            .recv()
+            .expect("before quit receiver should receive event");
+
+        let HostProtocolEnvelope::Event {
+            method,
+            window_id,
+            trace_id,
+            payload,
+            ..
+        } = event
+        else {
+            panic!("before quit event should be host event envelope");
+        };
+        assert_eq!(method, host_protocol::APP_BEFORE_QUIT_EVENT);
+        assert_eq!(window_id, None);
+        assert!(trace_id.starts_with("app-before-quit-app-quit-"));
+        assert_eq!(
+            payload.and_then(|value| {
+                value
+                    .get("traceId")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_string)
+            }),
+            Some(trace_id)
+        );
+    }
+
+    #[test]
+    fn close_requested_emits_before_quit_event() {
+        let _guard = WINDOW_EVENT_TEST_LOCK
+            .lock()
+            .expect("window event test lock should not be poisoned");
+        let (receiver, _event_sender_guard) = install_test_window_event_sender();
+
+        assert_eq!(
+            control_flow_for_lifecycle_event(WindowLifecycleEvent::CloseRequested),
+            ControlFlow::Exit
+        );
+
+        let event = receiver
+            .recv()
+            .expect("before quit receiver should receive event");
+        let HostProtocolEnvelope::Event {
+            method, trace_id, ..
+        } = event
+        else {
+            panic!("before quit event should be host event envelope");
+        };
+        assert_eq!(method, host_protocol::APP_BEFORE_QUIT_EVENT);
+        assert!(trace_id.starts_with("app-before-quit-close-requested-"));
     }
 
     #[test]
@@ -4398,13 +7661,105 @@ mod tests {
     }
 
     #[test]
+    fn screen_work_area_payload_can_differ_from_monitor_bounds() {
+        let area = PhysicalScreenArea::new(0.0, 25.0, 3024.0, 1719.0)
+            .expect("macOS visibleFrame should convert to physical screen area");
+
+        assert_eq!(
+            screen_bounds_payload(area),
+            host_protocol::ScreenBoundsPayload::new(0.0, 25.0, 3024.0, 1719.0)
+        );
+    }
+
+    #[test]
+    fn screen_work_area_conversion_rejects_invalid_coordinates() {
+        assert!(PhysicalScreenArea::new(f64::NAN, 0.0, 100.0, 100.0).is_none());
+        assert!(PhysicalScreenArea::new(0.0, 0.0, -1.0, 100.0).is_none());
+        assert!(rounded_i32(f64::from(i32::MAX) + 1.0).is_none());
+        assert!(rounded_u32(f64::from(u32::MAX) + 1.0).is_none());
+    }
+
+    #[test]
+    fn center_on_display_uses_work_area_origin_when_available() {
+        let work_area =
+            PhysicalScreenArea::new(0.0, 25.0, 3024.0, 1719.0).expect("work area should convert");
+
+        assert_eq!(
+            centered_physical_axis(
+                work_area.y,
+                work_area.height,
+                900,
+                "y",
+                host_protocol::WINDOW_CENTER_ON_DISPLAY_METHOD
+            ),
+            Ok(434)
+        );
+    }
+
+    #[test]
+    fn set_bounds_clips_to_logical_work_area() {
+        let work_area = LogicalScreenArea {
+            x: 100.0,
+            y: 50.0,
+            width: 1200.0,
+            height: 800.0,
+        };
+
+        assert_eq!(
+            clip_window_bounds_to_logical_area(
+                &WindowBoundsPayload::new(0.0, 0.0, 1400.0, 900.0),
+                work_area
+            ),
+            WindowBoundsPayload::new(100.0, 50.0, 1200.0, 800.0)
+        );
+        assert_eq!(
+            clip_window_bounds_to_logical_area(
+                &WindowBoundsPayload::new(1000.0, 700.0, 400.0, 300.0),
+                work_area
+            ),
+            WindowBoundsPayload::new(900.0, 550.0, 400.0, 300.0)
+        );
+        assert_eq!(
+            clip_window_bounds_to_logical_area(
+                &WindowBoundsPayload::new(300.0, 200.0, 400.0, 300.0),
+                work_area
+            ),
+            WindowBoundsPayload::new(300.0, 200.0, 400.0, 300.0)
+        );
+    }
+
+    #[test]
+    fn display_relative_bounds_use_physical_work_area_origin() {
+        assert_eq!(
+            display_relative_physical_axis(
+                3840,
+                25.0,
+                2.0,
+                "x",
+                host_protocol::WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD
+            ),
+            Ok(3890)
+        );
+        assert_eq!(
+            display_relative_physical_axis(
+                -1920,
+                100.0,
+                1.5,
+                "x",
+                host_protocol::WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD
+            ),
+            Ok(-1770)
+        );
+    }
+
+    #[test]
     fn window_registry_events_encode_to_runtime_sender() {
         let _guard = WINDOW_EVENT_TEST_LOCK
             .lock()
             .expect("window event test lock should not be poisoned");
         let (receiver, _event_sender_guard) = install_test_window_event_sender();
 
-        emit_window_registry_event("window-1", WindowRegistryEventPhase::Closed)
+        emit_window_registry_event("window-1", WindowRegistryEventPhase::Shown)
             .expect("window event should emit");
 
         let event = receiver
@@ -4426,9 +7781,9 @@ mod tests {
             payload.expect("window event should include payload"),
             serde_json::json!({
                 "type": "window-registry-event",
-                "phase": "closed",
+                "phase": "shown",
                 "windowId": "window-1",
-                "terminal": true
+                "terminal": false
             })
         );
     }
@@ -4442,7 +7797,7 @@ mod tests {
 
         super::emit_window_state_event(
             "window-1",
-            host_protocol::WindowStatePayload::new(true, false, false),
+            host_protocol::WindowStatePayload::new(true, false, false, false),
         )
         .expect("window state event should emit");
 
@@ -4469,30 +7824,105 @@ mod tests {
                 "state": {
                     "minimized": true,
                     "maximized": false,
-                    "fullscreen": false
+                    "fullscreen": false,
+                    "simpleFullscreen": false
                 }
             })
         );
     }
 
     #[test]
-    fn window_state_reads_from_host_tracked_command_state() {
-        let mut registry = WindowRegistry::new();
-        registry.window_states.insert(
-            "window-1".to_string(),
-            host_protocol::WindowStatePayload::new(false, false, false),
+    fn window_bounds_events_encode_to_runtime_sender() {
+        let _guard = WINDOW_EVENT_TEST_LOCK
+            .lock()
+            .expect("window event test lock should not be poisoned");
+        let (receiver, _event_sender_guard) = install_test_window_event_sender();
+
+        super::emit_window_bounds_event(
+            "window-1",
+            host_protocol::WindowBoundsPayload::new(10.0, 20.0, 640.0, 480.0),
+        )
+        .expect("window bounds event should emit");
+
+        let event = receiver
+            .recv()
+            .expect("window event receiver should receive bounds event");
+
+        let HostProtocolEnvelope::Event {
+            method,
+            window_id,
+            payload,
+            ..
+        } = event
+        else {
+            panic!("expected window bounds event envelope");
+        };
+        assert_eq!(method, host_protocol::WINDOW_EVENT);
+        assert_eq!(window_id.as_deref(), Some("window-1"));
+        assert_eq!(
+            payload.expect("window bounds event should include payload"),
+            serde_json::json!({
+                "type": "window-bounds-event",
+                "windowId": "window-1",
+                "bounds": {
+                    "x": 10.0,
+                    "y": 20.0,
+                    "width": 640.0,
+                    "height": 480.0
+                }
+            })
         );
+    }
 
-        registry.update_window_state("window-1", |state| {
-            host_protocol::WindowStatePayload::new(true, state.maximized(), state.fullscreen())
-        });
+    #[test]
+    fn unconfirmed_window_state_transition_is_invalid_state() {
+        let observed = host_protocol::WindowStatePayload::new(false, false, false, false);
+        let error = super::ensure_window_state(
+            &observed,
+            observed.fullscreen(),
+            "fullscreen=true",
+            host_protocol::WINDOW_SET_FULLSCREEN_METHOD,
+        )
+        .expect_err("unconfirmed transition should fail");
 
-        let state = registry
-            .window_state("window-1", host_protocol::WINDOW_GET_STATE_METHOD)
-            .expect("tracked window state should read");
-        assert!(state.minimized());
-        assert!(!state.maximized());
-        assert!(!state.fullscreen());
+        assert_eq!(error.tag(), "InvalidState");
+        if let HostProtocolError::InvalidState {
+            current,
+            attempted,
+            operation,
+            ..
+        } = error
+        {
+            assert_eq!(
+                current,
+                "minimized=false,maximized=false,fullscreen=false,simpleFullscreen=false"
+            );
+            assert_eq!(attempted, "fullscreen=true");
+            assert_eq!(operation, host_protocol::WINDOW_SET_FULLSCREEN_METHOD);
+        } else {
+            panic!("expected InvalidState");
+        }
+    }
+
+    #[test]
+    fn dock_progress_payload_maps_to_tao_progress_bar_state() {
+        let progress = DockSetProgressPayload::new(
+            serde_json::json!(0.5),
+            Some(DockSetProgressOptionsPayload::new(Some(
+                DockProgressState::Normal,
+            ))),
+        );
+        let progress_bar =
+            to_tao_dock_progress(&progress).expect("dock progress should map to tao state");
+
+        assert_eq!(progress_bar.progress, Some(50));
+        assert!(matches!(progress_bar.state, Some(ProgressState::Normal)));
+        assert_eq!(progress_bar.desktop_filename, None);
+
+        let clear = DockSetProgressPayload::new(serde_json::Value::Null, None);
+        let clear_bar = to_tao_dock_progress(&clear).expect("dock clear should map to tao state");
+        assert_eq!(clear_bar.progress, None);
+        assert!(matches!(clear_bar.state, Some(ProgressState::None)));
     }
 
     #[test]
@@ -4500,6 +7930,8 @@ mod tests {
         let _guard = WINDOW_EVENT_TEST_LOCK
             .lock()
             .expect("window event test lock should not be poisoned");
+        let _resident_guard = resident_lifecycle::state_test_guard();
+        resident_lifecycle::reset_state_for_test();
         let (receiver, _event_sender_guard) = install_test_window_event_sender();
         // SAFETY: The dummy id stays inside registry bookkeeping and is never passed to Tao.
         let native_window_id = unsafe { WindowId::dummy() };
@@ -4517,7 +7949,10 @@ mod tests {
             .contains_key(&native_window_id));
         assert!(registry.window_order.is_empty());
         assert_eq!(registry.focused_window_id, None);
-        let event = receiver
+        let close_requested_event = receiver
+            .recv()
+            .expect("window event receiver should receive close-requested event");
+        let closed_event = receiver
             .recv()
             .expect("window event receiver should receive close event");
         assert!(receiver.try_recv().is_err());
@@ -4527,7 +7962,28 @@ mod tests {
             window_id,
             payload,
             ..
-        } = event
+        } = close_requested_event
+        else {
+            panic!("expected window registry event envelope");
+        };
+        assert_eq!(method, host_protocol::WINDOW_EVENT);
+        assert_eq!(window_id.as_deref(), Some("window-1"));
+        assert_eq!(
+            payload.expect("window event should include payload"),
+            serde_json::json!({
+                "type": "window-registry-event",
+                "phase": "closeRequested",
+                "windowId": "window-1",
+                "terminal": false
+            })
+        );
+
+        let HostProtocolEnvelope::Event {
+            method,
+            window_id,
+            payload,
+            ..
+        } = closed_event
         else {
             panic!("expected window registry event envelope");
         };
@@ -4557,6 +8013,7 @@ mod tests {
             ControlFlow::Exit
         );
         assert_eq!(lifecycle_event, WindowLifecycleEvent::CloseRequested);
+        resident_lifecycle::reset_state_for_test();
     }
 
     #[test]

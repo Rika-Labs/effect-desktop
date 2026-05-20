@@ -27,11 +27,11 @@ import {
 
 export type PowerMonitorError = HostProtocolError
 
-const UnsupportedReason = "host-adapter-unimplemented"
+const UnsupportedReason = "platform-power-monitor-unavailable"
 
-const PowerMonitorSupport = NativeSurface.support.unsupported(UnsupportedReason, {
+const PowerMonitorSupport = NativeSurface.support.partial(UnsupportedReason, {
   platforms: [
-    { platform: "macos", status: "unsupported", reason: UnsupportedReason },
+    { platform: "macos", status: "supported" },
     { platform: "windows", status: "unsupported", reason: UnsupportedReason },
     { platform: "linux", status: "unsupported", reason: UnsupportedReason }
   ]
@@ -40,7 +40,7 @@ const PowerMonitorSupport = NativeSurface.support.unsupported(UnsupportedReason,
 export const PowerMonitorIsSupported = NativeSurface.rpc("PowerMonitor", "isSupported", {
   payload: PowerMonitorIsSupportedInput,
   success: PowerMonitorSupportedResult,
-  authority: NativeSurface.authority.none,
+  authority: NativeSurface.authority.native(),
   endpoint: "query",
   support: PowerMonitorSupport
 })
@@ -143,6 +143,7 @@ export const PowerMonitorHandlersLive = PowerMonitorRpcGroup.toLayer({
 
 export const PowerMonitorSurface = NativeSurface.make("PowerMonitor", PowerMonitorRpcGroup, {
   service: PowerMonitorClient,
+  capabilities: PowerMonitorMethodNames,
   handlers: PowerMonitorHandlersLive,
   client: (client) => powerMonitorClientFromRpcClient(client, undefined),
   bridgeClient: (client, exchange) => powerMonitorClientFromRpcClient(client, exchange)
@@ -160,22 +161,50 @@ const powerMonitorClientFromRpcClient = (
 ): PowerMonitorClientApi =>
   Object.freeze({
     onSuspend: () =>
-      subscribePowerMonitorEvent(exchange, "PowerMonitor.Suspend", PowerMonitorSuspendEvent),
-    onResume: () =>
-      subscribePowerMonitorEvent(exchange, "PowerMonitor.Resume", PowerMonitorResumeEvent),
-    onShutdown: () =>
-      subscribePowerMonitorEvent(exchange, "PowerMonitor.Shutdown", PowerMonitorShutdownEvent),
-    onLockScreen: () =>
-      subscribePowerMonitorEvent(exchange, "PowerMonitor.LockScreen", PowerMonitorLockScreenEvent),
-    onUnlockScreen: () =>
-      subscribePowerMonitorEvent(
+      supportedPowerMonitorEvent(
+        client,
         exchange,
+        "onSuspend",
+        "PowerMonitor.Suspend",
+        PowerMonitorSuspendEvent
+      ),
+    onResume: () =>
+      supportedPowerMonitorEvent(
+        client,
+        exchange,
+        "onResume",
+        "PowerMonitor.Resume",
+        PowerMonitorResumeEvent
+      ),
+    onShutdown: () =>
+      supportedPowerMonitorEvent(
+        client,
+        exchange,
+        "onShutdown",
+        "PowerMonitor.Shutdown",
+        PowerMonitorShutdownEvent
+      ),
+    onLockScreen: () =>
+      supportedPowerMonitorEvent(
+        client,
+        exchange,
+        "onLockScreen",
+        "PowerMonitor.LockScreen",
+        PowerMonitorLockScreenEvent
+      ),
+    onUnlockScreen: () =>
+      supportedPowerMonitorEvent(
+        client,
+        exchange,
+        "onUnlockScreen",
         "PowerMonitor.UnlockScreen",
         PowerMonitorUnlockScreenEvent
       ),
     onPowerSourceChanged: () =>
-      subscribePowerMonitorEvent(
+      supportedPowerMonitorEvent(
+        client,
         exchange,
+        "onPowerSourceChanged",
         "PowerMonitor.PowerSourceChanged",
         PowerMonitorSourceChangedEvent
       ),
@@ -185,6 +214,26 @@ const powerMonitorClientFromRpcClient = (
         "PowerMonitor.isSupported"
       )
   } satisfies PowerMonitorClientApi)
+
+const supportedPowerMonitorEvent = <A>(
+  client: DesktopRpcClient<PowerMonitorRpc>,
+  exchange: BridgeClientExchange | undefined,
+  method: PowerMonitorMethod,
+  eventMethod: string,
+  schema: Schema.Codec<A, unknown, never, never>
+): Stream.Stream<A, PowerMonitorError, never> =>
+  Stream.unwrap(
+    runPowerMonitorRpc(
+      client["PowerMonitor.isSupported"](new PowerMonitorIsSupportedInput({ method })),
+      "PowerMonitor.isSupported"
+    ).pipe(
+      Effect.map((result) =>
+        result.supported
+          ? subscribePowerMonitorEvent(exchange, eventMethod, schema)
+          : Stream.fail(unsupportedError(eventMethod))
+      )
+    )
+  )
 
 const subscribePowerMonitorEvent = <A>(
   exchange: BridgeClientExchange | undefined,
@@ -214,6 +263,17 @@ const isPowerMonitorError = (error: unknown): error is PowerMonitorError =>
   "tag" in error &&
   "operation" in error &&
   "recoverable" in error
+
+const unsupportedError = (operation: string): PowerMonitorError => ({
+  tag: "Unsupported",
+  get _tag() {
+    return this.tag
+  },
+  reason: UnsupportedReason,
+  message: `unsupported PowerMonitor event source: ${operation}`,
+  operation,
+  recoverable: false
+})
 
 const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) return error.message

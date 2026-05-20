@@ -1,7 +1,6 @@
-import { join } from "node:path"
-
 import { Cause, Context, Data, Effect, Layer, Schema } from "effect"
 import { FileSystem } from "effect/FileSystem"
+import { Path } from "effect/Path"
 import { Activity, Workflow, WorkflowEngine } from "effect/unstable/workflow"
 import { BackupManifestJson } from "./backup.js"
 
@@ -27,7 +26,7 @@ export interface RestoreConfig {
 }
 
 export class RestoreConfigService extends Context.Service<RestoreConfigService, RestoreConfig>()(
-  "RestoreConfigService"
+  "@effect-desktop/core/runtime/workflows/restore/RestoreConfigService"
 ) {}
 
 export interface WriterQuiescePort {
@@ -38,7 +37,7 @@ export interface WriterQuiescePort {
 export class WriterQuiesceService extends Context.Service<
   WriterQuiesceService,
   WriterQuiescePort
->()("WriterQuiesceService") {}
+>()("@effect-desktop/core/runtime/workflows/restore/WriterQuiesceService") {}
 
 export const RestoreWorkflow = Workflow.make({
   name: "Restore",
@@ -55,10 +54,11 @@ const wrapError =
 export const RestoreWorkflowLayer: Layer.Layer<
   never,
   never,
-  WorkflowEngine.WorkflowEngine | RestoreConfigService | FileSystem | WriterQuiesceService
+  WorkflowEngine.WorkflowEngine | RestoreConfigService | FileSystem | Path | WriterQuiesceService
 > = RestoreWorkflow.toLayer((payload) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem
+    const path = yield* Path
     const config = yield* RestoreConfigService
     const quiesce = yield* WriterQuiesceService
 
@@ -70,7 +70,7 @@ export const RestoreWorkflowLayer: Layer.Layer<
       success: Schema.Struct({ manifestLabel: Schema.String }),
       error: RestoreErrorSchema,
       execute: Effect.gen(function* () {
-        const manifestPath = join(payload.archivePath, "manifest.json")
+        const manifestPath = path.join(payload.archivePath, "manifest.json")
         const manifestBytes = yield* fs
           .readFile(manifestPath)
           .pipe(Effect.mapError(wrapError("validate")))
@@ -86,13 +86,11 @@ export const RestoreWorkflowLayer: Layer.Layer<
           )
         )
         if (parsed.format !== "effect-desktop-backup-v1") {
-          return yield* Effect.fail(
-            new RestoreError({
-              phase: "validate",
-              message: `unknown backup format: ${parsed.format}`,
-              cause: undefined
-            })
-          )
+          return yield* new RestoreError({
+            phase: "validate",
+            message: `unknown backup format: ${parsed.format}`,
+            cause: undefined
+          })
         }
         return { manifestLabel: parsed.label }
       })
@@ -125,7 +123,7 @@ export const RestoreWorkflowLayer: Layer.Layer<
       error: RestoreErrorSchema,
       execute: Effect.gen(function* () {
         const dbBytes = yield* fs
-          .readFile(join(payload.archivePath, "db.sqlite"))
+          .readFile(path.join(payload.archivePath, "db.sqlite"))
           .pipe(Effect.mapError(wrapError("database")))
         yield* fs.writeFile(config.dbPath, dbBytes).pipe(Effect.mapError(wrapError("database")))
       })
@@ -135,7 +133,7 @@ export const RestoreWorkflowLayer: Layer.Layer<
       name: "restoreFiles",
       error: RestoreErrorSchema,
       execute: fs
-        .copy(join(payload.archivePath, "files"), config.userDataDir, { overwrite: true })
+        .copy(path.join(payload.archivePath, "files"), config.userDataDir, { overwrite: true })
         .pipe(Effect.mapError(wrapError("files")))
     })
 

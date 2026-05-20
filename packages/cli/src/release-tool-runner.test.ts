@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 
-import { Effect, Layer, PlatformError, Sink, Stream } from "effect"
+import { Effect, Layer, ManagedRuntime, PlatformError, Sink, Stream } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 
 import {
@@ -12,45 +12,47 @@ import {
 
 const encoder = new TextEncoder()
 
-test("ReleaseToolRunner runs tools through the Effect child-process spawner", async () => {
+test("ReleaseToolRunner runs tools through the Effect child-process spawner", () => {
   const records: ChildProcess.StandardCommand[] = []
-  const result = await Effect.runPromise(
-    runWithSpawner(
-      makeFakeSpawner({
-        onCommand: (command) => {
-          records.push(command)
-        },
-        stdout: "artifact path\n",
-        stderr: "warning\n",
-        exitCode: 7
-      }),
-      {
+  const runtime = makeRunnerRuntime(
+    makeFakeSpawner({
+      onCommand: (command) => {
+        records.push(command)
+      },
+      stdout: "artifact path\n",
+      stderr: "warning\n",
+      exitCode: 7
+    })
+  )
+  return runtime.runPromise(
+    Effect.gen(function* () {
+      const result = yield* runnerProgram({
         step: "package",
         command: "tool",
         args: ["--flag"],
         cwd: "/repo",
         env: { RELEASE_CHANNEL: "stable" },
         maxStdoutChars: 8
-      }
-    )
-  )
+      })
 
-  expect(result).toEqual({
-    command: ["tool", "--flag"],
-    cwd: "/repo",
-    exitCode: 7,
-    stdout: "artifact\n[output truncated]",
-    stderr: "warning\n"
-  })
-  expect(records).toHaveLength(1)
-  expect(records[0]?.command).toBe("tool")
-  expect(records[0]?.args).toEqual(["--flag"])
-  expect(records[0]?.options.cwd).toBe("/repo")
-  expect(records[0]?.options.env).toEqual({ RELEASE_CHANNEL: "stable" })
-  expect(records[0]?.options.extendEnv).toBe(true)
+      expect(result).toEqual({
+        command: ["tool", "--flag"],
+        cwd: "/repo",
+        exitCode: 7,
+        stdout: "artifact\n[output truncated]",
+        stderr: "warning\n"
+      })
+      expect(records).toHaveLength(1)
+      expect(records[0]?.command).toBe("tool")
+      expect(records[0]?.args).toEqual(["--flag"])
+      expect(records[0]?.options.cwd).toBe("/repo")
+      expect(records[0]?.options.env).toEqual({ RELEASE_CHANNEL: "stable" })
+      expect(records[0]?.options.extendEnv).toBe(true)
+    })
+  )
 })
 
-test("ReleaseToolRunner maps missing tools to ToolError", async () => {
+test("ReleaseToolRunner maps missing tools to ToolError", () => {
   const spawner = ChildProcessSpawner.make(() =>
     Effect.fail(
       PlatformError.systemError({
@@ -60,20 +62,22 @@ test("ReleaseToolRunner maps missing tools to ToolError", async () => {
       })
     )
   )
+  const runtime = makeRunnerRuntime(spawner)
+  return runtime.runPromise(
+    Effect.gen(function* () {
+      const error = yield* Effect.flip(
+        runnerProgram({
+          step: "doctor",
+          command: "missing-tool",
+          args: [],
+          cwd: "/repo"
+        })
+      )
 
-  const error = await Effect.runPromise(
-    Effect.flip(
-      runWithSpawner(spawner, {
-        step: "doctor",
-        command: "missing-tool",
-        args: [],
-        cwd: "/repo"
-      })
-    )
+      expect(error).toBeInstanceOf(ToolError)
+      expect(error.invocation.command).toBe("missing-tool")
+    })
   )
-
-  expect(error).toBeInstanceOf(ToolError)
-  expect(error.invocation.command).toBe("missing-tool")
 })
 
 interface FakeSpawnerOptions {
@@ -83,16 +87,18 @@ interface FakeSpawnerOptions {
   readonly exitCode?: number
 }
 
-const runWithSpawner = (
-  spawner: ChildProcessSpawner.ChildProcessSpawner["Service"],
-  invocation: ToolInvocation
-) =>
+const runnerProgram = (invocation: ToolInvocation) =>
   Effect.gen(function* () {
     const runner = yield* ReleaseToolRunner
     return yield* runner.run(invocation)
-  }).pipe(
-    Effect.provide(ReleaseToolRunnerLive),
-    Effect.provide(Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner))
+  })
+
+const makeRunnerRuntime = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) =>
+  ManagedRuntime.make(
+    Layer.provide(
+      ReleaseToolRunnerLive,
+      Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner)
+    )
   )
 
 const makeFakeSpawner = (options: FakeSpawnerOptions) =>

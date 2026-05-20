@@ -251,7 +251,7 @@ export const makeInspectorSafetyPolicy = (
 export class InspectorSafetyPolicy extends Context.Service<
   InspectorSafetyPolicy,
   InspectorSafetyPolicyApi
->()("InspectorSafetyPolicy", {
+>()("@effect-desktop/core/runtime/inspector-safety-policy/InspectorSafetyPolicy", {
   make: makeInspectorSafetyPolicy()
 }) {}
 

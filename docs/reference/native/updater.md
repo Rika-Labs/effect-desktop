@@ -8,34 +8,46 @@ effect_version: 4
 
 # `Updater`
 
-Auto-update service contract. The TypeScript surface is Schema-typed and test-substitutable, but the native updater host adapter is not implemented yet. Calls through the real native bridge decode through Rust `Updater.*` routes and then fail closed as `host-adapter-unimplemented`.
+Auto-update service contract. The TypeScript surface is Schema-typed and test-substitutable. The native host currently supports a local signed-manifest check, local file artifact staging for that verified manifest, committing the staged artifact into the host-owned current-bundle path, and status for those host-owned steps. `Updater.check` can verify a caller-supplied manifest JSON string against caller-supplied Ed25519 trust anchors, then report whether that manifest version differs from `currentVersion`. `Updater.download` can stage the verified manifest's current-platform `file://` artifact after checking its signed byte count and SHA-256 digest. `Updater.install` commits the staged artifact. `Updater.installAndRestart` commits the staged artifact and emits `Updater.PreparingRestart`; `Updater.readyForRestart` acknowledges that renderer work is quiesced before restart. `Updater.getStatus` reports the host-owned result as `idle`, `update-available`, `downloading`, `downloaded`, `installing`, or `error`.
+
+The host does not fetch feeds, download network artifacts, enforce update policy, or relaunch the process into an installed update yet. The current restart path is a typed readiness handshake over the local staged install.
 
 `Updater.download` is update-specific status reporting, not a general app download manager. There is no `Download` service yet for arbitrary file downloads, destination selection, pause/resume/cancel controls, session-owned resource handles, or ordered progress/completion events.
 
 ## Methods
 
-| Method              | Payload               | Success                                                    | Current support |
-| ------------------- | --------------------- | ---------------------------------------------------------- | --------------- |
-| `check`             | `{ currentVersion? }` | `{ available: boolean, version?: string, notes?: string }` | unsupported     |
-| `download`          | `{ version? }`        | updater status result                                      | unsupported     |
-| `install`           | `{ version? }`        | updater status result                                      | unsupported     |
-| `installAndRestart` | `{ version? }`        | updater status result                                      | unsupported     |
-| `getStatus`         | `void`                | updater status result                                      | unsupported     |
-| `readyForRestart`   | `void`                | `void`                                                     | unsupported     |
+| Method              | Payload                                             | Success                                                    | Current support |
+| ------------------- | --------------------------------------------------- | ---------------------------------------------------------- | --------------- |
+| `check`             | `{ currentVersion?, manifestJson?, trustAnchors? }` | `{ available: boolean, version?: string, notes?: string }` | partial         |
+| `download`          | `{ version? }`                                      | updater status result                                      | partial         |
+| `install`           | `{ version? }`                                      | updater status result                                      | partial         |
+| `installAndRestart` | `{ version? }`                                      | updater status result                                      | partial         |
+| `getStatus`         | `void`                                              | updater status result                                      | partial         |
+| `readyForRestart`   | `void`                                              | `void`                                                     | partial         |
 
 ## Types
 
 `UpdaterCheckOptions`, `UpdaterDownloadOptions`, `UpdaterInstallOptions`.
 
+`manifestJson` and `trustAnchors` must be provided together. Each trust anchor has `{ keyVersion, publicKey }`, where `publicKey` is an `ed25519:<base64>` public key envelope.
+
 ## Errors
 
-`UpdaterError` is the host protocol error union. Until the Rust adapter exists, native bridge calls fail as typed `Unsupported` host operations rather than claiming update security.
+`UpdaterError` is the host protocol error union. Unsupported update lifecycle calls fail as typed `Unsupported` host operations rather than claiming update security.
 
-The host protocol includes `UpdateSignatureInvalid` for the future verifier's terminal bad-signature path. The current adapter does not emit it yet because manifest verification is not wired through the runtime host.
+`Updater.check` emits `UpdateSignatureInvalid` for missing, invalid, tampered, or untrusted manifest signatures. Malformed manifests and malformed trust anchors are `InvalidArgument`.
+
+`Updater.download` requires a prior successful signed-manifest check for a newer version. It supports only current-platform `file://` artifacts from that verified manifest. Missing prior check is `InvalidState`; a requested version that does not match the verified manifest is `NotFound`; non-file artifact URLs are `Unsupported`; truncated artifacts are `UpdateDownloadTruncated`; digest mismatches are `UpdateSignatureInvalid`.
+
+`Updater.install` requires a prior staged artifact. Missing staged state is `InvalidState`; version mismatch is `NotFound`; filesystem commit failures are typed host failures with staging diagnostics. The staged artifact remains on disk until cleanup so diagnostics and rollback metadata remain available.
+
+`Updater.installAndRestart` has the same staged-artifact requirement, then emits `Updater.PreparingRestart` with a deadline. `Updater.readyForRestart` requires a pending restart handshake and records the acknowledgement in host status. Late readiness is a terminal host error with a recovery breadcrumb from the native updater primitive.
+
+`Updater.getStatus` is limited to signed-manifest check, local artifact staging, local install commit, and restart-readiness state. It does not report feed polling, network download, process relaunch, or rollback execution yet.
 
 ## Production checks
 
-The current workflow helper does not verify update artifact signatures. It asks the `Updater` service to confirm update availability before staging bytes, which is not a cryptographic proof. Do not use it as a production updater until #1331 wires signed manifest verification, artifact staging, install, and restart through the Rust host.
+The current workflow helper can rely on the host for signed manifest verification, local file artifact staging, local staged install commit, and restart-readiness acknowledgement. Do not use it as a production updater until feed policy, network download, process relaunch, permission/audit policy, lifecycle events, and operational diagnostics are complete.
 
 Do not reuse `Updater` as a general download API. General downloads need their own native service and host state machine so interrupted transfers emit terminal events and remain visible to leak/resource inspection.
 

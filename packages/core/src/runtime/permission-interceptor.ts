@@ -220,15 +220,13 @@ export const makePermissionInterceptorLayer = (
             rpc._tag
           )
           if (capabilityDecision._tag === "invalid") {
-            return yield* Effect.fail(
-              new PermissionDenied({
-                reason: "invalid-capability",
-                capability: deniedCapability,
-                actor: context.actor,
-                traceId: context.traceId ?? nextTraceId(),
-                message: `invalid capability metadata for RPC ${rpc._tag}`
-              })
-            )
+            return yield* new PermissionDenied({
+              reason: "invalid-capability",
+              capability: deniedCapability,
+              actor: context.actor,
+              traceId: context.traceId ?? nextTraceId(),
+              message: `invalid capability metadata for RPC ${rpc._tag}`
+            })
           }
           const capability = capabilityDecision.capability
           const grant = yield* registry
@@ -351,14 +349,12 @@ export const validatePermissions = (
     for (const req of required) {
       const found = declared.some((cap) => capabilityCovers(cap, req))
       if (!found) {
-        return yield* Effect.fail(
-          new DesktopConfigError({
-            reason: "undeclared-capability",
-            contract: req.kind,
-            capability: req,
-            message: `capability "${req.kind}" is required by a contract but was not declared with Desktop.permission(...)`
-          })
-        )
+        return yield* new DesktopConfigError({
+          reason: "undeclared-capability",
+          contract: req.kind,
+          capability: req,
+          message: `capability "${req.kind}" is required by a contract but was not declared with Desktop.permission(...)`
+        })
       }
     }
   })

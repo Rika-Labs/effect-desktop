@@ -12,14 +12,22 @@ export const WINDOW_GET_CURRENT_METHOD = "Window.getCurrent"
 export const WINDOW_GET_BY_ID_METHOD = "Window.getById"
 export const WINDOW_LIST_METHOD = "Window.list"
 export const WINDOW_GET_PARENT_METHOD = "Window.getParent"
+export const WINDOW_GET_CHILDREN_METHOD = "Window.getChildren"
 export const WINDOW_GET_BOUNDS_METHOD = "Window.getBounds"
 export const WINDOW_SET_BOUNDS_METHOD = "Window.setBounds"
+export const WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD = "Window.setBoundsOnDisplay"
 export const WINDOW_CENTER_METHOD = "Window.center"
 export const WINDOW_CENTER_ON_DISPLAY_METHOD = "Window.centerOnDisplay"
 export const WINDOW_SET_TITLE_METHOD = "Window.setTitle"
 export const WINDOW_SET_RESIZABLE_METHOD = "Window.setResizable"
 export const WINDOW_SET_DECORATIONS_METHOD = "Window.setDecorations"
 export const WINDOW_SET_TRAFFIC_LIGHTS_METHOD = "Window.setTrafficLights"
+export const WINDOW_SET_VIBRANCY_METHOD = "Window.setVibrancy"
+export const WINDOW_CLEAR_VIBRANCY_METHOD = "Window.clearVibrancy"
+export const WINDOW_SET_SHADOW_METHOD = "Window.setShadow"
+export const WINDOW_SET_TITLE_BAR_STYLE_METHOD = "Window.setTitleBarStyle"
+export const WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD = "Window.setTitleBarTransparent"
+export const WINDOW_SET_TRANSPARENT_METHOD = "Window.setTransparent"
 export const WINDOW_SET_ALWAYS_ON_TOP_METHOD = "Window.setAlwaysOnTop"
 export const WINDOW_SET_SKIP_TASKBAR_METHOD = "Window.setSkipTaskbar"
 export const WINDOW_SET_PROGRESS_METHOD = "Window.setProgress"
@@ -29,16 +37,60 @@ export const WINDOW_MINIMIZE_METHOD = "Window.minimize"
 export const WINDOW_MAXIMIZE_METHOD = "Window.maximize"
 export const WINDOW_RESTORE_METHOD = "Window.restore"
 export const WINDOW_SET_FULLSCREEN_METHOD = "Window.setFullscreen"
+export const WINDOW_SET_SIMPLE_FULLSCREEN_METHOD = "Window.setSimpleFullscreen"
 export const WINDOW_GET_STATE_METHOD = "Window.getState"
 export const WINDOW_SUBSCRIBE_EVENTS_METHOD = "Window.subscribeEvents"
 export const WINDOW_DESTROY_METHOD = "Window.destroy"
 export const WINDOW_EVENT_METHOD = "Window.Event"
 export const DOCK_SET_BADGE_COUNT_METHOD = "Dock.setBadgeCount"
 export const DOCK_SET_BADGE_TEXT_METHOD = "Dock.setBadgeText"
-export const DOCK_SET_MENU_METHOD = "Dock.setMenu"
+export const DOCK_SET_PROGRESS_METHOD = "Dock.setProgress"
 export const DOCK_REQUEST_ATTENTION_METHOD = "Dock.requestAttention"
+export const SAFE_STORAGE_SET_METHOD = "SafeStorage.set"
+export const SAFE_STORAGE_GET_METHOD = "SafeStorage.get"
+export const SAFE_STORAGE_DELETE_METHOD = "SafeStorage.delete"
+export const SAFE_STORAGE_LIST_METHOD = "SafeStorage.list"
+export const SAFE_STORAGE_IS_AVAILABLE_METHOD = "SafeStorage.isAvailable"
 export const MENU_SET_APPLICATION_MENU_METHOD = "Menu.setApplicationMenu"
 export const MENU_SET_WINDOW_MENU_METHOD = "Menu.setWindowMenu"
+export const MENU_CLEAR_METHOD = "Menu.clear"
+export const MENU_CAPABILITY_METHOD = "Menu.capability"
+export const MENU_ACTIVATED_EVENT_METHOD = "Menu.Activated"
+export const CONTEXT_MENU_ACTIVATED_EVENT_METHOD = "ContextMenu.Activated"
+export const WEBVIEW_CREATE_METHOD = "WebView.create"
+export const WEBVIEW_LOAD_ROUTE_METHOD = "WebView.loadRoute"
+export const WEBVIEW_LOAD_URL_METHOD = "WebView.loadUrl"
+export const WEBVIEW_RELOAD_METHOD = "WebView.reload"
+export const WEBVIEW_STOP_METHOD = "WebView.stop"
+export const WEBVIEW_GO_BACK_METHOD = "WebView.goBack"
+export const WEBVIEW_GO_FORWARD_METHOD = "WebView.goForward"
+export const WEBVIEW_GET_NAVIGATION_STATE_METHOD = "WebView.getNavigationState"
+export const WEBVIEW_PRINT_METHOD = "WebView.print"
+export const WEBVIEW_SET_ZOOM_METHOD = "WebView.setZoom"
+export const WEBVIEW_OPEN_DEVTOOLS_METHOD = "WebView.openDevTools"
+export const WEBVIEW_CLOSE_DEVTOOLS_METHOD = "WebView.closeDevTools"
+export const WEBVIEW_SET_NAVIGATION_POLICY_METHOD = "WebView.setNavigationPolicy"
+export const WEBVIEW_DESTROY_METHOD = "WebView.destroy"
+export const WEBVIEW_NAVIGATION_BLOCKED_EVENT_METHOD = "WebView.NavigationBlocked"
+export const WEBVIEW_API_CALL_EVENT_METHOD = "WebView.ApiCall"
+export const WEBVIEW_RUNTIME_EVENT_METHOD = "WebView.RuntimeEvent"
+export const WEBVIEW_FRAME_EVENT_METHOD = "WebView.FrameEvent"
+export const SESSION_PROFILE_IS_SUPPORTED_METHOD = "SessionProfile.isSupported"
+export const SESSION_PROFILE_EVENT_METHOD = "SessionProfile.Event"
+export const COOKIE_STORE_IS_SUPPORTED_METHOD = "CookieStore.isSupported"
+export const COOKIE_STORE_EVENT_METHOD = "CookieStore.Event"
+export const BROWSING_DATA_IS_SUPPORTED_METHOD = "BrowsingData.isSupported"
+export const BROWSING_DATA_EVENT_METHOD = "BrowsingData.Event"
+export const SESSION_PERMISSION_IS_SUPPORTED_METHOD = "SessionPermission.isSupported"
+export const SESSION_PERMISSION_EVENT_METHOD = "SessionPermission.Event"
+export const DOWNLOAD_IS_SUPPORTED_METHOD = "Download.isSupported"
+export const DOWNLOAD_EVENT_METHOD = "Download.Event"
+export const NETWORK_AUTH_IS_SUPPORTED_METHOD = "NetworkAuth.isSupported"
+export const NETWORK_AUTH_EVENT_METHOD = "NetworkAuth.Event"
+export const WEB_REQUEST_IS_SUPPORTED_METHOD = "WebRequest.isSupported"
+export const WEB_REQUEST_EVENT_METHOD = "WebRequest.Event"
+export const NATIVE_NETWORK_IS_SUPPORTED_METHOD = "NativeNetwork.isSupported"
+export const NATIVE_NETWORK_EVENT_METHOD = "NativeNetwork.Event"
 export const RENDERER_DISCONNECTED_EVENT = "renderer.disconnected"
 export const RENDERER_RESUME_METHOD = "renderer.resume"
 export const RENDERER_RESUMED_EVENT = "renderer.resumed"
@@ -131,9 +183,8 @@ const HostProtocolErrorCommonFields = {
   docsUrl: OptionalString
 } as const
 
-export const hostProtocolErrorRecoverableDefault = (tag: HostProtocolErrorTag): boolean => {
-  return HOST_PROTOCOL_ERROR_RECOVERABLE_BY_TAG[tag]
-}
+export const hostProtocolErrorRecoverableDefault = (tag: HostProtocolErrorTag): boolean =>
+  HOST_PROTOCOL_ERROR_RECOVERABLE_BY_TAG[tag]
 
 interface HostProtocolErrorCommonInput {
   readonly message: string
@@ -760,10 +811,10 @@ export const validateOptionalHostProtocolNonEmptyString = (
   field: string,
   value: string | undefined,
   operation: string
-): Effect.Effect<string | undefined, HostProtocolInvalidArgumentError, never> =>
+): Effect.Effect<Option.Option<string>, HostProtocolInvalidArgumentError, never> =>
   value === undefined
-    ? Effect.succeed(undefined)
-    : validateHostProtocolNonEmptyString(field, value, operation)
+    ? Effect.succeed(Option.none())
+    : validateHostProtocolNonEmptyString(field, value, operation).pipe(Effect.map(Option.some))
 
 export const makeHostProtocolInvalidOutputError = (
   method: string,
@@ -1060,6 +1111,8 @@ interface ResolvedDesktopProtocolOptions {
   readonly nextTraceId: () => string
 }
 
+let protocolTraceSeq = 0
+
 const resolveProtocolOptions = (
   options: DesktopProtocolOptions,
   defaultNow: () => number
@@ -1071,7 +1124,7 @@ const resolveProtocolOptions = (
     options.nextRequestId === undefined
       ? (clientId, requestId) => clientRequestId(clientId, requestId)
       : () => options.nextRequestId!(),
-  nextTraceId: options.nextTraceId ?? (() => `trace-${globalThis.crypto.randomUUID()}`)
+  nextTraceId: options.nextTraceId ?? (() => `trace-protocol-${++protocolTraceSeq}`)
 })
 
 type ClientWriteFn = (
@@ -1184,8 +1237,7 @@ const RpcPermissionDeniedActor = Schema.Struct({
   id: HostIdentityString
 })
 
-const RpcPermissionDeniedError = Schema.Struct({
-  _tag: Schema.Literal("PermissionDenied"),
+const RpcPermissionDeniedError = Schema.TaggedStruct("PermissionDenied", {
   reason: HostIdentityString,
   capability: RpcPermissionDeniedCapability,
   actor: RpcPermissionDeniedActor,
@@ -1206,11 +1258,11 @@ const hostProtocolErrorToRpcClientError = (
 export const hostProtocolErrorFromRpcClientError = (
   error: unknown
 ): HostProtocolError | undefined => {
-  if (!(error instanceof RpcClientError.RpcClientError)) {
+  if (!Schema.is(RpcClientError.RpcClientError)(error)) {
     return undefined
   }
   const reason = error.reason
-  if (!(reason instanceof RpcClientError.RpcClientDefect) || !isHostProtocolError(reason.cause)) {
+  if (!Schema.is(RpcClientError.RpcClientDefect)(reason) || !isHostProtocolError(reason.cause)) {
     return undefined
   }
   return decodeUnknownHostProtocolError(reason.cause, StrictParseOptions)

@@ -1,12 +1,11 @@
-import path from "node:path"
 import { pathToFileURL } from "node:url"
 
 import type { HostProtocolError, HostWindowClient, WindowCreateInput } from "@effect-desktop/bridge"
 import { Config, ConfigProvider, Data, Effect, Exit, Layer, Option, Schema, Scope } from "effect"
 
 import type { DesktopWindowRegistration, WindowSpec } from "./desktop-app.js"
-import { ResourceOwner } from "./resource-owner.js"
-import { makeWindowContext, windowContextLayer } from "./window-context.js"
+import { ResourceOwner, type ResourceOwnerInvalidArgumentError } from "./resource-owner.js"
+import { makeWindowContext, windowContextLayer, WindowContext } from "./window-context.js"
 
 export const APP_MODULE_ENV = "EFFECT_DESKTOP_APP_MODULE"
 export const APP_EXPORT_ENV = "EFFECT_DESKTOP_APP_EXPORT"
@@ -27,8 +26,7 @@ const DesktopWindowRegistrationSchema = Schema.Struct({
   id: Schema.String,
   spec: WindowSpecSchema
 })
-const DesktopAppDescriptorSchema = Schema.Struct({
-  _tag: Schema.Literal("DesktopAppDescriptor"),
+const DesktopAppDescriptorSchema = Schema.TaggedStruct("DesktopAppDescriptor", {
   windowRegistrations: Schema.Array(DesktopWindowRegistrationSchema)
 })
 
@@ -58,7 +56,7 @@ export class StartupWindowConfigError extends Data.TaggedError("StartupWindowCon
 export interface StartupEnvironmentConfig {
   readonly appModule: Option.Option<string>
   readonly appExport: string
-  readonly startupWindows: ReadonlyArray<DesktopWindowRegistration>
+  readonly startupWindows: ReadonlyArray<DesktopWindowRegistration<SupervisedWindowDeps>>
   readonly smokeTest: boolean
 }
 
@@ -87,10 +85,16 @@ export const readStartupEnvironment = (
     Effect.flatMap((config) =>
       Effect.all({
         startupWindows: Option.isSome(config.appModule)
-          ? Effect.succeed(Object.freeze([]) as ReadonlyArray<DesktopWindowRegistration>)
+          ? Effect.succeed(
+              Object.freeze([]) as ReadonlyArray<DesktopWindowRegistration<SupervisedWindowDeps>>
+            )
           : Option.match(config.startupWindows, {
               onNone: () =>
-                Effect.succeed(Object.freeze([]) as ReadonlyArray<DesktopWindowRegistration>),
+                Effect.succeed(
+                  Object.freeze([]) as ReadonlyArray<
+                    DesktopWindowRegistration<SupervisedWindowDeps>
+                  >
+                ),
               onSome: decodeStartupWindowsJson
             }),
         smokeTest: decodeSmokeTest(config.smokeTest)
@@ -107,7 +111,11 @@ export const readStartupEnvironment = (
 
 export const readStartupWindows = (
   config: StartupEnvironmentConfig
-): Effect.Effect<ReadonlyArray<DesktopWindowRegistration>, StartupWindowConfigError, never> => {
+): Effect.Effect<
+  ReadonlyArray<DesktopWindowRegistration<SupervisedWindowDeps>>,
+  StartupWindowConfigError,
+  never
+> => {
   if (Option.isNone(config.appModule)) {
     return Effect.succeed(config.startupWindows)
   }
@@ -115,11 +123,10 @@ export const readStartupWindows = (
   const rawModule = config.appModule.value
   const exportName = config.appExport
   return Effect.tryPromise({
-    try: async () => {
-      const module = (await import(toStartupModuleSpecifier(rawModule))) as Record<string, unknown>
-      const app = module[exportName]
-      return app
-    },
+    try: () =>
+      import(toStartupModuleSpecifier(rawModule)).then(
+        (module: Record<string, unknown>) => module[exportName]
+      ),
     catch: (error) =>
       new StartupWindowConfigError({
         env: APP_MODULE_ENV,
@@ -129,9 +136,13 @@ export const readStartupWindows = (
 }
 
 export const requireStartupWindows = (
-  registrations: ReadonlyArray<DesktopWindowRegistration>,
+  registrations: ReadonlyArray<DesktopWindowRegistration<SupervisedWindowDeps>>,
   env = "startup environment"
-): Effect.Effect<ReadonlyArray<DesktopWindowRegistration>, StartupWindowConfigError, never> => {
+): Effect.Effect<
+  ReadonlyArray<DesktopWindowRegistration<SupervisedWindowDeps>>,
+  StartupWindowConfigError,
+  never
+> => {
   if (registrations.length > 0) {
     return Effect.succeed(registrations)
   }
@@ -145,11 +156,15 @@ export const requireStartupWindows = (
   )
 }
 
+export type WindowSupervisorError = HostProtocolError | ResourceOwnerInvalidArgumentError
+
+type SupervisedWindowDeps = ResourceOwner | WindowContext
+
 export const openDeclaredWindows = (
   windows: HostWindowClient,
-  registrations: ReadonlyArray<DesktopWindowRegistration>,
+  registrations: ReadonlyArray<DesktopWindowRegistration<SupervisedWindowDeps>>,
   options: WindowSupervisorOptions = {}
-): Effect.Effect<ReadonlyArray<OpenedDeclaredWindow>, HostProtocolError, Scope.Scope> =>
+): Effect.Effect<ReadonlyArray<OpenedDeclaredWindow>, WindowSupervisorError, Scope.Scope> =>
   Effect.gen(function* () {
     const outerScope = yield* Effect.scope
     return yield* Effect.forEach(registrations, (registration) =>
@@ -159,10 +174,10 @@ export const openDeclaredWindows = (
 
 const openSingleWindow = (
   windows: HostWindowClient,
-  registration: DesktopWindowRegistration,
+  registration: DesktopWindowRegistration<SupervisedWindowDeps>,
   outerScope: Scope.Scope,
   options: WindowSupervisorOptions
-): Effect.Effect<OpenedDeclaredWindow, HostProtocolError, never> =>
+): Effect.Effect<OpenedDeclaredWindow, WindowSupervisorError, Scope.Scope> =>
   Effect.gen(function* () {
     const windowScope = yield* Scope.fork(outerScope)
     const opened = yield* windows
@@ -180,12 +195,9 @@ const openSingleWindow = (
         registrationId: registration.id,
         hostWindowId: opened.windowId
       })
-      const services = Layer.provide(
-        registration.services,
-        Layer.merge(windowContext, resourceOwner)
-      )
-      const buildServices = trustWindowServicesBuild(Layer.buildWithScope(services, windowScope))
-      yield* buildServices.pipe(
+      const services: Layer.Layer<never, ResourceOwnerInvalidArgumentError, Scope.Scope> =
+        Layer.provide(registration.services, Layer.merge(windowContext, resourceOwner))
+      yield* Layer.buildWithScope(services, windowScope).pipe(
         Effect.tapError(() => closeWindowAndScope(windows, windowScope, opened.windowId))
       )
     }
@@ -203,14 +215,6 @@ const openSingleWindow = (
     } as const
   })
 
-const trustWindowServicesBuild = (
-  effect: Effect.Effect<unknown, unknown, unknown>
-): Effect.Effect<unknown, HostProtocolError, never> =>
-  // Window service layers are authored by Desktop.window(..., services) and scoped by
-  // this supervisor. The public supervisor contract has historically exposed host
-  // protocol startup failures only, so keep the recovery boundary local.
-  effect as Effect.Effect<unknown, HostProtocolError, never>
-
 const closeWindowAndScope = (
   windows: HostWindowClient,
   scope: Scope.Scope,
@@ -223,7 +227,7 @@ const closeWindowAndScope = (
 
 const recordToRegistrations = (
   windows: Readonly<Record<string, WindowSpec>>
-): ReadonlyArray<DesktopWindowRegistration> =>
+): ReadonlyArray<DesktopWindowRegistration<SupervisedWindowDeps>> =>
   Object.freeze(
     Object.entries(windows).map(([id, spec]) =>
       Object.freeze({
@@ -231,7 +235,7 @@ const recordToRegistrations = (
         id,
         spec,
         services: undefined
-      } satisfies DesktopWindowRegistration)
+      } satisfies DesktopWindowRegistration<SupervisedWindowDeps>)
     )
   )
 
@@ -256,7 +260,11 @@ export const toWindowCreateInput = (spec: WindowSpec): WindowCreateInput => {
 
 const decodeStartupWindowsJson = (
   value: string
-): Effect.Effect<ReadonlyArray<DesktopWindowRegistration>, StartupWindowConfigError, never> => {
+): Effect.Effect<
+  ReadonlyArray<DesktopWindowRegistration<SupervisedWindowDeps>>,
+  StartupWindowConfigError,
+  never
+> => {
   if (value.trim() === "") {
     return Effect.succeed(Object.freeze([]))
   }
@@ -277,7 +285,11 @@ const decodeStartupWindowsJson = (
 const decodeDesktopAppDescriptor = (
   value: unknown,
   exportName: string
-): Effect.Effect<ReadonlyArray<DesktopWindowRegistration>, StartupWindowConfigError, never> =>
+): Effect.Effect<
+  ReadonlyArray<DesktopWindowRegistration<SupervisedWindowDeps>>,
+  StartupWindowConfigError,
+  never
+> =>
   Schema.decodeUnknownEffect(DesktopAppDescriptorSchema)(value).pipe(
     Effect.mapError(
       (error) =>
@@ -297,7 +309,7 @@ const decodeDesktopAppDescriptor = (
 const projectRegistrationsWithServices = (
   rawDescriptor: unknown,
   validated: ReadonlyArray<{ readonly id: string; readonly spec: WindowSpec }>
-): ReadonlyArray<DesktopWindowRegistration> => {
+): ReadonlyArray<DesktopWindowRegistration<SupervisedWindowDeps>> => {
   const raw =
     (rawDescriptor as { windowRegistrations?: ReadonlyArray<{ services?: unknown }> })
       .windowRegistrations ?? []
@@ -307,8 +319,9 @@ const projectRegistrationsWithServices = (
         _tag: "DesktopWindowRegistration",
         id: reg.id,
         spec: Object.freeze({ ...reg.spec }),
-        services: (raw[index]?.services ?? undefined) as DesktopWindowRegistration["services"]
-      } satisfies DesktopWindowRegistration)
+        services: (raw[index]?.services ??
+          undefined) as DesktopWindowRegistration<SupervisedWindowDeps>["services"]
+      } satisfies DesktopWindowRegistration<SupervisedWindowDeps>)
     )
   )
 }
@@ -415,13 +428,15 @@ const parseUrl = (value: string): URL | undefined => {
   }
 }
 
+const isAbsolutePathSegment = (value: string): boolean =>
+  value.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(value) || value.startsWith("\\\\")
+
 const isFilesystemPath = (value: string): boolean =>
   value === "." ||
   value === ".." ||
   value.startsWith("./") ||
   value.startsWith("../") ||
-  value.startsWith("/") ||
-  path.isAbsolute(value)
+  isAbsolutePathSegment(value)
 
 const isWindowsDrivePath = (value: string): boolean => /^[a-zA-Z]:[\\/]/.test(value)
 

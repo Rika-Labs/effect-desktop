@@ -61,14 +61,14 @@ export interface DesktopRpcRegistration<Rpcs extends Rpc.Any, E = unknown, R = u
   readonly _tag: "DesktopRpcRegistration"
   readonly group: TypedDesktopRpcRegistrationGroup<Rpcs>
   readonly handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>
-  readonly serverLayer: Layer.Layer<never, unknown, unknown>
+  readonly serverLayer: Layer.Layer<never, E, R>
 }
 
 export interface AnyDesktopRpcRegistration<E = unknown, R = unknown> {
   readonly _tag: "DesktopRpcRegistration"
   readonly group: DesktopRpcRegistrationGroup
   readonly handlers: Layer.Layer<never, E, R>
-  readonly serverLayer: Layer.Layer<never, unknown, unknown>
+  readonly serverLayer: Layer.Layer<never, E, R>
 }
 
 export type DesktopRpcsLayer<E = never, RIn = never> = ReadonlyArray<
@@ -333,10 +333,12 @@ export interface DesktopAppApi {
   readonly rpcRegistrations: ReadonlyArray<AnyDesktopRpcRegistration>
 }
 
-export class DesktopApp extends Context.Service<DesktopApp, DesktopAppApi>()("DesktopApp") {}
+export class DesktopApp extends Context.Service<DesktopApp, DesktopAppApi>()(
+  "@effect-desktop/core/runtime/desktop-app/DesktopApp"
+) {}
 
 export class DesktopRuntime extends Context.Service<DesktopRuntime, DesktopRuntimeApi>()(
-  "DesktopRuntime"
+  "@effect-desktop/core/runtime/desktop-app/DesktopRuntime"
 ) {}
 
 const TelemetryLive: Layer.Layer<Telemetry, never, never> = Layer.effect(Telemetry)(
@@ -355,13 +357,16 @@ export const WorkflowEngineDurable: DesktopWorkflowEngineLayer<SqlClient, SqlErr
     Layer.provide(ShardingConfig.layer())
   )
 
-const coreServicesLayer: Layer.Layer<never, Config.ConfigError, never> = Layer.mergeAll(
+// A malformed runtime configuration cannot be recovered from at startup, so the
+// `Config.ConfigError` channel on the core services is converted to a defect
+// rather than leaked into the public runtime error type.
+const coreServicesLayer = Layer.mergeAll(
   ResourceRegistryLive,
   Layer.provideMerge(EffectTelemetryRuntimeLive, TelemetryLive),
   Reactivity.layer,
   DesktopLoggerLayer,
   WorkflowEngineMemory
-)
+).pipe(Layer.orDie)
 
 const CoreServiceGraphNodes = Object.freeze([
   graphNode("core:resources", "core-service", "ResourceRegistry", ["ResourceRegistry"], []),
@@ -512,7 +517,7 @@ const RuntimeProviders = [
     id: "bun" as const,
     budget: providerBudget("bun", "@effect/platform-bun", "@effect-desktop/core/providers/bun"),
     layer: Effect.tryPromise({
-      try: async () => (await import("../providers/bun.js")).BunRuntimeProviderLayer,
+      try: () => import("../providers/bun.js").then((mod) => mod.BunRuntimeProviderLayer),
       catch: (cause) => runtimeProviderLoadError("bun", cause)
     }),
     label: "Bun runtime provider"
@@ -521,7 +526,7 @@ const RuntimeProviders = [
     id: "node" as const,
     budget: providerBudget("node", "@effect/platform-node", "@effect-desktop/core/providers/node"),
     layer: Effect.tryPromise({
-      try: async () => (await import("../providers/node.js")).NodeRuntimeProviderLayer,
+      try: () => import("../providers/node.js").then((mod) => mod.NodeRuntimeProviderLayer),
       catch: (cause) => runtimeProviderLoadError("node", cause)
     }),
     label: "Node runtime provider"
@@ -530,7 +535,7 @@ const RuntimeProviders = [
     id: "test" as const,
     budget: providerBudget("test", "@effect-desktop/core", "@effect-desktop/core/providers/test"),
     layer: Effect.tryPromise({
-      try: async () => (await import("../providers/test.js")).TestRuntimeProviderLayer,
+      try: () => import("../providers/test.js").then((mod) => mod.TestRuntimeProviderLayer),
       catch: (cause) => runtimeProviderLoadError("test", cause)
     }),
     label: "Test runtime provider"
@@ -777,7 +782,7 @@ const checkWindowRegistrations = (
 
 const buildRegistrations = <RIn, E>(
   rpcs: DesktopConfig<RIn, E>["rpcs"]
-): Effect.Effect<ReadonlyArray<AnyDesktopRpcRegistration>, never, never> =>
+): Effect.Effect<ReadonlyArray<AnyDesktopRpcRegistration<E, RIn>>, never, never> =>
   Effect.succeed(rpcs ?? [])
 
 const buildNativeSelection = <RIn, E>(
@@ -795,7 +800,7 @@ const buildPermissions = <RIn>(
 
 const buildWorkflows = <RIn, E>(
   workflows: DesktopConfig<RIn, E>["workflows"]
-): Effect.Effect<ReadonlyArray<AnyDesktopWorkflowRegistration>, never, never> =>
+): Effect.Effect<ReadonlyArray<DesktopWorkflowRegistration<E, RIn>>, never, never> =>
   Effect.succeed(workflows ?? [])
 
 const buildProviders = <RIn, E>(
@@ -805,7 +810,7 @@ const buildProviders = <RIn, E>(
 
 const nativeRpcRegistrationsSync = (
   registrations: ReadonlyArray<AnyDesktopNativeRegistration>
-): ReadonlyArray<AnyDesktopRpcRegistration> =>
+): ReadonlyArray<AnyDesktopRpcRegistration<unknown, unknown>> =>
   Object.freeze(registrations.flatMap((registration) => registration.serverLayer))
 
 export const layer = <RIn = never, E = never>(
@@ -816,13 +821,23 @@ export const layer = <RIn = never, E = never>(
   Exclude<RIn, DesktopRuntimeProviderServices | ResourceOwner>
 > => runtime(descriptor)
 
+// `buildSpine` genuinely provides a superset of `DesktopRuntimeServices` and
+// requires a subset of `Exclude<RIn, DesktopRuntimeProviderServices | ResourceOwner>`
+// (it also satisfies the core services it composes internally). TypeScript cannot
+// reduce the nested `Exclude<Exclude<RIn, …>, …>` conditional against a generic
+// `RIn`, so the public contract is asserted here once.
 export const runtime = <RIn = never, E = never>(
   config: DesktopConfig<RIn, E>
 ): Layer.Layer<
   DesktopRuntimeServices,
   DesktopConfigError | E,
   Exclude<RIn, DesktopRuntimeProviderServices | ResourceOwner>
-> => buildSpine(config)
+> =>
+  buildSpine(config) as Layer.Layer<
+    DesktopRuntimeServices,
+    DesktopConfigError | E,
+    Exclude<RIn, DesktopRuntimeProviderServices | ResourceOwner>
+  >
 
 export const DesktopRuntimeLive = runtime
 
@@ -906,8 +921,8 @@ const makeRuntimeGraph = <RIn, E>(
   provider: DesktopRuntimeProviderDescriptor,
   webviewProvider: DesktopWebViewProviderDescriptor,
   nativeRegistrations: ReadonlyArray<AnyDesktopNativeRegistration>,
-  registrations: ReadonlyArray<AnyDesktopRpcRegistration>,
-  workflows: ReadonlyArray<AnyDesktopWorkflowRegistration>
+  registrations: ReadonlyArray<AnyDesktopRpcRegistration<unknown, unknown>>,
+  workflows: ReadonlyArray<unknown>
 ): DesktopRuntimeGraph => {
   const selected = Object.freeze({
     runtime: provider.id,
@@ -1090,13 +1105,7 @@ const decodeRpcCapability = (
   )
 }
 
-const buildSpine = <RIn, E>(
-  config: DesktopConfig<RIn, E>
-): Layer.Layer<
-  DesktopRuntimeServices,
-  E | DesktopConfigError,
-  Exclude<RIn, DesktopRuntimeProviderServices | ResourceOwner>
-> =>
+const buildSpine = <RIn, E>(config: DesktopConfig<RIn, E>) =>
   Layer.unwrap(
     Effect.gen(function* () {
       const providers = yield* buildProviders(config)
@@ -1104,7 +1113,10 @@ const buildSpine = <RIn, E>(
       const nativeSelection = yield* buildNativeSelection(config.native)
       const nativeRegistrations = nativeSelection.registrations
       const nativeRpcRegistrations = nativeRpcRegistrationsSync(nativeRegistrations)
-      const registrations = [...appRegistrations, ...nativeRpcRegistrations]
+      const registrations: ReadonlyArray<AnyDesktopRpcRegistration<E, RIn>> = [
+        ...appRegistrations,
+        ...(nativeRpcRegistrations as ReadonlyArray<AnyDesktopRpcRegistration<E, RIn>>)
+      ]
       const explicitPermissions = yield* buildPermissions(config.permissions)
       const permissions = [...nativeSelection.permissions, ...explicitPermissions]
       const workflowLayers = yield* buildWorkflows(config.workflows)
@@ -1125,17 +1137,13 @@ const buildSpine = <RIn, E>(
 
       const workflowLayer = mergeLayerArray(workflowLayers)
       const rpcLayer = mergeLayerArray(rpcLayers)
-      const runtimeProviderLayer = yield* providers.runtime.layer
+      const runtimeProviderLayer = (yield* providers.runtime.layer).pipe(Layer.orDie)
       const runtimeBase = Layer.mergeAll(
         runtimeProviderLayer,
         coreServicesLayer,
         makePermissionServicesLayer(config, permissions),
         makeAppResourceOwnerLayer(config.id)
-      ) as Layer.Layer<
-        DesktopRuntimeProviderServices | ResourceOwner,
-        Config.ConfigError | DesktopConfigError,
-        never
-      >
+      )
 
       const desktopAppLayer: Layer.Layer<DesktopApp, never, never> = Layer.effect(DesktopApp)(
         Effect.succeed({
@@ -1157,22 +1165,13 @@ const buildSpine = <RIn, E>(
         } satisfies DesktopRuntimeApi)
       )
 
-      const dependentLayer = Layer.mergeAll(
-        workflowLayer,
-        rpcLayer,
-        desktopAppLayer,
-        desktopRuntimeLayer
-      ) as Layer.Layer<
-        DesktopApp | DesktopRuntime,
-        E,
-        RIn | DesktopRuntimeProviderServices | ResourceOwner
-      >
+      const desktopContextLayer = Layer.merge(desktopAppLayer, desktopRuntimeLayer)
 
-      return Layer.provideMerge(dependentLayer, runtimeBase) as Layer.Layer<
-        DesktopRuntimeServices,
-        E | DesktopConfigError,
-        Exclude<RIn, DesktopRuntimeProviderServices | ResourceOwner>
-      >
+      const dependentLayer = Layer.mergeAll(workflowLayer, rpcLayer).pipe(
+        Layer.provideMerge(desktopContextLayer)
+      )
+
+      return Layer.provideMerge(dependentLayer, runtimeBase)
     })
   )
 
@@ -1364,12 +1363,16 @@ const mergeLayerArray = <E, R>(
 const bindRpcGroup = <Rpcs extends Rpc.Any, E, R>(
   group: RpcGroup.RpcGroup<Rpcs>,
   handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>
-): Layer.Layer<never, unknown, unknown> =>
-  Layer.provide(RpcServer.layer(group.middleware(PermissionInterceptor)), handlers)
+): Layer.Layer<never, E, R> =>
+  Layer.provide(RpcServer.layer(group.middleware(PermissionInterceptor)), handlers) as Layer.Layer<
+    never,
+    E,
+    R
+  >
 
-const bindRegistration = (
-  registration: AnyDesktopRpcRegistration
-): Layer.Layer<never, unknown, unknown> => registration.serverLayer
+const bindRegistration = <E, R>(
+  registration: AnyDesktopRpcRegistration<E, R>
+): Layer.Layer<never, E, R> => registration.serverLayer
 
 function graphNode(
   id: string,

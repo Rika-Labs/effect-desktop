@@ -20,7 +20,7 @@ export interface ClusterPanelApi {
 }
 
 export class ClusterPanel extends Context.Service<ClusterPanel, ClusterPanelApi>()(
-  "@effect-desktop/devtools/ClusterPanel"
+  "@effect-desktop/devtools/cluster-panel/ClusterPanel"
 ) {}
 
 const DISABLED_SNAPSHOT: ClusterPanelDisabledSnapshot = {

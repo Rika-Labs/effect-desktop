@@ -1,7 +1,6 @@
-import { join } from "node:path"
-
 import { Clock, Context, Data, Effect, Layer, Schema } from "effect"
 import { FileSystem } from "effect/FileSystem"
+import { Path } from "effect/Path"
 import { Activity, Workflow, WorkflowEngine } from "effect/unstable/workflow"
 import { SqliteClient } from "@effect/sql-sqlite-bun/SqliteClient"
 
@@ -26,7 +25,7 @@ export interface BackupConfig {
 }
 
 export class BackupConfigService extends Context.Service<BackupConfigService, BackupConfig>()(
-  "BackupConfigService"
+  "@effect-desktop/core/runtime/workflows/backup/BackupConfigService"
 ) {}
 
 const BackupResultSchema = Schema.Struct({
@@ -77,16 +76,17 @@ const validateBackupLabel = (label: string): Effect.Effect<string, BackupError, 
 export const BackupWorkflowLayer: Layer.Layer<
   never,
   never,
-  WorkflowEngine.WorkflowEngine | BackupConfigService | FileSystem | SqliteClient
+  WorkflowEngine.WorkflowEngine | BackupConfigService | FileSystem | Path | SqliteClient
 > = BackupWorkflow.toLayer((payload) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem
+    const path = yield* Path
     const config = yield* BackupConfigService
     const sqliteClient = yield* SqliteClient
     const label = yield* validateBackupLabel(payload.label)
 
-    const snapshotDir = join(config.outputDir, `${label}-snapshot`)
-    const archivePath = join(config.outputDir, `${label}.backup`)
+    const snapshotDir = path.join(config.outputDir, `${label}-snapshot`)
+    const archivePath = path.join(config.outputDir, `${label}.backup`)
 
     const snapshot = Activity.make({
       name: "snapshot",
@@ -97,7 +97,7 @@ export const BackupWorkflowLayer: Layer.Layer<
           .makeDirectory(snapshotDir, { recursive: true })
           .pipe(Effect.mapError(wrapError("snapshot")))
         yield* fs
-          .copy(config.userDataDir, join(snapshotDir, "files"), { overwrite: true })
+          .copy(config.userDataDir, path.join(snapshotDir, "files"), { overwrite: true })
           .pipe(Effect.mapError(wrapError("snapshot")))
         return { snapshotDir } as { snapshotDir: string }
       })
@@ -110,7 +110,7 @@ export const BackupWorkflowLayer: Layer.Layer<
       execute: Effect.gen(function* () {
         const bytes = yield* sqliteClient.export.pipe(Effect.mapError(wrapError("database")))
         yield* fs
-          .writeFile(join(snapshotDir, "db.sqlite"), bytes)
+          .writeFile(path.join(snapshotDir, "db.sqlite"), bytes)
           .pipe(Effect.mapError(wrapError("database")))
         return { dbBytes: bytes.byteLength }
       })
@@ -130,7 +130,7 @@ export const BackupWorkflowLayer: Layer.Layer<
           })
         )
         yield* fs
-          .writeFile(join(snapshotDir, "manifest.json"), manifestBytes)
+          .writeFile(path.join(snapshotDir, "manifest.json"), manifestBytes)
           .pipe(Effect.mapError(wrapError("archive")))
         yield* fs
           .copy(snapshotDir, archivePath, { overwrite: true })

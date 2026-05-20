@@ -406,7 +406,7 @@
     {
       "name": "TestWindowState",
       "kind": "class",
-      "signature": "export class TestWindowState extends Context.Service<TestWindowState, TestWindowStateApi>()( \"@effect-desktop/test/TestWindowState\" ) {}"
+      "signature": "export class TestWindowState extends Context.Service<TestWindowState, TestWindowStateApi>()( \"@effect-desktop/test/native/TestWindowState\" ) {}"
     },
     {
       "name": "TestWindowStateApi",

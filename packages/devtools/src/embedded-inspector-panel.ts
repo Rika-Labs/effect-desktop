@@ -48,7 +48,7 @@ export interface EmbeddedInspectorPanelApi {
 export class EmbeddedInspectorPanel extends Context.Service<
   EmbeddedInspectorPanel,
   EmbeddedInspectorPanelApi
->()("@effect-desktop/devtools/EmbeddedInspectorPanel") {}
+>()("@effect-desktop/devtools/embedded-inspector-panel/EmbeddedInspectorPanel") {}
 
 export const EmbeddedInspectorPanelLive = (
   options: EmbeddedInspectorPanelOptions = {}

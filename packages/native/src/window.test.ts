@@ -4,20 +4,22 @@ import { rpcSupport, type Rpc } from "@effect-desktop/bridge"
 import { WindowRpcs } from "./window.js"
 
 test("WindowRpcs exposes only host-implemented methods through RpcGroup lowering", () => {
-  expect(rpcSupport(request("Window.create"))).toEqual({ status: "supported" })
-  expect(rpcSupport(request("Window.close"))).toEqual({ status: "supported" })
-  expect(rpcSupport(request("Window.destroy"))).toEqual({ status: "supported" })
-  expect(rpcSupport(request("Window.show"))).toEqual({ status: "supported" })
-  expect(rpcSupport(request("Window.hide"))).toEqual({ status: "supported" })
-  expect(rpcSupport(request("Window.focus"))).toEqual({ status: "supported" })
-  expect(rpcSupport(request("Window.getBounds"))).toEqual({ status: "supported" })
-  expect(rpcSupport(request("Window.setBounds"))).toEqual({ status: "supported" })
-  expect(rpcSupport(request("Window.center"))).toEqual({ status: "supported" })
-  expect(rpcSupport(request("Window.centerOnDisplay"))).toEqual({ status: "supported" })
-  expect(rpcSupport(request("Window.setTitle"))).toEqual({ status: "supported" })
-  expect(rpcSupport(request("Window.setResizable"))).toEqual({ status: "supported" })
-  expect(rpcSupport(request("Window.setDecorations"))).toEqual({ status: "supported" })
-  expect(rpcSupport(request("Window.setTrafficLights"))).toMatchObject({
+  expect(request("Window.create").pipe(rpcSupport)).toEqual({ status: "supported" })
+  expect(request("Window.close").pipe(rpcSupport)).toEqual({ status: "supported" })
+  expect(request("Window.destroy").pipe(rpcSupport)).toEqual({ status: "supported" })
+  expect(request("Window.show").pipe(rpcSupport)).toEqual({ status: "supported" })
+  expect(request("Window.hide").pipe(rpcSupport)).toEqual({ status: "supported" })
+  expect(request("Window.focus").pipe(rpcSupport)).toEqual({ status: "supported" })
+  expect(request("Window.getChildren").pipe(rpcSupport)).toEqual({ status: "supported" })
+  expect(request("Window.getBounds").pipe(rpcSupport)).toEqual({ status: "supported" })
+  expect(request("Window.setBounds").pipe(rpcSupport)).toEqual({ status: "supported" })
+  expect(request("Window.setBoundsOnDisplay").pipe(rpcSupport)).toEqual({ status: "supported" })
+  expect(request("Window.center").pipe(rpcSupport)).toEqual({ status: "supported" })
+  expect(request("Window.centerOnDisplay").pipe(rpcSupport)).toEqual({ status: "supported" })
+  expect(request("Window.setTitle").pipe(rpcSupport)).toEqual({ status: "supported" })
+  expect(request("Window.setResizable").pipe(rpcSupport)).toEqual({ status: "supported" })
+  expect(request("Window.setDecorations").pipe(rpcSupport)).toEqual({ status: "supported" })
+  expect(request("Window.setTrafficLights").pipe(rpcSupport)).toMatchObject({
     status: "partial",
     platforms: [
       { platform: "macos", status: "supported" },
@@ -25,8 +27,56 @@ test("WindowRpcs exposes only host-implemented methods through RpcGroup lowering
       { platform: "linux", status: "unsupported" }
     ]
   })
-  expect(rpcSupport(request("Window.setAlwaysOnTop"))).toEqual({ status: "supported" })
-  expect(rpcSupport(request("Window.setSkipTaskbar"))).toMatchObject({
+  expect(request("Window.setVibrancy").pipe(rpcSupport)).toMatchObject({
+    status: "partial",
+    platforms: [
+      { platform: "macos", status: "supported" },
+      { platform: "windows", status: "unsupported" },
+      { platform: "linux", status: "unsupported" }
+    ]
+  })
+  expect(request("Window.clearVibrancy").pipe(rpcSupport)).toMatchObject({
+    status: "partial",
+    platforms: [
+      { platform: "macos", status: "supported" },
+      { platform: "windows", status: "unsupported" },
+      { platform: "linux", status: "unsupported" }
+    ]
+  })
+  expect(request("Window.setShadow").pipe(rpcSupport)).toMatchObject({
+    status: "partial",
+    platforms: [
+      { platform: "macos", status: "supported" },
+      { platform: "windows", status: "unsupported" },
+      { platform: "linux", status: "unsupported" }
+    ]
+  })
+  expect(request("Window.setTitleBarStyle").pipe(rpcSupport)).toMatchObject({
+    status: "partial",
+    platforms: [
+      { platform: "macos", status: "supported" },
+      { platform: "windows", status: "unsupported" },
+      { platform: "linux", status: "unsupported" }
+    ]
+  })
+  expect(request("Window.setTitleBarTransparent").pipe(rpcSupport)).toMatchObject({
+    status: "partial",
+    platforms: [
+      { platform: "macos", status: "supported" },
+      { platform: "windows", status: "unsupported" },
+      { platform: "linux", status: "unsupported" }
+    ]
+  })
+  expect(request("Window.setTransparent").pipe(rpcSupport)).toMatchObject({
+    status: "partial",
+    platforms: [
+      { platform: "macos", status: "supported" },
+      { platform: "windows", status: "unsupported" },
+      { platform: "linux", status: "unsupported" }
+    ]
+  })
+  expect(request("Window.setAlwaysOnTop").pipe(rpcSupport)).toEqual({ status: "supported" })
+  expect(request("Window.setSkipTaskbar").pipe(rpcSupport)).toMatchObject({
     status: "partial",
     platforms: [
       { platform: "macos", status: "unsupported" },
@@ -34,15 +84,26 @@ test("WindowRpcs exposes only host-implemented methods through RpcGroup lowering
       { platform: "linux", status: "supported" }
     ]
   })
-  expect(rpcSupport(request("Window.setProgress"))).toEqual({ status: "supported" })
-  expect(rpcSupport(request("Window.requestAttention"))).toEqual({ status: "supported" })
-  expect(rpcSupport(request("Window.cancelAttention"))).toEqual({ status: "supported" })
-  expect(rpcSupport(request("Window.minimize"))).toEqual({ status: "supported" })
-  expect(rpcSupport(request("Window.maximize"))).toEqual({ status: "supported" })
-  expect(rpcSupport(request("Window.restore"))).toEqual({ status: "supported" })
-  expect(rpcSupport(request("Window.setFullscreen"))).toEqual({ status: "supported" })
-  expect(rpcSupport(request("Window.getState"))).toEqual({ status: "supported" })
-  expect(WindowRpcs.requests.has("Window.setVibrancy")).toBe(false)
+  expect(request("Window.setProgress").pipe(rpcSupport)).toEqual({ status: "supported" })
+  expect(request("Window.requestAttention").pipe(rpcSupport)).toEqual({ status: "supported" })
+  expect(request("Window.cancelAttention").pipe(rpcSupport)).toEqual({ status: "supported" })
+  for (const method of [
+    "Window.minimize",
+    "Window.maximize",
+    "Window.restore",
+    "Window.setFullscreen",
+    "Window.getState"
+  ]) {
+    expect(request(method).pipe(rpcSupport)).toEqual({ status: "supported" })
+  }
+  expect(request("Window.setSimpleFullscreen").pipe(rpcSupport)).toMatchObject({
+    status: "partial",
+    platforms: [
+      { platform: "macos", status: "supported" },
+      { platform: "windows", status: "unsupported" },
+      { platform: "linux", status: "unsupported" }
+    ]
+  })
 })
 
 const request = (tag: string): Rpc.Any => {

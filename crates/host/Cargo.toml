@@ -14,9 +14,15 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
+arboard.workspace = true
+base64 = "0.22.1"
+block2.workspace = true
 cpal = "0.17.3"
 host-protocol = { path = "../host-protocol" }
+image.workspace = true
 lol_html = "2.9"
+native-updater = { path = "../native-updater" }
+notify = "8.2.0"
 rfd = { version = "0.17.2", features = ["common-controls-v6"] }
 serde.workspace = true
 serde_json.workspace = true
@@ -31,18 +37,30 @@ wry.workspace = true
 libc.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
+gtk = "0.18.2"
+keyring = { version = "3.6.3", default-features = false, features = [
+  "crypto-rust",
+  "sync-secret-service"
+] }
 notify-rust = "4.17.0"
 
 [target.'cfg(target_os = "macos")'.dependencies]
+core-foundation = "0.10.1"
+keyring = { version = "3.6.3", default-features = false, features = ["apple-native"] }
 muda = "0.19.1"
+objc2.workspace = true
+objc2-app-kit.workspace = true
+objc2-foundation.workspace = true
 tray-icon = "0.24.0"
 window-vibrancy = "0.6.0"
 
 [target.'cfg(windows)'.dependencies]
+keyring = { version = "3.6.3", default-features = false, features = ["windows-native"] }
 tray-icon = { version = "0.24.0", features = ["common-controls-v6"] }
 windows-sys = { workspace = true, features = [
   "Win32_Foundation",
   "Win32_Graphics_Dwm",
+  "Win32_Graphics_Gdi",
   "Win32_Security",
   "Win32_Storage_FileSystem",
   "Win32_System_Com",
@@ -50,10 +68,16 @@ windows-sys = { workspace = true, features = [
   "Win32_System_JobObjects",
   "Win32_System_Memory",
   "Win32_System_Pipes",
+  "Win32_System_Registry",
   "Win32_System_Threading",
+  "Win32_UI_Accessibility",
   "Win32_UI_HiDpi",
-  "Win32_UI_Shell"
+  "Win32_UI_Shell",
+  "Win32_UI_WindowsAndMessaging"
 ] }
+
+[dev-dependencies]
+ed25519-dalek = "2.2.0"
 
 [build-dependencies]
 serde_json.workspace = true

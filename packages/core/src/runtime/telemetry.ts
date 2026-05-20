@@ -550,14 +550,17 @@ export const makeTelemetry = (
     } satisfies TelemetryApi)
   })
 
-export class Telemetry extends Context.Service<Telemetry, TelemetryApi>()("Telemetry", {
-  make: makeTelemetry()
-}) {}
+export class Telemetry extends Context.Service<Telemetry, TelemetryApi>()(
+  "@effect-desktop/core/runtime/telemetry",
+  {
+    make: makeTelemetry()
+  }
+) {}
 
 export class EffectTelemetryCollector extends Context.Service<
   EffectTelemetryCollector,
   EffectTelemetryCollectorApi
->()("EffectTelemetryCollector") {}
+>()("@effect-desktop/core/runtime/telemetry/EffectTelemetryCollector") {}
 
 export const withDesktopSpan =
   (
@@ -578,12 +581,14 @@ export const makeEffectTelemetryCollector = (
 ): Effect.Effect<EffectTelemetryCollectorApi, never, never> =>
   Effect.gen(function* () {
     const currentTracer = yield* Effect.tracer
+    const context = yield* Effect.context<never>()
+    const runForkWithContext = Effect.runForkWith(context)
     const logger = Logger.make<unknown, void>((options) => {
       const span = options.fiber.currentSpan
       const traceId = span?.traceId ?? `fiber-${options.fiber.id}`
       const operation = span?._tag === "Span" ? span.name : "Effect.log"
       const level = logLevelToTelemetry(options.logLevel)
-      void Effect.runFork(
+      void runForkWithContext(
         telemetry
           .log({
             level,
@@ -611,7 +616,7 @@ export const makeEffectTelemetryCollector = (
         span.end = function (this: Tracer.Span, endTime, exit) {
           endSpan(endTime, exit)
           const parent = Option.getOrUndefined(span.parent)
-          void Effect.runFork(
+          void runForkWithContext(
             telemetry
               .recordSpan({
                 traceId: span.traceId,

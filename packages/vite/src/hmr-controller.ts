@@ -1,6 +1,16 @@
-import { resolve } from "node:path"
 import { NodeServices } from "@effect/platform-node"
-import { Cause, Effect, Exit, Fiber, Layer, ManagedRuntime, Scope, Semaphore, Stream } from "effect"
+import {
+  Cause,
+  Effect,
+  Exit,
+  Fiber,
+  Layer,
+  ManagedRuntime,
+  Path,
+  Scope,
+  Semaphore,
+  Stream
+} from "effect"
 import type { PlatformError } from "effect/PlatformError"
 import type { TransportError } from "@effect-desktop/core/runtime/transport"
 import type { ChildProcessSpawner } from "effect/unstable/process"
@@ -37,7 +47,6 @@ export interface HmrControllerOptions {
   readonly entry: string
   readonly cwd: string
   readonly server: ViteDevRuntimeServer
-  readonly runtime?: ManagedRuntime.ManagedRuntime<never, unknown>
   readonly processLayer?: Layer.Layer<ChildProcessSpawner.ChildProcessSpawner, never, never>
 }
 
@@ -48,23 +57,19 @@ export interface HmrController {
 
 export const makeHmrController = (options: HmrControllerOptions): HmrController => {
   const { entry, cwd, server } = options
-  const runtime = options.runtime ?? ManagedRuntime.make(Layer.empty)
   const processLayer = options.processLayer ?? NodeServices.layer
+  const processRuntime = ManagedRuntime.make(Layer.mergeAll(Path.layer, processLayer))
   const lifecycle = Effect.runSync(Semaphore.make(1))
   const listenerScope = Effect.runSync(Scope.make())
   let active: ActiveRuntime | undefined
   let disposed = false
 
-  const entryPath = resolve(cwd, entry)
-
-  const provideProcessLayer = (
-    effect: Effect.Effect<
-      void,
-      PlatformError | TransportError,
-      ChildProcessSpawner.ChildProcessSpawner
-    >
-  ): Effect.Effect<void, PlatformError | TransportError, never> =>
-    effect.pipe(Effect.provide(processLayer))
+  const entryPath = processRuntime.runSync(
+    Effect.gen(function* () {
+      const path = yield* Path.Path
+      return path.resolve(cwd, entry)
+    })
+  )
 
   const run = (
     effect: Effect.Effect<
@@ -73,7 +78,7 @@ export const makeHmrController = (options: HmrControllerOptions): HmrController 
       ChildProcessSpawner.ChildProcessSpawner
     >
   ): void => {
-    void runtime.runCallback(provideProcessLayer(effect), {
+    void processRuntime.runCallback(effect, {
       onExit: (exit) => {
         reportRuntimeExit(server, exit)
       }
@@ -87,7 +92,7 @@ export const makeHmrController = (options: HmrControllerOptions): HmrController 
       ChildProcessSpawner.ChildProcessSpawner
     >
   ): void => {
-    void runtime.runCallback(lifecycle.withPermit(provideProcessLayer(effect)), {
+    void processRuntime.runCallback(lifecycle.withPermit(effect), {
       onExit: (exit) => {
         reportRuntimeExit(server, exit)
       }
@@ -109,7 +114,7 @@ export const makeHmrController = (options: HmrControllerOptions): HmrController 
   const handleFrameUp = (data: { readonly data: string }): void => {
     const bytes = Buffer.from(data.data, "base64")
     const current = active
-    if (current) {
+    if (current !== undefined) {
       run(current.process.send(new Uint8Array(bytes)))
     }
   }
@@ -142,16 +147,14 @@ export const makeHmrController = (options: HmrControllerOptions): HmrController 
         return
       }
       disposed = true
-      void runtime.runCallback(
+      void processRuntime.runCallback(
         lifecycle.withPermit(
           closeActive().pipe(Effect.andThen(Scope.close(listenerScope, Exit.void)))
         ),
         {
           onExit: (exit) => {
             reportRuntimeExit(server, exit)
-            if (!options.runtime) {
-              void runtime.dispose()
-            }
+            void processRuntime.dispose()
           }
         }
       )
@@ -167,7 +170,7 @@ export const makeHmrController = (options: HmrControllerOptions): HmrController 
       if (disposed) {
         return
       }
-      const process = yield* makeRuntimeProcess({ entry, cwd })
+      const process = yield* makeRuntimeProcess({ entryPath, cwd })
       if (disposed) {
         yield* process.close
         return
@@ -213,14 +216,14 @@ export const makeHmrController = (options: HmrControllerOptions): HmrController 
     return Effect.gen(function* () {
       const current = active
       active = undefined
-      if (!current) {
+      if (current === undefined) {
         return
       }
       yield* current.process.close
-      if (current.frameFiber) {
+      if (current.frameFiber !== undefined) {
         yield* Fiber.interrupt(current.frameFiber).pipe(Effect.ignore)
       }
-      if (current.exitFiber) {
+      if (current.exitFiber !== undefined) {
         yield* Fiber.interrupt(current.exitFiber).pipe(Effect.ignore)
       }
     })

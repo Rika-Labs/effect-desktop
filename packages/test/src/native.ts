@@ -97,7 +97,7 @@ export interface TestWindowStateApi {
 }
 
 export class TestWindowState extends Context.Service<TestWindowState, TestWindowStateApi>()(
-  "@effect-desktop/test/TestWindowState"
+  "@effect-desktop/test/native/TestWindowState"
 ) {}
 
 export interface TestNativeSurface {
@@ -413,30 +413,77 @@ const makeWindowScenario = (
           return Effect.succeed(record.input.parent)
         })
       ),
+    getChildren: (window): Effect.Effect<readonly WindowHandle[], WindowError, never> =>
+      Ref.get(windows).pipe(
+        Effect.flatMap((records) => {
+          if (!records.has(window.id)) {
+            return Effect.fail(notFoundWindow(window.id, "Window.getChildren"))
+          }
+          return Effect.succeed(
+            [...records.values()]
+              .filter((record) => record.input.parent?.id === window.id)
+              .map((record) => record.window)
+          )
+        })
+      ),
     getBounds: (_window): Effect.Effect<WindowBounds, WindowError, never> =>
       Effect.succeed(new WindowBounds({ x: 0, y: 0, width: 640, height: 480 })),
-    setBounds: (_window, _bounds): Effect.Effect<void, WindowError, never> => Effect.void,
-    center: (_window): Effect.Effect<void, WindowError, never> => Effect.void,
-    centerOnDisplay: (_window, _displayId): Effect.Effect<void, WindowError, never> => Effect.void,
+    setBounds: (_window, bounds): Effect.Effect<WindowBounds, WindowError, never> =>
+      Effect.succeed(new WindowBounds(bounds)),
+    setBoundsOnDisplay: (
+      _window,
+      _displayId,
+      bounds
+    ): Effect.Effect<WindowBounds, WindowError, never> => Effect.succeed(new WindowBounds(bounds)),
+    center: (_window): Effect.Effect<WindowBounds, WindowError, never> =>
+      Effect.succeed(new WindowBounds({ x: 0, y: 0, width: 640, height: 480 })),
+    centerOnDisplay: (_window, _displayId): Effect.Effect<WindowBounds, WindowError, never> =>
+      Effect.succeed(new WindowBounds({ x: 0, y: 0, width: 640, height: 480 })),
     setTitle: (_window, _title): Effect.Effect<void, WindowError, never> => Effect.void,
     setResizable: (_window, _resizable): Effect.Effect<void, WindowError, never> => Effect.void,
     setDecorations: (_window, _decorations): Effect.Effect<void, WindowError, never> => Effect.void,
     setTrafficLights: (_window, _trafficLights): Effect.Effect<void, WindowError, never> =>
       Effect.void,
+    setVibrancy: (_window, _material): Effect.Effect<void, WindowError, never> => Effect.void,
+    clearVibrancy: (_window): Effect.Effect<void, WindowError, never> => Effect.void,
+    setShadow: (_window, _hasShadow): Effect.Effect<void, WindowError, never> => Effect.void,
+    setTitleBarStyle: (_window, _titleBarStyle): Effect.Effect<void, WindowError, never> =>
+      Effect.void,
+    setTitleBarTransparent: (
+      _window,
+      _titleBarTransparent
+    ): Effect.Effect<void, WindowError, never> => Effect.void,
+    setTransparent: (_window, _transparent): Effect.Effect<void, WindowError, never> => Effect.void,
     setAlwaysOnTop: (_window, _alwaysOnTop): Effect.Effect<void, WindowError, never> => Effect.void,
     setSkipTaskbar: (_window, _skipTaskbar): Effect.Effect<void, WindowError, never> => Effect.void,
     setProgress: (_window, _input): Effect.Effect<void, WindowError, never> => Effect.void,
     requestAttention: (_window, _requestType): Effect.Effect<void, WindowError, never> =>
       Effect.void,
     cancelAttention: (_window): Effect.Effect<void, WindowError, never> => Effect.void,
-    minimize: (_window): Effect.Effect<void, WindowError, never> => Effect.void,
-    maximize: (_window): Effect.Effect<void, WindowError, never> => Effect.void,
-    restore: (_window): Effect.Effect<void, WindowError, never> => Effect.void,
-    setFullscreen: (_window, _fullscreen): Effect.Effect<void, WindowError, never> => Effect.void,
+    minimize: (_window): Effect.Effect<WindowState, WindowError, never> =>
+      Effect.succeed(defaultWindowState()),
+    maximize: (_window): Effect.Effect<WindowState, WindowError, never> =>
+      Effect.succeed(defaultWindowState()),
+    restore: (_window): Effect.Effect<WindowState, WindowError, never> =>
+      Effect.succeed(defaultWindowState()),
+    setFullscreen: (_window, _fullscreen): Effect.Effect<WindowState, WindowError, never> =>
+      Effect.succeed(defaultWindowState()),
+    setSimpleFullscreen: (
+      _window,
+      _simpleFullscreen
+    ): Effect.Effect<WindowState, WindowError, never> => Effect.succeed(defaultWindowState()),
     getState: (_window): Effect.Effect<WindowState, WindowError, never> =>
-      Effect.succeed(new WindowState({ minimized: false, maximized: false, fullscreen: false })),
+      Effect.succeed(defaultWindowState()),
     events: () => Stream.empty
   } satisfies WindowServiceApi)
+
+const defaultWindowState = (): WindowState =>
+  new WindowState({
+    minimized: false,
+    maximized: false,
+    fullscreen: false,
+    simpleFullscreen: false
+  })
 
 const notFoundWindow = (windowId: string, operation: string): WindowError =>
   new HostProtocolNotFoundError({

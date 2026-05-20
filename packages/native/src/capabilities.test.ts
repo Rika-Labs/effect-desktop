@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import type { RpcCapabilityMetadata, RpcSupportMetadata } from "@effect-desktop/bridge"
 import { type DesktopNativeLayer, type DesktopRpcSchemaDoc } from "@effect-desktop/core"
-import { Cause, Effect, Exit, Layer, Option, Schema } from "effect"
+import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Schema } from "effect"
 
 import {
   NativeCapabilities,
@@ -13,12 +13,16 @@ import {
 } from "./capabilities.js"
 import { Native } from "./native.js"
 
-test("NativeCapabilities exposes support metadata from native surfaces", async () => {
-  const result = await Effect.runPromise(
+test("NativeCapabilities exposes support metadata from native surfaces", () => {
+  const runtime = ManagedRuntime.make(NativeCapabilitiesLive)
+  return runtime.runPromise(
     Effect.gen(function* () {
       const capabilities = yield* NativeCapabilities
       const create = yield* capabilities.support("Window.create")
       const dockBadge = yield* capabilities.support("Dock.setBadgeCount")
+      const dockProgress = yield* capabilities.support("Dock.setProgress")
+      const updaterCheck = yield* capabilities.support("Updater.check")
+      const updaterDownload = yield* capabilities.support("Updater.download")
       const updaterInstall = yield* capabilities.support("Updater.install")
       const crashReporterStart = yield* capabilities.support("CrashReporter.start")
       const powerMonitorIsSupported = yield* capabilities.support("PowerMonitor.isSupported")
@@ -30,195 +34,183 @@ test("NativeCapabilities exposes support metadata from native surfaces", async (
       const contextMenuShow = yield* capabilities.support("ContextMenu.show")
       const safeStorageSet = yield* capabilities.support("SafeStorage.set")
       const safeStorageIsAvailable = yield* capabilities.support("SafeStorage.isAvailable")
-      return {
-        create,
-        appQuit,
-        dockBadge,
-        globalShortcutRegister,
-        webViewCreate,
-        menuClear,
-        contextMenuShow,
-        safeStorageSet,
-        safeStorageIsAvailable,
-        updaterInstall,
-        crashReporterStart,
-        powerMonitorIsSupported,
-        systemAppearance,
-        hasWindowShow: capabilities.manifest.some((fact) => fact.tag === "Window.show")
-      }
-    }).pipe(Effect.provide(NativeCapabilitiesLive))
-  )
+      const hasWindowShow = capabilities.manifest.some((fact) => fact.tag === "Window.show")
 
-  expect(result.create).toEqual({ status: "supported" })
-  expect(result.appQuit).toEqual({
-    status: "unsupported",
-    reason: "host-adapter-unimplemented",
-    platforms: [
-      { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
-      { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
-      { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
-    ]
-  })
-  expect(result.dockBadge).toEqual({
-    status: "partial",
-    reason: "dock behavior is platform-specific",
-    platforms: [
-      { platform: "macos", status: "supported" },
-      {
-        platform: "linux",
+      expect(create).toEqual({ status: "supported" })
+      expect(appQuit).toEqual({ status: "supported" })
+      expect(dockBadge).toEqual({
+        status: "partial",
+        reason: "dock behavior is platform-specific",
+        platforms: [
+          { platform: "macos", status: "supported" },
+          {
+            platform: "linux",
+            status: "unsupported",
+            reason: "Linux launcher badge labels are not wired in the host adapter"
+          },
+          {
+            platform: "windows",
+            status: "unsupported",
+            reason: "Windows taskbar badges require jump-list/taskbar integration"
+          }
+        ]
+      })
+      expect(dockProgress).toEqual({ status: "supported" })
+      expect(globalShortcutRegister).toEqual({
         status: "unsupported",
-        reason: "Linux launcher badge labels are not wired in the host adapter"
-      },
-      {
-        platform: "windows",
+        reason: "host-adapter-unimplemented",
+        platforms: [
+          { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
+          { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
+          { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
+        ]
+      })
+      expect(webViewCreate).toEqual({
+        status: "partial",
+        reason: "host-navigation-state-tracked",
+        platforms: [
+          { platform: "macos", status: "partial", reason: "host-navigation-state-tracked" },
+          { platform: "windows", status: "partial", reason: "host-navigation-state-tracked" },
+          { platform: "linux", status: "partial", reason: "host-navigation-state-tracked" }
+        ]
+      })
+      expect(menuClear).toEqual({
+        status: "partial",
+        reason: "macos-menu-clear-only",
+        platforms: [
+          { platform: "macos", status: "supported" },
+          { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
+          { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
+        ]
+      })
+      expect(contextMenuShow).toEqual({
         status: "unsupported",
-        reason: "Windows taskbar badges require jump-list/taskbar integration"
-      }
-    ]
-  })
-  expect(result.globalShortcutRegister).toEqual({
-    status: "unsupported",
-    reason: "host-adapter-unimplemented",
-    platforms: [
-      { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
-      { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
-      { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
-    ]
-  })
-  expect(result.webViewCreate).toEqual({
-    status: "unsupported",
-    reason: "host-adapter-unimplemented",
-    platforms: [
-      { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
-      { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
-      { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
-    ]
-  })
-  expect(result.menuClear).toEqual({
-    status: "unsupported",
-    reason: "host-adapter-unimplemented",
-    platforms: [
-      { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
-      { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
-      { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
-    ]
-  })
-  expect(result.contextMenuShow).toEqual({
-    status: "unsupported",
-    reason: "host-adapter-unimplemented",
-    platforms: [
-      { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
-      { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
-      { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
-    ]
-  })
-  expect(result.safeStorageSet).toEqual({
-    status: "unsupported",
-    reason: "host-adapter-unimplemented",
-    platforms: [
-      { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
-      { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
-      { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
-    ]
-  })
-  expect(result.safeStorageIsAvailable).toEqual({ status: "supported" })
-  expect(result.updaterInstall).toEqual({
-    status: "unsupported",
-    reason: "host-adapter-unimplemented",
-    platforms: [
-      { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
-      { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
-      { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
-    ]
-  })
-  expect(result.crashReporterStart).toEqual({
-    status: "unsupported",
-    reason: "host-adapter-unimplemented",
-    platforms: [
-      { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
-      { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
-      { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
-    ]
-  })
-  expect(result.powerMonitorIsSupported).toEqual({
-    status: "unsupported",
-    reason: "host-adapter-unimplemented",
-    platforms: [
-      { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
-      { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
-      { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
-    ]
-  })
-  expect(result.systemAppearance).toEqual({
-    status: "unsupported",
-    reason: "host-adapter-unimplemented",
-    platforms: [
-      { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
-      { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
-      { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
-    ]
-  })
-  expect(result.hasWindowShow).toBe(true)
+        reason: "host-adapter-unimplemented",
+        platforms: [
+          { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
+          { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
+          { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
+        ]
+      })
+      expect(safeStorageSet).toEqual({ status: "supported" })
+      expect(safeStorageIsAvailable).toEqual({ status: "supported" })
+      expect(updaterCheck).toEqual({
+        status: "partial",
+        reason: "signed-manifest-check-only",
+        platforms: [
+          { platform: "macos", status: "partial", reason: "signed-manifest-check-only" },
+          { platform: "windows", status: "partial", reason: "signed-manifest-check-only" },
+          { platform: "linux", status: "partial", reason: "signed-manifest-check-only" }
+        ]
+      })
+      expect(updaterDownload).toEqual({
+        status: "partial",
+        reason: "signed-manifest-file-artifact-only",
+        platforms: [
+          { platform: "macos", status: "partial", reason: "signed-manifest-file-artifact-only" },
+          { platform: "windows", status: "partial", reason: "signed-manifest-file-artifact-only" },
+          { platform: "linux", status: "partial", reason: "signed-manifest-file-artifact-only" }
+        ]
+      })
+      expect(updaterInstall).toEqual({
+        status: "partial",
+        reason: "signed-manifest-staged-install-only",
+        platforms: [
+          { platform: "macos", status: "partial", reason: "signed-manifest-staged-install-only" },
+          { platform: "windows", status: "partial", reason: "signed-manifest-staged-install-only" },
+          { platform: "linux", status: "partial", reason: "signed-manifest-staged-install-only" }
+        ]
+      })
+      expect(crashReporterStart).toEqual({
+        status: "partial",
+        reason: "native-crash-capture-unavailable",
+        platforms: [
+          { platform: "macos", status: "partial", reason: "native-crash-capture-unavailable" },
+          { platform: "windows", status: "partial", reason: "native-crash-capture-unavailable" },
+          { platform: "linux", status: "partial", reason: "native-crash-capture-unavailable" }
+        ]
+      })
+      expect(powerMonitorIsSupported).toEqual({
+        status: "partial",
+        reason: "platform-power-monitor-unavailable",
+        platforms: [
+          { platform: "macos", status: "supported" },
+          {
+            platform: "windows",
+            status: "unsupported",
+            reason: "platform-power-monitor-unavailable"
+          },
+          { platform: "linux", status: "unsupported", reason: "platform-power-monitor-unavailable" }
+        ]
+      })
+      expect(systemAppearance).toEqual({
+        status: "partial",
+        reason: "host-system-appearance-snapshot",
+        platforms: [
+          { platform: "macos", status: "supported" },
+          { platform: "windows", status: "supported" },
+          { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
+        ]
+      })
+      expect(hasWindowShow).toBe(true)
+    })
+  )
 })
 
-test("NativeCapabilities derives support metadata from selected native layers only", async () => {
-  const result = await Effect.runPromise(
+test("NativeCapabilities derives support metadata from selected native layers only", () => {
+  const runtime = ManagedRuntime.make(
+    makeNativeCapabilitiesLayer(Native.available(Native.Clipboard))
+  )
+  return runtime.runPromise(
     Effect.gen(function* () {
       const capabilities = yield* NativeCapabilities
       const readText = yield* capabilities.support("Clipboard.readText")
       const missingWindow = yield* Effect.exit(capabilities.support("Window.create"))
-      return {
-        readText,
-        missingWindow,
-        tags: capabilities.manifest.map((fact) => fact.tag)
-      }
-    }).pipe(Effect.provide(makeNativeCapabilitiesLayer(Native.available(Native.Clipboard))))
-  )
+      const tags = capabilities.manifest.map((fact) => fact.tag)
 
-  expect(result.readText).toEqual({
-    status: "unsupported",
-    reason: "host-adapter-unimplemented",
-    platforms: [
-      { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
-      { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
-      { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
-    ]
-  })
-  expect(result.tags).toContain("Clipboard.readText")
-  expect(result.tags).not.toContain("Window.create")
-  expect(Exit.isFailure(result.missingWindow)).toBe(true)
-  if (Exit.isFailure(result.missingWindow)) {
-    const failure = result.missingWindow.cause.reasons.find(Cause.isFailReason)
-    expect(failure?.error).toBeInstanceOf(NativeCapabilityLookupError)
-  }
+      expect(readText).toEqual({ status: "supported" })
+      expect(tags).toContain("Clipboard.readText")
+      expect(tags).not.toContain("Window.create")
+      expect(Exit.isFailure(missingWindow)).toBe(true)
+      if (Exit.isFailure(missingWindow)) {
+        const failure = missingWindow.cause.reasons.find(Cause.isFailReason)
+        expect(Schema.is(NativeCapabilityLookupError)(failure?.error)).toBe(true)
+      }
+    })
+  )
 })
 
-test("NativeCapabilities require fails unsupported methods from explicit metadata", async () => {
+test("NativeCapabilities require fails unsupported methods from explicit metadata", () => {
   const unsupported = testSurface("Example.unsupported", {
     status: "unsupported",
     reason: "example unavailable"
   })
-  const exit = await Effect.runPromiseExit(
+  const runtime = ManagedRuntime.make(makeNativeCapabilitiesLayer(testNativeLayer(unsupported)))
+  return runtime.runPromise(
     Effect.gen(function* () {
-      const capabilities = yield* NativeCapabilities
-      yield* capabilities.support("Example.unsupported")
-      return yield* capabilities.require("Example.unsupported")
-    }).pipe(Effect.provide(makeNativeCapabilitiesLayer(testNativeLayer(unsupported))))
-  )
+      const exit = yield* Effect.exit(
+        Effect.gen(function* () {
+          const capabilities = yield* NativeCapabilities
+          yield* capabilities.support("Example.unsupported")
+          return yield* capabilities.require("Example.unsupported")
+        })
+      )
 
-  expect(Exit.isFailure(exit)).toBe(true)
-  if (Exit.isFailure(exit)) {
-    const failure = exit.cause.reasons.find(Cause.isFailReason)
-    expect(failure?.error).toBeInstanceOf(UnsupportedCapability)
-    expect(failure?.error).toMatchObject({
-      _tag: "UnsupportedCapability",
-      tag: "Example.unsupported",
-      reason: "example unavailable"
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const failure = exit.cause.reasons.find(Cause.isFailReason)
+        expect(Schema.is(UnsupportedCapability)(failure?.error)).toBe(true)
+        expect(failure?.error).toMatchObject({
+          _tag: "UnsupportedCapability",
+          tag: "Example.unsupported",
+          reason: "example unavailable"
+        })
+      }
     })
-  }
+  )
 })
 
-test("NativeCapabilities exposes partial support with platform-specific reasons", async () => {
+test("NativeCapabilities exposes partial support with platform-specific reasons", () => {
   const partial = testSurface("Example.partial", {
     status: "partial",
     reason: "platform implementations differ",
@@ -228,31 +220,30 @@ test("NativeCapabilities exposes partial support with platform-specific reasons"
       { platform: "windows", status: "partial", reason: "requires shell integration" }
     ]
   })
-
-  const result = await Effect.runPromise(
+  const runtime = ManagedRuntime.make(makeNativeCapabilitiesLayer(testNativeLayer(partial)))
+  return runtime.runPromise(
     Effect.gen(function* () {
       const capabilities = yield* NativeCapabilities
       const support = yield* capabilities.support("Example.partial")
       yield* capabilities.require("Example.partial")
       yield* capabilities.requirePlatform("Example.partial", "macos")
-      return support
-    }).pipe(Effect.provide(makeNativeCapabilitiesLayer(testNativeLayer(partial))))
-  )
 
-  expect(result).toEqual({
-    status: "partial",
-    reason: "platform implementations differ",
-    platforms: [
-      { platform: "macos", status: "supported" },
-      { platform: "linux", status: "unsupported", reason: "host adapter missing" },
-      { platform: "windows", status: "partial", reason: "requires shell integration" }
-    ]
-  })
-  expect(Object.isFrozen(result)).toBe(true)
-  expect(Object.isFrozen(result.platforms)).toBe(true)
+      expect(support).toEqual({
+        status: "partial",
+        reason: "platform implementations differ",
+        platforms: [
+          { platform: "macos", status: "supported" },
+          { platform: "linux", status: "unsupported", reason: "host adapter missing" },
+          { platform: "windows", status: "partial", reason: "requires shell integration" }
+        ]
+      })
+      expect(Object.isFrozen(support)).toBe(true)
+      expect(Object.isFrozen(support.platforms)).toBe(true)
+    })
+  )
 })
 
-test("NativeCapabilities fails platform-specific unsupported entries as typed errors", async () => {
+test("NativeCapabilities fails platform-specific unsupported entries as typed errors", () => {
   const partial = testSurface("Example.partial", {
     status: "partial",
     reason: "platform implementations differ",
@@ -262,174 +253,199 @@ test("NativeCapabilities fails platform-specific unsupported entries as typed er
       { platform: "windows", status: "partial", reason: "requires shell integration" }
     ]
   })
+  const runtime = ManagedRuntime.make(makeNativeCapabilitiesLayer(testNativeLayer(partial)))
+  return runtime.runPromise(
+    Effect.gen(function* () {
+      const exit = yield* Effect.exit(
+        Effect.gen(function* () {
+          const capabilities = yield* NativeCapabilities
+          return yield* capabilities.requirePlatform("Example.partial", "linux")
+        })
+      )
 
-  const exit = await Effect.runPromiseExit(
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const failure = exit.cause.reasons.find(Cause.isFailReason)
+        expect(Schema.is(UnsupportedCapability)(failure?.error)).toBe(true)
+        expect(failure?.error).toMatchObject({
+          _tag: "UnsupportedCapability",
+          tag: "Example.partial",
+          platform: "linux",
+          reason: "host adapter missing"
+        })
+      }
+    })
+  )
+})
+
+test("NativeCapabilities require succeeds for supported methods", () => {
+  const runtime = ManagedRuntime.make(NativeCapabilitiesLive)
+  return runtime.runPromise(
     Effect.gen(function* () {
       const capabilities = yield* NativeCapabilities
-      return yield* capabilities.requirePlatform("Example.partial", "linux")
-    }).pipe(Effect.provide(makeNativeCapabilitiesLayer(testNativeLayer(partial))))
-  )
-
-  expect(Exit.isFailure(exit)).toBe(true)
-  if (Exit.isFailure(exit)) {
-    const failure = exit.cause.reasons.find(Cause.isFailReason)
-    expect(failure?.error).toBeInstanceOf(UnsupportedCapability)
-    expect(failure?.error).toMatchObject({
-      _tag: "UnsupportedCapability",
-      tag: "Example.partial",
-      platform: "linux",
-      reason: "host adapter missing"
+      const result = yield* capabilities.require("Window.create")
+      expect(result).toBeUndefined()
     })
-  }
+  )
 })
 
-test("NativeCapabilities require succeeds for supported methods", async () => {
-  const result = await Effect.runPromise(
+test("NativeCapabilities reports unknown method tags as typed lookup errors", () => {
+  const runtime = ManagedRuntime.make(NativeCapabilitiesLive)
+  return runtime.runPromise(
     Effect.gen(function* () {
-      const capabilities = yield* NativeCapabilities
-      return yield* capabilities.require("Window.create")
-    }).pipe(Effect.provide(NativeCapabilitiesLive))
-  )
+      const exit = yield* Effect.exit(
+        Effect.gen(function* () {
+          const capabilities = yield* NativeCapabilities
+          return yield* capabilities.support("Window.missing")
+        })
+      )
 
-  expect(result).toBeUndefined()
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const failure = exit.cause.reasons.find(Cause.isFailReason)
+        expect(Schema.is(NativeCapabilityLookupError)(failure?.error)).toBe(true)
+        expect(failure?.error).toMatchObject({
+          tag: "Window.missing",
+          message: "unknown native capability tag: Window.missing"
+        })
+      }
+    })
+  )
 })
 
-test("NativeCapabilities reports unknown method tags as typed lookup errors", async () => {
-  const exit = await Effect.runPromiseExit(
+test("NativeCapabilities rejects duplicate method tags in manifests", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
-      const capabilities = yield* NativeCapabilities
-      return yield* capabilities.support("Window.missing")
-    }).pipe(Effect.provide(NativeCapabilitiesLive))
-  )
+      const first = testSurface("Duplicate.method")
+      const second = testSurface("Duplicate.method", {
+        status: "unsupported",
+        reason: "second declaration"
+      })
 
-  expect(Exit.isFailure(exit)).toBe(true)
-  if (Exit.isFailure(exit)) {
-    const failure = exit.cause.reasons.find(Cause.isFailReason)
-    expect(failure?.error).toBeInstanceOf(NativeCapabilityLookupError)
-    expect(failure?.error).toMatchObject({
-      tag: "Window.missing",
-      message: "unknown native capability tag: Window.missing"
+      const exit = yield* Effect.exit(
+        Effect.scoped(Layer.build(makeNativeCapabilitiesLayer(testNativeLayer(first, second))))
+      )
+
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const failure = exit.cause.reasons.find(Cause.isFailReason)
+        expect(Schema.is(NativeCapabilityManifestError)(failure?.error)).toBe(true)
+        expect(failure?.error).toMatchObject({
+          tag: "Duplicate.method",
+          message: "duplicate native capability tag: Duplicate.method"
+        })
+      }
     })
-  }
-})
+  ))
 
-test("NativeCapabilities rejects duplicate method tags in manifests", async () => {
-  const first = testSurface("Duplicate.method")
-  const second = testSurface("Duplicate.method", {
-    status: "unsupported",
-    reason: "second declaration"
-  })
+test("NativeCapabilities rejects missing capability metadata", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const exit = yield* Effect.exit(
+        Effect.scoped(
+          Layer.build(makeNativeCapabilitiesLayer(testNativeLayer(testSurfaceWithoutCapability())))
+        )
+      )
 
-  const exit = await Effect.runPromiseExit(
-    Effect.scoped(Layer.build(makeNativeCapabilitiesLayer(testNativeLayer(first, second))))
-  )
-
-  expect(Exit.isFailure(exit)).toBe(true)
-  if (Exit.isFailure(exit)) {
-    const failure = exit.cause.reasons.find(Cause.isFailReason)
-    expect(failure?.error).toBeInstanceOf(NativeCapabilityManifestError)
-    expect(failure?.error).toMatchObject({
-      tag: "Duplicate.method",
-      message: "duplicate native capability tag: Duplicate.method"
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const failure = exit.cause.reasons.find(Cause.isFailReason)
+        expect(Schema.is(NativeCapabilityManifestError)(failure?.error)).toBe(true)
+        expect(failure?.error).toMatchObject({
+          tag: "Example.missing",
+          message: "missing native capability metadata: Example.missing"
+        })
+      }
     })
-  }
-})
+  ))
 
-test("NativeCapabilities rejects missing capability metadata", async () => {
-  const exit = await Effect.runPromiseExit(
-    Effect.scoped(
-      Layer.build(makeNativeCapabilitiesLayer(testNativeLayer(testSurfaceWithoutCapability())))
-    )
-  )
+test("NativeCapabilities rejects malformed support metadata", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const malformed = testSurface("Example.malformed", {
+        status: "partial",
+        reason: " ",
+        platforms: [{ platform: "linux", status: "unsupported", reason: " " }]
+      })
 
-  expect(Exit.isFailure(exit)).toBe(true)
-  if (Exit.isFailure(exit)) {
-    const failure = exit.cause.reasons.find(Cause.isFailReason)
-    expect(failure?.error).toBeInstanceOf(NativeCapabilityManifestError)
-    expect(failure?.error).toMatchObject({
-      tag: "Example.missing",
-      message: "missing native capability metadata: Example.missing"
+      const exit = yield* Effect.exit(
+        Effect.scoped(Layer.build(makeNativeCapabilitiesLayer(testNativeLayer(malformed))))
+      )
+
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const failure = exit.cause.reasons.find(Cause.isFailReason)
+        expect(Schema.is(NativeCapabilityManifestError)(failure?.error)).toBe(true)
+        expect(failure?.error).toMatchObject({
+          tag: "Example.malformed",
+          message: "partial and unsupported native capabilities must include a reason"
+        })
+      }
     })
-  }
-})
+  ))
 
-test("NativeCapabilities rejects malformed support metadata", async () => {
-  const malformed = testSurface("Example.malformed", {
-    status: "partial",
-    reason: " ",
-    platforms: [{ platform: "linux", status: "unsupported", reason: " " }]
-  })
+test("NativeCapabilities rejects partial support without complete platform coverage", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const incomplete = testSurface("Example.incomplete", {
+        status: "partial",
+        reason: "platform implementations differ",
+        platforms: [
+          { platform: "macos", status: "supported" },
+          { platform: "linux", status: "unsupported", reason: "host adapter missing" }
+        ]
+      })
 
-  const exit = await Effect.runPromiseExit(
-    Effect.scoped(Layer.build(makeNativeCapabilitiesLayer(testNativeLayer(malformed))))
-  )
+      const exit = yield* Effect.exit(
+        Effect.scoped(Layer.build(makeNativeCapabilitiesLayer(testNativeLayer(incomplete))))
+      )
 
-  expect(Exit.isFailure(exit)).toBe(true)
-  if (Exit.isFailure(exit)) {
-    const failure = exit.cause.reasons.find(Cause.isFailReason)
-    expect(failure?.error).toBeInstanceOf(NativeCapabilityManifestError)
-    expect(failure?.error).toMatchObject({
-      tag: "Example.malformed",
-      message: "partial and unsupported native capabilities must include a reason"
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const failure = exit.cause.reasons.find(Cause.isFailReason)
+        expect(Schema.is(NativeCapabilityManifestError)(failure?.error)).toBe(true)
+        expect(failure?.error).toMatchObject({
+          tag: "Example.incomplete",
+          message: "native capability platform support must include macos, windows, and linux"
+        })
+      }
     })
-  }
-})
+  ))
 
-test("NativeCapabilities rejects partial support without complete platform coverage", async () => {
-  const incomplete = testSurface("Example.incomplete", {
-    status: "partial",
-    reason: "platform implementations differ",
-    platforms: [
-      { platform: "macos", status: "supported" },
-      { platform: "linux", status: "unsupported", reason: "host adapter missing" }
-    ]
-  })
+test("NativeCapabilities rejects contradictory top-level and platform support", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const contradictory = testSurface("Example.contradictory", {
+        status: "supported",
+        platforms: [
+          { platform: "macos", status: "supported" },
+          { platform: "linux", status: "unsupported", reason: "host adapter missing" },
+          { platform: "windows", status: "supported" }
+        ]
+      })
 
-  const exit = await Effect.runPromiseExit(
-    Effect.scoped(Layer.build(makeNativeCapabilitiesLayer(testNativeLayer(incomplete))))
-  )
+      const exit = yield* Effect.exit(
+        Effect.scoped(Layer.build(makeNativeCapabilitiesLayer(testNativeLayer(contradictory))))
+      )
 
-  expect(Exit.isFailure(exit)).toBe(true)
-  if (Exit.isFailure(exit)) {
-    const failure = exit.cause.reasons.find(Cause.isFailReason)
-    expect(failure?.error).toBeInstanceOf(NativeCapabilityManifestError)
-    expect(failure?.error).toMatchObject({
-      tag: "Example.incomplete",
-      message: "native capability platform support must include macos, windows, and linux"
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const failure = exit.cause.reasons.find(Cause.isFailReason)
+        expect(Schema.is(NativeCapabilityManifestError)(failure?.error)).toBe(true)
+        expect(failure?.error).toMatchObject({
+          tag: "Example.contradictory",
+          message:
+            "supported native capabilities cannot include partial or unsupported platform entries"
+        })
+      }
     })
-  }
-})
-
-test("NativeCapabilities rejects contradictory top-level and platform support", async () => {
-  const contradictory = testSurface("Example.contradictory", {
-    status: "supported",
-    platforms: [
-      { platform: "macos", status: "supported" },
-      { platform: "linux", status: "unsupported", reason: "host adapter missing" },
-      { platform: "windows", status: "supported" }
-    ]
-  })
-
-  const exit = await Effect.runPromiseExit(
-    Effect.scoped(Layer.build(makeNativeCapabilitiesLayer(testNativeLayer(contradictory))))
-  )
-
-  expect(Exit.isFailure(exit)).toBe(true)
-  if (Exit.isFailure(exit)) {
-    const failure = exit.cause.reasons.find(Cause.isFailReason)
-    expect(failure?.error).toBeInstanceOf(NativeCapabilityManifestError)
-    expect(failure?.error).toMatchObject({
-      tag: "Example.contradictory",
-      message:
-        "supported native capabilities cannot include partial or unsupported platform entries"
-    })
-  }
-})
+  ))
 
 const testSurface = (
   tag: string,
   support: RpcSupportMetadata = { status: "supported" },
-  capability: RpcCapabilityMetadata | undefined = { kind: "none" }
+  capability: RpcCapabilityMetadata | undefined = { kind: "none" },
+  callable = true
 ) =>
   Object.freeze({
     schemaDocs: Object.freeze([
@@ -437,9 +453,10 @@ const testSurface = (
         name: tag.slice(tag.lastIndexOf(".") + 1),
         tag,
         kind: "mutation",
-        payload: Schema.Void,
-        success: Schema.Void,
-        error: Schema.Void,
+        callable,
+        payload: callable ? Option.some(Schema.Void) : Option.none(),
+        success: callable ? Option.some(Schema.Void) : Option.none(),
+        error: callable ? Option.some(Schema.Void) : Option.none(),
         stream: Option.none(),
         capability: capability === undefined ? Option.none() : Option.some(capability),
         support
@@ -454,9 +471,10 @@ const testSurfaceWithoutCapability = () =>
         name: "missing",
         tag: "Example.missing",
         kind: "mutation",
-        payload: Schema.Void,
-        success: Schema.Void,
-        error: Schema.Void,
+        callable: true,
+        payload: Option.some(Schema.Void),
+        success: Option.some(Schema.Void),
+        error: Option.some(Schema.Void),
         stream: Option.none(),
         capability: Option.none(),
         support: { status: "supported" }

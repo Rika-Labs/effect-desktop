@@ -4,12 +4,15 @@
 
 use crate::window::{WindowCreateRequest, WindowMethodHandler};
 use host_protocol::{
-    HostProtocolError, WindowBoundsPayload, WindowCenterOnDisplayPayload, WindowCreatePayload,
-    WindowCreateResponse, WindowDestroyPayload, WindowListResponse, WindowLookupResponse,
-    WindowParentResponse, WindowRequestAttentionPayload, WindowSetAlwaysOnTopPayload,
-    WindowSetBoundsPayload, WindowSetDecorationsPayload, WindowSetFullscreenPayload,
-    WindowSetProgressPayload, WindowSetResizablePayload, WindowSetSkipTaskbarPayload,
-    WindowSetTitlePayload, WindowSetTrafficLightsPayload, WindowStatePayload,
+    HostProtocolError, WindowBoundsPayload, WindowCenterOnDisplayPayload,
+    WindowClearVibrancyPayload, WindowCreatePayload, WindowCreateResponse, WindowDestroyPayload,
+    WindowListResponse, WindowLookupResponse, WindowParentResponse, WindowRequestAttentionPayload,
+    WindowSetAlwaysOnTopPayload, WindowSetBoundsOnDisplayPayload, WindowSetBoundsPayload,
+    WindowSetDecorationsPayload, WindowSetFullscreenPayload, WindowSetProgressPayload,
+    WindowSetResizablePayload, WindowSetShadowPayload, WindowSetSimpleFullscreenPayload,
+    WindowSetSkipTaskbarPayload, WindowSetTitleBarStylePayload,
+    WindowSetTitleBarTransparentPayload, WindowSetTitlePayload, WindowSetTrafficLightsPayload,
+    WindowSetTransparentPayload, WindowSetVibrancyPayload, WindowStatePayload,
 };
 use serde_json::Value;
 
@@ -112,6 +115,20 @@ pub(crate) fn get_parent(
     Ok(Some(encode_parent_response(response)?))
 }
 
+pub(crate) fn get_children(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload =
+        decode_required_window_payload(payload, host_protocol::WINDOW_GET_CHILDREN_METHOD)?;
+    let response = handler.get_children(payload.window_id())?;
+
+    Ok(Some(encode_list_response(
+        response,
+        host_protocol::WINDOW_GET_CHILDREN_METHOD,
+    )?))
+}
+
 pub(crate) fn get_bounds(
     handler: &dyn WindowMethodHandler,
     payload: Option<Value>,
@@ -119,7 +136,10 @@ pub(crate) fn get_bounds(
     let payload = decode_required_window_payload(payload, host_protocol::WINDOW_GET_BOUNDS_METHOD)?;
     let response = handler.get_bounds(payload.window_id())?;
 
-    Ok(Some(encode_bounds_response(response)?))
+    Ok(Some(encode_bounds_response(
+        response,
+        host_protocol::WINDOW_GET_BOUNDS_METHOD,
+    )?))
 }
 
 pub(crate) fn set_bounds(
@@ -127,9 +147,29 @@ pub(crate) fn set_bounds(
     payload: Option<Value>,
 ) -> Result<Option<Value>, HostProtocolError> {
     let payload = decode_required_set_bounds_payload(payload)?;
-    handler.set_bounds(payload.window_id(), payload.bounds())?;
+    let response = handler.set_bounds(payload.window_id(), payload.bounds())?;
 
-    Ok(None)
+    Ok(Some(encode_bounds_response(
+        response,
+        host_protocol::WINDOW_SET_BOUNDS_METHOD,
+    )?))
+}
+
+pub(crate) fn set_bounds_on_display(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = decode_required_set_bounds_on_display_payload(payload)?;
+    let response = handler.set_bounds_on_display(
+        payload.window_id(),
+        payload.display_id(),
+        payload.bounds(),
+    )?;
+
+    Ok(Some(encode_bounds_response(
+        response,
+        host_protocol::WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD,
+    )?))
 }
 
 pub(crate) fn center(
@@ -137,9 +177,12 @@ pub(crate) fn center(
     payload: Option<Value>,
 ) -> Result<Option<Value>, HostProtocolError> {
     let payload = decode_required_window_payload(payload, host_protocol::WINDOW_CENTER_METHOD)?;
-    handler.center(payload.window_id())?;
+    let response = handler.center(payload.window_id())?;
 
-    Ok(None)
+    Ok(Some(encode_bounds_response(
+        response,
+        host_protocol::WINDOW_CENTER_METHOD,
+    )?))
 }
 
 pub(crate) fn center_on_display(
@@ -147,9 +190,12 @@ pub(crate) fn center_on_display(
     payload: Option<Value>,
 ) -> Result<Option<Value>, HostProtocolError> {
     let payload = decode_required_center_on_display_payload(payload)?;
-    handler.center_on_display(payload.window_id(), payload.display_id())?;
+    let response = handler.center_on_display(payload.window_id(), payload.display_id())?;
 
-    Ok(None)
+    Ok(Some(encode_bounds_response(
+        response,
+        host_protocol::WINDOW_CENTER_ON_DISPLAY_METHOD,
+    )?))
 }
 
 pub(crate) fn set_title(
@@ -188,6 +234,66 @@ pub(crate) fn set_traffic_lights(
 ) -> Result<Option<Value>, HostProtocolError> {
     let payload = decode_required_set_traffic_lights_payload(payload)?;
     handler.set_traffic_lights(payload.window_id(), payload.traffic_lights())?;
+
+    Ok(None)
+}
+
+pub(crate) fn set_vibrancy(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = decode_required_set_vibrancy_payload(payload)?;
+    handler.set_vibrancy(payload.window_id(), payload.material())?;
+
+    Ok(None)
+}
+
+pub(crate) fn clear_vibrancy(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = decode_required_clear_vibrancy_payload(payload)?;
+    handler.clear_vibrancy(payload.window_id())?;
+
+    Ok(None)
+}
+
+pub(crate) fn set_shadow(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = decode_required_set_shadow_payload(payload)?;
+    handler.set_shadow(payload.window_id(), payload.has_shadow())?;
+
+    Ok(None)
+}
+
+pub(crate) fn set_title_bar_style(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = decode_required_set_title_bar_style_payload(payload)?;
+    handler.set_title_bar_style(payload.window_id(), payload.title_bar_style())?;
+
+    Ok(None)
+}
+
+pub(crate) fn set_title_bar_transparent(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = decode_required_set_title_bar_transparent_payload(payload)?;
+    handler.set_title_bar_transparent(payload.window_id(), payload.title_bar_transparent())?;
+
+    Ok(None)
+}
+
+pub(crate) fn set_transparent(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = decode_required_set_transparent_payload(payload)?;
+    handler.set_transparent(payload.window_id(), payload.transparent())?;
 
     Ok(None)
 }
@@ -248,9 +354,12 @@ pub(crate) fn minimize(
     payload: Option<Value>,
 ) -> Result<Option<Value>, HostProtocolError> {
     let payload = decode_required_window_payload(payload, host_protocol::WINDOW_MINIMIZE_METHOD)?;
-    handler.minimize(payload.window_id())?;
+    let response = handler.minimize(payload.window_id())?;
 
-    Ok(None)
+    Ok(Some(encode_state_response(
+        response,
+        host_protocol::WINDOW_MINIMIZE_METHOD,
+    )?))
 }
 
 pub(crate) fn maximize(
@@ -258,9 +367,12 @@ pub(crate) fn maximize(
     payload: Option<Value>,
 ) -> Result<Option<Value>, HostProtocolError> {
     let payload = decode_required_window_payload(payload, host_protocol::WINDOW_MAXIMIZE_METHOD)?;
-    handler.maximize(payload.window_id())?;
+    let response = handler.maximize(payload.window_id())?;
 
-    Ok(None)
+    Ok(Some(encode_state_response(
+        response,
+        host_protocol::WINDOW_MAXIMIZE_METHOD,
+    )?))
 }
 
 pub(crate) fn restore(
@@ -268,9 +380,12 @@ pub(crate) fn restore(
     payload: Option<Value>,
 ) -> Result<Option<Value>, HostProtocolError> {
     let payload = decode_required_window_payload(payload, host_protocol::WINDOW_RESTORE_METHOD)?;
-    handler.restore(payload.window_id())?;
+    let response = handler.restore(payload.window_id())?;
 
-    Ok(None)
+    Ok(Some(encode_state_response(
+        response,
+        host_protocol::WINDOW_RESTORE_METHOD,
+    )?))
 }
 
 pub(crate) fn set_fullscreen(
@@ -278,9 +393,26 @@ pub(crate) fn set_fullscreen(
     payload: Option<Value>,
 ) -> Result<Option<Value>, HostProtocolError> {
     let payload = decode_required_set_fullscreen_payload(payload)?;
-    handler.set_fullscreen(payload.window_id(), payload.fullscreen())?;
+    let response = handler.set_fullscreen(payload.window_id(), payload.fullscreen())?;
 
-    Ok(None)
+    Ok(Some(encode_state_response(
+        response,
+        host_protocol::WINDOW_SET_FULLSCREEN_METHOD,
+    )?))
+}
+
+pub(crate) fn set_simple_fullscreen(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = decode_required_set_simple_fullscreen_payload(payload)?;
+    let response =
+        handler.set_simple_fullscreen(payload.window_id(), payload.simple_fullscreen())?;
+
+    Ok(Some(encode_state_response(
+        response,
+        host_protocol::WINDOW_SET_SIMPLE_FULLSCREEN_METHOD,
+    )?))
 }
 
 pub(crate) fn get_state(
@@ -290,7 +422,10 @@ pub(crate) fn get_state(
     let payload = decode_required_window_payload(payload, host_protocol::WINDOW_GET_STATE_METHOD)?;
     let response = handler.get_state(payload.window_id())?;
 
-    Ok(Some(encode_state_response(response)?))
+    Ok(Some(encode_state_response(
+        response,
+        host_protocol::WINDOW_GET_STATE_METHOD,
+    )?))
 }
 
 fn decode_optional_create_payload(
@@ -395,12 +530,67 @@ fn decode_set_bounds_payload(payload: Value) -> Result<WindowSetBoundsPayload, H
             host_protocol::WINDOW_SET_BOUNDS_METHOD,
         ));
     }
-    let bounds = payload.bounds();
+    validate_bounds_payload(payload.bounds(), host_protocol::WINDOW_SET_BOUNDS_METHOD)?;
+    Ok(payload)
+}
+
+fn decode_required_set_bounds_on_display_payload(
+    payload: Option<Value>,
+) -> Result<WindowSetBoundsOnDisplayPayload, HostProtocolError> {
+    match payload {
+        Some(payload) => decode_set_bounds_on_display_payload(payload),
+        None => Err(HostProtocolError::invalid_argument(
+            "payload",
+            format!(
+                "{} requires payload",
+                host_protocol::WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD
+            ),
+            host_protocol::WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD,
+        )),
+    }
+}
+
+fn decode_set_bounds_on_display_payload(
+    payload: Value,
+) -> Result<WindowSetBoundsOnDisplayPayload, HostProtocolError> {
+    let payload: WindowSetBoundsOnDisplayPayload =
+        serde_json::from_value(payload).map_err(|error| {
+            HostProtocolError::invalid_argument(
+                "payload",
+                error.to_string(),
+                host_protocol::WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD,
+            )
+        })?;
+    if payload.window_id().is_empty() {
+        return Err(HostProtocolError::invalid_argument(
+            "payload",
+            "windowId must be non-empty",
+            host_protocol::WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD,
+        ));
+    }
+    if payload.display_id().is_empty() {
+        return Err(HostProtocolError::invalid_argument(
+            "payload",
+            "displayId must be non-empty",
+            host_protocol::WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD,
+        ));
+    }
+    validate_bounds_payload(
+        payload.bounds(),
+        host_protocol::WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD,
+    )?;
+    Ok(payload)
+}
+
+fn validate_bounds_payload(
+    bounds: &WindowBoundsPayload,
+    operation: &'static str,
+) -> Result<(), HostProtocolError> {
     if !bounds.x().is_finite() || !bounds.y().is_finite() {
         return Err(HostProtocolError::invalid_argument(
             "payload",
             "bounds coordinates must be finite",
-            host_protocol::WINDOW_SET_BOUNDS_METHOD,
+            operation,
         ));
     }
     if !bounds.width().is_finite()
@@ -411,10 +601,10 @@ fn decode_set_bounds_payload(payload: Value) -> Result<WindowSetBoundsPayload, H
         return Err(HostProtocolError::invalid_argument(
             "payload",
             "bounds size must be finite and positive",
-            host_protocol::WINDOW_SET_BOUNDS_METHOD,
+            operation,
         ));
     }
-    Ok(payload)
+    Ok(())
 }
 
 fn decode_required_center_on_display_payload(
@@ -600,6 +790,230 @@ fn decode_set_traffic_lights_payload(
             "payload",
             "windowId must be non-empty",
             host_protocol::WINDOW_SET_TRAFFIC_LIGHTS_METHOD,
+        ));
+    }
+    Ok(payload)
+}
+
+fn decode_required_set_vibrancy_payload(
+    payload: Option<Value>,
+) -> Result<WindowSetVibrancyPayload, HostProtocolError> {
+    match payload {
+        Some(payload) => decode_set_vibrancy_payload(payload),
+        None => Err(HostProtocolError::invalid_argument(
+            "payload",
+            format!(
+                "{} requires payload",
+                host_protocol::WINDOW_SET_VIBRANCY_METHOD
+            ),
+            host_protocol::WINDOW_SET_VIBRANCY_METHOD,
+        )),
+    }
+}
+
+fn decode_set_vibrancy_payload(
+    payload: Value,
+) -> Result<WindowSetVibrancyPayload, HostProtocolError> {
+    let payload: WindowSetVibrancyPayload = serde_json::from_value(payload).map_err(|error| {
+        HostProtocolError::invalid_argument(
+            "payload",
+            error.to_string(),
+            host_protocol::WINDOW_SET_VIBRANCY_METHOD,
+        )
+    })?;
+    if payload.window_id().is_empty() {
+        return Err(HostProtocolError::invalid_argument(
+            "payload",
+            "windowId must be non-empty",
+            host_protocol::WINDOW_SET_VIBRANCY_METHOD,
+        ));
+    }
+    if payload.material().trim().is_empty() {
+        return Err(HostProtocolError::invalid_argument(
+            "payload",
+            "material must be non-empty",
+            host_protocol::WINDOW_SET_VIBRANCY_METHOD,
+        ));
+    }
+    Ok(payload)
+}
+
+fn decode_required_clear_vibrancy_payload(
+    payload: Option<Value>,
+) -> Result<WindowClearVibrancyPayload, HostProtocolError> {
+    match payload {
+        Some(payload) => decode_clear_vibrancy_payload(payload),
+        None => Err(HostProtocolError::invalid_argument(
+            "payload",
+            format!(
+                "{} requires payload",
+                host_protocol::WINDOW_CLEAR_VIBRANCY_METHOD
+            ),
+            host_protocol::WINDOW_CLEAR_VIBRANCY_METHOD,
+        )),
+    }
+}
+
+fn decode_clear_vibrancy_payload(
+    payload: Value,
+) -> Result<WindowClearVibrancyPayload, HostProtocolError> {
+    let payload: WindowClearVibrancyPayload = serde_json::from_value(payload).map_err(|error| {
+        HostProtocolError::invalid_argument(
+            "payload",
+            error.to_string(),
+            host_protocol::WINDOW_CLEAR_VIBRANCY_METHOD,
+        )
+    })?;
+    if payload.window_id().is_empty() {
+        return Err(HostProtocolError::invalid_argument(
+            "payload",
+            "windowId must be non-empty",
+            host_protocol::WINDOW_CLEAR_VIBRANCY_METHOD,
+        ));
+    }
+    Ok(payload)
+}
+
+fn decode_required_set_shadow_payload(
+    payload: Option<Value>,
+) -> Result<WindowSetShadowPayload, HostProtocolError> {
+    match payload {
+        Some(payload) => decode_set_shadow_payload(payload),
+        None => Err(HostProtocolError::invalid_argument(
+            "payload",
+            format!(
+                "{} requires payload",
+                host_protocol::WINDOW_SET_SHADOW_METHOD
+            ),
+            host_protocol::WINDOW_SET_SHADOW_METHOD,
+        )),
+    }
+}
+
+fn decode_set_shadow_payload(payload: Value) -> Result<WindowSetShadowPayload, HostProtocolError> {
+    let payload: WindowSetShadowPayload = serde_json::from_value(payload).map_err(|error| {
+        HostProtocolError::invalid_argument(
+            "payload",
+            error.to_string(),
+            host_protocol::WINDOW_SET_SHADOW_METHOD,
+        )
+    })?;
+    if payload.window_id().is_empty() {
+        return Err(HostProtocolError::invalid_argument(
+            "payload",
+            "windowId must be non-empty",
+            host_protocol::WINDOW_SET_SHADOW_METHOD,
+        ));
+    }
+    Ok(payload)
+}
+
+fn decode_required_set_title_bar_style_payload(
+    payload: Option<Value>,
+) -> Result<WindowSetTitleBarStylePayload, HostProtocolError> {
+    match payload {
+        Some(payload) => decode_set_title_bar_style_payload(payload),
+        None => Err(HostProtocolError::invalid_argument(
+            "payload",
+            format!(
+                "{} requires payload",
+                host_protocol::WINDOW_SET_TITLE_BAR_STYLE_METHOD
+            ),
+            host_protocol::WINDOW_SET_TITLE_BAR_STYLE_METHOD,
+        )),
+    }
+}
+
+fn decode_set_title_bar_style_payload(
+    payload: Value,
+) -> Result<WindowSetTitleBarStylePayload, HostProtocolError> {
+    let payload: WindowSetTitleBarStylePayload =
+        serde_json::from_value(payload).map_err(|error| {
+            HostProtocolError::invalid_argument(
+                "payload",
+                error.to_string(),
+                host_protocol::WINDOW_SET_TITLE_BAR_STYLE_METHOD,
+            )
+        })?;
+    if payload.window_id().is_empty() {
+        return Err(HostProtocolError::invalid_argument(
+            "payload",
+            "windowId must be non-empty",
+            host_protocol::WINDOW_SET_TITLE_BAR_STYLE_METHOD,
+        ));
+    }
+    Ok(payload)
+}
+
+fn decode_required_set_title_bar_transparent_payload(
+    payload: Option<Value>,
+) -> Result<WindowSetTitleBarTransparentPayload, HostProtocolError> {
+    match payload {
+        Some(payload) => decode_set_title_bar_transparent_payload(payload),
+        None => Err(HostProtocolError::invalid_argument(
+            "payload",
+            format!(
+                "{} requires payload",
+                host_protocol::WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD
+            ),
+            host_protocol::WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD,
+        )),
+    }
+}
+
+fn decode_set_title_bar_transparent_payload(
+    payload: Value,
+) -> Result<WindowSetTitleBarTransparentPayload, HostProtocolError> {
+    let payload: WindowSetTitleBarTransparentPayload =
+        serde_json::from_value(payload).map_err(|error| {
+            HostProtocolError::invalid_argument(
+                "payload",
+                error.to_string(),
+                host_protocol::WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD,
+            )
+        })?;
+    if payload.window_id().is_empty() {
+        return Err(HostProtocolError::invalid_argument(
+            "payload",
+            "windowId must be non-empty",
+            host_protocol::WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD,
+        ));
+    }
+    Ok(payload)
+}
+
+fn decode_required_set_transparent_payload(
+    payload: Option<Value>,
+) -> Result<WindowSetTransparentPayload, HostProtocolError> {
+    match payload {
+        Some(payload) => decode_set_transparent_payload(payload),
+        None => Err(HostProtocolError::invalid_argument(
+            "payload",
+            format!(
+                "{} requires payload",
+                host_protocol::WINDOW_SET_TRANSPARENT_METHOD
+            ),
+            host_protocol::WINDOW_SET_TRANSPARENT_METHOD,
+        )),
+    }
+}
+
+fn decode_set_transparent_payload(
+    payload: Value,
+) -> Result<WindowSetTransparentPayload, HostProtocolError> {
+    let payload: WindowSetTransparentPayload =
+        serde_json::from_value(payload).map_err(|error| {
+            HostProtocolError::invalid_argument(
+                "payload",
+                error.to_string(),
+                host_protocol::WINDOW_SET_TRANSPARENT_METHOD,
+            )
+        })?;
+    if payload.window_id().is_empty() {
+        return Err(HostProtocolError::invalid_argument(
+            "payload",
+            "windowId must be non-empty",
+            host_protocol::WINDOW_SET_TRANSPARENT_METHOD,
         ));
     }
     Ok(payload)
@@ -853,26 +1267,60 @@ fn encode_parent_response(payload: WindowParentResponse) -> Result<Value, HostPr
     })
 }
 
-fn encode_bounds_response(payload: WindowBoundsPayload) -> Result<Value, HostProtocolError> {
+fn encode_bounds_response(
+    payload: WindowBoundsPayload,
+    operation: &'static str,
+) -> Result<Value, HostProtocolError> {
     serde_json::to_value(payload).map_err(|error| {
         HostProtocolError::internal(
-            format!(
-                "failed to encode {} response payload: {error}",
-                host_protocol::WINDOW_GET_BOUNDS_METHOD
-            ),
-            host_protocol::WINDOW_GET_BOUNDS_METHOD,
+            format!("failed to encode {operation} response payload: {error}"),
+            operation,
         )
     })
 }
 
-fn encode_state_response(payload: WindowStatePayload) -> Result<Value, HostProtocolError> {
+fn decode_required_set_simple_fullscreen_payload(
+    payload: Option<Value>,
+) -> Result<WindowSetSimpleFullscreenPayload, HostProtocolError> {
+    match payload {
+        Some(payload) => decode_set_simple_fullscreen_payload(payload),
+        None => Err(HostProtocolError::invalid_argument(
+            "payload",
+            "Window.setSimpleFullscreen requires payload",
+            host_protocol::WINDOW_SET_SIMPLE_FULLSCREEN_METHOD,
+        )),
+    }
+}
+
+fn decode_set_simple_fullscreen_payload(
+    payload: Value,
+) -> Result<WindowSetSimpleFullscreenPayload, HostProtocolError> {
+    let payload: WindowSetSimpleFullscreenPayload =
+        serde_json::from_value(payload).map_err(|error| {
+            HostProtocolError::invalid_argument(
+                "payload",
+                format!("invalid Window.setSimpleFullscreen payload: {error}"),
+                host_protocol::WINDOW_SET_SIMPLE_FULLSCREEN_METHOD,
+            )
+        })?;
+    if payload.window_id().is_empty() {
+        return Err(HostProtocolError::invalid_argument(
+            "payload",
+            "windowId must be non-empty",
+            host_protocol::WINDOW_SET_SIMPLE_FULLSCREEN_METHOD,
+        ));
+    }
+    Ok(payload)
+}
+
+fn encode_state_response(
+    payload: WindowStatePayload,
+    operation: &'static str,
+) -> Result<Value, HostProtocolError> {
     serde_json::to_value(payload).map_err(|error| {
         HostProtocolError::internal(
-            format!(
-                "failed to encode {} response payload: {error}",
-                host_protocol::WINDOW_GET_STATE_METHOD
-            ),
-            host_protocol::WINDOW_GET_STATE_METHOD,
+            format!("failed to encode {operation} response payload: {error}"),
+            operation,
         )
     })
 }

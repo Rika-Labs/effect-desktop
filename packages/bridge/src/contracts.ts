@@ -149,9 +149,10 @@ export interface BridgeRuntimeMetadata {
   readonly backpressure?: BackpressureSpec
 }
 
-const BridgeRuntimeAnnotation = Context.Service<BridgeRuntimeMetadata>(
-  "@effect-desktop/bridge/BridgeRuntime"
-)
+class BridgeRuntimeAnnotation extends Context.Service<
+  BridgeRuntimeAnnotation,
+  BridgeRuntimeMetadata
+>()("@effect-desktop/bridge/contracts/BridgeRuntimeAnnotation") {}
 
 export const BridgeRuntime =
   (metadata: BridgeRuntimeMetadata) =>
@@ -554,11 +555,8 @@ const streamSchemasFromRpcSuccess = (
   return Option.some({ success: schema.success, error: schema.error })
 }
 
-const isSchema = (value: unknown): value is BridgeContractCodec => {
-  return (
-    (typeof value === "object" || typeof value === "function") && value !== null && "ast" in value
-  )
-}
+const isSchema = (value: unknown): value is BridgeContractCodec =>
+  (typeof value === "object" || typeof value === "function") && value !== null && "ast" in value
 
 export const isStreamSpec = (value: unknown): value is BridgeStreamSpec =>
   typeof value === "object" &&

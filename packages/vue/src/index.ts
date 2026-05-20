@@ -265,17 +265,22 @@ const useMutation = <R, ER, I, A, E>(
     operation.dispose()
   })
 
-  const runPromiseImpl = async (input?: I): Promise<Exit.Exit<A, E | ER>> => {
-    state.value = { status: "running" }
-    const [exit, isLatest] = await operation.runLatestPromiseExit(makeEffect(input as I))
+  const runPromiseImpl = (input?: I): Promise<Exit.Exit<A, E | ER>> =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        state.value = { status: "running" }
+        const [exit, isLatest] = yield* Effect.promise(() =>
+          operation.runLatestPromiseExit(makeEffect(input as I))
+        )
 
-    if (isLatest) {
-      state.value = Exit.isSuccess(exit)
-        ? { status: "success", value: exit.value }
-        : { status: "failure", cause: exit.cause }
-    }
-    return exit
-  }
+        if (isLatest) {
+          state.value = Exit.isSuccess(exit)
+            ? { status: "success", value: exit.value }
+            : { status: "failure", cause: exit.cause }
+        }
+        return exit
+      })
+    )
 
   return {
     state,

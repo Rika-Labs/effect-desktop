@@ -1,10 +1,7 @@
-import { readFile } from "node:fs/promises"
-import { join } from "node:path"
-
 import { expect, test } from "bun:test"
 import type { RpcCapabilityMetadata, RpcSupportMetadata } from "@effect-desktop/bridge"
 import { type DesktopNativeLayer, type DesktopRpcSchemaDoc } from "@effect-desktop/core"
-import { Cause, Effect, Exit, Layer, Option, Schema } from "effect"
+import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Schema } from "effect"
 
 import {
   formatNativeParityMatrixMarkdown,
@@ -23,209 +20,260 @@ import {
 } from "./parity-matrix.js"
 import { Native } from "./native.js"
 
-const repoRoot = join(import.meta.dir, "../../..")
-const hostProtocolPath = join(repoRoot, "crates/host-protocol/src/lib.rs")
-const hostRouterPath = join(repoRoot, "crates/host/src/methods/mod.rs")
+const repoRoot = `${import.meta.dir}/../../..`
+const hostProtocolPath = `${repoRoot}/crates/host-protocol/src/lib.rs`
+const hostRouterPath = `${repoRoot}/crates/host/src/methods/mod.rs`
 
-const readRoutedHostMethods = async (): Promise<ReadonlySet<string>> => {
-  const [protocolSource, routerSource] = await Promise.all([
-    readFile(hostProtocolPath, "utf8"),
-    readFile(hostRouterPath, "utf8")
-  ])
-  return routedHostMethodsFromSource(protocolSource, routerSource)
-}
+const readRoutedHostMethods = (): Effect.Effect<ReadonlySet<string>, never, never> =>
+  Effect.gen(function* () {
+    const protocolSource = yield* Effect.promise(() => Bun.file(hostProtocolPath).text())
+    const routerSource = yield* Effect.promise(() => Bun.file(hostRouterPath).text())
+    return routedHostMethodsFromSource(protocolSource, routerSource)
+  })
 
-const buildNativeParityMatrix = async (): Promise<NativeParityMatrixResultType> => {
-  const hostMethods = await readRoutedHostMethods()
-  return Effect.runPromise(makeNativeParityMatrixResult(Native.all.surfaces, hostMethods))
-}
+const buildNativeParityMatrix = (): Effect.Effect<
+  NativeParityMatrixResultType,
+  NativeParityMatrixError,
+  never
+> =>
+  Effect.gen(function* () {
+    const hostMethods = yield* readRoutedHostMethods()
+    return yield* makeNativeParityMatrixResult(Native.all.surfaces, hostMethods)
+  })
 
-test("NativeParityMatrix reports declared TypeScript methods against the Rust host registry", async () => {
-  const hostMethods = await readRoutedHostMethods()
-  const result = await Effect.runPromise(
-    makeNativeParityMatrixResult(Native.all.surfaces, hostMethods)
-  )
-
-  expect(Schema.decodeUnknownSync(NativeParityMatrixResult)(result)).toEqual(result)
-  expect(result.summary.total).toBeGreaterThan(0)
-  expect(result.summary.routed).toBeGreaterThan(0)
-  expect(result.summary.missing).toBeGreaterThan(0)
-
-  expect(result.rows.find((row) => row.tag === "Window.create")).toMatchObject({
-    hostStatus: "routed",
-    support: { status: "supported" }
-  })
-  for (const tag of ["App.focus", "App.quit", "App.requestSingleInstanceLock", "App.restart"]) {
-    expect(result.rows.find((row) => row.tag === tag)).toMatchObject({
-      hostStatus: "routed",
-      support: { status: "unsupported", reason: "host-adapter-unimplemented" }
-    })
-  }
-  expect(result.rows.find((row) => row.tag === "Clipboard.readText")).toMatchObject({
-    hostStatus: "routed",
-    support: { status: "unsupported", reason: "host-adapter-unimplemented" }
-  })
-  expect(result.rows.find((row) => row.tag === "WebView.create")).toMatchObject({
-    hostStatus: "missing",
-    support: { status: "unsupported", reason: "host-adapter-unimplemented" }
-  })
-  expect(result.rows.find((row) => row.tag === "Menu.setApplicationMenu")).toMatchObject({
-    hostStatus: "routed",
-    support: { status: "supported" }
-  })
-  expect(result.rows.find((row) => row.tag === "Menu.clear")).toMatchObject({
-    hostStatus: "missing",
-    support: { status: "unsupported", reason: "host-adapter-unimplemented" }
-  })
-  expect(result.rows.find((row) => row.tag === "ContextMenu.show")).toMatchObject({
-    hostStatus: "missing",
-    support: { status: "unsupported", reason: "host-adapter-unimplemented" }
-  })
-  expect(result.rows.find((row) => row.tag === "SafeStorage.isAvailable")).toMatchObject({
-    hostStatus: "routed",
-    support: { status: "supported" }
-  })
-  expect(result.rows.find((row) => row.tag === "SafeStorage.set")).toMatchObject({
-    hostStatus: "missing",
-    support: { status: "unsupported", reason: "host-adapter-unimplemented" }
-  })
-  expect(result.rows.find((row) => row.tag === "Updater.check")).toMatchObject({
-    hostStatus: "routed",
-    support: { status: "unsupported", reason: "host-adapter-unimplemented" }
-  })
-  expect(result.rows.find((row) => row.tag === "CrashReporter.start")).toMatchObject({
-    hostStatus: "routed",
-    support: { status: "unsupported", reason: "host-adapter-unimplemented" }
-  })
-  expect(result.rows.find((row) => row.tag === "PowerMonitor.isSupported")).toMatchObject({
-    hostStatus: "routed",
-    support: { status: "unsupported", reason: "host-adapter-unimplemented" }
-  })
-  expect(result.rows.find((row) => row.tag === "SystemAppearance.getAppearance")).toMatchObject({
-    hostStatus: "routed",
-    support: { status: "unsupported", reason: "host-adapter-unimplemented" }
-  })
-  expect(result.rows.find((row) => row.tag === "SystemAppearance.isSupported")).toMatchObject({
-    hostStatus: "routed",
-    support: { status: "unsupported", reason: "host-adapter-unimplemented" }
-  })
-  expect(result.rows.find((row) => row.tag === "Window.close")).toMatchObject({
-    hostMethod: "Window.destroy",
-    hostStatus: "routed"
-  })
-  expect(result.rows.find((row) => row.tag === "Window.destroy")).toMatchObject({
-    hostStatus: "routed"
-  })
-  expect(result.rows.find((row) => row.tag === "Window.centerOnDisplay")).toMatchObject({
-    hostStatus: "routed"
-  })
-  expect(result.rows.find((row) => row.tag === "EgressPolicy.record")).toMatchObject({
-    hostStatus: "routed"
-  })
-})
-
-test("NativeParityMatrix does not mark missing host methods as supported", async () => {
-  const result = await buildNativeParityMatrix()
-  const falseSupportedRows = result.rows.filter(
-    (row) =>
-      row.hostStatus === "missing" &&
-      (row.support.status === "supported" || row.support.status === "partial")
-  )
-
-  expect(falseSupportedRows).toEqual([])
-})
-
-test("NativeParityMatrix service exposes generated and missing rows from an injected inventory", async () => {
-  const result = await Effect.runPromise(
+test("NativeParityMatrix reports declared TypeScript methods against the Rust host registry", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
-      const matrix = yield* NativeParityMatrix
-      const generated = yield* matrix.generate
-      const missing = yield* matrix.missing
-      return { generated, missing }
-    }).pipe(
-      Effect.provide(
+      const hostMethods = yield* readRoutedHostMethods()
+      const result = yield* makeNativeParityMatrixResult(Native.all.surfaces, hostMethods)
+
+      const decoded = yield* Schema.decodeUnknownEffect(NativeParityMatrixResult)(result)
+      expect(decoded).toEqual(result)
+      expect(result.summary.total).toBeGreaterThan(0)
+      expect(result.summary.routed).toBeGreaterThan(0)
+      expect(result.summary.missing).toBe(0)
+
+      expect(result.rows.find((row) => row.tag === "Window.create")).toMatchObject({
+        hostStatus: "routed",
+        support: { status: "supported" }
+      })
+      expect(result.rows.find((row) => row.tag === "App.focus")).toMatchObject({
+        hostStatus: "routed",
+        support: { status: "supported" }
+      })
+      expect(result.rows.find((row) => row.tag === "App.activate")).toMatchObject({
+        hostStatus: "routed",
+        support: { status: "supported" }
+      })
+      expect(result.rows.find((row) => row.tag === "App.quit")).toMatchObject({
+        hostStatus: "routed",
+        support: { status: "supported" }
+      })
+      expect(result.rows.find((row) => row.tag === "App.exit")).toMatchObject({
+        hostStatus: "routed",
+        support: { status: "supported" }
+      })
+      expect(result.rows.find((row) => row.tag === "App.requestSingleInstanceLock")).toMatchObject({
+        hostStatus: "routed",
+        support: { status: "supported" }
+      })
+      expect(result.rows.find((row) => row.tag === "App.releaseSingleInstanceLock")).toMatchObject({
+        hostStatus: "routed",
+        support: { status: "supported" }
+      })
+      expect(result.rows.find((row) => row.tag === "App.restart")).toMatchObject({
+        hostStatus: "routed",
+        support: { status: "supported" }
+      })
+      expect(result.rows.find((row) => row.tag === "App.relaunch")).toMatchObject({
+        hostStatus: "routed",
+        support: { status: "supported" }
+      })
+      expect(result.rows.find((row) => row.tag === "Clipboard.readText")).toMatchObject({
+        hostStatus: "routed",
+        support: { status: "supported" }
+      })
+      expect(result.rows.find((row) => row.tag === "WebView.create")).toMatchObject({
+        hostStatus: "routed",
+        support: { status: "partial", reason: "host-navigation-state-tracked" }
+      })
+      expect(result.rows.find((row) => row.tag === "Menu.setApplicationMenu")).toMatchObject({
+        hostStatus: "routed",
+        support: { status: "supported" }
+      })
+      expect(result.rows.find((row) => row.tag === "Menu.clear")).toMatchObject({
+        hostStatus: "routed",
+        support: { status: "partial", reason: "macos-menu-clear-only" }
+      })
+      expect(result.rows.find((row) => row.tag === "ContextMenu.show")).toMatchObject({
+        hostStatus: "capability-fact",
+        support: { status: "unsupported", reason: "host-adapter-unimplemented" }
+      })
+      expect(result.rows.find((row) => row.tag === "SafeStorage.isAvailable")).toMatchObject({
+        hostStatus: "routed",
+        support: { status: "supported" }
+      })
+      expect(result.rows.find((row) => row.tag === "SafeStorage.set")).toMatchObject({
+        hostStatus: "routed",
+        support: { status: "supported" }
+      })
+      expect(result.rows.find((row) => row.tag === "Updater.check")).toMatchObject({
+        hostStatus: "routed",
+        support: { status: "partial", reason: "signed-manifest-check-only" }
+      })
+      expect(result.rows.find((row) => row.tag === "Updater.download")).toMatchObject({
+        hostStatus: "routed",
+        support: { status: "partial", reason: "signed-manifest-file-artifact-only" }
+      })
+      expect(result.rows.find((row) => row.tag === "CrashReporter.start")).toMatchObject({
+        hostStatus: "routed",
+        support: { status: "partial", reason: "native-crash-capture-unavailable" }
+      })
+      expect(result.rows.find((row) => row.tag === "PowerMonitor.isSupported")).toMatchObject({
+        hostStatus: "routed",
+        support: { status: "partial", reason: "platform-power-monitor-unavailable" }
+      })
+      expect(result.rows.find((row) => row.tag === "SystemAppearance.getAppearance")).toMatchObject(
+        {
+          hostStatus: "routed",
+          support: { status: "partial", reason: "host-system-appearance-snapshot" }
+        }
+      )
+      expect(result.rows.find((row) => row.tag === "SystemAppearance.isSupported")).toMatchObject({
+        hostStatus: "routed",
+        support: { status: "supported" }
+      })
+      expect(result.rows.find((row) => row.tag === "Window.close")).toMatchObject({
+        hostMethod: "Window.destroy",
+        hostStatus: "routed"
+      })
+      expect(result.rows.find((row) => row.tag === "Window.destroy")).toMatchObject({
+        hostStatus: "routed"
+      })
+      expect(result.rows.find((row) => row.tag === "Window.centerOnDisplay")).toMatchObject({
+        hostStatus: "routed"
+      })
+      expect(result.rows.find((row) => row.tag === "EgressPolicy.record")).toMatchObject({
+        hostStatus: "routed"
+      })
+    })
+  ))
+
+test("NativeParityMatrix does not mark missing host methods as supported", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const result = yield* buildNativeParityMatrix()
+      const falseSupportedRows = result.rows.filter(
+        (row) =>
+          row.hostStatus === "missing" &&
+          (row.support.status === "supported" || row.support.status === "partial")
+      )
+
+      expect(falseSupportedRows).toEqual([])
+    })
+  ))
+
+test("NativeParityMatrix service exposes generated and missing rows from an injected inventory", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const result = yield* runScoped(
+        Effect.gen(function* () {
+          const matrix = yield* NativeParityMatrix
+          const generated = yield* matrix.generate
+          const missing = yield* matrix.missing
+          return { generated, missing }
+        }),
         Layer.provide(
           makeNativeParityMatrixLayer(testNativeLayer(testSurface("Example.supported"))),
           makeNativeHostMethodInventoryLayer(["Example.supported"])
         )
       )
-    )
-  )
 
-  expect(result.generated.summary).toMatchObject({
-    total: 1,
-    routed: 1,
-    missing: 0,
-    supported: 1
-  })
-  expect(result.missing).toEqual([])
-})
+      expect(result.generated.summary).toMatchObject({
+        total: 1,
+        routed: 1,
+        missing: 0,
+        supported: 1
+      })
+      expect(result.missing).toEqual([])
+    })
+  ))
 
-test("NativeHostMethodInventory exposes a schema-typed snapshot", async () => {
-  const snapshot = await Effect.runPromise(
+test("NativeHostMethodInventory exposes a schema-typed snapshot", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
-      const inventory = yield* NativeHostMethodInventory
-      return yield* inventory.snapshot
-    }).pipe(Effect.provide(makeNativeHostMethodInventoryLayer(["Example.method"])))
-  )
+      const snapshot = yield* runScoped(
+        Effect.gen(function* () {
+          const inventory = yield* NativeHostMethodInventory
+          return yield* inventory.snapshot
+        }),
+        makeNativeHostMethodInventoryLayer(["Example.method"])
+      )
 
-  expect(Schema.decodeUnknownSync(NativeHostMethodInventorySnapshot)(snapshot)).toEqual(snapshot)
-})
+      const decoded = yield* Schema.decodeUnknownEffect(NativeHostMethodInventorySnapshot)(snapshot)
+      expect(decoded).toEqual(snapshot)
+    })
+  ))
 
-test("NativeParityMatrix keeps unsupported declarations visible", async () => {
-  const result = await Effect.runPromise(
-    makeNativeParityMatrixResult(
-      testNativeLayer(
-        testSurface("Example.unsupported", {
-          status: "unsupported",
-          reason: "host adapter unavailable"
+test("NativeParityMatrix keeps unsupported declarations visible", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const result = yield* makeNativeParityMatrixResult(
+        testNativeLayer(
+          testSurface("Example.unsupported", {
+            status: "unsupported",
+            reason: "host adapter unavailable"
+          })
+        ),
+        new Set()
+      )
+
+      expect(result.rows).toEqual([
+        expect.objectContaining({
+          tag: "Example.unsupported",
+          hostStatus: "missing",
+          support: {
+            status: "unsupported",
+            reason: "host adapter unavailable"
+          }
         })
-      ),
-      new Set()
-    )
-  )
+      ])
+      expect(result.summary).toMatchObject({ total: 1, missing: 1, unsupported: 1 })
+    })
+  ))
 
-  expect(result.rows).toEqual([
-    expect.objectContaining({
-      tag: "Example.unsupported",
-      hostStatus: "missing",
-      support: {
-        status: "unsupported",
-        reason: "host adapter unavailable"
+test("NativeParityMatrix maps invalid surface manifests to tagged errors", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const exit = yield* Effect.exit(
+        makeNativeParityMatrixResult(testNativeLayer(testSurfaceWithoutCapability()), new Set())
+      )
+
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const failure = exit.cause.reasons.find(Cause.isFailReason)
+        expect(Schema.is(NativeParityMatrixError)(failure?.error)).toBe(true)
+        expect(failure?.error).toMatchObject({
+          _tag: "NativeParityMatrixError",
+          reason: "invalid-manifest",
+          tag: "Example.missing"
+        })
       }
     })
-  ])
-  expect(result.summary).toMatchObject({ total: 1, missing: 1, unsupported: 1 })
-})
+  ))
 
-test("NativeParityMatrix maps invalid surface manifests to tagged errors", async () => {
-  const exit = await Effect.runPromiseExit(
-    makeNativeParityMatrixResult(testNativeLayer(testSurfaceWithoutCapability()), new Set())
-  )
-
-  expect(Exit.isFailure(exit)).toBe(true)
-  if (Exit.isFailure(exit)) {
-    const failure = exit.cause.reasons.find(Cause.isFailReason)
-    expect(failure?.error).toBeInstanceOf(NativeParityMatrixError)
-    expect(failure?.error).toMatchObject({
-      _tag: "NativeParityMatrixError",
-      reason: "invalid-manifest",
-      tag: "Example.missing"
-    })
-  }
-})
-
-test("NativeParityMatrix surfaces host inventory failures as typed errors", async () => {
-  const hostFailure = new NativeParityMatrixError({
-    reason: "invalid-host-inventory",
-    message: "router source unavailable"
-  })
-  const exit = await Effect.runPromiseExit(
+test("NativeParityMatrix surfaces host inventory failures as typed errors", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
-      const matrix = yield* NativeParityMatrix
-      return yield* matrix.generate
-    }).pipe(
-      Effect.provide(
+      const hostFailure = new NativeParityMatrixError({
+        reason: "invalid-host-inventory",
+        message: "router source unavailable"
+      })
+      const exit = yield* runScopedExit(
+        Effect.gen(function* () {
+          const matrix = yield* NativeParityMatrix
+          return yield* matrix.generate
+        }),
         Layer.provide(
           makeNativeParityMatrixLayer(testNativeLayer(testSurface("Example.supported"))),
           Layer.succeed(NativeHostMethodInventory)({
@@ -233,15 +281,14 @@ test("NativeParityMatrix surfaces host inventory failures as typed errors", asyn
           })
         )
       )
-    )
-  )
 
-  expect(Exit.isFailure(exit)).toBe(true)
-  if (Exit.isFailure(exit)) {
-    const failure = exit.cause.reasons.find(Cause.isFailReason)
-    expect(failure?.error).toBe(hostFailure)
-  }
-})
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const failure = exit.cause.reasons.find(Cause.isFailReason)
+        expect(failure?.error).toBe(hostFailure)
+      }
+    })
+  ))
 
 test("Rust host inventory parser reads only the host dispatch registry", () => {
   const hostMethods = routedHostMethodsFromSource(
@@ -252,23 +299,36 @@ test("Rust host inventory parser reads only the host dispatch registry", () => {
   expect([...hostMethods]).toEqual(["EgressPolicy.record", "Window.create", "Window.focus"])
 })
 
-test("native parity docs and CLI artifact are generated from current source", async () => {
-  const [matrix, committedJson, committedCliJson, committedMarkdown] = await Promise.all([
-    buildNativeParityMatrix(),
-    readFile(join(repoRoot, "docs/reference/native/parity-matrix.json"), "utf8"),
-    readFile(join(repoRoot, "packages/cli/src/native-parity-matrix.json"), "utf8"),
-    readFile(join(repoRoot, "docs/reference/native/parity-matrix.md"), "utf8")
-  ])
+test("native parity docs and CLI artifact are generated from current source", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const matrix = yield* buildNativeParityMatrix()
+      const committedJson = yield* Effect.promise(() =>
+        Bun.file(`${repoRoot}/docs/reference/native/parity-matrix.json`).text()
+      )
+      const committedCliJson = yield* Effect.promise(() =>
+        Bun.file(`${repoRoot}/packages/cli/src/native-parity-matrix.json`).text()
+      )
+      const committedMarkdown = yield* Effect.promise(() =>
+        Bun.file(`${repoRoot}/docs/reference/native/parity-matrix.md`).text()
+      )
 
-  expect(JSON.parse(committedJson)).toEqual(JSON.parse(JSON.stringify(matrix)))
-  expect(JSON.parse(committedCliJson)).toEqual(JSON.parse(JSON.stringify(matrix)))
-  expect(committedMarkdown).toBe(formatNativeParityMatrixMarkdown(matrix))
-})
+      const JsonString = Schema.fromJsonString(Schema.Unknown)
+      const serializedJson = yield* Schema.encodeEffect(JsonString)(matrix)
+      const serializedMatrix = yield* Schema.decodeEffect(JsonString)(serializedJson)
+      const committedJsonValue = yield* Schema.decodeEffect(JsonString)(committedJson)
+      const committedCliJsonValue = yield* Schema.decodeEffect(JsonString)(committedCliJson)
+      expect(committedJsonValue).toEqual(serializedMatrix)
+      expect(committedCliJsonValue).toEqual(serializedMatrix)
+      expect(committedMarkdown).toBe(formatNativeParityMatrixMarkdown(matrix))
+    })
+  ))
 
 const testSurface = (
   tag: string,
   support: RpcSupportMetadata = { status: "supported" },
-  capability: RpcCapabilityMetadata | undefined = { kind: "none" }
+  capability: RpcCapabilityMetadata | undefined = { kind: "none" },
+  callable = true
 ) =>
   Object.freeze({
     schemaDocs: Object.freeze([
@@ -276,9 +336,10 @@ const testSurface = (
         name: tag.slice(tag.lastIndexOf(".") + 1),
         tag,
         kind: "mutation",
-        payload: Schema.Void,
-        success: Schema.Void,
-        error: Schema.Void,
+        callable,
+        payload: callable ? Option.some(Schema.Void) : Option.none(),
+        success: callable ? Option.some(Schema.Void) : Option.none(),
+        error: callable ? Option.some(Schema.Void) : Option.none(),
         stream: Option.none(),
         capability: capability === undefined ? Option.none() : Option.some(capability),
         support
@@ -293,9 +354,10 @@ const testSurfaceWithoutCapability = () =>
         name: "missing",
         tag: "Example.missing",
         kind: "mutation",
-        payload: Schema.Void,
-        success: Schema.Void,
-        error: Schema.Void,
+        callable: true,
+        payload: Option.some(Schema.Void),
+        success: Option.some(Schema.Void),
+        error: Option.some(Schema.Void),
         stream: Option.none(),
         capability: Option.none(),
         support: { status: "supported" }
@@ -316,3 +378,25 @@ const testNativeLayer = (
       })
     )
   )
+
+const runScoped = <A, E, ELayer, R>(
+  effect: Effect.Effect<A, E, R>,
+  layer: Layer.Layer<R, ELayer, never>
+): Effect.Effect<A, E | ELayer, never> =>
+  Effect.gen(function* () {
+    const runtime = ManagedRuntime.make(layer)
+    const result = yield* Effect.promise(() => runtime.runPromise(effect))
+    yield* Effect.promise(() => runtime.dispose())
+    return result
+  })
+
+const runScopedExit = <A, E, ELayer, R>(
+  effect: Effect.Effect<A, E, R>,
+  layer: Layer.Layer<R, ELayer, never>
+): Effect.Effect<Exit.Exit<A, E | ELayer>, never, never> =>
+  Effect.gen(function* () {
+    const runtime = ManagedRuntime.make(layer)
+    const result = yield* Effect.promise(() => runtime.runPromiseExit(effect))
+    yield* Effect.promise(() => runtime.dispose())
+    return result
+  })

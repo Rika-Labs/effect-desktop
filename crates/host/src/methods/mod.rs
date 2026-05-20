@@ -1,16 +1,19 @@
 mod activation_registry;
-mod app;
+pub(crate) mod app;
 mod app_metadata;
 mod association;
 mod attachment_intake;
 mod autostart;
+mod browsing_data;
 mod clipboard;
+mod cookie_store;
 mod crash_reporter;
 mod diagnostics_bundle;
 mod dialog;
 mod display_capture;
 mod distribution_parity;
 mod dock;
+mod download;
 mod egress_policy;
 mod execution_sandbox;
 mod extension_config;
@@ -21,22 +24,30 @@ mod job;
 mod local_tool_runtime;
 mod menu;
 mod native_file_system;
+mod native_network;
+mod network_auth;
 mod notification;
+mod open_intent;
 mod path;
 mod power_monitor;
 pub(crate) mod protocol;
 mod realtime_media_session;
 mod recent_documents;
-mod resident_lifecycle;
+pub(crate) mod resident_lifecycle;
+mod safe_storage;
 mod scoped_access_grant;
 mod screen;
 mod selection_context;
+mod session_permission;
+mod session_profile;
 mod shell;
-mod system_appearance;
+pub(crate) mod system_appearance;
 mod transactional_file_mutation;
 mod transient_window_role;
 mod tray;
 mod updater;
+mod web_request;
+mod webview;
 mod window;
 mod workspace_index;
 
@@ -51,7 +62,8 @@ use crate::{
     linux,
     window::{
         clear_screen_runtime_event_state, clear_tray_runtime_event_state,
-        clear_window_runtime_event_state, install_screen_event_sender, install_window_event_sender,
+        clear_webview_runtime_event_state, clear_window_runtime_event_state,
+        install_screen_event_sender, install_webview_event_sender, install_window_event_sender,
         WindowMethodHandler,
     },
 };
@@ -183,7 +195,6 @@ enum HostMethodDispatcher {
     TrayCreate(TrayCreateHandler),
     EventfulPayload(EventfulPayloadHandler),
     WindowDestroy,
-    UnsupportedGlobalShortcut,
     EgressRecord,
     RealtimeMedia(RealtimeMediaHandler),
     ExtensionConfig(ExtensionConfigHandler),
@@ -207,19 +218,35 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     ),
     route(
         host_protocol::APP_QUIT_METHOD,
-        HostMethodDispatcher::Payload(app::quit),
+        HostMethodDispatcher::Window(app::quit),
+    ),
+    route(
+        host_protocol::APP_EXIT_METHOD,
+        HostMethodDispatcher::Window(app::exit),
     ),
     route(
         host_protocol::APP_RESTART_METHOD,
-        HostMethodDispatcher::Payload(app::restart),
+        HostMethodDispatcher::Window(app::restart),
+    ),
+    route(
+        host_protocol::APP_RELAUNCH_METHOD,
+        HostMethodDispatcher::Window(app::relaunch),
     ),
     route(
         host_protocol::APP_FOCUS_METHOD,
-        HostMethodDispatcher::Payload(app::focus),
+        HostMethodDispatcher::Window(app::focus),
+    ),
+    route(
+        host_protocol::APP_ACTIVATE_METHOD,
+        HostMethodDispatcher::Window(app::activate),
     ),
     route(
         host_protocol::APP_REQUEST_SINGLE_INSTANCE_LOCK_METHOD,
-        HostMethodDispatcher::Payload(app::request_single_instance_lock),
+        HostMethodDispatcher::EventfulPayload(app::request_single_instance_lock_with_event_sender),
+    ),
+    route(
+        host_protocol::APP_RELEASE_SINGLE_INSTANCE_LOCK_METHOD,
+        HostMethodDispatcher::Payload(app::release_single_instance_lock),
     ),
     route(
         host_protocol::APP_METADATA_GET_INFO_METHOD,
@@ -235,23 +262,27 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     ),
     route(
         host_protocol::ASSOCIATION_IS_DEFAULT_PROTOCOL_CLIENT_METHOD,
-        HostMethodDispatcher::Payload(association::is_default_protocol_client),
+        HostMethodDispatcher::EventfulPayload(
+            association::is_default_protocol_client_with_event_sender,
+        ),
     ),
     route(
         host_protocol::ASSOCIATION_SET_DEFAULT_PROTOCOL_CLIENT_METHOD,
-        HostMethodDispatcher::Payload(association::set_default_protocol_client),
+        HostMethodDispatcher::EventfulPayload(
+            association::set_default_protocol_client_with_event_sender,
+        ),
     ),
     route(
         host_protocol::ASSOCIATION_GET_FILE_ASSOCIATIONS_METHOD,
-        HostMethodDispatcher::Payload(association::get_file_associations),
+        HostMethodDispatcher::EventfulPayload(association::get_file_associations_with_event_sender),
     ),
     route(
         host_protocol::RECENT_DOCUMENTS_ADD_METHOD,
-        HostMethodDispatcher::Payload(recent_documents::add),
+        HostMethodDispatcher::EventfulPayload(recent_documents::add_with_event_sender),
     ),
     route(
         host_protocol::RECENT_DOCUMENTS_CLEAR_METHOD,
-        HostMethodDispatcher::Payload(recent_documents::clear),
+        HostMethodDispatcher::EventfulPayload(recent_documents::clear_with_event_sender),
     ),
     route(
         host_protocol::RECENT_DOCUMENTS_LIST_METHOD,
@@ -259,15 +290,15 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     ),
     route(
         host_protocol::AUTOSTART_IS_ENABLED_METHOD,
-        HostMethodDispatcher::Payload(autostart::is_enabled),
+        HostMethodDispatcher::EventfulPayload(autostart::is_enabled_with_event_sender),
     ),
     route(
         host_protocol::AUTOSTART_ENABLE_METHOD,
-        HostMethodDispatcher::Payload(autostart::enable),
+        HostMethodDispatcher::EventfulPayload(autostart::enable_with_event_sender),
     ),
     route(
         host_protocol::AUTOSTART_DISABLE_METHOD,
-        HostMethodDispatcher::Payload(autostart::disable),
+        HostMethodDispatcher::EventfulPayload(autostart::disable_with_event_sender),
     ),
     route(
         host_protocol::WINDOW_CREATE_METHOD,
@@ -302,12 +333,20 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Window(window::get_parent),
     ),
     route(
+        host_protocol::WINDOW_GET_CHILDREN_METHOD,
+        HostMethodDispatcher::Window(window::get_children),
+    ),
+    route(
         host_protocol::WINDOW_GET_BOUNDS_METHOD,
         HostMethodDispatcher::Window(window::get_bounds),
     ),
     route(
         host_protocol::WINDOW_SET_BOUNDS_METHOD,
         HostMethodDispatcher::Window(window::set_bounds),
+    ),
+    route(
+        host_protocol::WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD,
+        HostMethodDispatcher::Window(window::set_bounds_on_display),
     ),
     route(
         host_protocol::WINDOW_CENTER_METHOD,
@@ -332,6 +371,30 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     route(
         host_protocol::WINDOW_SET_TRAFFIC_LIGHTS_METHOD,
         HostMethodDispatcher::Window(window::set_traffic_lights),
+    ),
+    route(
+        host_protocol::WINDOW_SET_VIBRANCY_METHOD,
+        HostMethodDispatcher::Window(window::set_vibrancy),
+    ),
+    route(
+        host_protocol::WINDOW_CLEAR_VIBRANCY_METHOD,
+        HostMethodDispatcher::Window(window::clear_vibrancy),
+    ),
+    route(
+        host_protocol::WINDOW_SET_SHADOW_METHOD,
+        HostMethodDispatcher::Window(window::set_shadow),
+    ),
+    route(
+        host_protocol::WINDOW_SET_TITLE_BAR_STYLE_METHOD,
+        HostMethodDispatcher::Window(window::set_title_bar_style),
+    ),
+    route(
+        host_protocol::WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD,
+        HostMethodDispatcher::Window(window::set_title_bar_transparent),
+    ),
+    route(
+        host_protocol::WINDOW_SET_TRANSPARENT_METHOD,
+        HostMethodDispatcher::Window(window::set_transparent),
     ),
     route(
         host_protocol::WINDOW_SET_ALWAYS_ON_TOP_METHOD,
@@ -370,6 +433,10 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Window(window::set_fullscreen),
     ),
     route(
+        host_protocol::WINDOW_SET_SIMPLE_FULLSCREEN_METHOD,
+        HostMethodDispatcher::Window(window::set_simple_fullscreen),
+    ),
+    route(
         host_protocol::WINDOW_GET_STATE_METHOD,
         HostMethodDispatcher::Window(window::get_state),
     ),
@@ -386,8 +453,8 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Window(dock::set_badge_text),
     ),
     route(
-        host_protocol::DOCK_SET_MENU_METHOD,
-        HostMethodDispatcher::Window(dock::set_menu),
+        host_protocol::DOCK_SET_PROGRESS_METHOD,
+        HostMethodDispatcher::Window(dock::set_progress),
     ),
     route(
         host_protocol::DOCK_REQUEST_ATTENTION_METHOD,
@@ -398,18 +465,6 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Payload(linux::dock_is_supported),
     ),
     route(
-        host_protocol::GLOBAL_SHORTCUT_REGISTER_METHOD,
-        HostMethodDispatcher::UnsupportedGlobalShortcut,
-    ),
-    route(
-        host_protocol::GLOBAL_SHORTCUT_UNREGISTER_METHOD,
-        HostMethodDispatcher::UnsupportedGlobalShortcut,
-    ),
-    route(
-        host_protocol::GLOBAL_SHORTCUT_UNREGISTER_ALL_METHOD,
-        HostMethodDispatcher::UnsupportedGlobalShortcut,
-    ),
-    route(
         host_protocol::GLOBAL_SHORTCUT_IS_REGISTERED_METHOD,
         HostMethodDispatcher::Empty(linux::global_shortcut_is_registered),
     ),
@@ -418,8 +473,24 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Empty(linux::global_shortcut_is_supported),
     ),
     route(
+        host_protocol::SAFE_STORAGE_SET_METHOD,
+        HostMethodDispatcher::Payload(safe_storage::set),
+    ),
+    route(
+        host_protocol::SAFE_STORAGE_GET_METHOD,
+        HostMethodDispatcher::Payload(safe_storage::get),
+    ),
+    route(
+        host_protocol::SAFE_STORAGE_DELETE_METHOD,
+        HostMethodDispatcher::Payload(safe_storage::delete),
+    ),
+    route(
+        host_protocol::SAFE_STORAGE_LIST_METHOD,
+        HostMethodDispatcher::Payload(safe_storage::list),
+    ),
+    route(
         host_protocol::SAFE_STORAGE_IS_AVAILABLE_METHOD,
-        HostMethodDispatcher::Empty(linux::safe_storage_is_available),
+        HostMethodDispatcher::Empty(safe_storage::is_available),
     ),
     route(
         host_protocol::DIALOG_OPEN_FILE_METHOD,
@@ -607,7 +678,7 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     ),
     route(
         host_protocol::UPDATER_INSTALL_AND_RESTART_METHOD,
-        HostMethodDispatcher::Payload(updater::install_and_restart),
+        HostMethodDispatcher::EventfulPayload(updater::install_and_restart_with_event_sender),
     ),
     route(
         host_protocol::UPDATER_GET_STATUS_METHOD,
@@ -695,35 +766,19 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     ),
     route(
         host_protocol::ATTACHMENT_INTAKE_INGEST_METHOD,
-        HostMethodDispatcher::Payload(attachment_intake::ingest),
+        HostMethodDispatcher::EventfulPayload(attachment_intake::ingest_with_event_sender),
     ),
     route(
         host_protocol::ATTACHMENT_INTAKE_INSPECT_METHOD,
-        HostMethodDispatcher::Payload(attachment_intake::inspect),
+        HostMethodDispatcher::EventfulPayload(attachment_intake::inspect_with_event_sender),
     ),
     route(
         host_protocol::ATTACHMENT_INTAKE_DISPOSE_METHOD,
-        HostMethodDispatcher::Payload(attachment_intake::dispose),
+        HostMethodDispatcher::EventfulPayload(attachment_intake::dispose_with_event_sender),
     ),
     route(
         host_protocol::ATTACHMENT_INTAKE_IS_SUPPORTED_METHOD,
         HostMethodDispatcher::Empty(attachment_intake::is_supported),
-    ),
-    route(
-        host_protocol::SELECTION_CONTEXT_READ_SELECTION_METHOD,
-        HostMethodDispatcher::Payload(selection_context::read_selection),
-    ),
-    route(
-        host_protocol::SELECTION_CONTEXT_READ_DOCUMENT_METHOD,
-        HostMethodDispatcher::Payload(selection_context::read_document),
-    ),
-    route(
-        host_protocol::SELECTION_CONTEXT_WATCH_FOCUS_METHOD,
-        HostMethodDispatcher::Payload(selection_context::watch_focus),
-    ),
-    route(
-        host_protocol::SELECTION_CONTEXT_STOP_WATCHING_METHOD,
-        HostMethodDispatcher::Payload(selection_context::stop_watching),
     ),
     route(
         host_protocol::SELECTION_CONTEXT_IS_SUPPORTED_METHOD,
@@ -732,14 +787,6 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     route(
         host_protocol::FOCUSED_APPLICATION_CONTEXT_SNAPSHOT_METHOD,
         HostMethodDispatcher::Payload(focused_application_context::snapshot),
-    ),
-    route(
-        host_protocol::FOCUSED_APPLICATION_CONTEXT_WATCH_METHOD,
-        HostMethodDispatcher::Payload(focused_application_context::watch),
-    ),
-    route(
-        host_protocol::FOCUSED_APPLICATION_CONTEXT_STOP_WATCHING_METHOD,
-        HostMethodDispatcher::Payload(focused_application_context::stop_watching),
     ),
     route(
         host_protocol::FOCUSED_APPLICATION_CONTEXT_IS_SUPPORTED_METHOD,
@@ -760,18 +807,6 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     route(
         host_protocol::DISPLAY_CAPTURE_IS_SUPPORTED_METHOD,
         HostMethodDispatcher::Empty(display_capture::is_supported),
-    ),
-    route(
-        host_protocol::TRANSIENT_WINDOW_ROLE_OPEN_METHOD,
-        HostMethodDispatcher::Payload(transient_window_role::open),
-    ),
-    route(
-        host_protocol::TRANSIENT_WINDOW_ROLE_REPOSITION_METHOD,
-        HostMethodDispatcher::Payload(transient_window_role::reposition),
-    ),
-    route(
-        host_protocol::TRANSIENT_WINDOW_ROLE_DISMISS_METHOD,
-        HostMethodDispatcher::Payload(transient_window_role::dismiss),
     ),
     route(
         host_protocol::TRANSIENT_WINDOW_ROLE_IS_SUPPORTED_METHOD,
@@ -795,11 +830,11 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     ),
     route(
         host_protocol::RESIDENT_LIFECYCLE_ENABLE_METHOD,
-        HostMethodDispatcher::Payload(resident_lifecycle::enable),
+        HostMethodDispatcher::EventfulPayload(resident_lifecycle::enable),
     ),
     route(
         host_protocol::RESIDENT_LIFECYCLE_DISABLE_METHOD,
-        HostMethodDispatcher::Payload(resident_lifecycle::disable),
+        HostMethodDispatcher::EventfulPayload(resident_lifecycle::disable),
     ),
     route(
         host_protocol::RESIDENT_LIFECYCLE_GET_STATE_METHOD,
@@ -868,18 +903,6 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     route(
         host_protocol::EGRESS_POLICY_IS_SUPPORTED_METHOD,
         HostMethodDispatcher::Empty(egress_policy::is_supported),
-    ),
-    route(
-        host_protocol::EXECUTION_SANDBOX_CREATE_METHOD,
-        HostMethodDispatcher::Payload(execution_sandbox::create),
-    ),
-    route(
-        host_protocol::EXECUTION_SANDBOX_RUN_METHOD,
-        HostMethodDispatcher::Payload(execution_sandbox::run),
-    ),
-    route(
-        host_protocol::EXECUTION_SANDBOX_DESTROY_METHOD,
-        HostMethodDispatcher::Payload(execution_sandbox::destroy),
     ),
     route(
         host_protocol::EXECUTION_SANDBOX_IS_SUPPORTED_METHOD,
@@ -971,27 +994,15 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     ),
     route(
         host_protocol::NATIVE_FILE_SYSTEM_WATCH_METHOD,
-        HostMethodDispatcher::Payload(native_file_system::watch),
+        HostMethodDispatcher::EventfulPayload(native_file_system::watch_with_event_sender),
     ),
     route(
         host_protocol::NATIVE_FILE_SYSTEM_STOP_WATCHING_METHOD,
-        HostMethodDispatcher::Payload(native_file_system::stop_watching),
+        HostMethodDispatcher::EventfulPayload(native_file_system::stop_watching_with_event_sender),
     ),
     route(
         host_protocol::NATIVE_FILE_SYSTEM_IS_SUPPORTED_METHOD,
         HostMethodDispatcher::Empty(native_file_system::is_supported),
-    ),
-    route(
-        host_protocol::SCOPED_ACCESS_GRANT_GRANT_METHOD,
-        HostMethodDispatcher::Payload(scoped_access_grant::grant),
-    ),
-    route(
-        host_protocol::SCOPED_ACCESS_GRANT_RESOLVE_METHOD,
-        HostMethodDispatcher::Payload(scoped_access_grant::resolve),
-    ),
-    route(
-        host_protocol::SCOPED_ACCESS_GRANT_REVOKE_METHOD,
-        HostMethodDispatcher::Payload(scoped_access_grant::revoke),
     ),
     route(
         host_protocol::SCOPED_ACCESS_GRANT_IS_SUPPORTED_METHOD,
@@ -1021,6 +1032,102 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         host_protocol::MENU_SET_WINDOW_MENU_METHOD,
         HostMethodDispatcher::Window(menu::set_window_menu),
     ),
+    route(
+        host_protocol::MENU_CLEAR_METHOD,
+        HostMethodDispatcher::Payload(menu::clear),
+    ),
+    route(
+        host_protocol::MENU_CAPABILITY_METHOD,
+        HostMethodDispatcher::Payload(menu::capability),
+    ),
+    route(
+        host_protocol::WEBVIEW_CREATE_METHOD,
+        HostMethodDispatcher::Window(webview::create),
+    ),
+    route(
+        host_protocol::WEBVIEW_LOAD_ROUTE_METHOD,
+        HostMethodDispatcher::Window(webview::load_route),
+    ),
+    route(
+        host_protocol::WEBVIEW_LOAD_URL_METHOD,
+        HostMethodDispatcher::Window(webview::load_url),
+    ),
+    route(
+        host_protocol::WEBVIEW_RELOAD_METHOD,
+        HostMethodDispatcher::Window(webview::reload),
+    ),
+    route(
+        host_protocol::WEBVIEW_STOP_METHOD,
+        HostMethodDispatcher::Window(webview::stop),
+    ),
+    route(
+        host_protocol::WEBVIEW_GO_BACK_METHOD,
+        HostMethodDispatcher::Window(webview::go_back),
+    ),
+    route(
+        host_protocol::WEBVIEW_GO_FORWARD_METHOD,
+        HostMethodDispatcher::Window(webview::go_forward),
+    ),
+    route(
+        host_protocol::WEBVIEW_GET_NAVIGATION_STATE_METHOD,
+        HostMethodDispatcher::Window(webview::get_navigation_state),
+    ),
+    route(
+        host_protocol::WEBVIEW_PRINT_METHOD,
+        HostMethodDispatcher::Window(webview::print),
+    ),
+    route(
+        host_protocol::WEBVIEW_SET_ZOOM_METHOD,
+        HostMethodDispatcher::Window(webview::set_zoom),
+    ),
+    route(
+        host_protocol::WEBVIEW_OPEN_DEVTOOLS_METHOD,
+        HostMethodDispatcher::Window(webview::open_devtools),
+    ),
+    route(
+        host_protocol::WEBVIEW_CLOSE_DEVTOOLS_METHOD,
+        HostMethodDispatcher::Window(webview::close_devtools),
+    ),
+    route(
+        host_protocol::WEBVIEW_SET_NAVIGATION_POLICY_METHOD,
+        HostMethodDispatcher::Window(webview::set_navigation_policy),
+    ),
+    route(
+        host_protocol::WEBVIEW_DESTROY_METHOD,
+        HostMethodDispatcher::Window(webview::destroy),
+    ),
+    route(
+        host_protocol::SESSION_PROFILE_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Payload(session_profile::is_supported),
+    ),
+    route(
+        host_protocol::COOKIE_STORE_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Payload(cookie_store::is_supported),
+    ),
+    route(
+        host_protocol::BROWSING_DATA_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Payload(browsing_data::is_supported),
+    ),
+    route(
+        host_protocol::SESSION_PERMISSION_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Payload(session_permission::is_supported),
+    ),
+    route(
+        host_protocol::DOWNLOAD_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Payload(download::is_supported),
+    ),
+    route(
+        host_protocol::NETWORK_AUTH_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Payload(network_auth::is_supported),
+    ),
+    route(
+        host_protocol::WEB_REQUEST_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Payload(web_request::is_supported),
+    ),
+    route(
+        host_protocol::NATIVE_NETWORK_IS_SUPPORTED_METHOD,
+        HostMethodDispatcher::Payload(native_network::is_supported),
+    ),
 ];
 
 const fn route(method: &'static str, dispatcher: HostMethodDispatcher) -> HostMethodRoute {
@@ -1046,7 +1153,7 @@ impl HostMethodRegistry {
                 Some(HostProtocolError::method_not_found(request.method)),
             );
         };
-        route.dispatcher.dispatch(router, route.method, request)
+        route.dispatcher.dispatch(router, request)
     }
 
     #[cfg(test)]
@@ -1059,7 +1166,6 @@ impl HostMethodDispatcher {
     fn dispatch(
         &self,
         router: &HostMethodRouter,
-        method: &'static str,
         request: HostDispatchRequest,
     ) -> Vec<HostProtocolEnvelope> {
         match self {
@@ -1135,12 +1241,6 @@ impl HostMethodDispatcher {
                 }
                 dispatch_result_frame(request.id, request.timestamp, request.trace_id, result)
             }
-            Self::UnsupportedGlobalShortcut => dispatch_result_frame(
-                request.id,
-                request.timestamp,
-                request.trace_id,
-                Err(linux::unsupported_global_shortcut(method)),
-            ),
             Self::EgressRecord => dispatch_egress_record(request),
             Self::RealtimeMedia(handler) => router.dispatch_realtime_media_session(
                 RealtimeMediaDispatch {
@@ -1327,7 +1427,9 @@ impl HostMethodRouter {
             resource_id.as_deref(),
             "host.runtime.cancel",
         )
-        .map_err(|error| format!("{error:?}"))
+        .map_err(|error| format!("{error:?}"))?;
+        native_file_system::close_resource_for_cancel(resource_id.as_deref(), "host.runtime.cancel")
+            .map_err(|error| format!("{error:?}"))
     }
 
     pub(crate) fn track_pending_local_tool_runtime_run_request(
@@ -1345,14 +1447,19 @@ impl HostMethodRouter {
     }
 
     pub(crate) fn clear_runtime_resources(&self) -> Result<(), String> {
+        power_monitor::clear_runtime_event_sender().map_err(|error| format!("{error:?}"))?;
+        system_appearance::clear_runtime_event_sender().map_err(|error| format!("{error:?}"))?;
         clear_screen_runtime_event_state().map_err(|error| format!("{error:?}"))?;
         clear_window_runtime_event_state().map_err(|error| format!("{error:?}"))?;
+        clear_webview_runtime_event_state().map_err(|error| format!("{error:?}"))?;
         clear_tray_runtime_event_state().map_err(|error| format!("{error:?}"))?;
         self.window
             .clear_runtime_trays()
             .map_err(|error| format!("{error:?}"))?;
         notification::clear_runtime_notifications().map_err(|error| format!("{error:?}"))?;
         realtime_media_session::close_all_sessions("host.runtime.disconnect")
+            .map_err(|error| format!("{error:?}"))?;
+        native_file_system::clear_runtime_resources("host.runtime.disconnect")
             .map_err(|error| format!("{error:?}"))?;
         let runtime_ids = self.drain_local_tool_runtime_ids()?;
         local_tool_runtime::clear_runtime_resources_for_runtime_ids(
@@ -1366,8 +1473,13 @@ impl HostMethodRouter {
         &self,
         sender: Sender<HostProtocolEnvelope>,
     ) -> Result<(), String> {
+        power_monitor::install_runtime_event_sender(sender.clone())
+            .map_err(|error| format!("{error:?}"))?;
+        system_appearance::install_runtime_event_sender(sender.clone())
+            .map_err(|error| format!("{error:?}"))?;
         install_screen_event_sender(sender.clone()).map_err(|error| format!("{error:?}"))?;
         install_window_event_sender(sender.clone()).map_err(|error| format!("{error:?}"))?;
+        install_webview_event_sender(sender.clone()).map_err(|error| format!("{error:?}"))?;
         *self
             .runtime_event_sender
             .lock()
@@ -1376,8 +1488,11 @@ impl HostMethodRouter {
     }
 
     pub(crate) fn clear_runtime_event_sender(&self) -> Result<(), String> {
+        power_monitor::clear_runtime_event_sender().map_err(|error| format!("{error:?}"))?;
+        system_appearance::clear_runtime_event_sender().map_err(|error| format!("{error:?}"))?;
         clear_screen_runtime_event_state().map_err(|error| format!("{error:?}"))?;
         clear_window_runtime_event_state().map_err(|error| format!("{error:?}"))?;
+        clear_webview_runtime_event_state().map_err(|error| format!("{error:?}"))?;
         *self
             .runtime_event_sender
             .lock()
@@ -1845,7 +1960,7 @@ fn local_tool_runtime_payload_id(payload: Option<&serde_json::Value>) -> Option<
 
 #[cfg(test)]
 mod tests {
-    use super::HostMethodRouter;
+    use super::{autostart, resident_lifecycle, HostMethodRouter};
     use crate::window::{TrayCreateRequest, WindowCreateRequest, WindowMethodHandler};
     use host_protocol::{
         ClipboardSupportedPayload, HostProtocolEnvelope, HostProtocolError, WindowBoundsPayload,
@@ -1909,7 +2024,7 @@ mod tests {
         assert!(unique.contains(host_protocol::WINDOW_GET_BY_ID_METHOD));
         assert!(unique.contains(host_protocol::WINDOW_LIST_METHOD));
         assert!(unique.contains(host_protocol::EGRESS_POLICY_RECORD_METHOD));
-        assert!(unique.contains(host_protocol::EXECUTION_SANDBOX_CREATE_METHOD));
+        assert!(unique.contains(host_protocol::EXECUTION_SANDBOX_IS_SUPPORTED_METHOD));
         assert!(!unique.contains("host.missing"));
     }
 
@@ -2021,13 +2136,25 @@ mod tests {
                 id: "request-display-capture-supported".to_string(),
                 timestamp: 1710000000104,
                 trace_id: "trace-request-display-capture-supported".to_string(),
-                payload: Some(serde_json::json!({
-                    "supported": false,
-                    "reason": host_protocol::DISPLAY_CAPTURE_UNSUPPORTED_REASON
-                })),
+                payload: Some(display_capture_support_payload()),
                 error: None,
             }
         );
+    }
+
+    fn display_capture_support_payload() -> serde_json::Value {
+        #[cfg(target_os = "macos")]
+        {
+            serde_json::json!({ "supported": true })
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            serde_json::json!({
+                "supported": false,
+                "reason": host_protocol::DISPLAY_CAPTURE_UNSUPPORTED_REASON
+            })
+        }
     }
 
     #[test]
@@ -2058,59 +2185,6 @@ mod tests {
     }
 
     #[test]
-    fn transient_window_role_mutations_dispatch_through_router() {
-        let cases = [
-            (
-                "request-transient-window-role-open",
-                host_protocol::TRANSIENT_WINDOW_ROLE_OPEN_METHOD,
-                serde_json::json!({
-                    "actor": { "kind": "workspace", "id": "workspace-1" },
-                    "roleId": "palette-1",
-                    "policy": {
-                        "role": "palette",
-                        "focus": "take-focus",
-                        "dismissal": "escape",
-                        "zOrder": "floating",
-                        "placement": {
-                            "kind": "point",
-                            "point": { "x": 20.0, "y": 40.0 }
-                        },
-                        "restoration": "restore-focus"
-                    }
-                }),
-            ),
-            (
-                "request-transient-window-role-reposition",
-                host_protocol::TRANSIENT_WINDOW_ROLE_REPOSITION_METHOD,
-                serde_json::json!({
-                    "actor": { "kind": "workspace", "id": "workspace-1" },
-                    "handle": transient_window_role_handle(),
-                    "placement": { "kind": "centered" }
-                }),
-            ),
-            (
-                "request-transient-window-role-dismiss",
-                host_protocol::TRANSIENT_WINDOW_ROLE_DISMISS_METHOD,
-                serde_json::json!({
-                    "actor": { "kind": "workspace", "id": "workspace-1" },
-                    "handle": transient_window_role_handle()
-                }),
-            ),
-        ];
-
-        for (id, method, payload) in cases {
-            let response = test_router()
-                .dispatch_at(request_with_payload(id, method, payload), 1710000000106)
-                .expect("transient window role mutation request should return response");
-
-            let HostProtocolEnvelope::Response { error, .. } = response else {
-                panic!("transient window role mutation should return response");
-            };
-            assert!(matches!(error, Some(HostProtocolError::Unsupported { .. })));
-        }
-    }
-
-    #[test]
     fn activation_registry_support_dispatches_through_router() {
         let response = test_router()
             .dispatch_at(
@@ -2129,8 +2203,7 @@ mod tests {
                 timestamp: 1710000000107,
                 trace_id: "trace-request-activation-registry-supported".to_string(),
                 payload: Some(serde_json::json!({
-                    "supported": false,
-                    "reason": host_protocol::ACTIVATION_REGISTRY_UNSUPPORTED_REASON
+                    "supported": true
                 })),
                 error: None,
             }
@@ -2139,44 +2212,85 @@ mod tests {
 
     #[test]
     fn activation_registry_methods_dispatch_through_router() {
-        let cases = [
-            (
-                "request-activation-registry-register",
-                host_protocol::ACTIVATION_REGISTRY_REGISTER_SURFACE_METHOD,
-                Some(serde_json::json!({
-                    "surfaceId": "palette",
-                    "source": "global-shortcut",
-                    "commandId": "activation.open",
-                    "actor": { "kind": "workspace", "id": "workspace-1" },
-                    "traceId": "trace-1"
+        let surface_id = "palette-router";
+        let register = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-activation-registry-register",
+                    host_protocol::ACTIVATION_REGISTRY_REGISTER_SURFACE_METHOD,
+                    serde_json::json!({
+                        "surfaceId": surface_id,
+                        "source": "global-shortcut",
+                        "commandId": "activation.open",
+                        "actor": { "kind": "workspace", "id": "workspace-1" },
+                        "ownerScope": "workspace:workspace-1",
+                        "traceId": "trace-1"
+                    }),
+                ),
+                1710000000108,
+            )
+            .expect("activation registry register request should return response");
+
+        assert_eq!(
+            register,
+            HostProtocolEnvelope::Response {
+                id: "request-activation-registry-register".to_string(),
+                timestamp: 1710000000108,
+                trace_id: "trace-request-activation-registry-register".to_string(),
+                payload: Some(serde_json::json!({
+                    "kind": "activation-surface",
+                    "id": surface_id,
+                    "generation": 0,
+                    "ownerScope": "workspace:workspace-1",
+                    "state": "registered"
                 })),
-            ),
-            (
-                "request-activation-registry-unregister",
-                host_protocol::ACTIVATION_REGISTRY_UNREGISTER_SURFACE_METHOD,
-                Some(serde_json::json!({ "surfaceId": "palette" })),
-            ),
-            (
-                "request-activation-registry-list",
-                host_protocol::ACTIVATION_REGISTRY_LIST_SURFACES_METHOD,
-                None,
-            ),
-        ];
+                error: None,
+            }
+        );
 
-        for (id, method, payload) in cases {
-            let request = match payload {
-                Some(payload) => request_with_payload(id, method, payload),
-                None => request(id, method),
-            };
-            let response = test_router()
-                .dispatch_at(request, 1710000000108)
-                .expect("activation registry request should return response");
+        let list = test_router()
+            .dispatch_at(
+                request(
+                    "request-activation-registry-list",
+                    host_protocol::ACTIVATION_REGISTRY_LIST_SURFACES_METHOD,
+                ),
+                1710000000109,
+            )
+            .expect("activation registry list request should return response");
 
-            let HostProtocolEnvelope::Response { error, .. } = response else {
-                panic!("activation registry request should return response");
-            };
-            assert!(matches!(error, Some(HostProtocolError::Unsupported { .. })));
-        }
+        let HostProtocolEnvelope::Response { payload, error, .. } = list else {
+            panic!("activation registry list request should return response");
+        };
+        assert!(error.is_none());
+        let surfaces = payload
+            .and_then(|payload| payload.get("surfaces").cloned())
+            .and_then(|surfaces| surfaces.as_array().cloned())
+            .expect("activation registry list should include surfaces");
+        assert!(surfaces
+            .iter()
+            .any(|surface| surface.get("surfaceId") == Some(&serde_json::json!(surface_id))));
+
+        let unregister = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-activation-registry-unregister",
+                    host_protocol::ACTIVATION_REGISTRY_UNREGISTER_SURFACE_METHOD,
+                    serde_json::json!({ "surfaceId": surface_id }),
+                ),
+                1710000000110,
+            )
+            .expect("activation registry unregister request should return response");
+
+        assert_eq!(
+            unregister,
+            HostProtocolEnvelope::Response {
+                id: "request-activation-registry-unregister".to_string(),
+                timestamp: 1710000000110,
+                trace_id: "trace-request-activation-registry-unregister".to_string(),
+                payload: None,
+                error: None,
+            }
+        );
     }
 
     #[test]
@@ -2208,7 +2322,10 @@ mod tests {
 
     #[test]
     fn resident_lifecycle_dispatches_through_router() {
-        let supported = test_router()
+        let _guard = resident_lifecycle::state_test_guard();
+        resident_lifecycle::reset_state_for_test();
+        let router = test_router();
+        let supported = router
             .dispatch_at(
                 request(
                     "request-resident-supported",
@@ -2224,8 +2341,7 @@ mod tests {
                 timestamp: 1710000000110,
                 trace_id: "trace-request-resident-supported".to_string(),
                 payload: Some(serde_json::json!({
-                    "supported": false,
-                    "reason": host_protocol::RESIDENT_LIFECYCLE_UNSUPPORTED_REASON
+                    "supported": true
                 })),
                 error: None,
             }
@@ -2240,7 +2356,7 @@ mod tests {
                         "process": "keep-running",
                         "windows": "close-to-background",
                         "background": "tray",
-                        "launchAtLogin": true
+                        "launchAtLogin": false
                     },
                     "traceId": "trace-1"
                 })),
@@ -2262,25 +2378,29 @@ mod tests {
                 Some(payload) => request_with_payload(id, method, payload),
                 None => request(id, method),
             };
-            let response = test_router()
+            let response = router
                 .dispatch_at(request, 1710000000111)
                 .expect("resident lifecycle request should return response");
 
-            let HostProtocolEnvelope::Response { error, .. } = response else {
-                panic!("resident lifecycle request should return response");
-            };
             assert!(matches!(
-                error,
-                Some(HostProtocolError::Unsupported {
-                    platform: Some(_),
+                response,
+                HostProtocolEnvelope::Response {
+                    error: None,
+                    payload: Some(_),
                     ..
-                })
+                } | HostProtocolEnvelope::Response {
+                    error: None,
+                    payload: None,
+                    ..
+                }
             ));
         }
     }
 
     #[test]
     fn resident_lifecycle_rejects_malformed_before_unsupported() {
+        let _guard = resident_lifecycle::state_test_guard();
+        resident_lifecycle::reset_state_for_test();
         let response = test_router()
             .dispatch_at(
                 request_with_payload(
@@ -2777,8 +2897,12 @@ mod tests {
     }
 
     #[test]
-    fn app_lifecycle_routes_to_typed_unsupported() {
-        let response = test_router()
+    fn app_quit_routes_to_window_handler() {
+        let window = Arc::new(FakeWindowHandler::new(
+            Ok(WindowCreateResponse::new("window-test")),
+            Ok(()),
+        ));
+        let response = HostMethodRouter::new(window.clone())
             .dispatch_at(
                 request_with_payload(
                     "request-app-quit",
@@ -2796,10 +2920,180 @@ mod tests {
                 timestamp: 1710000000125,
                 trace_id: "trace-request-app-quit".to_string(),
                 payload: None,
-                error: Some(HostProtocolError::unsupported(
-                    host_protocol::APP_UNSUPPORTED_REASON,
-                    host_protocol::APP_QUIT_METHOD,
-                )),
+                error: None,
+            }
+        );
+        assert_eq!(window.quit(), vec![0]);
+    }
+
+    #[test]
+    fn app_exit_routes_to_window_handler() {
+        let window = Arc::new(FakeWindowHandler::new(
+            Ok(WindowCreateResponse::new("window-test")),
+            Ok(()),
+        ));
+        let response = HostMethodRouter::new(window.clone())
+            .dispatch_at(
+                request_with_payload(
+                    "request-app-exit",
+                    host_protocol::APP_EXIT_METHOD,
+                    serde_json::json!({ "exitCode": 7 }),
+                ),
+                1710000000125,
+            )
+            .expect("app exit should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-app-exit".to_string(),
+                timestamp: 1710000000125,
+                trace_id: "trace-request-app-exit".to_string(),
+                payload: None,
+                error: None,
+            }
+        );
+        assert_eq!(window.quit(), vec![7]);
+    }
+
+    #[test]
+    fn app_restart_routes_to_window_handler() {
+        let window = Arc::new(FakeWindowHandler::new(
+            Ok(WindowCreateResponse::new("window-test")),
+            Ok(()),
+        ));
+        let response = HostMethodRouter::new(window.clone())
+            .dispatch_at(
+                request_with_payload(
+                    "request-app-restart",
+                    host_protocol::APP_RESTART_METHOD,
+                    serde_json::json!({ "args": ["--restarted", "safe"] }),
+                ),
+                1710000000125,
+            )
+            .expect("app restart should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-app-restart".to_string(),
+                timestamp: 1710000000125,
+                trace_id: "trace-request-app-restart".to_string(),
+                payload: None,
+                error: None,
+            }
+        );
+        assert_eq!(
+            window.restarts(),
+            vec![vec!["--restarted".to_string(), "safe".to_string()]]
+        );
+    }
+
+    #[test]
+    fn app_relaunch_routes_to_window_handler() {
+        let window = Arc::new(FakeWindowHandler::new(
+            Ok(WindowCreateResponse::new("window-test")),
+            Ok(()),
+        ));
+        let response = HostMethodRouter::new(window.clone())
+            .dispatch_at(
+                request_with_payload(
+                    "request-app-relaunch",
+                    host_protocol::APP_RELAUNCH_METHOD,
+                    serde_json::json!({ "args": ["--relaunched", "safe"] }),
+                ),
+                1710000000125,
+            )
+            .expect("app relaunch should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-app-relaunch".to_string(),
+                timestamp: 1710000000125,
+                trace_id: "trace-request-app-relaunch".to_string(),
+                payload: None,
+                error: None,
+            }
+        );
+        assert_eq!(
+            window.restarts(),
+            vec![vec!["--relaunched".to_string(), "safe".to_string()]]
+        );
+    }
+
+    #[test]
+    fn app_focus_routes_to_current_window() {
+        let window = Arc::new(FakeWindowHandler::new(
+            Ok(WindowCreateResponse::new("window-test")),
+            Ok(()),
+        ));
+        let response = HostMethodRouter::new(window.clone())
+            .dispatch_at(
+                request("request-app-focus", host_protocol::APP_FOCUS_METHOD),
+                1710000000125,
+            )
+            .expect("app focus should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-app-focus".to_string(),
+                timestamp: 1710000000125,
+                trace_id: "trace-request-app-focus".to_string(),
+                payload: None,
+                error: None,
+            }
+        );
+        assert_eq!(window.focused(), vec!["window-current".to_string()]);
+    }
+
+    #[test]
+    fn app_activate_routes_to_current_window() {
+        let window = Arc::new(FakeWindowHandler::new(
+            Ok(WindowCreateResponse::new("window-test")),
+            Ok(()),
+        ));
+        let response = HostMethodRouter::new(window.clone())
+            .dispatch_at(
+                request("request-app-activate", host_protocol::APP_ACTIVATE_METHOD),
+                1710000000125,
+            )
+            .expect("app activate should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-app-activate".to_string(),
+                timestamp: 1710000000125,
+                trace_id: "trace-request-app-activate".to_string(),
+                payload: None,
+                error: None,
+            }
+        );
+        assert_eq!(window.focused(), vec!["window-current".to_string()]);
+    }
+
+    #[test]
+    fn app_release_single_instance_lock_routes_to_host_adapter() {
+        let response = test_router()
+            .dispatch_at(
+                request(
+                    "request-app-release-single-instance",
+                    host_protocol::APP_RELEASE_SINGLE_INSTANCE_LOCK_METHOD,
+                ),
+                1710000000125,
+            )
+            .expect("app release single-instance lock should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-app-release-single-instance".to_string(),
+                timestamp: 1710000000125,
+                trace_id: "trace-request-app-release-single-instance".to_string(),
+                payload: None,
+                error: None,
             }
         );
     }
@@ -2824,10 +3118,48 @@ mod tests {
             panic!("app focus should reject present payload");
         };
         assert_eq!(error.tag(), "InvalidArgument");
+
+        let response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-app-release-single-instance-object",
+                    host_protocol::APP_RELEASE_SINGLE_INSTANCE_LOCK_METHOD,
+                    serde_json::json!({}),
+                ),
+                1710000000125,
+            )
+            .expect("app release single-instance lock should return response");
+
+        let HostProtocolEnvelope::Response {
+            error: Some(error), ..
+        } = response
+        else {
+            panic!("app release single-instance lock should reject present payload");
+        };
+        assert_eq!(error.tag(), "InvalidArgument");
     }
 
     #[test]
     fn app_lifecycle_routes_reject_malformed_payloads() {
+        let quit_response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-app-quit-invalid",
+                    host_protocol::APP_QUIT_METHOD,
+                    serde_json::json!({ "exitCode": 256 }),
+                ),
+                1710000000125,
+            )
+            .expect("app quit should return response");
+
+        let HostProtocolEnvelope::Response {
+            error: Some(error), ..
+        } = quit_response
+        else {
+            panic!("app quit should reject malformed exit code");
+        };
+        assert_eq!(error.tag(), "InvalidArgument");
+
         let response = test_router()
             .dispatch_at(
                 request_with_payload(
@@ -3002,7 +3334,37 @@ mod tests {
     }
 
     #[test]
-    fn autostart_routes_to_typed_unsupported() {
+    fn autostart_routes_return_mechanism_status() {
+        let _guard = autostart::AUTOSTART_TEST_ENV_LOCK
+            .lock()
+            .expect("autostart env lock");
+        let root = std::env::temp_dir().join(format!(
+            "effect-desktop-autostart-route-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        ));
+        let previous_root = std::env::var_os("EFFECT_DESKTOP_AUTOSTART_ROOT");
+        let previous_id = std::env::var_os("EFFECT_DESKTOP_AUTOSTART_APP_ID");
+        let previous_name = std::env::var_os("EFFECT_DESKTOP_AUTOSTART_APP_NAME");
+        let previous_exe = std::env::var_os("EFFECT_DESKTOP_AUTOSTART_EXE");
+        std::env::set_var("EFFECT_DESKTOP_AUTOSTART_ROOT", &root);
+        std::env::set_var(
+            "EFFECT_DESKTOP_AUTOSTART_APP_ID",
+            "dev.effect-desktop.route-test",
+        );
+        std::env::set_var(
+            "EFFECT_DESKTOP_AUTOSTART_APP_NAME",
+            "Effect Desktop Route Test",
+        );
+        let test_exe = if cfg!(windows) {
+            r"C:\Program Files\Effect Desktop\host.exe"
+        } else {
+            "/Applications/Effect Desktop.app/Contents/MacOS/host"
+        };
+        std::env::set_var("EFFECT_DESKTOP_AUTOSTART_EXE", test_exe);
+
         let response = test_router()
             .dispatch_at(
                 request_with_payload(
@@ -3014,19 +3376,22 @@ mod tests {
             )
             .expect("autostart enable should return response");
 
-        assert_eq!(
-            response,
-            HostProtocolEnvelope::Response {
-                id: "request-autostart-enable".to_string(),
-                timestamp: 1710000000128,
-                trace_id: "trace-request-autostart-enable".to_string(),
-                payload: None,
-                error: Some(HostProtocolError::unsupported(
-                    host_protocol::AUTOSTART_UNSUPPORTED_REASON,
-                    host_protocol::AUTOSTART_ENABLE_METHOD,
-                )),
-            }
-        );
+        restore_env("EFFECT_DESKTOP_AUTOSTART_ROOT", previous_root);
+        restore_env("EFFECT_DESKTOP_AUTOSTART_APP_ID", previous_id);
+        restore_env("EFFECT_DESKTOP_AUTOSTART_APP_NAME", previous_name);
+        restore_env("EFFECT_DESKTOP_AUTOSTART_EXE", previous_exe);
+        let _ = std::fs::remove_dir_all(root);
+
+        let HostProtocolEnvelope::Response {
+            payload: Some(payload),
+            error: None,
+            ..
+        } = response
+        else {
+            panic!("autostart route should return status: {response:?}");
+        };
+        assert_eq!(payload["enabled"], true);
+        assert!(payload.get("mechanism").is_some());
     }
 
     #[test]
@@ -3049,6 +3414,13 @@ mod tests {
             panic!("autostart route should reject malformed args");
         };
         assert_eq!(error.tag(), "InvalidArgument");
+    }
+
+    fn restore_env(key: &str, value: Option<std::ffi::OsString>) {
+        match value {
+            Some(value) => std::env::set_var(key, value),
+            None => std::env::remove_var(key),
+        }
     }
 
     #[test]
@@ -3379,6 +3751,32 @@ mod tests {
             }
         );
 
+        let children_response = router
+            .dispatch_at(
+                request_with_payload(
+                    "request-window-get-children",
+                    host_protocol::WINDOW_GET_CHILDREN_METHOD,
+                    serde_json::json!({ "windowId": "window-parent" }),
+                ),
+                1710000000114,
+            )
+            .expect("window get children should return response");
+        assert_eq!(
+            children_response,
+            HostProtocolEnvelope::Response {
+                id: "request-window-get-children".to_string(),
+                timestamp: 1710000000114,
+                trace_id: "trace-request-window-get-children".to_string(),
+                payload: Some(serde_json::json!({
+                    "windows": [
+                        { "windowId": "window-child-1" },
+                        { "windowId": "window-child-2" }
+                    ]
+                })),
+                error: None,
+            }
+        );
+
         assert_eq!(fake.lookup_ids(), vec!["window-1".to_string()]);
     }
 
@@ -3458,6 +3856,31 @@ mod tests {
                 )),
             }
         );
+
+        let invalid_get_children = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-window-get-children-invalid",
+                    host_protocol::WINDOW_GET_CHILDREN_METHOD,
+                    serde_json::json!({ "windowId": "" }),
+                ),
+                1710000000116,
+            )
+            .expect("invalid window get children should return response");
+        assert_eq!(
+            invalid_get_children,
+            HostProtocolEnvelope::Response {
+                id: "request-window-get-children-invalid".to_string(),
+                timestamp: 1710000000116,
+                trace_id: "trace-request-window-get-children-invalid".to_string(),
+                payload: None,
+                error: Some(HostProtocolError::invalid_argument(
+                    "payload",
+                    "windowId must be non-empty",
+                    host_protocol::WINDOW_GET_CHILDREN_METHOD,
+                )),
+            }
+        );
     }
 
     #[test]
@@ -3511,6 +3934,20 @@ mod tests {
                 }),
             ),
             (
+                "request-window-set-bounds-on-display",
+                host_protocol::WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD,
+                serde_json::json!({
+                    "windowId": "window-1",
+                    "displayId": "display-1",
+                    "bounds": {
+                        "x": 15.0,
+                        "y": 25.0,
+                        "width": 700.0,
+                        "height": 500.0
+                    }
+                }),
+            ),
+            (
                 "request-window-center",
                 host_protocol::WINDOW_CENTER_METHOD,
                 serde_json::json!({
@@ -3536,7 +3973,26 @@ mod tests {
                     id: id.to_string(),
                     timestamp: 1710000000111,
                     trace_id: format!("trace-{id}"),
-                    payload: None,
+                    payload: Some(match method {
+                        host_protocol::WINDOW_CENTER_METHOD => serde_json::json!({
+                            "x": 30.0,
+                            "y": 40.0,
+                            "width": 640.0,
+                            "height": 480.0
+                        }),
+                        host_protocol::WINDOW_CENTER_ON_DISPLAY_METHOD => serde_json::json!({
+                            "x": 35.0,
+                            "y": 45.0,
+                            "width": 640.0,
+                            "height": 480.0
+                        }),
+                        _ => serde_json::json!({
+                            "x": 15.0,
+                            "y": 25.0,
+                            "width": 700.0,
+                            "height": 500.0
+                        }),
+                    }),
                     error: None,
                 }
             );
@@ -3572,6 +4028,36 @@ mod tests {
                 host_protocol::WINDOW_SET_TRAFFIC_LIGHTS_METHOD,
                 serde_json::json!({ "windowId": "window-1", "trafficLights": { "x": 12, "y": 13 } }),
             ),
+            (
+                "request-window-set-vibrancy",
+                host_protocol::WINDOW_SET_VIBRANCY_METHOD,
+                serde_json::json!({ "windowId": "window-1", "material": "windowBackground" }),
+            ),
+            (
+                "request-window-clear-vibrancy",
+                host_protocol::WINDOW_CLEAR_VIBRANCY_METHOD,
+                serde_json::json!({ "windowId": "window-1" }),
+            ),
+            (
+                "request-window-set-shadow",
+                host_protocol::WINDOW_SET_SHADOW_METHOD,
+                serde_json::json!({ "windowId": "window-1", "hasShadow": false }),
+            ),
+            (
+                "request-window-set-title-bar-style",
+                host_protocol::WINDOW_SET_TITLE_BAR_STYLE_METHOD,
+                serde_json::json!({ "windowId": "window-1", "titleBarStyle": "hiddenInset" }),
+            ),
+            (
+                "request-window-set-title-bar-transparent",
+                host_protocol::WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD,
+                serde_json::json!({ "windowId": "window-1", "titleBarTransparent": true }),
+            ),
+            (
+                "request-window-set-transparent",
+                host_protocol::WINDOW_SET_TRANSPARENT_METHOD,
+                serde_json::json!({ "windowId": "window-1", "transparent": true }),
+            ),
         ] {
             let response = router
                 .dispatch_at(request_with_payload(id, method, payload), 1710000000112)
@@ -3595,6 +4081,7 @@ mod tests {
         );
         assert_eq!(fake.resizable(), vec![("window-1".to_string(), false)]);
         assert_eq!(fake.decorations(), vec![("window-1".to_string(), true)]);
+        assert_eq!(fake.shadows(), vec![("window-1".to_string(), false)]);
     }
 
     #[test]
@@ -3732,7 +4219,8 @@ mod tests {
                 payload: Some(serde_json::json!({
                     "minimized": false,
                     "maximized": false,
-                    "fullscreen": false
+                    "fullscreen": false,
+                    "simpleFullscreen": false
                 })),
                 error: None,
             }
@@ -3755,6 +4243,11 @@ mod tests {
                 serde_json::json!({ "windowId": "window-1", "fullscreen": true }),
             ),
             (
+                "request-window-set-simple-fullscreen",
+                host_protocol::WINDOW_SET_SIMPLE_FULLSCREEN_METHOD,
+                serde_json::json!({ "windowId": "window-1", "simpleFullscreen": true }),
+            ),
+            (
                 "request-window-restore",
                 host_protocol::WINDOW_RESTORE_METHOD,
                 serde_json::json!({ "windowId": "window-1" }),
@@ -3770,7 +4263,12 @@ mod tests {
                     id: id.to_string(),
                     timestamp: 1710000000113,
                     trace_id: format!("trace-{id}"),
-                    payload: None,
+                    payload: Some(serde_json::json!({
+                        "minimized": false,
+                        "maximized": false,
+                        "fullscreen": false,
+                        "simpleFullscreen": false
+                    })),
                     error: None,
                 }
             );
@@ -3779,6 +4277,10 @@ mod tests {
         assert_eq!(fake.minimized(), vec!["window-1".to_string()]);
         assert_eq!(fake.maximized(), vec!["window-1".to_string()]);
         assert_eq!(fake.fullscreen(), vec![("window-1".to_string(), true)]);
+        assert_eq!(
+            fake.simple_fullscreen(),
+            vec![("window-1".to_string(), true)]
+        );
         assert_eq!(fake.restored(), vec!["window-1".to_string()]);
     }
 
@@ -3816,6 +4318,49 @@ mod tests {
     }
 
     #[test]
+    fn dock_set_progress_routes_to_window_handler() {
+        let fake = Arc::new(FakeWindowHandler::new(
+            Ok(WindowCreateResponse::new("window-unused")),
+            Ok(()),
+        ));
+        let router = HostMethodRouter::new(fake.clone());
+        let response = router
+            .dispatch_at(
+                request_with_payload(
+                    "request-dock-progress",
+                    host_protocol::DOCK_SET_PROGRESS_METHOD,
+                    serde_json::json!({
+                        "value": 0.5,
+                        "options": { "state": "normal" }
+                    }),
+                ),
+                1710000000109,
+            )
+            .expect("dock progress request should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-dock-progress".to_string(),
+                timestamp: 1710000000109,
+                trace_id: "trace-request-dock-progress".to_string(),
+                payload: None,
+                error: None,
+            }
+        );
+
+        let progress = fake.dock_progress();
+        assert_eq!(progress.len(), 1);
+        assert_eq!(progress[0].value(), &serde_json::json!(0.5));
+        assert_eq!(
+            progress[0]
+                .options()
+                .and_then(host_protocol::DockSetProgressOptionsPayload::state),
+            Some(host_protocol::DockProgressState::Normal)
+        );
+    }
+
+    #[test]
     fn dock_set_badge_text_rejects_ascii_control_characters() {
         let response = test_router()
             .dispatch_at(
@@ -3844,6 +4389,27 @@ mod tests {
                 )),
             }
         );
+    }
+
+    #[test]
+    fn dock_progress_rejects_invalid_payloads_before_side_effects() {
+        let progress_response = test_router()
+            .dispatch_at(
+                request_with_payload(
+                    "request-dock-progress-invalid",
+                    host_protocol::DOCK_SET_PROGRESS_METHOD,
+                    serde_json::json!({ "value": 1.5 }),
+                ),
+                1710000000116,
+            )
+            .expect("dock progress invalid request should return response");
+        assert!(matches!(
+            progress_response,
+            HostProtocolEnvelope::Response {
+                error: Some(HostProtocolError::InvalidArgument { .. }),
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -4271,7 +4837,225 @@ mod tests {
     }
 
     #[test]
-    fn clipboard_write_text_routes_to_typed_unsupported() {
+    fn safe_storage_secret_methods_reject_invalid_payloads_before_backend_work() {
+        let router = test_router();
+        for (id, method, payload) in [
+            (
+                "request-safe-storage-set-invalid",
+                host_protocol::SAFE_STORAGE_SET_METHOD,
+                serde_json::json!({ "key": "bad\nkey", "value": "AAE=" }),
+            ),
+            (
+                "request-safe-storage-get-invalid",
+                host_protocol::SAFE_STORAGE_GET_METHOD,
+                serde_json::json!({ "key": "" }),
+            ),
+            (
+                "request-safe-storage-delete-invalid",
+                host_protocol::SAFE_STORAGE_DELETE_METHOD,
+                serde_json::json!({ "key": "token", "unexpected": true }),
+            ),
+            (
+                "request-safe-storage-list-invalid",
+                host_protocol::SAFE_STORAGE_LIST_METHOD,
+                serde_json::json!({}),
+            ),
+        ] {
+            let response = router
+                .dispatch_at(request_with_payload(id, method, payload), 1710000000113)
+                .expect("safe storage invalid request should return response");
+
+            assert!(matches!(
+                response,
+                HostProtocolEnvelope::Response {
+                    error: Some(HostProtocolError::InvalidArgument { .. }),
+                    ..
+                }
+            ));
+        }
+    }
+
+    #[test]
+    fn webview_methods_fail_closed_after_validation() {
+        let router = test_router();
+        let webview = serde_json::json!({
+            "kind": "webview",
+            "id": "webview-1",
+            "generation": 0,
+            "ownerScope": "window:window-1",
+            "state": "open"
+        });
+        let window = serde_json::json!({
+            "kind": "window",
+            "id": "window-1",
+            "generation": 0,
+            "ownerScope": "runtime:test",
+            "state": "open"
+        });
+        for (id, method, payload) in [
+            (
+                "request-webview-create",
+                host_protocol::WEBVIEW_CREATE_METHOD,
+                serde_json::json!({
+                    "window": window,
+                    "url": "app://localhost/settings",
+                    "originPolicy": {
+                        "allowedOrigins": ["app://localhost"],
+                        "onDisallowed": "block"
+                    },
+                    "isolation": {
+                        "exposedApis": [
+                            { "name": "desktop", "methods": ["ping"] }
+                        ]
+                    }
+                }),
+            ),
+            (
+                "request-webview-load-url",
+                host_protocol::WEBVIEW_LOAD_URL_METHOD,
+                serde_json::json!({
+                    "webview": webview,
+                    "url": "https://example.com/settings"
+                }),
+            ),
+            (
+                "request-webview-set-navigation-policy",
+                host_protocol::WEBVIEW_SET_NAVIGATION_POLICY_METHOD,
+                serde_json::json!({
+                    "webview": serde_json::json!({
+                        "kind": "webview",
+                        "id": "webview-1",
+                        "generation": 0,
+                        "ownerScope": "window:window-1",
+                        "state": "open"
+                    }),
+                    "policy": {
+                        "allowedOrigins": ["app://localhost", "https://example.com"],
+                        "onDisallowed": "openExternal"
+                    }
+                }),
+            ),
+            (
+                "request-webview-open-devtools",
+                host_protocol::WEBVIEW_OPEN_DEVTOOLS_METHOD,
+                serde_json::json!({ "webview": webview }),
+            ),
+            (
+                "request-webview-print",
+                host_protocol::WEBVIEW_PRINT_METHOD,
+                serde_json::json!({ "webview": webview }),
+            ),
+            (
+                "request-webview-set-zoom",
+                host_protocol::WEBVIEW_SET_ZOOM_METHOD,
+                serde_json::json!({ "webview": webview, "zoom": 1.25 }),
+            ),
+            (
+                "request-webview-close-devtools",
+                host_protocol::WEBVIEW_CLOSE_DEVTOOLS_METHOD,
+                serde_json::json!({ "webview": webview }),
+            ),
+        ] {
+            let response = router
+                .dispatch_at(request_with_payload(id, method, payload), 1710000000114)
+                .expect("webview request should return response");
+
+            assert!(matches!(
+                response,
+                HostProtocolEnvelope::Response {
+                    payload: None,
+                    error: Some(HostProtocolError::Unsupported { .. }),
+                    ..
+                }
+            ));
+        }
+    }
+
+    #[test]
+    fn webview_methods_reject_invalid_payloads_before_unsupported() {
+        let router = test_router();
+        let webview = serde_json::json!({
+            "kind": "webview",
+            "id": "webview-1",
+            "generation": 0,
+            "ownerScope": "window:window-1",
+            "state": "open"
+        });
+        let window = serde_json::json!({
+            "kind": "window",
+            "id": "window-1",
+            "generation": 0,
+            "ownerScope": "runtime:test",
+            "state": "open"
+        });
+        for (id, method, payload) in [
+            (
+                "request-webview-create-invalid-url",
+                host_protocol::WEBVIEW_CREATE_METHOD,
+                serde_json::json!({
+                    "window": window,
+                    "url": "file://localhost/secret",
+                    "originPolicy": {
+                        "allowedOrigins": ["app://localhost"],
+                        "onDisallowed": "block"
+                    }
+                }),
+            ),
+            (
+                "request-webview-create-invalid-isolation",
+                host_protocol::WEBVIEW_CREATE_METHOD,
+                serde_json::json!({
+                    "window": window,
+                    "url": "app://localhost/settings",
+                    "originPolicy": {
+                        "allowedOrigins": ["app://localhost"],
+                        "onDisallowed": "block"
+                    },
+                    "isolation": {
+                        "exposedApis": [
+                            { "name": "desktop", "methods": ["bad-name"] }
+                        ]
+                    }
+                }),
+            ),
+            (
+                "request-webview-load-route-traversal",
+                host_protocol::WEBVIEW_LOAD_ROUTE_METHOD,
+                serde_json::json!({
+                    "webview": webview,
+                    "route": "/../settings"
+                }),
+            ),
+            (
+                "request-webview-stop-wrong-handle",
+                host_protocol::WEBVIEW_STOP_METHOD,
+                serde_json::json!({
+                    "webview": {
+                        "kind": "window",
+                        "id": "webview-1",
+                        "generation": 0,
+                        "ownerScope": "window:window-1",
+                        "state": "open"
+                    }
+                }),
+            ),
+        ] {
+            let response = router
+                .dispatch_at(request_with_payload(id, method, payload), 1710000000115)
+                .expect("webview invalid request should return response");
+
+            assert!(matches!(
+                response,
+                HostProtocolEnvelope::Response {
+                    error: Some(HostProtocolError::InvalidArgument { .. }),
+                    ..
+                }
+            ));
+        }
+    }
+
+    #[test]
+    fn clipboard_write_text_routes_to_host_adapter() {
         let response = test_router()
             .dispatch_at(
                 request_with_payload(
@@ -4283,23 +5067,35 @@ mod tests {
             )
             .expect("clipboard write should return response");
 
-        assert_eq!(
-            response,
-            HostProtocolEnvelope::Response {
-                id: "request-clipboard-write-text".to_string(),
-                timestamp: 1710000000112,
-                trace_id: "trace-request-clipboard-write-text".to_string(),
-                payload: None,
-                error: Some(HostProtocolError::unsupported(
-                    host_protocol::CLIPBOARD_UNSUPPORTED_REASON,
-                    host_protocol::CLIPBOARD_WRITE_TEXT_METHOD,
-                )),
-            }
-        );
+        let HostProtocolEnvelope::Response {
+            id,
+            timestamp,
+            trace_id,
+            payload,
+            error,
+        } = response
+        else {
+            panic!("clipboard write should return a response");
+        };
+        assert_eq!(id, "request-clipboard-write-text");
+        assert_eq!(timestamp, 1710000000112);
+        assert_eq!(trace_id, "trace-request-clipboard-write-text");
+        assert!(payload.is_none());
+        if let Some(error) = error {
+            assert!(
+                matches!(
+                    error,
+                    HostProtocolError::Unsupported { .. }
+                        | HostProtocolError::HostUnavailable { .. }
+                        | HostProtocolError::ResourceBusy { .. }
+                ),
+                "clipboard write should surface a typed host error: {error:?}"
+            );
+        }
     }
 
     #[test]
-    fn clipboard_invalid_payload_rejects_before_unsupported() {
+    fn clipboard_invalid_payload_rejects_before_host_access() {
         let response = test_router()
             .dispatch_at(
                 request_with_payload(
@@ -4385,7 +5181,8 @@ mod tests {
     }
 
     #[test]
-    fn crash_reporter_start_routes_to_typed_unsupported() {
+    fn crash_reporter_start_routes_to_host_state() {
+        let _env = super::crash_reporter::CrashReporterTestEnv::new("route-start");
         let response = test_router()
             .dispatch_at(
                 request_with_payload(
@@ -4404,16 +5201,14 @@ mod tests {
                 timestamp: 1710000000112,
                 trace_id: "trace-request-crash-reporter-start".to_string(),
                 payload: None,
-                error: Some(HostProtocolError::unsupported(
-                    host_protocol::CRASH_REPORTER_UNSUPPORTED_REASON,
-                    host_protocol::CRASH_REPORTER_START_METHOD,
-                )),
+                error: None,
             }
         );
     }
 
     #[test]
-    fn crash_reporter_get_reports_routes_to_typed_unsupported() {
+    fn crash_reporter_get_reports_routes_to_host_state() {
+        let _env = super::crash_reporter::CrashReporterTestEnv::new("route-get-reports");
         let response = test_router()
             .dispatch_at(
                 request(
@@ -4430,17 +5225,15 @@ mod tests {
                 id: "request-crash-reporter-get-reports".to_string(),
                 timestamp: 1710000000112,
                 trace_id: "trace-request-crash-reporter-get-reports".to_string(),
-                payload: None,
-                error: Some(HostProtocolError::unsupported(
-                    host_protocol::CRASH_REPORTER_UNSUPPORTED_REASON,
-                    host_protocol::CRASH_REPORTER_GET_REPORTS_METHOD,
-                )),
+                payload: Some(serde_json::json!({ "reports": [] })),
+                error: None,
             }
         );
     }
 
     #[test]
     fn crash_reporter_invalid_payload_rejects_before_unsupported() {
+        let _env = super::crash_reporter::CrashReporterTestEnv::new("route-invalid");
         let response = test_router()
             .dispatch_at(
                 request_with_payload(
@@ -4487,7 +5280,7 @@ mod tests {
                 id: "request-power-monitor-support".to_string(),
                 timestamp: 1710000000112,
                 trace_id: "trace-request-power-monitor-support".to_string(),
-                payload: Some(serde_json::json!({ "supported": false })),
+                payload: Some(serde_json::json!({ "supported": cfg!(target_os = "macos") })),
                 error: None,
             }
         );
@@ -5111,79 +5904,6 @@ mod tests {
         assert!(log_path.exists());
 
         fs::remove_dir_all(dir).expect("temp dir should be removed");
-    }
-
-    #[test]
-    fn execution_sandbox_create_routes_to_typed_unsupported() {
-        let response = test_router()
-            .dispatch_at(
-                request_with_payload(
-                    "request-execution-sandbox-create",
-                    host_protocol::EXECUTION_SANDBOX_CREATE_METHOD,
-                    execution_sandbox_create_payload(),
-                ),
-                1710000000121,
-            )
-            .expect("execution sandbox request should return response");
-
-        assert_eq!(
-            response,
-            HostProtocolEnvelope::Response {
-                id: "request-execution-sandbox-create".to_string(),
-                timestamp: 1710000000121,
-                trace_id: "trace-request-execution-sandbox-create".to_string(),
-                payload: None,
-                error: Some(HostProtocolError::unsupported(
-                    host_protocol::EXECUTION_SANDBOX_UNSUPPORTED_REASON,
-                    host_protocol::EXECUTION_SANDBOX_CREATE_METHOD,
-                )),
-            }
-        );
-    }
-
-    #[test]
-    fn execution_sandbox_invalid_payload_returns_invalid_argument_before_unsupported() {
-        let response = test_router()
-            .dispatch_at(
-                request_with_payload(
-                    "request-execution-sandbox-invalid",
-                    host_protocol::EXECUTION_SANDBOX_CREATE_METHOD,
-                    serde_json::json!({
-                        "actor": { "kind": "extension", "id": "extension-1" },
-                        "policy": {
-                            "cwd": "/tmp/app",
-                            "budgets": {
-                                "cpuMillis": 0,
-                                "memoryBytes": 67108864,
-                                "wallClockMillis": 1000,
-                                "stdoutBytes": 1024,
-                                "stderrBytes": 1024
-                            },
-                            "cleanup": {
-                                "killProcessTree": true,
-                                "removeWorkingDirectory": true
-                            }
-                        }
-                    }),
-                ),
-                1710000000122,
-            )
-            .expect("execution sandbox request should return response");
-
-        assert_eq!(
-            response,
-            HostProtocolEnvelope::Response {
-                id: "request-execution-sandbox-invalid".to_string(),
-                timestamp: 1710000000122,
-                trace_id: "trace-request-execution-sandbox-invalid".to_string(),
-                payload: None,
-                error: Some(HostProtocolError::invalid_argument(
-                    "policy.budgets.cpuMillis",
-                    "must be greater than zero",
-                    host_protocol::EXECUTION_SANDBOX_CREATE_METHOD,
-                )),
-            }
-        );
     }
 
     #[test]
@@ -5878,38 +6598,56 @@ mod tests {
     }
 
     #[test]
-    fn native_file_system_methods_route_to_fail_closed_adapter() {
+    fn native_file_system_methods_route_to_supported_adapter() {
+        let _guard = super::native_file_system::state_test_guard();
+        let path = temp_file("native-file-system-route", b"report\n");
+        let path_string = path.to_string_lossy().to_string();
         let response = test_router()
             .dispatch_at(
                 request_with_payload(
                     "request-native-file-system-open",
                     host_protocol::NATIVE_FILE_SYSTEM_OPEN_METHOD,
                     serde_json::json!({
-                        "path": { "path": "/tmp/report.txt" },
-                        "mode": "read"
+                        "path": { "path": path_string },
+                        "mode": "read",
+                        "handleId": "native-file-system-route-handle"
                     }),
                 ),
                 1710000000136,
             )
             .expect("native filesystem request should return response");
 
+        let HostProtocolEnvelope::Response {
+            payload: Some(payload),
+            error: None,
+            ..
+        } = response
+        else {
+            panic!("native filesystem open should return a successful response");
+        };
         assert_eq!(
-            response,
-            HostProtocolEnvelope::Response {
-                id: "request-native-file-system-open".to_string(),
-                timestamp: 1710000000136,
-                trace_id: "trace-request-native-file-system-open".to_string(),
-                payload: None,
-                error: Some(HostProtocolError::unsupported(
-                    host_protocol::NATIVE_FILE_SYSTEM_UNSUPPORTED_REASON,
-                    host_protocol::NATIVE_FILE_SYSTEM_OPEN_METHOD,
-                )),
-            }
+            payload["handle"],
+            serde_json::json!({
+                "kind": "native-file-system-handle",
+                "id": "native-file-system-route-handle",
+                "generation": 0,
+                "ownerScope": "native-file-system:native-file-system-route-handle",
+                "state": "open"
+            })
         );
+        assert_eq!(
+            payload["metadata"]["path"],
+            serde_json::json!({ "path": path_string })
+        );
+        assert_eq!(payload["metadata"]["kind"], serde_json::json!("file"));
+        assert_eq!(payload["metadata"]["sizeBytes"], serde_json::json!(7));
+        super::native_file_system::clear_runtime_resources("host.runtime.test")
+            .expect("native filesystem route test should clear resources");
+        cleanup_path(path);
     }
 
     #[test]
-    fn native_file_system_invalid_payload_returns_invalid_argument_before_unsupported() {
+    fn native_file_system_invalid_payload_returns_invalid_argument_before_host_work() {
         let response = test_router()
             .dispatch_at(
                 request_with_payload(
@@ -5933,7 +6671,7 @@ mod tests {
                 payload: None,
                 error: Some(HostProtocolError::invalid_argument(
                     "path",
-                    "must be an absolute path",
+                    "must be an absolute path without dot segments",
                     host_protocol::NATIVE_FILE_SYSTEM_WATCH_METHOD,
                 )),
             }
@@ -5941,7 +6679,7 @@ mod tests {
     }
 
     #[test]
-    fn native_file_system_is_supported_reports_unsupported_adapter() {
+    fn native_file_system_is_supported_reports_supported_adapter() {
         let response = test_router()
             .dispatch_at(
                 request(
@@ -5958,10 +6696,7 @@ mod tests {
                 id: "request-native-file-system-supported".to_string(),
                 timestamp: 1710000000138,
                 trace_id: "trace-request-native-file-system-supported".to_string(),
-                payload: Some(serde_json::json!({
-                    "supported": false,
-                    "reason": host_protocol::NATIVE_FILE_SYSTEM_UNSUPPORTED_REASON
-                })),
+                payload: Some(serde_json::json!({ "supported": true })),
                 error: None,
             }
         );
@@ -6141,16 +6876,6 @@ mod tests {
         Some(declaration[start..end].to_string())
     }
 
-    fn transient_window_role_handle() -> serde_json::Value {
-        serde_json::json!({
-            "kind": "transient-window-role",
-            "id": "palette-1",
-            "generation": 0,
-            "ownerScope": "workspace:workspace-1",
-            "state": "open"
-        })
-    }
-
     fn egress_policy_decision_id(response: &HostProtocolEnvelope) -> String {
         let HostProtocolEnvelope::Response {
             payload: Some(payload),
@@ -6174,35 +6899,6 @@ mod tests {
             .expect("time should be after epoch")
             .as_nanos();
         std::env::temp_dir().join(format!("effect-desktop-method-router-{nanos}-{name}"))
-    }
-
-    fn execution_sandbox_create_payload() -> serde_json::Value {
-        serde_json::json!({
-            "actor": { "kind": "extension", "id": "extension-1" },
-            "policy": {
-                "cwd": "/tmp/app",
-                "filesystem": {
-                    "readRoots": ["/tmp/app"],
-                    "writeRoots": ["/tmp/app/out"]
-                },
-                "network": {
-                    "hosts": ["api.example.test"]
-                },
-                "budgets": {
-                    "cpuMillis": 500,
-                    "memoryBytes": 67108864,
-                    "wallClockMillis": 1000,
-                    "stdoutBytes": 1024,
-                    "stderrBytes": 1024
-                },
-                "cleanup": {
-                    "killProcessTree": true,
-                    "removeWorkingDirectory": true
-                }
-            },
-            "sandboxId": "sandbox-1",
-            "traceId": "trace-sandbox"
-        })
     }
 
     fn extension_config_read_payload() -> serde_json::Value {
@@ -6459,9 +7155,11 @@ mod tests {
         }
     }
 
-    struct FakeWindowHandler {
+    pub(crate) struct FakeWindowHandler {
         create_result: Result<WindowCreateResponse, HostProtocolError>,
         destroy_result: Result<(), HostProtocolError>,
+        quit: Mutex<Vec<u8>>,
+        restarts: Mutex<Vec<Vec<String>>>,
         created: Mutex<Vec<WindowCreateRequest>>,
         shown: Mutex<Vec<String>>,
         hidden: Mutex<Vec<String>>,
@@ -6470,15 +7168,18 @@ mod tests {
         titles: Mutex<Vec<(String, String)>>,
         resizable: Mutex<Vec<(String, bool)>>,
         decorations: Mutex<Vec<(String, bool)>>,
+        shadows: Mutex<Vec<(String, bool)>>,
         always_on_top: Mutex<Vec<(String, bool)>>,
         skip_taskbar: Mutex<Vec<(String, bool)>>,
         progress: Mutex<Vec<host_protocol::WindowSetProgressPayload>>,
+        dock_progress: Mutex<Vec<host_protocol::DockSetProgressPayload>>,
         attention: Mutex<Vec<(String, host_protocol::WindowAttentionType)>>,
         attention_cancellations: Mutex<Vec<String>>,
         minimized: Mutex<Vec<String>>,
         maximized: Mutex<Vec<String>>,
         restored: Mutex<Vec<String>>,
         fullscreen: Mutex<Vec<(String, bool)>>,
+        simple_fullscreen: Mutex<Vec<(String, bool)>>,
         dock_badge_labels: Mutex<Vec<Option<String>>>,
     }
 
@@ -6490,6 +7191,8 @@ mod tests {
             Self {
                 create_result,
                 destroy_result,
+                quit: Mutex::new(Vec::new()),
+                restarts: Mutex::new(Vec::new()),
                 created: Mutex::new(Vec::new()),
                 shown: Mutex::new(Vec::new()),
                 hidden: Mutex::new(Vec::new()),
@@ -6498,15 +7201,18 @@ mod tests {
                 titles: Mutex::new(Vec::new()),
                 resizable: Mutex::new(Vec::new()),
                 decorations: Mutex::new(Vec::new()),
+                shadows: Mutex::new(Vec::new()),
                 always_on_top: Mutex::new(Vec::new()),
                 skip_taskbar: Mutex::new(Vec::new()),
                 progress: Mutex::new(Vec::new()),
+                dock_progress: Mutex::new(Vec::new()),
                 attention: Mutex::new(Vec::new()),
                 attention_cancellations: Mutex::new(Vec::new()),
                 minimized: Mutex::new(Vec::new()),
                 maximized: Mutex::new(Vec::new()),
                 restored: Mutex::new(Vec::new()),
                 fullscreen: Mutex::new(Vec::new()),
+                simple_fullscreen: Mutex::new(Vec::new()),
                 dock_badge_labels: Mutex::new(Vec::new()),
             }
         }
@@ -6515,6 +7221,20 @@ mod tests {
             self.created
                 .lock()
                 .expect("fake created requests should lock")
+                .clone()
+        }
+
+        fn quit(&self) -> Vec<u8> {
+            self.quit
+                .lock()
+                .expect("fake quit requests should lock")
+                .clone()
+        }
+
+        pub(crate) fn restarts(&self) -> Vec<Vec<String>> {
+            self.restarts
+                .lock()
+                .expect("fake restart requests should lock")
                 .clone()
         }
 
@@ -6574,6 +7294,13 @@ mod tests {
                 .clone()
         }
 
+        fn shadows(&self) -> Vec<(String, bool)> {
+            self.shadows
+                .lock()
+                .expect("fake shadow requests should lock")
+                .clone()
+        }
+
         fn always_on_top(&self) -> Vec<(String, bool)> {
             self.always_on_top
                 .lock()
@@ -6592,6 +7319,13 @@ mod tests {
             self.progress
                 .lock()
                 .expect("fake progress requests should lock")
+                .clone()
+        }
+
+        fn dock_progress(&self) -> Vec<host_protocol::DockSetProgressPayload> {
+            self.dock_progress
+                .lock()
+                .expect("fake dock progress requests should lock")
                 .clone()
         }
 
@@ -6636,9 +7370,38 @@ mod tests {
                 .expect("fake fullscreen requests should lock")
                 .clone()
         }
+
+        fn simple_fullscreen(&self) -> Vec<(String, bool)> {
+            self.simple_fullscreen
+                .lock()
+                .expect("fake simple fullscreen requests should lock")
+                .clone()
+        }
+    }
+
+    impl Default for FakeWindowHandler {
+        fn default() -> Self {
+            Self::new(Ok(WindowCreateResponse::new("window-test")), Ok(()))
+        }
     }
 
     impl WindowMethodHandler for FakeWindowHandler {
+        fn quit(&self, exit_code: u8) -> Result<(), HostProtocolError> {
+            self.quit
+                .lock()
+                .expect("fake quit requests should lock")
+                .push(exit_code);
+            Ok(())
+        }
+
+        fn restart(&self, args: &[String]) -> Result<(), HostProtocolError> {
+            self.restarts
+                .lock()
+                .expect("fake restart requests should lock")
+                .push(args.to_vec());
+            Ok(())
+        }
+
         fn create(
             &self,
             request: WindowCreateRequest,
@@ -6709,6 +7472,16 @@ mod tests {
             )))
         }
 
+        fn get_children(
+            &self,
+            _window_id: &str,
+        ) -> Result<host_protocol::WindowListResponse, HostProtocolError> {
+            Ok(host_protocol::WindowListResponse::new(vec![
+                host_protocol::WindowLookupResponse::new("window-child-1"),
+                host_protocol::WindowLookupResponse::new("window-child-2"),
+            ]))
+        }
+
         fn get_bounds(&self, _window_id: &str) -> Result<WindowBoundsPayload, HostProtocolError> {
             Ok(WindowBoundsPayload::new(10.0, 20.0, 640.0, 480.0))
         }
@@ -6717,20 +7490,29 @@ mod tests {
             &self,
             _window_id: &str,
             _bounds: &WindowBoundsPayload,
-        ) -> Result<(), HostProtocolError> {
-            Ok(())
+        ) -> Result<WindowBoundsPayload, HostProtocolError> {
+            Ok(WindowBoundsPayload::new(15.0, 25.0, 700.0, 500.0))
         }
 
-        fn center(&self, _window_id: &str) -> Result<(), HostProtocolError> {
-            Ok(())
+        fn set_bounds_on_display(
+            &self,
+            _window_id: &str,
+            _display_id: &str,
+            _bounds: &WindowBoundsPayload,
+        ) -> Result<WindowBoundsPayload, HostProtocolError> {
+            Ok(WindowBoundsPayload::new(15.0, 25.0, 700.0, 500.0))
+        }
+
+        fn center(&self, _window_id: &str) -> Result<WindowBoundsPayload, HostProtocolError> {
+            Ok(WindowBoundsPayload::new(30.0, 40.0, 640.0, 480.0))
         }
 
         fn center_on_display(
             &self,
             _window_id: &str,
             _display_id: &str,
-        ) -> Result<(), HostProtocolError> {
-            Ok(())
+        ) -> Result<WindowBoundsPayload, HostProtocolError> {
+            Ok(WindowBoundsPayload::new(35.0, 45.0, 640.0, 480.0))
         }
 
         fn set_title(&self, window_id: &str, title: &str) -> Result<(), HostProtocolError> {
@@ -6765,6 +7547,46 @@ mod tests {
             &self,
             _window_id: &str,
             _traffic_lights: &host_protocol::WindowTrafficLights,
+        ) -> Result<(), HostProtocolError> {
+            Ok(())
+        }
+
+        fn set_vibrancy(&self, _window_id: &str, _material: &str) -> Result<(), HostProtocolError> {
+            Ok(())
+        }
+
+        fn clear_vibrancy(&self, _window_id: &str) -> Result<(), HostProtocolError> {
+            Ok(())
+        }
+
+        fn set_shadow(&self, window_id: &str, has_shadow: bool) -> Result<(), HostProtocolError> {
+            self.shadows
+                .lock()
+                .expect("fake shadow requests should lock")
+                .push((window_id.to_string(), has_shadow));
+            Ok(())
+        }
+
+        fn set_title_bar_style(
+            &self,
+            _window_id: &str,
+            _title_bar_style: host_protocol::WindowTitleBarStyle,
+        ) -> Result<(), HostProtocolError> {
+            Ok(())
+        }
+
+        fn set_title_bar_transparent(
+            &self,
+            _window_id: &str,
+            _title_bar_transparent: bool,
+        ) -> Result<(), HostProtocolError> {
+            Ok(())
+        }
+
+        fn set_transparent(
+            &self,
+            _window_id: &str,
+            _transparent: bool,
         ) -> Result<(), HostProtocolError> {
             Ok(())
         }
@@ -6805,6 +7627,17 @@ mod tests {
             Ok(())
         }
 
+        fn set_dock_progress(
+            &self,
+            progress: &host_protocol::DockSetProgressPayload,
+        ) -> Result<(), HostProtocolError> {
+            self.dock_progress
+                .lock()
+                .expect("fake dock progress requests should lock")
+                .push(progress.clone());
+            Ok(())
+        }
+
         fn request_attention(
             &self,
             window_id: &str,
@@ -6825,47 +7658,80 @@ mod tests {
             Ok(())
         }
 
-        fn minimize(&self, window_id: &str) -> Result<(), HostProtocolError> {
+        fn minimize(
+            &self,
+            window_id: &str,
+        ) -> Result<host_protocol::WindowStatePayload, HostProtocolError> {
             self.minimized
                 .lock()
                 .expect("fake minimized requests should lock")
                 .push(window_id.to_string());
-            Ok(())
+            Ok(host_protocol::WindowStatePayload::new(
+                false, false, false, false,
+            ))
         }
 
-        fn maximize(&self, window_id: &str) -> Result<(), HostProtocolError> {
+        fn maximize(
+            &self,
+            window_id: &str,
+        ) -> Result<host_protocol::WindowStatePayload, HostProtocolError> {
             self.maximized
                 .lock()
                 .expect("fake maximized requests should lock")
                 .push(window_id.to_string());
-            Ok(())
+            Ok(host_protocol::WindowStatePayload::new(
+                false, false, false, false,
+            ))
         }
 
-        fn restore(&self, window_id: &str) -> Result<(), HostProtocolError> {
+        fn restore(
+            &self,
+            window_id: &str,
+        ) -> Result<host_protocol::WindowStatePayload, HostProtocolError> {
             self.restored
                 .lock()
                 .expect("fake restored requests should lock")
                 .push(window_id.to_string());
-            Ok(())
+            Ok(host_protocol::WindowStatePayload::new(
+                false, false, false, false,
+            ))
         }
 
         fn set_fullscreen(
             &self,
             window_id: &str,
             fullscreen: bool,
-        ) -> Result<(), HostProtocolError> {
+        ) -> Result<host_protocol::WindowStatePayload, HostProtocolError> {
             self.fullscreen
                 .lock()
                 .expect("fake fullscreen requests should lock")
                 .push((window_id.to_string(), fullscreen));
-            Ok(())
+            Ok(host_protocol::WindowStatePayload::new(
+                false, false, false, false,
+            ))
+        }
+
+        fn set_simple_fullscreen(
+            &self,
+            window_id: &str,
+            simple_fullscreen: bool,
+        ) -> Result<host_protocol::WindowStatePayload, HostProtocolError> {
+            self.simple_fullscreen
+                .lock()
+                .expect("fake simple fullscreen requests should lock")
+                .push((window_id.to_string(), simple_fullscreen));
+            Ok(host_protocol::WindowStatePayload::new(
+                false, false, false, false,
+            ))
         }
 
         fn get_state(
             &self,
             _window_id: &str,
         ) -> Result<host_protocol::WindowStatePayload, HostProtocolError> {
-            Ok(host_protocol::WindowStatePayload::new(false, false, false))
+            Ok(host_protocol::WindowStatePayload::new(
+                false, false, false, false,
+            ))
         }
 
         fn set_dock_badge_label(
@@ -6881,13 +7747,6 @@ mod tests {
         }
 
         fn request_dock_attention(&self, _critical: bool) -> Result<(), HostProtocolError> {
-            Ok(())
-        }
-
-        fn set_dock_menu(
-            &self,
-            _template: Option<serde_json::Value>,
-        ) -> Result<(), HostProtocolError> {
             Ok(())
         }
 

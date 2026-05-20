@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Effect, Layer } from "effect"
+import { Effect, Layer, ManagedRuntime } from "effect"
 import {
   RendererSqliteMemoryLive,
   RendererSqliteWorkerLive,
@@ -56,33 +56,31 @@ test("SqlModel is exported", () => {
 })
 
 test("RendererSqliteMemoryLive Layer provides SqlClient", () => {
-  const layer = RendererSqliteMemoryLive()
-  const program = Effect.gen(function* () {
-    const client = yield* SqlClient.SqlClient
-    return client
-  })
-
-  const runnable = Effect.provide(program, layer as Layer.Layer<SqlClient.SqlClient, SqlErrorType>)
+  const layer = RendererSqliteMemoryLive() as Layer.Layer<SqlClient.SqlClient, SqlErrorType>
+  const runtime = ManagedRuntime.make(layer)
+  const runnable = runtime.runPromise(
+    Effect.gen(function* () {
+      const client = yield* SqlClient.SqlClient
+      return client
+    })
+  )
   expect(runnable).toBeDefined()
 })
 
-test("in-memory SQLite executes a schema migration and round-trips a row", async () => {
-  const layer = RendererSqliteMemoryLive()
+test("in-memory SQLite executes a schema migration and round-trips a row", () => {
+  const layer = RendererSqliteMemoryLive() as Layer.Layer<SqlClient.SqlClient, SqlErrorType>
+  const runtime = ManagedRuntime.make(layer)
 
-  const program = Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient
+  return runtime.runPromise(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient
 
-    yield* sql`CREATE TABLE IF NOT EXISTS drafts (id TEXT PRIMARY KEY, body TEXT NOT NULL)`
-    yield* sql`INSERT INTO drafts (id, body) VALUES (${"draft-1"}, ${"hello renderer"})`
-    const rows = yield* sql`SELECT id, body FROM drafts WHERE id = ${"draft-1"}`
+      yield* sql`CREATE TABLE IF NOT EXISTS drafts (id TEXT PRIMARY KEY, body TEXT NOT NULL)`
+      yield* sql`INSERT INTO drafts (id, body) VALUES (${"draft-1"}, ${"hello renderer"})`
+      const rows = yield* sql`SELECT id, body FROM drafts WHERE id = ${"draft-1"}`
 
-    return rows
-  })
-
-  const rows = await Effect.runPromise(
-    Effect.provide(program, layer as Layer.Layer<SqlClient.SqlClient, SqlErrorType>)
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({ id: "draft-1", body: "hello renderer" })
+    })
   )
-
-  expect(rows).toHaveLength(1)
-  expect(rows[0]).toMatchObject({ id: "draft-1", body: "hello renderer" })
 })

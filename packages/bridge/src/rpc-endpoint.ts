@@ -68,17 +68,19 @@ export type WithRpcCapability<R extends RpcAny, Capability extends RpcCapability
 export type WithRpcSupport<R extends RpcAny, Support extends RpcSupportMetadata> = R &
   RpcSupportMarker<Support>
 
-const RpcEndpointKindAnnotation = Context.Service<RpcEndpointKind>(
-  "@effect-desktop/bridge/RpcEndpointKind"
-)
+class RpcEndpointKindAnnotation extends Context.Service<
+  RpcEndpointKindAnnotation,
+  RpcEndpointKind
+>()("@effect-desktop/bridge/rpc-endpoint/RpcEndpointKindAnnotation") {}
 
-const RpcCapabilityAnnotation = Context.Service<RpcCapabilityMetadata>(
-  "@effect-desktop/bridge/RpcCapability"
-)
+class RpcCapabilityAnnotation extends Context.Service<
+  RpcCapabilityAnnotation,
+  RpcCapabilityMetadata
+>()("@effect-desktop/bridge/rpc-endpoint/RpcCapabilityAnnotation") {}
 
-const RpcSupportAnnotation = Context.Service<RpcSupportMetadata>(
-  "@effect-desktop/bridge/RpcSupport"
-)
+class RpcSupportAnnotation extends Context.Service<RpcSupportAnnotation, RpcSupportMetadata>()(
+  "@effect-desktop/bridge/rpc-endpoint/RpcSupportAnnotation"
+) {}
 
 export const RpcEndpoint = Object.freeze({
   query: <R extends RpcAny>(rpc: R): WithRpcEndpointKind<R, "query"> =>

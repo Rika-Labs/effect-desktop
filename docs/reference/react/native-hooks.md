@@ -40,14 +40,15 @@ import {
 }
 ```
 
-Consumes the TypeScript `SystemAppearance` appearance event stream. Native OS
-appearance delivery is currently unsupported until the SystemAppearance host
-adapter is implemented.
+Consumes the TypeScript `SystemAppearance` appearance event stream. Native
+appearance delivery is host-backed on macOS and Windows and reports typed
+unsupported failures on Linux.
 
 ## `useThemeMode(getAppearance)` → `AsyncResult<SystemAppearanceMode, SystemAppearanceError>`
 
-Reads `SystemAppearance.getAppearance()` and returns the current mode. Native OS
-appearance reads are currently unsupported until the host adapter is implemented.
+Reads `SystemAppearance.getAppearance()` and returns the current mode. Native
+appearance reads are host-backed on macOS and Windows and fail as typed
+unsupported on Linux.
 
 `SystemAppearanceMode` is `"light" | "dark" | "highContrast"`.
 
@@ -74,7 +75,7 @@ Calls `Screen.getDisplays`.
 ```
 
 Consumes the TypeScript `PowerMonitor` event streams. Native OS event delivery is
-currently unsupported until the PowerMonitor host adapter is implemented.
+available on macOS and reports typed unsupported failures on Windows and Linux.
 
 ## Related
 

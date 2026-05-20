@@ -36,7 +36,7 @@ export interface DiagnosticsPanelsOptions {
 }
 
 export class DiagnosticsPanels extends Context.Service<DiagnosticsPanels, DiagnosticsPanelsApi>()(
-  "@effect-desktop/devtools/DiagnosticsPanels"
+  "@effect-desktop/devtools/diagnostics-panels/DiagnosticsPanels"
 ) {}
 
 export const DiagnosticsPanelsLive = (

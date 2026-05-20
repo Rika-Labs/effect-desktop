@@ -1,4 +1,4 @@
-import { Cause, Clock, Effect, Exit, Fiber, Queue, Result, Schema, Stream } from "effect"
+import { Cause, Clock, Effect, Exit, Fiber, Option, Queue, Result, Schema, Stream } from "effect"
 
 import {
   type BridgeContract,
@@ -101,7 +101,7 @@ export const makeUnaryDesktopTransportFromBridgeClientExchange = (
     const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
     const clock = yield* Clock.Clock
     const now = options.now ?? (() => clock.currentTimeMillisUnsafe())
-    const nextTraceId = options.nextTraceId ?? (() => `trace-${globalThis.crypto.randomUUID()}`)
+    const nextTraceId = options.nextTraceId ?? (() => `trace-bridge-${++bridgeClientTraceSeq}`)
     const normalizeRequest = options.normalizeRequest ?? ((request) => request)
 
     return Object.freeze({
@@ -248,7 +248,7 @@ export type BridgeClientEvent<Spec extends BridgeEventSpec> = Stream.Stream<
 type BridgeUnaryMethodSpec = BridgeMethodSpec<
   BridgeContractCodec,
   BridgeContractCodec,
-  BridgeContractCodec
+  BridgeContractCodec<never, never>
 >
 
 export type BridgeClientFor<Contract extends BridgeContract> =
@@ -288,9 +288,7 @@ const makeContractClient = <Tag extends string, Spec extends BridgeContractSpec>
   for (const [method, methodSpec] of Object.entries(contract.spec) as Array<
     [Extract<keyof Spec, string>, Spec[Extract<keyof Spec, string>]]
   >) {
-    methods[method] = ((
-      input: BridgeContractCodecType<Spec[typeof method]["input"]>
-    ): Effect.Effect<unknown, unknown, never> | Stream.Stream<unknown, unknown, never> =>
+    methods[method] = ((input: BridgeContractCodecType<Spec[typeof method]["input"]>) =>
       isStreamSpec(methodSpec.output)
         ? streamContractMethod(
             contract.tag,
@@ -557,9 +555,9 @@ const isTerminalStreamEnvelope = (
     ),
     Effect.map(
       (frame) =>
-        frame instanceof BridgeStreamErrorFrame ||
-        frame instanceof BridgeStreamCompleteFrame ||
-        frame instanceof BridgeStreamClosedFrame
+        Schema.is(BridgeStreamErrorFrame)(frame) ||
+        Schema.is(BridgeStreamCompleteFrame)(frame) ||
+        Schema.is(BridgeStreamClosedFrame)(frame)
     )
   )
 }
@@ -594,14 +592,20 @@ const decodeStreamEnvelope = <Spec extends BridgeStreamSpec>(
     )
   ).pipe(
     Stream.flatMap((frame) => {
-      if (frame instanceof BridgeStreamDataFrame) {
+      if (Schema.is(BridgeStreamDataFrame)(frame)) {
         return Stream.fromEffect(decodeStreamChunk(operation, spec.chunk, frame.chunk))
       }
-      if (frame instanceof BridgeStreamErrorFrame) {
+      if (Schema.is(BridgeStreamErrorFrame)(frame)) {
         onTerminal()
-        return Stream.fromEffect(decodeStreamError(operation, spec.error, frame.error))
+        return Stream.fromEffect(
+          decodeStreamError<BridgeContractCodecType<Spec["error"]>, unknown>(
+            operation,
+            spec.error as BridgeContractCodec<BridgeContractCodecType<Spec["error"]>, unknown>,
+            frame.error
+          )
+        )
       }
-      if (frame instanceof BridgeStreamCompleteFrame) {
+      if (Schema.is(BridgeStreamCompleteFrame)(frame)) {
         onTerminal()
         return Stream.empty
       }
@@ -796,17 +800,40 @@ const makeRequest = (
       traceId
     } as const
 
-    return new HostProtocolRequestEnvelope({
-      ...request,
-      ...(payload === undefined ? {} : { payload }),
-      ...(windowId === undefined ? {} : { windowId }),
-      ...(originToken === undefined ? {} : { originToken })
+    return makeHostRequestEnvelope(request, payload, windowId, originToken)
+  })
+
+const makeHostRequestEnvelope = (
+  request: {
+    readonly kind: "request"
+    readonly id: string
+    readonly method: string
+    readonly timestamp: number
+    readonly traceId: string
+  },
+  payload: unknown,
+  windowId: Option.Option<string>,
+  originToken: Option.Option<string>
+): HostProtocolRequestEnvelope =>
+  new HostProtocolRequestEnvelope({
+    ...request,
+    ...(payload === undefined ? {} : { payload }),
+    ...Option.match(windowId, {
+      onNone: () => ({}),
+      onSome: (value) => ({ windowId: value })
+    }),
+    ...Option.match(originToken, {
+      onNone: () => ({}),
+      onSome: (value) => ({ originToken: value })
     })
   })
 
+let bridgeClientRequestSeq = 0
+let bridgeClientTraceSeq = 0
+
 const resolveOptions = (options: BridgeClientOptions): ResolvedBridgeClientOptions => ({
-  nextRequestId: options.nextRequestId ?? (() => `request-${globalThis.crypto.randomUUID()}`),
-  nextTraceId: options.nextTraceId ?? (() => `trace-${globalThis.crypto.randomUUID()}`),
+  nextRequestId: options.nextRequestId ?? (() => `request-bridge-${++bridgeClientRequestSeq}`),
+  nextTraceId: options.nextTraceId ?? (() => `trace-bridge-${++bridgeClientTraceSeq}`),
   now: options.now,
   windowId: options.windowId,
   originToken: options.originToken,

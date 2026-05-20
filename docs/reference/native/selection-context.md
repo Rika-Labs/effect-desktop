@@ -14,20 +14,29 @@ The public service is Layer-first and test-substitutable. The TypeScript service
 
 ## Methods
 
-| Method                | Payload                                              | Success                            |
-| --------------------- | ---------------------------------------------------- | ---------------------------------- |
-| `readSelection`       | `{ actor, access, traceId? }`                        | `{ metadata, text? }`              |
-| `readDocumentContext` | `{ actor, access, traceId? }`                        | `{ metadata, text? }`              |
-| `watchFocus`          | `{ actor, watchId?, ownerScope?, access, traceId? }` | `{ watchId, active, access }`      |
-| `stopWatching`        | `{ actor, watchId, traceId? }`                       | `{ watchId, stopped }`             |
-| `isSupported`         | `void`                                               | `{ supported, reason? }`           |
-| `events`              | `void`                                               | stream of selection context events |
+The surface exposes only the genuinely callable methods below.
+
+| Method        | Payload | Success                            |
+| ------------- | ------- | ---------------------------------- |
+| `isSupported` | `void`  | `{ supported, reason? }`           |
+| `events`      | `void`  | stream of selection context events |
+
+## Capability facts (non-callable)
+
+`readSelection`, `readDocumentContext`, `watchFocus`, and `stopWatching` are **not callable**. They are advertised in the native capability manifest as capability facts with `support.status: "unsupported"`, so callers can discover the intended contract, but the surface does not register them as invocable RPCs.
+
+| Capability fact       | Intended payload                                     | Status        |
+| --------------------- | ---------------------------------------------------- | ------------- |
+| `readSelection`       | `{ actor, access, traceId? }`                        | `unsupported` |
+| `readDocumentContext` | `{ actor, access, traceId? }`                        | `unsupported` |
+| `watchFocus`          | `{ actor, watchId?, ownerScope?, access, traceId? }` | `unsupported` |
+| `stopWatching`        | `{ actor, watchId, traceId? }`                       | `unsupported` |
 
 ## Access
 
 `metadata` responses omit text. `content` responses may include text and are audited separately from metadata access.
 
-`watchFocus` registers an active watch with the resource registry when one is provided to the service layer. Closing the owning resource scope releases the watch through `stopWatching` and emits a `watch-stopped` event in substitutable clients.
+The `watchFocus` capability fact's intended contract registers an active watch with the resource registry and releases it through `stopWatching` on scope close. These describe the intended contract; the methods cannot currently be invoked.
 
 The actor is data:
 
@@ -44,11 +53,12 @@ The current Rust host adapter is intentionally fail-closed while OS selection an
 | Windows  | `unsupported` | `host-adapter-unimplemented` |
 | Linux    | `unsupported` | `host-adapter-unimplemented` |
 
-`isSupported` returns `{ supported: false, reason: "host-adapter-unimplemented" }`. Host requests decode and validate payloads, then return typed `Unsupported`; invalid payloads are rejected before the unsupported response.
+`isSupported` returns `{ supported: false, reason: "host-adapter-unimplemented" }`. `readSelection`, `readDocumentContext`, `watchFocus`, and `stopWatching` are non-callable capability facts published with `support.status: "unsupported"`, not invocable RPCs.
+The bridge-backed `SelectionContext.Event` stream also fails as typed `Unsupported` before opening a host subscription until the native watch adapter can publish selection context events.
 
 ## Testing
 
-Use `makeSelectionContextMemoryClient()` for deterministic selection, document, focus-watch, cleanup, and event tests without native prompts. Use `makeSelectionContextUnsupportedClient()` when a test needs the typed unsupported path.
+Use `makeSelectionContextMemoryClient()` for deterministic `isSupported` and event tests without native prompts. Use `makeSelectionContextUnsupportedClient()` when a test needs the typed unsupported path.
 
 ## Related
 

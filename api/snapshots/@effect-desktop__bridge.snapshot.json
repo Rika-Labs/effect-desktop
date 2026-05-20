@@ -259,9 +259,34 @@
       "signature": "export type BridgeSuccessSchema = BridgeContractCodec | BridgeStreamSchema"
     },
     {
+      "name": "BROWSING_DATA_EVENT_METHOD",
+      "kind": "value",
+      "signature": "const BROWSING_DATA_EVENT_METHOD: \"BrowsingData.Event\""
+    },
+    {
+      "name": "BROWSING_DATA_IS_SUPPORTED_METHOD",
+      "kind": "value",
+      "signature": "const BROWSING_DATA_IS_SUPPORTED_METHOD: \"BrowsingData.isSupported\""
+    },
+    {
       "name": "Client",
       "kind": "value",
       "signature": "const Client: <Contracts extends Readonly<Record<string, BridgeContract>>>(contracts: Contracts, exchange: BridgeClientExchange, options?: BridgeClientOptions) => BridgeClient<Contracts>"
+    },
+    {
+      "name": "CONTEXT_MENU_ACTIVATED_EVENT_METHOD",
+      "kind": "value",
+      "signature": "const CONTEXT_MENU_ACTIVATED_EVENT_METHOD: \"ContextMenu.Activated\""
+    },
+    {
+      "name": "COOKIE_STORE_EVENT_METHOD",
+      "kind": "value",
+      "signature": "const COOKIE_STORE_EVENT_METHOD: \"CookieStore.Event\""
+    },
+    {
+      "name": "COOKIE_STORE_IS_SUPPORTED_METHOD",
+      "kind": "value",
+      "signature": "const COOKIE_STORE_IS_SUPPORTED_METHOD: \"CookieStore.isSupported\""
     },
     {
       "name": "decodeHostProtocolEnvelope",
@@ -319,9 +344,19 @@
       "signature": "const DOCK_SET_BADGE_TEXT_METHOD: \"Dock.setBadgeText\""
     },
     {
-      "name": "DOCK_SET_MENU_METHOD",
+      "name": "DOCK_SET_PROGRESS_METHOD",
       "kind": "value",
-      "signature": "const DOCK_SET_MENU_METHOD: \"Dock.setMenu\""
+      "signature": "const DOCK_SET_PROGRESS_METHOD: \"Dock.setProgress\""
+    },
+    {
+      "name": "DOWNLOAD_EVENT_METHOD",
+      "kind": "value",
+      "signature": "const DOWNLOAD_EVENT_METHOD: \"Download.Event\""
+    },
+    {
+      "name": "DOWNLOAD_IS_SUPPORTED_METHOD",
+      "kind": "value",
+      "signature": "const DOWNLOAD_IS_SUPPORTED_METHOD: \"Download.isSupported\""
     },
     {
       "name": "encodeHostProtocolEnvelope",
@@ -651,7 +686,7 @@
     {
       "name": "HostWindowClient",
       "kind": "interface",
-      "signature": "export interface HostWindowClient { readonly create: ( input?: WindowCreateInput ) => Effect.Effect<WindowCreateResponse, HostProtocolError, never> readonly show: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly hide: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly focus: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly getCurrent: () => Effect.Effect<WindowLookupResponse, HostProtocolError, never> readonly getById: ( windowId: string ) => Effect.Effect<WindowLookupResponse, HostProtocolError, never> readonly list: () => Effect.Effect<WindowListResponse, HostProtocolError, never> readonly getParent: ( windowId: string ) => Effect.Effect<WindowParentResponse, HostProtocolError, never> readonly getBounds: ( windowId: string ) => Effect.Effect<WindowBoundsPayload, HostProtocolError, never> readonly setBounds: ( windowId: string, bounds: WindowBoundsInput ) => Effect.Effect<void, HostProtocolError, never> readonly center: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly centerOnDisplay: ( windowId: string, displayId: string ) => Effect.Effect<void, HostProtocolError, never> readonly setTitle: ( windowId: string, title: string ) => Effect.Effect<void, HostProtocolError, never> readonly setResizable: ( windowId: string, resizable: boolean ) => Effect.Effect<void, HostProtocolError, never> readonly setDecorations: ( windowId: string, decorations: boolean ) => Effect.Effect<void, HostProtocolError, never> readonly setTrafficLights: ( windowId: string, trafficLights: Schema.Schema.Type<typeof WindowTrafficLights> ) => Effect.Effect<void, HostProtocolError, never> readonly setAlwaysOnTop: ( windowId: string, alwaysOnTop: boolean ) => Effect.Effect<void, HostProtocolError, never> readonly setSkipTaskbar: ( windowId: string, skipTaskbar: boolean ) => Effect.Effect<void, HostProtocolError, never> readonly setProgress: ( windowId: string, input: WindowProgressInput ) => Effect.Effect<void, HostProtocolError, never> readonly requestAttention: ( windowId: string, requestType: WindowAttentionTypeInput ) => Effect.Effect<void, HostProtocolError, never> readonly cancelAttention: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly minimize: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly maximize: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly restore: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly setFullscreen: ( windowId: string, fullscreen: boolean ) => Effect.Effect<void, HostProtocolError, never> readonly getState: ( windowId: string ) => Effect.Effect<WindowStatePayload, HostProtocolError, never> readonly events: () => Stream.Stream<WindowEventPayload, HostProtocolError, never> readonly destroy: (windowId: string) => Effect.Effect<void, HostProtocolError, never> }"
+      "signature": "export interface HostWindowClient { readonly create: ( input?: WindowCreateInput ) => Effect.Effect<WindowCreateResponse, HostProtocolError, never> readonly show: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly hide: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly focus: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly getCurrent: () => Effect.Effect<WindowLookupResponse, HostProtocolError, never> readonly getById: ( windowId: string ) => Effect.Effect<WindowLookupResponse, HostProtocolError, never> readonly list: () => Effect.Effect<WindowListResponse, HostProtocolError, never> readonly getParent: ( windowId: string ) => Effect.Effect<WindowParentResponse, HostProtocolError, never> readonly getChildren: ( windowId: string ) => Effect.Effect<WindowChildrenResponse, HostProtocolError, never> readonly getBounds: ( windowId: string ) => Effect.Effect<WindowBoundsPayload, HostProtocolError, never> readonly setBounds: ( windowId: string, bounds: WindowBoundsInput ) => Effect.Effect<WindowBoundsPayload, HostProtocolError, never> readonly setBoundsOnDisplay: ( windowId: string, displayId: string, bounds: WindowBoundsInput ) => Effect.Effect<WindowBoundsPayload, HostProtocolError, never> readonly center: ( windowId: string ) => Effect.Effect<WindowBoundsPayload, HostProtocolError, never> readonly centerOnDisplay: ( windowId: string, displayId: string ) => Effect.Effect<WindowBoundsPayload, HostProtocolError, never> readonly setTitle: ( windowId: string, title: string ) => Effect.Effect<void, HostProtocolError, never> readonly setResizable: ( windowId: string, resizable: boolean ) => Effect.Effect<void, HostProtocolError, never> readonly setDecorations: ( windowId: string, decorations: boolean ) => Effect.Effect<void, HostProtocolError, never> readonly setTrafficLights: ( windowId: string, trafficLights: Schema.Schema.Type<typeof WindowTrafficLights> ) => Effect.Effect<void, HostProtocolError, never> readonly setVibrancy: ( windowId: string, material: WindowVibrancyInput ) => Effect.Effect<void, HostProtocolError, never> readonly clearVibrancy: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly setShadow: ( windowId: string, hasShadow: boolean ) => Effect.Effect<void, HostProtocolError, never> readonly setTitleBarStyle: ( windowId: string, titleBarStyle: WindowTitleBarStyleInput ) => Effect.Effect<void, HostProtocolError, never> readonly setTitleBarTransparent: ( windowId: string, titleBarTransparent: boolean ) => Effect.Effect<void, HostProtocolError, never> readonly setTransparent: ( windowId: string, transparent: boolean ) => Effect.Effect<void, HostProtocolError, never> readonly setAlwaysOnTop: ( windowId: string, alwaysOnTop: boolean ) => Effect.Effect<void, HostProtocolError, never> readonly setSkipTaskbar: ( windowId: string, skipTaskbar: boolean ) => Effect.Effect<void, HostProtocolError, never> readonly setProgress: ( windowId: string, input: WindowProgressInput ) => Effect.Effect<void, HostProtocolError, never> readonly requestAttention: ( windowId: string, requestType: WindowAttentionTypeInput ) => Effect.Effect<void, HostProtocolError, never> readonly cancelAttention: (windowId: string) => Effect.Effect<void, HostProtocolError, never> readonly minimize: ( windowId: string ) => Effect.Effect<WindowStatePayload, HostProtocolError, never> readonly maximize: ( windowId: string ) => Effect.Effect<WindowStatePayload, HostProtocolError, never> readonly restore: ( windowId: string ) => Effect.Effect<WindowStatePayload, HostProtocolError, never> readonly setFullscreen: ( windowId: string, fullscreen: boolean ) => Effect.Effect<WindowStatePayload, HostProtocolError, never> readonly setSimpleFullscreen: ( windowId: string, simpleFullscreen: boolean ) => Effect.Effect<WindowStatePayload, HostProtocolError, never> readonly getState: ( windowId: string ) => Effect.Effect<WindowStatePayload, HostProtocolError, never> readonly events: () => Stream.Stream<WindowEventPayload, HostProtocolError, never> readonly destroy: (windowId: string) => Effect.Effect<void, HostProtocolError, never> }"
     },
     {
       "name": "HostWindowClientOptions",
@@ -784,6 +819,21 @@
       "signature": "const makeUnaryDesktopTransportFromBridgeClientExchange: (exchange: BridgeClientExchange, options?: UnaryDesktopTransportFromBridgeClientExchangeOptions) => Effect.Effect<DesktopTransportSend & DesktopTransportRun>"
     },
     {
+      "name": "MENU_ACTIVATED_EVENT_METHOD",
+      "kind": "value",
+      "signature": "const MENU_ACTIVATED_EVENT_METHOD: \"Menu.Activated\""
+    },
+    {
+      "name": "MENU_CAPABILITY_METHOD",
+      "kind": "value",
+      "signature": "const MENU_CAPABILITY_METHOD: \"Menu.capability\""
+    },
+    {
+      "name": "MENU_CLEAR_METHOD",
+      "kind": "value",
+      "signature": "const MENU_CLEAR_METHOD: \"Menu.clear\""
+    },
+    {
       "name": "MENU_SET_APPLICATION_MENU_METHOD",
       "kind": "value",
       "signature": "const MENU_SET_APPLICATION_MENU_METHOD: \"Menu.setApplicationMenu\""
@@ -794,9 +844,29 @@
       "signature": "const MENU_SET_WINDOW_MENU_METHOD: \"Menu.setWindowMenu\""
     },
     {
+      "name": "NATIVE_NETWORK_EVENT_METHOD",
+      "kind": "value",
+      "signature": "const NATIVE_NETWORK_EVENT_METHOD: \"NativeNetwork.Event\""
+    },
+    {
+      "name": "NATIVE_NETWORK_IS_SUPPORTED_METHOD",
+      "kind": "value",
+      "signature": "const NATIVE_NETWORK_IS_SUPPORTED_METHOD: \"NativeNetwork.isSupported\""
+    },
+    {
       "name": "negotiateHostVersion",
       "kind": "value",
       "signature": "const negotiateHostVersion: (client: HostHandshakeClient, expectedProtocolVersion?: string) => Effect.Effect<HostVersionPayload, HostProtocolError, never>"
+    },
+    {
+      "name": "NETWORK_AUTH_EVENT_METHOD",
+      "kind": "value",
+      "signature": "const NETWORK_AUTH_EVENT_METHOD: \"NetworkAuth.Event\""
+    },
+    {
+      "name": "NETWORK_AUTH_IS_SUPPORTED_METHOD",
+      "kind": "value",
+      "signature": "const NETWORK_AUTH_IS_SUPPORTED_METHOD: \"NetworkAuth.isSupported\""
     },
     {
       "name": "parseHostProtocolFrameJson",
@@ -1024,6 +1094,31 @@
       "signature": "export type RpcSupportStatus = \"supported\" | \"partial\" | \"unsupported\""
     },
     {
+      "name": "SAFE_STORAGE_DELETE_METHOD",
+      "kind": "value",
+      "signature": "const SAFE_STORAGE_DELETE_METHOD: \"SafeStorage.delete\""
+    },
+    {
+      "name": "SAFE_STORAGE_GET_METHOD",
+      "kind": "value",
+      "signature": "const SAFE_STORAGE_GET_METHOD: \"SafeStorage.get\""
+    },
+    {
+      "name": "SAFE_STORAGE_IS_AVAILABLE_METHOD",
+      "kind": "value",
+      "signature": "const SAFE_STORAGE_IS_AVAILABLE_METHOD: \"SafeStorage.isAvailable\""
+    },
+    {
+      "name": "SAFE_STORAGE_LIST_METHOD",
+      "kind": "value",
+      "signature": "const SAFE_STORAGE_LIST_METHOD: \"SafeStorage.list\""
+    },
+    {
+      "name": "SAFE_STORAGE_SET_METHOD",
+      "kind": "value",
+      "signature": "const SAFE_STORAGE_SET_METHOD: \"SafeStorage.set\""
+    },
+    {
       "name": "SecretBytes",
       "kind": "type",
       "signature": "export type SecretBytes = Redacted.Redacted<Uint8Array>"
@@ -1032,6 +1127,26 @@
       "name": "SecretString",
       "kind": "type",
       "signature": "export type SecretString = Redacted.Redacted<string>"
+    },
+    {
+      "name": "SESSION_PERMISSION_EVENT_METHOD",
+      "kind": "value",
+      "signature": "const SESSION_PERMISSION_EVENT_METHOD: \"SessionPermission.Event\""
+    },
+    {
+      "name": "SESSION_PERMISSION_IS_SUPPORTED_METHOD",
+      "kind": "value",
+      "signature": "const SESSION_PERMISSION_IS_SUPPORTED_METHOD: \"SessionPermission.isSupported\""
+    },
+    {
+      "name": "SESSION_PROFILE_EVENT_METHOD",
+      "kind": "value",
+      "signature": "const SESSION_PROFILE_EVENT_METHOD: \"SessionProfile.Event\""
+    },
+    {
+      "name": "SESSION_PROFILE_IS_SUPPORTED_METHOD",
+      "kind": "value",
+      "signature": "const SESSION_PROFILE_IS_SUPPORTED_METHOD: \"SessionProfile.isSupported\""
     },
     {
       "name": "UnaryDesktopTransportFromBridgeClientExchangeOptions",
@@ -1061,7 +1176,107 @@
     {
       "name": "validateOptionalHostProtocolNonEmptyString",
       "kind": "value",
-      "signature": "const validateOptionalHostProtocolNonEmptyString: (field: string, value: string | undefined, operation: string) => Effect.Effect<string | undefined, HostProtocolInvalidArgumentError, never>"
+      "signature": "const validateOptionalHostProtocolNonEmptyString: (field: string, value: string | undefined, operation: string) => Effect.Effect<Option.Option<string>, HostProtocolInvalidArgumentError, never>"
+    },
+    {
+      "name": "WEB_REQUEST_EVENT_METHOD",
+      "kind": "value",
+      "signature": "const WEB_REQUEST_EVENT_METHOD: \"WebRequest.Event\""
+    },
+    {
+      "name": "WEB_REQUEST_IS_SUPPORTED_METHOD",
+      "kind": "value",
+      "signature": "const WEB_REQUEST_IS_SUPPORTED_METHOD: \"WebRequest.isSupported\""
+    },
+    {
+      "name": "WEBVIEW_API_CALL_EVENT_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_API_CALL_EVENT_METHOD: \"WebView.ApiCall\""
+    },
+    {
+      "name": "WEBVIEW_CLOSE_DEVTOOLS_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_CLOSE_DEVTOOLS_METHOD: \"WebView.closeDevTools\""
+    },
+    {
+      "name": "WEBVIEW_CREATE_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_CREATE_METHOD: \"WebView.create\""
+    },
+    {
+      "name": "WEBVIEW_DESTROY_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_DESTROY_METHOD: \"WebView.destroy\""
+    },
+    {
+      "name": "WEBVIEW_FRAME_EVENT_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_FRAME_EVENT_METHOD: \"WebView.FrameEvent\""
+    },
+    {
+      "name": "WEBVIEW_GET_NAVIGATION_STATE_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_GET_NAVIGATION_STATE_METHOD: \"WebView.getNavigationState\""
+    },
+    {
+      "name": "WEBVIEW_GO_BACK_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_GO_BACK_METHOD: \"WebView.goBack\""
+    },
+    {
+      "name": "WEBVIEW_GO_FORWARD_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_GO_FORWARD_METHOD: \"WebView.goForward\""
+    },
+    {
+      "name": "WEBVIEW_LOAD_ROUTE_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_LOAD_ROUTE_METHOD: \"WebView.loadRoute\""
+    },
+    {
+      "name": "WEBVIEW_LOAD_URL_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_LOAD_URL_METHOD: \"WebView.loadUrl\""
+    },
+    {
+      "name": "WEBVIEW_NAVIGATION_BLOCKED_EVENT_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_NAVIGATION_BLOCKED_EVENT_METHOD: \"WebView.NavigationBlocked\""
+    },
+    {
+      "name": "WEBVIEW_OPEN_DEVTOOLS_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_OPEN_DEVTOOLS_METHOD: \"WebView.openDevTools\""
+    },
+    {
+      "name": "WEBVIEW_PRINT_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_PRINT_METHOD: \"WebView.print\""
+    },
+    {
+      "name": "WEBVIEW_RELOAD_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_RELOAD_METHOD: \"WebView.reload\""
+    },
+    {
+      "name": "WEBVIEW_RUNTIME_EVENT_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_RUNTIME_EVENT_METHOD: \"WebView.RuntimeEvent\""
+    },
+    {
+      "name": "WEBVIEW_SET_NAVIGATION_POLICY_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_SET_NAVIGATION_POLICY_METHOD: \"WebView.setNavigationPolicy\""
+    },
+    {
+      "name": "WEBVIEW_SET_ZOOM_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_SET_ZOOM_METHOD: \"WebView.setZoom\""
+    },
+    {
+      "name": "WEBVIEW_STOP_METHOD",
+      "kind": "value",
+      "signature": "const WEBVIEW_STOP_METHOD: \"WebView.stop\""
     },
     {
       "name": "WINDOW_CANCEL_ATTENTION_METHOD",
@@ -1077,6 +1292,11 @@
       "name": "WINDOW_CENTER_ON_DISPLAY_METHOD",
       "kind": "value",
       "signature": "const WINDOW_CENTER_ON_DISPLAY_METHOD: \"Window.centerOnDisplay\""
+    },
+    {
+      "name": "WINDOW_CLEAR_VIBRANCY_METHOD",
+      "kind": "value",
+      "signature": "const WINDOW_CLEAR_VIBRANCY_METHOD: \"Window.clearVibrancy\""
     },
     {
       "name": "WINDOW_CREATE_METHOD",
@@ -1107,6 +1327,11 @@
       "name": "WINDOW_GET_BY_ID_METHOD",
       "kind": "value",
       "signature": "const WINDOW_GET_BY_ID_METHOD: \"Window.getById\""
+    },
+    {
+      "name": "WINDOW_GET_CHILDREN_METHOD",
+      "kind": "value",
+      "signature": "const WINDOW_GET_CHILDREN_METHOD: \"Window.getChildren\""
     },
     {
       "name": "WINDOW_GET_CURRENT_METHOD",
@@ -1164,6 +1389,11 @@
       "signature": "const WINDOW_SET_BOUNDS_METHOD: \"Window.setBounds\""
     },
     {
+      "name": "WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD",
+      "kind": "value",
+      "signature": "const WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD: \"Window.setBoundsOnDisplay\""
+    },
+    {
       "name": "WINDOW_SET_DECORATIONS_METHOD",
       "kind": "value",
       "signature": "const WINDOW_SET_DECORATIONS_METHOD: \"Window.setDecorations\""
@@ -1184,9 +1414,29 @@
       "signature": "const WINDOW_SET_RESIZABLE_METHOD: \"Window.setResizable\""
     },
     {
+      "name": "WINDOW_SET_SHADOW_METHOD",
+      "kind": "value",
+      "signature": "const WINDOW_SET_SHADOW_METHOD: \"Window.setShadow\""
+    },
+    {
+      "name": "WINDOW_SET_SIMPLE_FULLSCREEN_METHOD",
+      "kind": "value",
+      "signature": "const WINDOW_SET_SIMPLE_FULLSCREEN_METHOD: \"Window.setSimpleFullscreen\""
+    },
+    {
       "name": "WINDOW_SET_SKIP_TASKBAR_METHOD",
       "kind": "value",
       "signature": "const WINDOW_SET_SKIP_TASKBAR_METHOD: \"Window.setSkipTaskbar\""
+    },
+    {
+      "name": "WINDOW_SET_TITLE_BAR_STYLE_METHOD",
+      "kind": "value",
+      "signature": "const WINDOW_SET_TITLE_BAR_STYLE_METHOD: \"Window.setTitleBarStyle\""
+    },
+    {
+      "name": "WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD",
+      "kind": "value",
+      "signature": "const WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD: \"Window.setTitleBarTransparent\""
     },
     {
       "name": "WINDOW_SET_TITLE_METHOD",
@@ -1197,6 +1447,16 @@
       "name": "WINDOW_SET_TRAFFIC_LIGHTS_METHOD",
       "kind": "value",
       "signature": "const WINDOW_SET_TRAFFIC_LIGHTS_METHOD: \"Window.setTrafficLights\""
+    },
+    {
+      "name": "WINDOW_SET_TRANSPARENT_METHOD",
+      "kind": "value",
+      "signature": "const WINDOW_SET_TRANSPARENT_METHOD: \"Window.setTransparent\""
+    },
+    {
+      "name": "WINDOW_SET_VIBRANCY_METHOD",
+      "kind": "value",
+      "signature": "const WINDOW_SET_VIBRANCY_METHOD: \"Window.setVibrancy\""
     },
     {
       "name": "WINDOW_SHOW_METHOD",
@@ -1227,6 +1487,16 @@
       "name": "WindowCenterOnDisplayPayload",
       "kind": "class",
       "signature": "export class WindowCenterOnDisplayPayload extends Schema.Class<WindowCenterOnDisplayPayload>( \"WindowCenterOnDisplayPayload\" )({ windowId: Schema.NonEmptyString, displayId: Schema.NonEmptyString }) {}"
+    },
+    {
+      "name": "WindowChildrenResponse",
+      "kind": "class",
+      "signature": "export class WindowChildrenResponse extends Schema.Class<WindowChildrenResponse>( \"WindowChildrenResponse\" )({ windows: Schema.Array(WindowLookupResponse) }) {}"
+    },
+    {
+      "name": "WindowClearVibrancyPayload",
+      "kind": "class",
+      "signature": "export class WindowClearVibrancyPayload extends Schema.Class<WindowClearVibrancyPayload>( \"WindowClearVibrancyPayload\" )({ windowId: Schema.NonEmptyString }) {}"
     },
     {
       "name": "WindowCreateInput",
@@ -1289,6 +1559,11 @@
       "signature": "export class WindowSetAlwaysOnTopPayload extends Schema.Class<WindowSetAlwaysOnTopPayload>( \"WindowSetAlwaysOnTopPayload\" )({ windowId: Schema.NonEmptyString, alwaysOnTop: Schema.Boolean }) {}"
     },
     {
+      "name": "WindowSetBoundsOnDisplayPayload",
+      "kind": "class",
+      "signature": "export class WindowSetBoundsOnDisplayPayload extends Schema.Class<WindowSetBoundsOnDisplayPayload>( \"WindowSetBoundsOnDisplayPayload\" )({ windowId: Schema.NonEmptyString, displayId: Schema.NonEmptyString, bounds: WindowBoundsPayload }) {}"
+    },
+    {
       "name": "WindowSetBoundsPayload",
       "kind": "class",
       "signature": "export class WindowSetBoundsPayload extends Schema.Class<WindowSetBoundsPayload>( \"WindowSetBoundsPayload\" )({ windowId: Schema.NonEmptyString, bounds: WindowBoundsPayload }) {}"
@@ -1314,9 +1589,29 @@
       "signature": "export class WindowSetResizablePayload extends Schema.Class<WindowSetResizablePayload>( \"WindowSetResizablePayload\" )({ windowId: Schema.NonEmptyString, resizable: Schema.Boolean }) {}"
     },
     {
+      "name": "WindowSetShadowPayload",
+      "kind": "class",
+      "signature": "export class WindowSetShadowPayload extends Schema.Class<WindowSetShadowPayload>( \"WindowSetShadowPayload\" )({ windowId: Schema.NonEmptyString, hasShadow: Schema.Boolean }) {}"
+    },
+    {
+      "name": "WindowSetSimpleFullscreenPayload",
+      "kind": "class",
+      "signature": "export class WindowSetSimpleFullscreenPayload extends Schema.Class<WindowSetSimpleFullscreenPayload>( \"WindowSetSimpleFullscreenPayload\" )({ windowId: Schema.NonEmptyString, simpleFullscreen: Schema.Boolean }) {}"
+    },
+    {
       "name": "WindowSetSkipTaskbarPayload",
       "kind": "class",
       "signature": "export class WindowSetSkipTaskbarPayload extends Schema.Class<WindowSetSkipTaskbarPayload>( \"WindowSetSkipTaskbarPayload\" )({ windowId: Schema.NonEmptyString, skipTaskbar: Schema.Boolean }) {}"
+    },
+    {
+      "name": "WindowSetTitleBarStylePayload",
+      "kind": "class",
+      "signature": "export class WindowSetTitleBarStylePayload extends Schema.Class<WindowSetTitleBarStylePayload>( \"WindowSetTitleBarStylePayload\" )({ windowId: Schema.NonEmptyString, titleBarStyle: WindowTitleBarStyle }) {}"
+    },
+    {
+      "name": "WindowSetTitleBarTransparentPayload",
+      "kind": "class",
+      "signature": "export class WindowSetTitleBarTransparentPayload extends Schema.Class<WindowSetTitleBarTransparentPayload>( \"WindowSetTitleBarTransparentPayload\" )({ windowId: Schema.NonEmptyString, titleBarTransparent: Schema.Boolean }) {}"
     },
     {
       "name": "WindowSetTitlePayload",
@@ -1329,6 +1624,16 @@
       "signature": "export class WindowSetTrafficLightsPayload extends Schema.Class<WindowSetTrafficLightsPayload>( \"WindowSetTrafficLightsPayload\" )({ windowId: Schema.NonEmptyString, trafficLights: WindowTrafficLights }) {}"
     },
     {
+      "name": "WindowSetTransparentPayload",
+      "kind": "class",
+      "signature": "export class WindowSetTransparentPayload extends Schema.Class<WindowSetTransparentPayload>( \"WindowSetTransparentPayload\" )({ windowId: Schema.NonEmptyString, transparent: Schema.Boolean }) {}"
+    },
+    {
+      "name": "WindowSetVibrancyPayload",
+      "kind": "class",
+      "signature": "export class WindowSetVibrancyPayload extends Schema.Class<WindowSetVibrancyPayload>( \"WindowSetVibrancyPayload\" )({ windowId: Schema.NonEmptyString, material: WindowVibrancyMaterial }) {}"
+    },
+    {
       "name": "WindowStateEventPayload",
       "kind": "class",
       "signature": "export class WindowStateEventPayload extends Schema.Class<WindowStateEventPayload>( \"WindowStateEventPayload\" )({ type: Schema.Literal(\"window-state-event\"), windowId: Schema.NonEmptyString, window: Schema.optionalKey(WindowResourcePayload), state: WindowStatePayload }) {}"
@@ -1336,7 +1641,17 @@
     {
       "name": "WindowStatePayload",
       "kind": "class",
-      "signature": "export class WindowStatePayload extends Schema.Class<WindowStatePayload>(\"WindowStatePayload\")({ minimized: Schema.Boolean, maximized: Schema.Boolean, fullscreen: Schema.Boolean }) {}"
+      "signature": "export class WindowStatePayload extends Schema.Class<WindowStatePayload>(\"WindowStatePayload\")({ minimized: Schema.Boolean, maximized: Schema.Boolean, fullscreen: Schema.Boolean, simpleFullscreen: Schema.Boolean }) {}"
+    },
+    {
+      "name": "WindowTitleBarStyleInput",
+      "kind": "type",
+      "signature": "export type WindowTitleBarStyleInput = Schema.Schema.Type<typeof WindowTitleBarStyle>"
+    },
+    {
+      "name": "WindowVibrancyInput",
+      "kind": "type",
+      "signature": "export type WindowVibrancyInput = Schema.Schema.Type<typeof WindowVibrancyMaterial>"
     },
     {
       "name": "wipeSecretBytes",

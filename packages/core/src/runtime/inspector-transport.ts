@@ -1,4 +1,4 @@
-import { Clock, Context, Data, Effect, Layer, Queue, Ref, Schema, Stream } from "effect"
+import { Clock, Context, Data, Effect, Layer, Queue, Random, Ref, Schema, Stream } from "effect"
 
 export class InspectorSession extends Schema.Class<InspectorSession>("InspectorSession")({
   sessionId: Schema.NonEmptyString,
@@ -97,8 +97,7 @@ export const makeInspectorTransport = (
     )
     const clock = yield* Clock.Clock
     const now = options.now ?? (() => clock.currentTimeMillisUnsafe())
-    const sessionId =
-      options.sessionId ?? `inspector-${yield* Effect.sync(() => crypto.randomUUID())}`
+    const sessionId = options.sessionId ?? `inspector-${yield* Random.nextUUIDv4}`
     if (sessionId.length === 0) {
       return yield* invalid("InspectorTransport.make", "sessionId", "sessionId must not be empty")
     }
@@ -238,7 +237,7 @@ export const makeInspectorTransport = (
 export class InspectorTransport extends Context.Service<
   InspectorTransport,
   InspectorTransportApi
->()("@effect-desktop/core/InspectorTransport", {
+>()("@effect-desktop/core/runtime/inspector-transport/InspectorTransport", {
   make: makeInspectorTransport()
 }) {}
 

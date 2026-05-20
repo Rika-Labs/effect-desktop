@@ -49,12 +49,9 @@ export type GlobalShortcutError = HostProtocolError
 export type GlobalShortcutWindowHandle = WindowHandle
 export type GlobalShortcutCommandBindingError = GlobalShortcutError | CommandRegistryError
 
-type GlobalShortcutMethodName =
-  | "register"
-  | "unregister"
-  | "unregisterAll"
-  | "isRegistered"
-  | "isSupported"
+type GlobalShortcutMethodName = "isRegistered" | "isSupported"
+
+type GlobalShortcutCapabilityMethod = "register" | "unregister" | "unregisterAll"
 
 const HostAdapterUnimplementedReason = "host-adapter-unimplemented"
 
@@ -70,31 +67,10 @@ const GlobalShortcutUnsupportedSupport = NativeSurface.support.unsupported(
 )
 
 const GlobalShortcutSupportByMethod = Object.freeze({
-  register: GlobalShortcutUnsupportedSupport,
-  unregister: GlobalShortcutUnsupportedSupport,
-  unregisterAll: GlobalShortcutUnsupportedSupport,
   isRegistered: NativeSurface.support.supported,
   isSupported: NativeSurface.support.supported
 } satisfies Record<GlobalShortcutMethodName, RpcSupportMetadata>)
 
-export const GlobalShortcutRegister = shortcutRpc(
-  "register",
-  GlobalShortcutRegisterInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "GlobalShortcut", methods: ["register"] })
-)
-export const GlobalShortcutUnregister = shortcutRpc(
-  "unregister",
-  GlobalShortcutAcceleratorInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "GlobalShortcut", methods: ["unregister"] })
-)
-export const GlobalShortcutUnregisterAll = shortcutRpc(
-  "unregisterAll",
-  Schema.Void,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "GlobalShortcut", methods: ["unregisterAll"] })
-)
 export const GlobalShortcutIsRegistered = shortcutRpc(
   "isRegistered",
   GlobalShortcutAcceleratorInput,
@@ -108,35 +84,34 @@ export const GlobalShortcutIsSupported = shortcutRpc(
   { kind: "none" }
 )
 
+const globalShortcutCapabilityFact = (method: GlobalShortcutCapabilityMethod) =>
+  NativeSurface.capabilityFact("GlobalShortcut", method, {
+    authority: NativeSurface.authority.custom(
+      P.nativeInvoke({ primitive: "GlobalShortcut", methods: [method] })
+    ),
+    support: GlobalShortcutUnsupportedSupport
+  })
+
+export const GlobalShortcutCapabilityFacts = Object.freeze([
+  globalShortcutCapabilityFact("register"),
+  globalShortcutCapabilityFact("unregister"),
+  globalShortcutCapabilityFact("unregisterAll")
+])
+
 export const GlobalShortcutRpcEvents = Object.freeze({
   Pressed: { payload: GlobalShortcutPressedEvent }
 })
 
 export type GlobalShortcutRpcEvents = typeof GlobalShortcutRpcEvents
 
-const GlobalShortcutRpcGroup = RpcGroup.make(
-  GlobalShortcutRegister,
-  GlobalShortcutUnregister,
-  GlobalShortcutUnregisterAll,
-  GlobalShortcutIsRegistered,
-  GlobalShortcutIsSupported
-)
+const GlobalShortcutRpcGroup = RpcGroup.make(GlobalShortcutIsRegistered, GlobalShortcutIsSupported)
 
 export const GlobalShortcutRpcs: RpcGroup.RpcGroup<GlobalShortcutRpc> = GlobalShortcutRpcGroup
 
 export const GlobalShortcutMethodNames = Object.freeze([
-  "register",
-  "unregister",
-  "unregisterAll",
   "isRegistered",
   "isSupported"
 ] as const satisfies readonly GlobalShortcutMethodName[])
-
-const GlobalShortcutCapabilityMethods = Object.freeze([
-  "register",
-  "unregister",
-  "unregisterAll"
-] as const satisfies readonly (typeof GlobalShortcutMethodNames)[number][])
 
 export interface GlobalShortcutClientApi {
   readonly register: (
@@ -304,21 +279,6 @@ export type GlobalShortcutRpc = RpcGroup.Rpcs<typeof GlobalShortcutRpcGroup>
 export type GlobalShortcutRpcHandlers = RpcGroup.HandlersFrom<GlobalShortcutRpc>
 
 export const GlobalShortcutHandlersLive = GlobalShortcutRpcGroup.toLayer({
-  "GlobalShortcut.register": (input) =>
-    Effect.gen(function* () {
-      const shortcuts = yield* GlobalShortcut
-      yield* shortcuts.register(input.accelerator, input.registrarWindow)
-    }),
-  "GlobalShortcut.unregister": (input) =>
-    Effect.gen(function* () {
-      const shortcuts = yield* GlobalShortcut
-      yield* shortcuts.unregister(input.accelerator)
-    }),
-  "GlobalShortcut.unregisterAll": () =>
-    Effect.gen(function* () {
-      const shortcuts = yield* GlobalShortcut
-      yield* shortcuts.unregisterAll()
-    }),
   "GlobalShortcut.isRegistered": (input) =>
     Effect.gen(function* () {
       const shortcuts = yield* GlobalShortcut
@@ -334,8 +294,8 @@ export const GlobalShortcutHandlersLive = GlobalShortcutRpcGroup.toLayer({
 
 export const GlobalShortcutSurface = NativeSurface.make("GlobalShortcut", GlobalShortcutRpcGroup, {
   service: GlobalShortcutClient,
-  capabilities: GlobalShortcutCapabilityMethods,
   handlers: GlobalShortcutHandlersLive,
+  capabilityFacts: GlobalShortcutCapabilityFacts,
   client: (client) => globalShortcutClientFromRpcClient(client, undefined),
   bridgeClient: (client, exchange) => globalShortcutClientFromRpcClient(client, exchange)
 })
@@ -356,27 +316,18 @@ const globalShortcutClientFromRpcClient = (
         accelerator,
         registrarWindow: toWindowHandle(registrarWindow)
       }).pipe(
-        Effect.flatMap((decoded) =>
-          runGlobalShortcutRpc(
-            client["GlobalShortcut.register"](decoded),
-            "GlobalShortcut.register"
-          )
+        Effect.flatMap(() =>
+          Effect.fail(unsupportedError("GlobalShortcut.register", HostAdapterUnimplementedReason))
         )
       ),
     unregister: (accelerator) =>
       decodeGlobalShortcutAcceleratorInput({ accelerator }).pipe(
-        Effect.flatMap((decoded) =>
-          runGlobalShortcutRpc(
-            client["GlobalShortcut.unregister"](decoded),
-            "GlobalShortcut.unregister"
-          )
+        Effect.flatMap(() =>
+          Effect.fail(unsupportedError("GlobalShortcut.unregister", HostAdapterUnimplementedReason))
         )
       ),
     unregisterAll: () =>
-      runGlobalShortcutRpc(
-        client["GlobalShortcut.unregisterAll"](undefined),
-        "GlobalShortcut.unregisterAll"
-      ),
+      Effect.fail(unsupportedError("GlobalShortcut.unregisterAll", HostAdapterUnimplementedReason)),
     isRegistered: (accelerator) =>
       decodeGlobalShortcutAcceleratorInput({ accelerator }).pipe(
         Effect.flatMap((decoded) =>

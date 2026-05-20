@@ -8,7 +8,7 @@ effect_version: 4
 
 # `Menu`
 
-App and window menus. Menu items can bind to command ids registered with `CommandRegistry` through the TypeScript service when a substitutable client provides activation events, but the Rust host currently routes only application/window menu installation. Real native menu activation events, `clear`, `capability`, and host-backed `bindCommand` are not wired yet.
+App and window menus. The Rust host routes application/window menu installation, menu clearing, and the capability query. Menu items can bind to command ids registered with `CommandRegistry` through the TypeScript `Menu` service when a substitutable client provides activation events, but `bindCommand` is not a callable native RPC and real native menu activation events are not wired yet.
 
 ## Import
 
@@ -19,17 +19,22 @@ import { Menu, MenuError, MenuRpcs, Native } from "@effect-desktop/native"
 
 ## Methods
 
-| Method               | Payload                 | Success                  |
-| -------------------- | ----------------------- | ------------------------ |
-| `setApplicationMenu` | `{ template }`          | `void`                   |
-| `setWindowMenu`      | `{ window, template }`  | `void`                   |
-| `clear`              | `{ window? }`           | `void`                   |
-| `bindCommand`        | `{ itemId, commandId }` | `void`                   |
-| `capability`         | `{ name, platform? }`   | `{ supported: boolean }` |
+The callable RPCs on this surface are:
+
+| Method               | Payload                | Success                  |
+| -------------------- | ---------------------- | ------------------------ |
+| `setApplicationMenu` | `{ template }`         | `void`                   |
+| `setWindowMenu`      | `{ window, template }` | `void`                   |
+| `clear`              | `{ window? }`          | `void`                   |
+| `capability`         | `{ name, platform? }`  | `{ supported: boolean }` |
 
 `MenuTemplate` is `{ items }`. Items use `{ type: "item", id, label, commandId?, accelerator? }`; submenus use `{ type: "submenu", id, label, items }`; separators use `{ type: "separator" }`.
 
-`setApplicationMenu` and `setWindowMenu` are routed by the Rust host and report supported capability metadata. `clear`, `bindCommand`, `capability`, and `Menu.Activated` are TypeScript/bridge contracts today and report `host-adapter-unimplemented` in capability metadata until native host routes and activation events exist.
+`setApplicationMenu`, `setWindowMenu`, and `capability` are routed by the Rust host and report supported capability metadata; `clear` is supported on macOS and reports `partial` (`macos-menu-clear-only`).
+
+## Capability facts (non-callable)
+
+`bindCommand` is not a callable native RPC. It is advertised in the native capability manifest as a capability fact with `support.status: "unsupported"` and reason `host-adapter-unimplemented`. The `Menu` service still exposes `bindCommand`, but it is orchestrated entirely in TypeScript through `CommandRegistry` and substitutable client activation events — it does not invoke a host route. `Menu.Activated` likewise has no native host adapter yet.
 
 ## Errors
 

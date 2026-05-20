@@ -1,13 +1,15 @@
-import { dirname, join } from "node:path"
 import { tmpdir } from "node:os"
 
 import {
   Clock,
+  Config,
+  ConfigProvider,
   Context,
   Data,
   Effect,
   Layer,
   Option,
+  Path,
   PubSub,
   Schema,
   Semaphore,
@@ -154,21 +156,22 @@ export const makeWindowState = (
       clear: () => repository.clear(resolvedWindowId),
       observe: () => repository.observe()
     })
-  })
+  }).pipe(Effect.provideService(Path.Path, platformPath))
 
 const makeWindowStateRepository = (
   options: WindowStateOptions = {}
 ): Effect.Effect<
   WindowStateRepositoryApi,
   WindowStateInvalidArgumentError,
-  KeyValueStore.KeyValueStore
+  KeyValueStore.KeyValueStore | Path.Path
 > =>
   Effect.gen(function* () {
+    const pathService = yield* Path.Path
     const path =
       options.path ??
-      buildDefaultWindowStatePath(
+      (yield* buildDefaultWindowStatePath(
         yield* validateBundleId(options.bundleId ?? "effect-desktop", "WindowState.make")
-      )
+      ))
     const kv = yield* KeyValueStore.KeyValueStore
     const storeKey = path
     const now =
@@ -188,7 +191,7 @@ const makeWindowStateRepository = (
       snapToVisibleDisplay(options.validateBounds?.(state) ?? state, options.displays)
     const events = yield* PubSub.sliding<WindowStateEvent>({ capacity: 128, replay: 0 })
     const mutationGate = mutationGateFor(kv, storeKey)
-    const read = readStore(kv, storeKey, path, now)
+    const read = readStore(kv, pathService, storeKey, path, now)
     const publishReadEvent = (result: WindowStateReadResult): Effect.Effect<void, never, never> =>
       result.event === undefined
         ? Effect.void
@@ -259,7 +262,9 @@ const makeWindowStateRepository = (
     })
   })
 
-export class WindowState extends Context.Service<WindowState, WindowStateApi>()("WindowState") {
+export class WindowState extends Context.Service<WindowState, WindowStateApi>()(
+  "@effect-desktop/core/runtime/window-state/WindowState"
+) {
   static window(
     options: WindowStateOptions = {}
   ): Layer.Layer<
@@ -285,6 +290,7 @@ export const WindowStateLive: Layer.Layer<
 
 const readStore = (
   kv: KeyValueStore.KeyValueStore,
+  pathService: Path.Path,
   storeKey: string,
   path: string,
   now: Effect.Effect<number, WindowStateReadFailed, never>
@@ -305,7 +311,7 @@ const readStore = (
     return yield* decodeStore(content, path).pipe(
       Effect.map((store) => ({ store })),
       Effect.catchTag("WindowStateReadFailed", (error) =>
-        clearCorruptState(kv, storeKey, path, now, error.reason)
+        clearCorruptState(kv, pathService, storeKey, path, now, error.reason)
       )
     )
   })
@@ -368,6 +374,7 @@ const writeStore = (
 
 const clearCorruptState = (
   kv: KeyValueStore.KeyValueStore,
+  pathService: Path.Path,
   storeKey: string,
   path: string,
   now: Effect.Effect<number, WindowStateReadFailed, never>,
@@ -375,7 +382,7 @@ const clearCorruptState = (
 ): Effect.Effect<WindowStateReadResult, WindowStateCorruptRenamed | WindowStateReadFailed, never> =>
   Effect.gen(function* () {
     const timestamp = yield* readRecoveryTimestamp(path, now)
-    const corruptPath = corruptWindowStatePath(path, timestamp)
+    const corruptPath = corruptWindowStatePath(pathService, path, timestamp)
     yield* kv.remove(storeKey).pipe(
       Effect.mapError(
         (error) =>
@@ -472,31 +479,49 @@ const intersectsDisplay = (state: WindowStateRecord, display: WindowDisplayBound
   state.y < display.y + display.height &&
   state.y + state.height > display.y
 
-export const defaultWindowStatePath = (bundleId: string): string =>
-  buildDefaultWindowStatePath(assertBundleId(bundleId))
+const WindowStatePathEnv = Config.all({
+  appData: Config.option(Config.string("APPDATA")),
+  xdgStateHome: Config.option(Config.string("XDG_STATE_HOME")),
+  home: Config.option(Config.string("HOME"))
+})
 
-const buildDefaultWindowStatePath = (bundleId: string): string => {
-  switch (process.platform) {
-    case "darwin":
-      return join(homeDirectory(), "Library", "Application Support", bundleId, "window-state.json")
-    case "win32":
-      return join(process.env["APPDATA"] ?? tmpdir(), bundleId, "window-state.json")
-    case "aix":
-    case "android":
-    case "cygwin":
-    case "freebsd":
-    case "haiku":
-    case "linux":
-    case "netbsd":
-    case "openbsd":
-    case "sunos":
-      return join(
-        process.env["XDG_STATE_HOME"] ?? join(homeDirectory(), ".local", "state"),
-        bundleId,
-        "window-state.json"
-      )
-  }
-}
+const readWindowStatePathEnv = WindowStatePathEnv.parse(ConfigProvider.fromEnv()).pipe(Effect.orDie)
+
+// The platform `Path` service is pure (string operations only), so it is built
+// once at module scope and threaded as a plain value rather than provided as a
+// Layer mid-pipeline.
+const platformPath: Path.Path = Effect.runSync(
+  Layer.build(Path.layer).pipe(
+    Effect.map((context) => Context.get(context, Path.Path)),
+    Effect.scoped
+  )
+)
+
+export const defaultWindowStatePath = (
+  bundleId: string
+): Effect.Effect<string, WindowStateInvalidArgumentError, never> =>
+  validateBundleId(bundleId, "defaultWindowStatePath").pipe(
+    Effect.flatMap(buildDefaultWindowStatePath),
+    Effect.provideService(Path.Path, platformPath)
+  )
+
+const buildDefaultWindowStatePath = (bundleId: string): Effect.Effect<string, never, Path.Path> =>
+  Effect.gen(function* () {
+    const path = yield* Path.Path
+    const env = yield* readWindowStatePathEnv
+    const home = Option.getOrElse(env.home, tmpdir)
+    if (process.platform === "darwin") {
+      return path.join(home, "Library", "Application Support", bundleId, "window-state.json")
+    }
+    if (process.platform === "win32") {
+      return path.join(Option.getOrElse(env.appData, tmpdir), bundleId, "window-state.json")
+    }
+    return path.join(
+      Option.getOrElse(env.xdgStateHome, () => path.join(home, ".local", "state")),
+      bundleId,
+      "window-state.json"
+    )
+  })
 
 const validateBundleId = (
   bundleId: string,
@@ -505,14 +530,6 @@ const validateBundleId = (
   isSafeBundleId(bundleId)
     ? Effect.succeed(bundleId)
     : Effect.fail(invalidBundleId(bundleId, operation))
-
-const assertBundleId = (bundleId: string): string => {
-  if (isSafeBundleId(bundleId)) {
-    return bundleId
-  }
-
-  throw invalidBundleId(bundleId, "defaultWindowStatePath")
-}
 
 const isSafeBundleId = (bundleId: string): boolean =>
   bundleId.length > 0 &&
@@ -530,10 +547,8 @@ const invalidBundleId = (bundleId: string, operation: string): WindowStateInvali
     cause: Option.none()
   })
 
-const corruptWindowStatePath = (path: string, timestamp: number): string =>
-  join(dirname(path), `window-state.corrupt.${timestamp}.json`)
-
-const homeDirectory = (): string => process.env["HOME"] ?? tmpdir()
+const corruptWindowStatePath = (pathService: Path.Path, path: string, timestamp: number): string =>
+  pathService.join(pathService.dirname(path), `window-state.corrupt.${timestamp}.json`)
 
 const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) {

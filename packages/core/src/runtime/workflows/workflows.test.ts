@@ -1,15 +1,14 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
-
-import { BunFileSystem } from "@effect/platform-bun"
+import { BunFileSystem, BunPath } from "@effect/platform-bun"
 import { layer as sqliteLayer } from "@effect/sql-sqlite-bun/SqliteClient"
 import { expect, test } from "bun:test"
-import { Clock, Effect, Exit, Layer, Schema } from "effect"
+import { Clock, Effect, Exit, Layer, ManagedRuntime, Schema } from "effect"
+import { FileSystem } from "effect/FileSystem"
+import { Path } from "effect/Path"
 import { WorkflowEngine } from "effect/unstable/workflow"
 
 import {
   BackupConfigService,
+  BackupManifest,
   BackupManifestJson,
   BackupWorkflow,
   BackupWorkflowLayer
@@ -23,30 +22,36 @@ import {
 
 const now = 1_715_000_000_000
 const decodeBackupManifestJson = Schema.decodeUnknownSync(BackupManifestJson)
+const encodeBackupManifestJson = Schema.encodeSync(BackupManifestJson)
+const encodeUnknownJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
 
-const provideEngine = <A, E, R>(
-  effect: Effect.Effect<A, E, R | WorkflowEngine.WorkflowEngine>
-): Effect.Effect<A, E, Exclude<R, WorkflowEngine.WorkflowEngine>> =>
-  effect.pipe(Effect.provide(WorkflowEngine.layerMemory))
-
-const tempDir = (): Promise<string> => mkdtemp(join(tmpdir(), "effect-desktop-workflows-"))
+const tempDir = (): Effect.Effect<string, never, FileSystem> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem
+    return yield* fs.makeTempDirectory({ prefix: "effect-desktop-workflows-" }).pipe(Effect.orDie)
+  })
 
 const makeBackupLayer = (options: {
   readonly userDataDir: string
   readonly outputDir: string
   readonly dbPath: string
 }) =>
-  BackupWorkflowLayer.pipe(
-    Layer.provide(
-      Layer.mergeAll(
-        Layer.succeed(BackupConfigService, {
-          userDataDir: options.userDataDir,
-          outputDir: options.outputDir
-        }),
-        sqliteLayer({ filename: options.dbPath }),
-        BunFileSystem.layer
+  Layer.mergeAll(
+    BackupWorkflowLayer.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.succeed(BackupConfigService, {
+            userDataDir: options.userDataDir,
+            outputDir: options.outputDir
+          }),
+          sqliteLayer({ filename: options.dbPath }),
+          BunFileSystem.layer,
+          BunPath.layer,
+          WorkflowEngine.layerMemory
+        )
       )
-    )
+    ),
+    WorkflowEngine.layerMemory
   )
 
 const makeRestoreLayer = (options: {
@@ -54,292 +59,378 @@ const makeRestoreLayer = (options: {
   readonly dbPath: string
   readonly quiesce: WriterQuiesceService["Service"]
 }) =>
-  RestoreWorkflowLayer.pipe(
-    Layer.provide(
-      Layer.mergeAll(
-        Layer.succeed(RestoreConfigService, {
-          userDataDir: options.userDataDir,
-          dbPath: options.dbPath
-        }),
-        Layer.succeed(WriterQuiesceService, options.quiesce),
-        BunFileSystem.layer
+  Layer.mergeAll(
+    RestoreWorkflowLayer.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.succeed(RestoreConfigService, {
+            userDataDir: options.userDataDir,
+            dbPath: options.dbPath
+          }),
+          Layer.succeed(WriterQuiesceService, options.quiesce),
+          BunFileSystem.layer,
+          BunPath.layer,
+          WorkflowEngine.layerMemory
+        )
       )
-    )
+    ),
+    WorkflowEngine.layerMemory
   )
 
-test("Backup: produces archive directory with manifest, db.sqlite, and files/", async () => {
-  const base = await tempDir()
-  const userDataDir = join(base, "userdata")
-  const outputDir = join(base, "backups")
+const baseLayer = Layer.mergeAll(BunFileSystem.layer, BunPath.layer)
 
-  await mkdir(userDataDir, { recursive: true })
-  await mkdir(outputDir, { recursive: true })
-  await writeFile(join(userDataDir, "notes.txt"), "hello world")
+test("Backup: produces archive directory with manifest, db.sqlite, and files/", () =>
+  Effect.runPromise(
+    runScoped(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem
+        const path = yield* Path
+        const base = yield* tempDir()
+        const userDataDir = path.join(base, "userdata")
+        const outputDir = path.join(base, "backups")
 
-  const layers = makeBackupLayer({
-    userDataDir,
-    outputDir,
-    dbPath: join(base, "app.sqlite")
-  })
+        yield* fs.makeDirectory(userDataDir, { recursive: true }).pipe(Effect.orDie)
+        yield* fs.makeDirectory(outputDir, { recursive: true }).pipe(Effect.orDie)
+        yield* fs
+          .writeFileString(path.join(userDataDir, "notes.txt"), "hello world")
+          .pipe(Effect.orDie)
 
-  const result = await Effect.runPromise(
-    BackupWorkflow.execute({ label: "test-backup" }).pipe(
-      Effect.provide(layers),
-      provideEngine,
-      Effect.provideService(Clock.Clock, fixedClock(now))
-    )
-  )
-
-  expect(result.dbBytes).toBeGreaterThan(0)
-
-  const archivePath = result.archivePath
-  const manifestRaw = await Bun.file(join(archivePath, "manifest.json")).text()
-  const manifest = decodeBackupManifestJson(manifestRaw)
-  expect(manifest.label).toBe("test-backup")
-  expect(manifest.createdAt).toBe(now)
-  expect(manifest.format).toBe("effect-desktop-backup-v1")
-
-  const dbContent = await Bun.file(join(archivePath, "db.sqlite")).bytes()
-  expect(dbContent.byteLength).toBe(result.dbBytes)
-
-  await rm(base, { recursive: true, force: true })
-})
-
-test("Backup: rejects labels that escape the output directory", async () => {
-  const base = await tempDir()
-  const userDataDir = join(base, "userdata")
-  const outputDir = join(base, "backups")
-
-  await mkdir(userDataDir, { recursive: true })
-  await mkdir(outputDir, { recursive: true })
-
-  const layers = makeBackupLayer({
-    userDataDir,
-    outputDir,
-    dbPath: join(base, "app.sqlite")
-  })
-
-  const exit = await Effect.runPromiseExit(
-    BackupWorkflow.execute({ label: "../escape" }).pipe(Effect.provide(layers), provideEngine)
-  )
-
-  expect(Exit.isFailure(exit)).toBe(true)
-  expect(await Bun.file(join(base, "escape.backup")).exists()).toBe(false)
-
-  await rm(base, { recursive: true, force: true })
-})
-
-test("Restore: round-trip restores files and database", async () => {
-  const base = await tempDir()
-  const userDataDir = join(base, "userdata")
-  const archivePath = join(base, "my-backup.backup")
-  const dbPath = join(base, "app.sqlite")
-
-  await mkdir(join(archivePath, "files"), { recursive: true })
-  await writeFile(
-    join(archivePath, "manifest.json"),
-    JSON.stringify({
-      label: "restore-test",
-      format: "effect-desktop-backup-v1",
-      createdAt: now
-    })
-  )
-  const dbBytes = new TextEncoder().encode("RestoredSQLiteDB")
-  await writeFile(join(archivePath, "db.sqlite"), dbBytes)
-  await writeFile(join(archivePath, "files", "document.txt"), "restored content")
-
-  await mkdir(userDataDir, { recursive: true })
-  await writeFile(join(userDataDir, "old.txt"), "old content")
-  await writeFile(dbPath, "old db")
-
-  const layers = makeRestoreLayer({
-    userDataDir,
-    dbPath,
-    quiesce: {
-      stop: () => Effect.void,
-      resume: () => Effect.void
-    }
-  })
-
-  await Effect.runPromise(
-    RestoreWorkflow.execute({ archivePath }).pipe(Effect.provide(layers), provideEngine)
-  )
-
-  const restoredDoc = await Bun.file(join(userDataDir, "document.txt")).text()
-  expect(restoredDoc).toBe("restored content")
-
-  const restoredDb = await Bun.file(dbPath).bytes()
-  expect(restoredDb).toEqual(dbBytes)
-
-  await rm(base, { recursive: true, force: true })
-})
-
-test("Restore: validates manifest format before touching data", async () => {
-  const base = await tempDir()
-  const userDataDir = join(base, "userdata")
-  const archivePath = join(base, "bad.backup")
-  const dbPath = join(base, "app.sqlite")
-
-  await mkdir(join(archivePath, "files"), { recursive: true })
-  await writeFile(
-    join(archivePath, "manifest.json"),
-    JSON.stringify({
-      label: "test",
-      format: "unknown-format-v99",
-      createdAt: now
-    })
-  )
-  await writeFile(join(archivePath, "db.sqlite"), "bytes")
-
-  await mkdir(userDataDir, { recursive: true })
-  await writeFile(dbPath, "original")
-
-  const layers = makeRestoreLayer({
-    userDataDir,
-    dbPath,
-    quiesce: {
-      stop: () => Effect.void,
-      resume: () => Effect.void
-    }
-  })
-
-  const exit = await Effect.runPromiseExit(
-    RestoreWorkflow.execute({ archivePath }).pipe(Effect.provide(layers), provideEngine)
-  )
-
-  expect(Exit.isFailure(exit)).toBe(true)
-
-  const originalDb = await Bun.file(dbPath).text()
-  expect(originalDb).toBe("original")
-
-  await rm(base, { recursive: true, force: true })
-})
-
-test("Restore: rejects malformed manifest JSON before touching data", async () => {
-  const base = await tempDir()
-  const userDataDir = join(base, "userdata")
-  const archivePath = join(base, "malformed.backup")
-  const dbPath = join(base, "app.sqlite")
-
-  await mkdir(join(archivePath, "files"), { recursive: true })
-  await writeFile(join(archivePath, "manifest.json"), "{not-json")
-  await writeFile(join(archivePath, "db.sqlite"), "bytes")
-
-  await mkdir(userDataDir, { recursive: true })
-  await writeFile(dbPath, "original")
-
-  const layers = makeRestoreLayer({
-    userDataDir,
-    dbPath,
-    quiesce: {
-      stop: () => Effect.void,
-      resume: () => Effect.void
-    }
-  })
-
-  const exit = await Effect.runPromiseExit(
-    RestoreWorkflow.execute({ archivePath }).pipe(Effect.provide(layers), provideEngine)
-  )
-
-  expect(Exit.isFailure(exit)).toBe(true)
-
-  const originalDb = await Bun.file(dbPath).text()
-  expect(originalDb).toBe("original")
-
-  await rm(base, { recursive: true, force: true })
-})
-
-test("Restore: rejects partial manifest shape before touching data", async () => {
-  const base = await tempDir()
-  const userDataDir = join(base, "userdata")
-  const archivePath = join(base, "partial-manifest.backup")
-  const dbPath = join(base, "app.sqlite")
-
-  await mkdir(join(archivePath, "files"), { recursive: true })
-  await writeFile(
-    join(archivePath, "manifest.json"),
-    JSON.stringify({
-      label: "partial",
-      format: "effect-desktop-backup-v1"
-    })
-  )
-  await writeFile(join(archivePath, "db.sqlite"), "bytes")
-
-  await mkdir(userDataDir, { recursive: true })
-  await writeFile(dbPath, "original")
-
-  const layers = makeRestoreLayer({
-    userDataDir,
-    dbPath,
-    quiesce: {
-      stop: () => Effect.void,
-      resume: () => Effect.void
-    }
-  })
-
-  const exit = await Effect.runPromiseExit(
-    RestoreWorkflow.execute({ archivePath }).pipe(Effect.provide(layers), provideEngine)
-  )
-
-  expect(Exit.isFailure(exit)).toBe(true)
-  expect(await Bun.file(dbPath).text()).toBe("original")
-
-  await rm(base, { recursive: true, force: true })
-})
-
-test("Restore: rolls back database and resumes writers after file restore failure", async () => {
-  const base = await tempDir()
-  const userDataDir = join(base, "userdata")
-  const archivePath = join(base, "partial.backup")
-  const dbPath = join(base, "app.sqlite")
-
-  await mkdir(archivePath, { recursive: true })
-  await writeFile(
-    join(archivePath, "manifest.json"),
-    JSON.stringify({
-      label: "partial-restore",
-      format: "effect-desktop-backup-v1",
-      createdAt: now
-    })
-  )
-  await writeFile(join(archivePath, "db.sqlite"), "restored db")
-
-  await mkdir(userDataDir, { recursive: true })
-  await writeFile(join(userDataDir, "old.txt"), "old content")
-  await writeFile(dbPath, "original db")
-
-  let stopped = 0
-  let resumed = 0
-  const layers = makeRestoreLayer({
-    userDataDir,
-    dbPath,
-    quiesce: {
-      stop: () =>
-        Effect.sync(() => {
-          stopped += 1
-        }),
-      resume: () =>
-        Effect.sync(() => {
-          resumed += 1
+        const layers = makeBackupLayer({
+          userDataDir,
+          outputDir,
+          dbPath: path.join(base, "app.sqlite")
         })
-    }
-  })
 
-  const exit = await Effect.runPromiseExit(
-    RestoreWorkflow.execute({ archivePath }).pipe(Effect.provide(layers), provideEngine)
-  )
+        const result = yield* runScoped(
+          BackupWorkflow.execute({ label: "test-backup" }).pipe(
+            Effect.provideService(Clock.Clock, fixedClock(now))
+          ),
+          layers
+        )
 
-  expect(Exit.isFailure(exit)).toBe(true)
-  expect(stopped).toBe(1)
-  expect(resumed).toBe(1)
+        expect(result.dbBytes).toBeGreaterThan(0)
 
-  const db = await Bun.file(dbPath).text()
-  expect(db).toBe("original db")
-  const oldFile = await Bun.file(join(userDataDir, "old.txt")).text()
-  expect(oldFile).toBe("old content")
+        const archivePath = result.archivePath
+        const manifestRaw = yield* fs
+          .readFileString(path.join(archivePath, "manifest.json"))
+          .pipe(Effect.orDie)
+        const manifest = decodeBackupManifestJson(manifestRaw)
+        expect(manifest.label).toBe("test-backup")
+        expect(manifest.createdAt).toBe(now)
+        expect(manifest.format).toBe("effect-desktop-backup-v1")
 
-  await rm(base, { recursive: true, force: true })
-})
+        const dbContent = yield* fs.readFile(path.join(archivePath, "db.sqlite")).pipe(Effect.orDie)
+        expect(dbContent.byteLength).toBe(result.dbBytes)
+
+        yield* fs.remove(base, { recursive: true, force: true }).pipe(Effect.orDie)
+      }),
+      baseLayer
+    )
+  ))
+
+test("Backup: rejects labels that escape the output directory", () =>
+  Effect.runPromise(
+    runScoped(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem
+        const path = yield* Path
+        const base = yield* tempDir()
+        const userDataDir = path.join(base, "userdata")
+        const outputDir = path.join(base, "backups")
+
+        yield* fs.makeDirectory(userDataDir, { recursive: true }).pipe(Effect.orDie)
+        yield* fs.makeDirectory(outputDir, { recursive: true }).pipe(Effect.orDie)
+
+        const layers = makeBackupLayer({
+          userDataDir,
+          outputDir,
+          dbPath: path.join(base, "app.sqlite")
+        })
+
+        const exit = yield* runScopedExit(BackupWorkflow.execute({ label: "../escape" }), layers)
+
+        expect(Exit.isFailure(exit)).toBe(true)
+        const escapedExists = yield* fs.exists(path.join(base, "escape.backup")).pipe(Effect.orDie)
+        expect(escapedExists).toBe(false)
+
+        yield* fs.remove(base, { recursive: true, force: true }).pipe(Effect.orDie)
+      }),
+      baseLayer
+    )
+  ))
+
+test("Restore: round-trip restores files and database", () =>
+  Effect.runPromise(
+    runScoped(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem
+        const path = yield* Path
+        const base = yield* tempDir()
+        const userDataDir = path.join(base, "userdata")
+        const archivePath = path.join(base, "my-backup.backup")
+        const dbPath = path.join(base, "app.sqlite")
+
+        yield* fs
+          .makeDirectory(path.join(archivePath, "files"), { recursive: true })
+          .pipe(Effect.orDie)
+        yield* fs
+          .writeFileString(
+            path.join(archivePath, "manifest.json"),
+            encodeBackupManifestJson({
+              label: "restore-test",
+              format: "effect-desktop-backup-v1",
+              createdAt: now
+            })
+          )
+          .pipe(Effect.orDie)
+        const dbBytes = new TextEncoder().encode("RestoredSQLiteDB")
+        yield* fs.writeFile(path.join(archivePath, "db.sqlite"), dbBytes).pipe(Effect.orDie)
+        yield* fs
+          .writeFileString(path.join(archivePath, "files", "document.txt"), "restored content")
+          .pipe(Effect.orDie)
+
+        yield* fs.makeDirectory(userDataDir, { recursive: true }).pipe(Effect.orDie)
+        yield* fs
+          .writeFileString(path.join(userDataDir, "old.txt"), "old content")
+          .pipe(Effect.orDie)
+        yield* fs.writeFileString(dbPath, "old db").pipe(Effect.orDie)
+
+        const layers = makeRestoreLayer({
+          userDataDir,
+          dbPath,
+          quiesce: {
+            stop: () => Effect.void,
+            resume: () => Effect.void
+          }
+        })
+
+        yield* runScoped(RestoreWorkflow.execute({ archivePath }), layers)
+
+        const restoredDoc = yield* fs
+          .readFileString(path.join(userDataDir, "document.txt"))
+          .pipe(Effect.orDie)
+        expect(restoredDoc).toBe("restored content")
+
+        const restoredDb = yield* fs.readFile(dbPath).pipe(Effect.orDie)
+        expect(restoredDb).toEqual(dbBytes)
+
+        yield* fs.remove(base, { recursive: true, force: true }).pipe(Effect.orDie)
+      }),
+      baseLayer
+    )
+  ))
+
+test("Restore: validates manifest format before touching data", () =>
+  Effect.runPromise(
+    runScoped(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem
+        const path = yield* Path
+        const base = yield* tempDir()
+        const userDataDir = path.join(base, "userdata")
+        const archivePath = path.join(base, "bad.backup")
+        const dbPath = path.join(base, "app.sqlite")
+
+        yield* fs
+          .makeDirectory(path.join(archivePath, "files"), { recursive: true })
+          .pipe(Effect.orDie)
+        yield* fs
+          .writeFileString(
+            path.join(archivePath, "manifest.json"),
+            encodeUnknownJson({
+              label: "test",
+              format: "unknown-format-v99",
+              createdAt: now
+            })
+          )
+          .pipe(Effect.orDie)
+        yield* fs.writeFileString(path.join(archivePath, "db.sqlite"), "bytes").pipe(Effect.orDie)
+
+        yield* fs.makeDirectory(userDataDir, { recursive: true }).pipe(Effect.orDie)
+        yield* fs.writeFileString(dbPath, "original").pipe(Effect.orDie)
+
+        const layers = makeRestoreLayer({
+          userDataDir,
+          dbPath,
+          quiesce: {
+            stop: () => Effect.void,
+            resume: () => Effect.void
+          }
+        })
+
+        const exit = yield* runScopedExit(RestoreWorkflow.execute({ archivePath }), layers)
+
+        expect(Exit.isFailure(exit)).toBe(true)
+
+        const originalDb = yield* fs.readFileString(dbPath).pipe(Effect.orDie)
+        expect(originalDb).toBe("original")
+
+        yield* fs.remove(base, { recursive: true, force: true }).pipe(Effect.orDie)
+      }),
+      baseLayer
+    )
+  ))
+
+test("Restore: rejects malformed manifest JSON before touching data", () =>
+  Effect.runPromise(
+    runScoped(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem
+        const path = yield* Path
+        const base = yield* tempDir()
+        const userDataDir = path.join(base, "userdata")
+        const archivePath = path.join(base, "malformed.backup")
+        const dbPath = path.join(base, "app.sqlite")
+
+        yield* fs
+          .makeDirectory(path.join(archivePath, "files"), { recursive: true })
+          .pipe(Effect.orDie)
+        yield* fs
+          .writeFileString(path.join(archivePath, "manifest.json"), "{not-json")
+          .pipe(Effect.orDie)
+        yield* fs.writeFileString(path.join(archivePath, "db.sqlite"), "bytes").pipe(Effect.orDie)
+
+        yield* fs.makeDirectory(userDataDir, { recursive: true }).pipe(Effect.orDie)
+        yield* fs.writeFileString(dbPath, "original").pipe(Effect.orDie)
+
+        const layers = makeRestoreLayer({
+          userDataDir,
+          dbPath,
+          quiesce: {
+            stop: () => Effect.void,
+            resume: () => Effect.void
+          }
+        })
+
+        const exit = yield* runScopedExit(RestoreWorkflow.execute({ archivePath }), layers)
+
+        expect(Exit.isFailure(exit)).toBe(true)
+
+        const originalDb = yield* fs.readFileString(dbPath).pipe(Effect.orDie)
+        expect(originalDb).toBe("original")
+
+        yield* fs.remove(base, { recursive: true, force: true }).pipe(Effect.orDie)
+      }),
+      baseLayer
+    )
+  ))
+
+test("Restore: rejects partial manifest shape before touching data", () =>
+  Effect.runPromise(
+    runScoped(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem
+        const path = yield* Path
+        const base = yield* tempDir()
+        const userDataDir = path.join(base, "userdata")
+        const archivePath = path.join(base, "partial-manifest.backup")
+        const dbPath = path.join(base, "app.sqlite")
+
+        yield* fs
+          .makeDirectory(path.join(archivePath, "files"), { recursive: true })
+          .pipe(Effect.orDie)
+        yield* fs
+          .writeFileString(
+            path.join(archivePath, "manifest.json"),
+            encodeUnknownJson({
+              label: "partial",
+              format: "effect-desktop-backup-v1"
+            })
+          )
+          .pipe(Effect.orDie)
+        yield* fs.writeFileString(path.join(archivePath, "db.sqlite"), "bytes").pipe(Effect.orDie)
+
+        yield* fs.makeDirectory(userDataDir, { recursive: true }).pipe(Effect.orDie)
+        yield* fs.writeFileString(dbPath, "original").pipe(Effect.orDie)
+
+        const layers = makeRestoreLayer({
+          userDataDir,
+          dbPath,
+          quiesce: {
+            stop: () => Effect.void,
+            resume: () => Effect.void
+          }
+        })
+
+        const exit = yield* runScopedExit(RestoreWorkflow.execute({ archivePath }), layers)
+
+        expect(Exit.isFailure(exit)).toBe(true)
+        const finalDb = yield* fs.readFileString(dbPath).pipe(Effect.orDie)
+        expect(finalDb).toBe("original")
+
+        yield* fs.remove(base, { recursive: true, force: true }).pipe(Effect.orDie)
+      }),
+      baseLayer
+    )
+  ))
+
+test("Restore: rolls back database and resumes writers after file restore failure", () =>
+  Effect.runPromise(
+    runScoped(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem
+        const path = yield* Path
+        const base = yield* tempDir()
+        const userDataDir = path.join(base, "userdata")
+        const archivePath = path.join(base, "partial.backup")
+        const dbPath = path.join(base, "app.sqlite")
+
+        yield* fs.makeDirectory(archivePath, { recursive: true }).pipe(Effect.orDie)
+        yield* fs
+          .writeFileString(
+            path.join(archivePath, "manifest.json"),
+            encodeBackupManifestJson({
+              label: "partial-restore",
+              format: "effect-desktop-backup-v1",
+              createdAt: now
+            } satisfies BackupManifest)
+          )
+          .pipe(Effect.orDie)
+        yield* fs
+          .writeFileString(path.join(archivePath, "db.sqlite"), "restored db")
+          .pipe(Effect.orDie)
+
+        yield* fs.makeDirectory(userDataDir, { recursive: true }).pipe(Effect.orDie)
+        yield* fs
+          .writeFileString(path.join(userDataDir, "old.txt"), "old content")
+          .pipe(Effect.orDie)
+        yield* fs.writeFileString(dbPath, "original db").pipe(Effect.orDie)
+
+        let stopped = 0
+        let resumed = 0
+        const layers = makeRestoreLayer({
+          userDataDir,
+          dbPath,
+          quiesce: {
+            stop: () =>
+              Effect.sync(() => {
+                stopped += 1
+              }),
+            resume: () =>
+              Effect.sync(() => {
+                resumed += 1
+              })
+          }
+        })
+
+        const exit = yield* runScopedExit(RestoreWorkflow.execute({ archivePath }), layers)
+
+        expect(Exit.isFailure(exit)).toBe(true)
+        expect(stopped).toBe(1)
+        expect(resumed).toBe(1)
+
+        const db = yield* fs.readFileString(dbPath).pipe(Effect.orDie)
+        expect(db).toBe("original db")
+        const oldFile = yield* fs
+          .readFileString(path.join(userDataDir, "old.txt"))
+          .pipe(Effect.orDie)
+        expect(oldFile).toBe("old content")
+
+        yield* fs.remove(base, { recursive: true, force: true }).pipe(Effect.orDie)
+      }),
+      baseLayer
+    )
+  ))
 
 const fixedClock = (timestamp: number): Clock.Clock => ({
   currentTimeMillisUnsafe: () => timestamp,
@@ -348,3 +439,29 @@ const fixedClock = (timestamp: number): Clock.Clock => ({
   currentTimeNanos: Effect.succeed(BigInt(timestamp) * 1_000_000n),
   sleep: () => Effect.void
 })
+
+function runScoped<A, E, R, LE>(
+  effect: Effect.Effect<A, E, R>,
+  layer: Layer.Layer<R, LE, never>
+): Effect.Effect<A, E | LE, never> {
+  return Effect.gen(function* () {
+    const runtime = ManagedRuntime.make(layer)
+    const exit = yield* Effect.promise(() => runtime.runPromiseExit(effect))
+    yield* Effect.promise(() => runtime.dispose())
+    return yield* exit
+  })
+}
+
+function runScopedExit<A, E, R, LE>(
+  effect: Effect.Effect<A, E, R>,
+  layer: Layer.Layer<R, LE, never>
+): Effect.Effect<Exit.Exit<A, E | LE>, never, never> {
+  return Effect.gen(function* () {
+    const runtime = ManagedRuntime.make(layer)
+    try {
+      return yield* Effect.promise(() => runtime.runPromiseExit(effect))
+    } finally {
+      yield* Effect.promise(() => runtime.dispose())
+    }
+  })
+}

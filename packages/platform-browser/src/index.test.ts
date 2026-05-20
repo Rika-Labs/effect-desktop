@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test"
-import { existsSync, readFileSync } from "node:fs"
-import { Effect, Schema } from "effect"
+import { fileURLToPath } from "node:url"
+import { BunServices } from "@effect/platform-bun"
+import { Effect, FileSystem, ManagedRuntime, Path, Schema } from "effect"
 
 import {
   BrowserHttpClient,
@@ -33,33 +34,42 @@ const decodePlatformBrowserPackageJson = Schema.decodeUnknownSync(
   Schema.fromJsonString(PlatformBrowserPackageJson)
 )
 
-const packageJsonUrl = new URL("../package.json", import.meta.url)
-const packageRootUrl = new URL("../", import.meta.url)
+const packageJsonPath = fileURLToPath(new URL("../package.json", import.meta.url))
+const packageRootPath = fileURLToPath(new URL("../", import.meta.url))
 
-test("platform-browser package exports point at checked-in source files", () => {
-  const packageJson = decodePlatformBrowserPackageJson(readFileSync(packageJsonUrl, "utf8"))
-  const missing: string[] = []
+const PlatformRuntime = ManagedRuntime.make(BunServices.layer)
 
-  for (const [subpath, target] of Object.entries(packageJson.exports)) {
-    if (typeof target === "string") {
-      if (!existsSync(new URL(target, packageRootUrl))) {
-        missing.push(`${subpath}:default:${target}`)
+test("platform-browser package exports point at checked-in source files", () =>
+  PlatformRuntime.runPromise(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const path = yield* Path.Path
+      const packageJson = decodePlatformBrowserPackageJson(
+        yield* fs.readFileString(packageJsonPath)
+      )
+      const missing: string[] = []
+
+      for (const [subpath, target] of Object.entries(packageJson.exports)) {
+        if (typeof target === "string") {
+          if (!(yield* fs.exists(path.join(packageRootPath, target)))) {
+            missing.push(`${subpath}:default:${target}`)
+          }
+          continue
+        }
+
+        for (const condition of ["types", "default"] as const) {
+          const relativePath = target[condition]
+          if (relativePath === undefined) {
+            missing.push(`${subpath}:${condition}:<missing condition>`)
+          } else if (!(yield* fs.exists(path.join(packageRootPath, relativePath)))) {
+            missing.push(`${subpath}:${condition}:${relativePath}`)
+          }
+        }
       }
-      continue
-    }
 
-    for (const condition of ["types", "default"] as const) {
-      const relativePath = target[condition]
-      if (relativePath === undefined) {
-        missing.push(`${subpath}:${condition}:<missing condition>`)
-      } else if (!existsSync(new URL(relativePath, packageRootUrl))) {
-        missing.push(`${subpath}:${condition}:${relativePath}`)
-      }
-    }
-  }
-
-  expect(missing).toEqual([])
-})
+      expect(missing).toEqual([])
+    })
+  ))
 
 test("IndexedDbTable.make produces a typed table descriptor", () => {
   const DraftTable = IndexedDbTable.make({

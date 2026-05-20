@@ -20,8 +20,11 @@ test("RendererPgliteOptions accepts optional dataDir only", () => {
   expect(withoutDir.dataDir).toBeUndefined()
 })
 
-test("RendererPgliteLive dynamic import resolves and layer builds successfully", async () => {
-  const layer = RendererPgliteLive()
-  const context = await Effect.runPromise(Effect.scoped(Layer.build(layer)))
-  expect(context).toBeDefined()
-})
+test("RendererPgliteLive dynamic import resolves and layer builds successfully", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const layer = RendererPgliteLive()
+      const context = yield* Effect.scoped(Layer.build(layer))
+      expect(context).toBeDefined()
+    })
+  ))

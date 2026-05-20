@@ -1,7 +1,19 @@
-import { resolve } from "node:path"
+import { NodeServices } from "@effect/platform-node"
 import { describe, expect, test } from "bun:test"
 import { encodeFrame, FrameDecoder } from "@effect-desktop/core/runtime/transport"
-import { type Cause, Deferred, Effect, Layer, Queue, Schedule, Sink, Stream } from "effect"
+import {
+  type Cause,
+  Deferred,
+  Effect,
+  Layer,
+  ManagedRuntime,
+  Path,
+  Queue,
+  Schedule,
+  Schema,
+  Sink,
+  Stream
+} from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 import { makeHmrController, type ViteDevRuntimeServer } from "./hmr-controller.js"
 import {
@@ -11,167 +23,208 @@ import {
   RUNTIME_RESTART_EVENT
 } from "./virtual-module.js"
 
+class WaitForTimeout extends Schema.TaggedErrorClass<WaitForTimeout>()("WaitForTimeout", {}) {}
+
+class MissingProcessRecord extends Schema.TaggedErrorClass<MissingProcessRecord>()(
+  "MissingProcessRecord",
+  {}
+) {}
+
+const pathRuntime = ManagedRuntime.make(NodeServices.layer)
+
+const resolvePath = (...segments: ReadonlyArray<string>): string =>
+  pathRuntime.runSync(
+    Effect.gen(function* () {
+      const path = yield* Path.Path
+      return path.resolve(...segments)
+    })
+  )
+
 describe("HMR controller", () => {
-  test("spawns the runtime through ChildProcessSpawner and forwards frames through HMR", async () => {
-    const fake = makeFakeProcessLayer()
-    const server = makeFakeServer()
-    const controller = makeHmrController({
-      entry: "src/runtime.ts",
-      cwd: "/workspace/app",
-      server,
-      processLayer: fake.layer
-    })
+  test("spawns the runtime through ChildProcessSpawner and forwards frames through HMR", () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const fake = makeFakeProcessLayer()
+        const server = makeFakeServer()
+        const controller = makeHmrController({
+          entry: "src/runtime.ts",
+          cwd: "/workspace/app",
+          server,
+          processLayer: fake.layer
+        })
 
-    await waitFor(() => server.sent.some(([event]) => event === RUNTIME_READY_EVENT))
+        yield* waitFor(() => server.sent.some(([event]) => event === RUNTIME_READY_EVENT))
 
-    const record = firstRecord(fake.records)
-    expect(record.command._tag).toBe("StandardCommand")
-    if (record.command._tag !== "StandardCommand") {
-      throw new Error("expected standard command")
-    }
-    expect(record.command.command).toBe("bun")
-    expect(record.command.args).toEqual(["run", resolve("/workspace/app", "src/runtime.ts")])
-    expect(record.command.options.stdin).toEqual({ stream: "pipe", endOnDone: false })
+        const record = yield* firstRecord(fake.records)
+        expect(record.command._tag).toBe("StandardCommand")
+        if (record.command._tag !== "StandardCommand") {
+          return
+        }
+        expect(record.command.command).toBe("bun")
+        expect(record.command.args).toEqual([
+          "run",
+          resolvePath("/workspace/app", "src/runtime.ts")
+        ])
+        expect(record.command.options.stdin).toEqual({ stream: "pipe", endOnDone: false })
 
-    const down = new Uint8Array([1, 2, 3, 4])
-    await Effect.runPromise(Queue.offer(record.stdout, encodeFrame(down)))
+        const down = new Uint8Array([1, 2, 3, 4])
+        yield* Queue.offer(record.stdout, encodeFrame(down))
 
-    await waitFor(() => server.sent.some(([event]) => event === FRAME_DOWN_EVENT))
-    const downPayload = server.sent.find(([event]) => event === FRAME_DOWN_EVENT)?.[1]
-    expect(decodeSentFrame(downPayload)).toEqual(down)
+        yield* waitFor(() => server.sent.some(([event]) => event === FRAME_DOWN_EVENT))
+        const downPayload = server.sent.find(([event]) => event === FRAME_DOWN_EVENT)?.[1]
+        expect(decodeSentFrame(downPayload)).toEqual(down)
 
-    const up = new Uint8Array([9, 8, 7])
-    server.emitWs(FRAME_UP_EVENT, { data: Buffer.from(up).toString("base64") })
+        const up = new Uint8Array([9, 8, 7])
+        server.emitWs(FRAME_UP_EVENT, { data: Buffer.from(up).toString("base64") })
 
-    await waitFor(() => record.stdin.length > 0)
-    expect(decodeWrittenFrames(record.stdin)).toEqual([up])
+        yield* waitFor(() => record.stdin.length > 0)
+        expect(decodeWrittenFrames(record.stdin)).toEqual([up])
 
-    controller.dispose()
-    await waitFor(() => record.killed)
-  })
+        controller.dispose()
+        yield* waitFor(() => record.killed)
+      })
+    ))
 
-  test("restart closes the previous process before spawning the replacement", async () => {
-    const fake = makeFakeProcessLayer()
-    const server = makeFakeServer()
-    const controller = makeHmrController({
-      entry: "src/runtime.ts",
-      cwd: "/workspace/app",
-      server,
-      processLayer: fake.layer
-    })
+  test("restart closes the previous process before spawning the replacement", () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const fake = makeFakeProcessLayer()
+        const server = makeFakeServer()
+        const controller = makeHmrController({
+          entry: "src/runtime.ts",
+          cwd: "/workspace/app",
+          server,
+          processLayer: fake.layer
+        })
 
-    await waitFor(() => server.sent.some(([event]) => event === RUNTIME_READY_EVENT))
-    server.emitWatchChange(resolve("/workspace/app", "src/runtime.ts"))
+        yield* waitFor(() => server.sent.some(([event]) => event === RUNTIME_READY_EVENT))
+        server.emitWatchChange(resolvePath("/workspace/app", "src/runtime.ts"))
 
-    await waitFor(() => fake.records.length === 2)
-    expect(fake.records[0]?.killed).toBe(true)
-    expect(fake.events).toEqual(["spawn:1", "close:1", "spawn:2"])
-    await waitFor(() => server.sent.some(([event]) => event === RUNTIME_RESTART_EVENT))
+        yield* waitFor(() => fake.records.length === 2)
+        expect(fake.records[0]?.killed).toBe(true)
+        expect(fake.events).toEqual(["spawn:1", "close:1", "spawn:2"])
+        yield* waitFor(() => server.sent.some(([event]) => event === RUNTIME_RESTART_EVENT))
 
-    controller.dispose()
-    await waitFor(() => fake.records.every((record) => record.killed))
-  })
+        controller.dispose()
+        yield* waitFor(() => fake.records.every((record) => record.killed))
+      })
+    ))
 
-  test("initial runtime frames are not dropped before active process assignment", async () => {
-    const initialFrame = new Uint8Array([5, 6, 7])
-    const fake = makeFakeProcessLayer({ initialFrames: [initialFrame] })
-    const server = makeFakeServer()
-    const controller = makeHmrController({
-      entry: "src/runtime.ts",
-      cwd: "/workspace/app",
-      server,
-      processLayer: fake.layer
-    })
+  test("initial runtime frames are not dropped before active process assignment", () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const initialFrame = new Uint8Array([5, 6, 7])
+        const fake = makeFakeProcessLayer({ initialFrames: [initialFrame] })
+        const server = makeFakeServer()
+        const controller = makeHmrController({
+          entry: "src/runtime.ts",
+          cwd: "/workspace/app",
+          server,
+          processLayer: fake.layer
+        })
 
-    await waitFor(() => server.sent.some(([event]) => event === FRAME_DOWN_EVENT))
-    const downPayload = server.sent.find(([event]) => event === FRAME_DOWN_EVENT)?.[1]
-    expect(decodeSentFrame(downPayload)).toEqual(initialFrame)
+        yield* waitFor(() => server.sent.some(([event]) => event === FRAME_DOWN_EVENT))
+        const downPayload = server.sent.find(([event]) => event === FRAME_DOWN_EVENT)?.[1]
+        expect(decodeSentFrame(downPayload)).toEqual(initialFrame)
 
-    controller.dispose()
-    controller.dispose()
-    await waitFor(() => fake.records.every((record) => record.killed))
-    expect(fake.events).toEqual(["spawn:1", "close:1"])
-  })
+        controller.dispose()
+        controller.dispose()
+        yield* waitFor(() => fake.records.every((record) => record.killed))
+        expect(fake.events).toEqual(["spawn:1", "close:1"])
+      })
+    ))
 
-  test("runtime frame errors are reported without failing the controller lifecycle", async () => {
-    const fake = makeFakeProcessLayer()
-    const server = makeFakeServer()
-    const controller = makeHmrController({
-      entry: "src/runtime.ts",
-      cwd: "/workspace/app",
-      server,
-      processLayer: fake.layer
-    })
+  test("runtime frame errors are reported without failing the controller lifecycle", () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const fake = makeFakeProcessLayer()
+        const server = makeFakeServer()
+        const controller = makeHmrController({
+          entry: "src/runtime.ts",
+          cwd: "/workspace/app",
+          server,
+          processLayer: fake.layer
+        })
 
-    await waitFor(() => server.sent.some(([event]) => event === RUNTIME_READY_EVENT))
-    const record = firstRecord(fake.records)
-    await Effect.runPromise(Queue.offer(record.stdout, new Uint8Array([0, 0, 0, 4, 1])))
-    await Effect.runPromise(Queue.end(record.stdout))
+        yield* waitFor(() => server.sent.some(([event]) => event === RUNTIME_READY_EVENT))
+        const record = yield* firstRecord(fake.records)
+        yield* Queue.offer(record.stdout, new Uint8Array([0, 0, 0, 4, 1]))
+        yield* Queue.end(record.stdout)
 
-    await waitFor(() => server.errors.some((error) => error.includes("runtime error")))
-    controller.dispose()
-    await waitFor(() => record.killed)
-  })
+        yield* waitFor(() => server.errors.some((error) => error.includes("runtime error")))
+        controller.dispose()
+        yield* waitFor(() => record.killed)
+      })
+    ))
 
-  test("dispose is idempotent when Vite close hooks fire more than once", async () => {
-    const fake = makeFakeProcessLayer()
-    const server = makeFakeServer()
-    const controller = makeHmrController({
-      entry: "src/runtime.ts",
-      cwd: "/workspace/app",
-      server,
-      processLayer: fake.layer
-    })
+  test("dispose is idempotent when Vite close hooks fire more than once", () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const fake = makeFakeProcessLayer()
+        const server = makeFakeServer()
+        const controller = makeHmrController({
+          entry: "src/runtime.ts",
+          cwd: "/workspace/app",
+          server,
+          processLayer: fake.layer
+        })
 
-    await waitFor(() => server.sent.some(([event]) => event === RUNTIME_READY_EVENT))
-    controller.dispose()
-    controller.dispose()
+        yield* waitFor(() => server.sent.some(([event]) => event === RUNTIME_READY_EVENT))
+        controller.dispose()
+        controller.dispose()
 
-    await waitFor(() => fake.records.every((record) => record.killed))
-    expect(fake.events).toEqual(["spawn:1", "close:1"])
-  })
+        yield* waitFor(() => fake.records.every((record) => record.killed))
+        expect(fake.events).toEqual(["spawn:1", "close:1"])
+      })
+    ))
 
-  test("dispose unregisters Vite websocket and watcher handlers", async () => {
-    const fake = makeFakeProcessLayer()
-    const server = makeFakeServer()
-    const controller = makeHmrController({
-      entry: "src/runtime.ts",
-      cwd: "/workspace/app",
-      server,
-      processLayer: fake.layer
-    })
+  test("dispose unregisters Vite websocket and watcher handlers", () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const fake = makeFakeProcessLayer()
+        const server = makeFakeServer()
+        const controller = makeHmrController({
+          entry: "src/runtime.ts",
+          cwd: "/workspace/app",
+          server,
+          processLayer: fake.layer
+        })
 
-    await waitFor(() => server.sent.some(([event]) => event === RUNTIME_READY_EVENT))
-    expect(server.listenerCounts()).toEqual({ frameUp: 1, change: 1 })
+        yield* waitFor(() => server.sent.some(([event]) => event === RUNTIME_READY_EVENT))
+        expect(server.listenerCounts()).toEqual({ frameUp: 1, change: 1 })
 
-    controller.dispose()
-    await waitFor(() => fake.records.every((record) => record.killed))
-    await waitFor(
-      () => server.listenerCounts().frameUp === 0 && server.listenerCounts().change === 0
-    )
-  })
+        controller.dispose()
+        yield* waitFor(() => fake.records.every((record) => record.killed))
+        yield* waitFor(
+          () => server.listenerCounts().frameUp === 0 && server.listenerCounts().change === 0
+        )
+      })
+    ))
 
-  test("rapid restarts are serialized through process cleanup", async () => {
-    const fake = makeFakeProcessLayer()
-    const server = makeFakeServer()
-    const controller = makeHmrController({
-      entry: "src/runtime.ts",
-      cwd: "/workspace/app",
-      server,
-      processLayer: fake.layer
-    })
+  test("rapid restarts are serialized through process cleanup", () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const fake = makeFakeProcessLayer()
+        const server = makeFakeServer()
+        const controller = makeHmrController({
+          entry: "src/runtime.ts",
+          cwd: "/workspace/app",
+          server,
+          processLayer: fake.layer
+        })
 
-    await waitFor(() => server.sent.some(([event]) => event === RUNTIME_READY_EVENT))
-    const entryPath = resolve("/workspace/app", "src/runtime.ts")
-    server.emitWatchChange(entryPath)
-    server.emitWatchChange(entryPath)
+        yield* waitFor(() => server.sent.some(([event]) => event === RUNTIME_READY_EVENT))
+        const entryPath = resolvePath("/workspace/app", "src/runtime.ts")
+        server.emitWatchChange(entryPath)
+        server.emitWatchChange(entryPath)
 
-    await waitFor(() => fake.records.length === 3)
-    expect(fake.events).toEqual(["spawn:1", "close:1", "spawn:2", "close:2", "spawn:3"])
+        yield* waitFor(() => fake.records.length === 3)
+        expect(fake.events).toEqual(["spawn:1", "close:1", "spawn:2", "close:2", "spawn:3"])
 
-    controller.dispose()
-    await waitFor(() => fake.records.every((record) => record.killed))
-  })
+        controller.dispose()
+        yield* waitFor(() => fake.records.every((record) => record.killed))
+      })
+    ))
 })
 
 interface FakeProcessRecord {
@@ -344,21 +397,14 @@ const isFramePayload = (payload: unknown): payload is { readonly data: string } 
   "data" in payload &&
   typeof payload.data === "string"
 
-const waitFor = async (predicate: () => boolean): Promise<void> => {
-  await Effect.runPromise(
-    Effect.suspend(() =>
-      predicate() ? Effect.void : Effect.fail(new Error("condition not met"))
-    ).pipe(
-      Effect.retry(Schedule.spaced("5 millis").pipe(Schedule.both(Schedule.recurs(200)))),
-      Effect.mapError(() => new Error("timed out waiting for condition"))
-    )
+const waitFor = (predicate: () => boolean): Effect.Effect<void, WaitForTimeout, never> =>
+  Effect.suspend(() => (predicate() ? Effect.void : new WaitForTimeout().asEffect())).pipe(
+    Effect.retry(Schedule.spaced("5 millis").pipe(Schedule.both(Schedule.recurs(200))))
   )
-}
 
-const firstRecord = (records: readonly FakeProcessRecord[]): FakeProcessRecord => {
+const firstRecord = (
+  records: readonly FakeProcessRecord[]
+): Effect.Effect<FakeProcessRecord, MissingProcessRecord, never> => {
   const record = records[0]
-  if (!record) {
-    throw new Error("missing process record")
-  }
-  return record
+  return record === undefined ? new MissingProcessRecord().asEffect() : Effect.succeed(record)
 }

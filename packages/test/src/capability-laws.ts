@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Cause, Context, Effect, Exit, Fiber, Layer } from "effect"
+import { Cause, Context, Effect, Exit, Fiber, Layer, ManagedRuntime } from "effect"
 
 export interface CapabilityLaw<Service, E = unknown> {
   readonly name: string
@@ -45,16 +45,15 @@ export const CapabilityLaws = Object.freeze({
   ): void => {
     for (const layerCase of layers) {
       for (const law of suite.laws) {
-        test(`${suite.name} / ${layerCase.name} / ${law.name}`, async () => {
+        test(`${suite.name} / ${layerCase.name} / ${law.name}`, () => {
           const layer =
             typeof layerCase.layer === "function" ? layerCase.layer(law) : layerCase.layer
-          await Effect.runPromise(
-            Effect.scoped(
-              Effect.gen(function* () {
-                const service = yield* Effect.service(suite.service)
-                yield* law.check(service)
-              }).pipe(Effect.provide(layer))
-            )
+          const runtime = ManagedRuntime.make(layer)
+          return runtime.runPromise(
+            Effect.gen(function* () {
+              const service = yield* Effect.service(suite.service)
+              yield* law.check(service)
+            })
           )
         })
       }
@@ -69,7 +68,9 @@ export const LayerMatrix = Object.freeze({
   ): Effect.Effect<Exit.Exit<never, E>, E, R> =>
     Effect.scoped(
       Effect.gen(function* () {
-        const fiber = yield* body.pipe(Effect.provide(layer), Effect.forkScoped)
+        const scope = yield* Effect.scope
+        const context = yield* Layer.buildWithScope(layer, scope)
+        const fiber = yield* Effect.forkScoped(Effect.provide(body, context))
         yield* Effect.yieldNow
         yield* Fiber.interrupt(fiber)
         return yield* Fiber.await(fiber)

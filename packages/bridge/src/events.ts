@@ -199,9 +199,11 @@ const encodeEventPayload = <Type, Encoded>(
     )
   )
 
+let eventHubTraceSeq = 0
+
 const resolveOptions = (options: BridgeEventHubOptions): ResolvedBridgeEventHubOptions => ({
   now: options.now,
-  nextTraceId: options.nextTraceId ?? (() => `trace-${globalThis.crypto.randomUUID()}`),
+  nextTraceId: options.nextTraceId ?? (() => `trace-event-${++eventHubTraceSeq}`),
   windowId: options.windowId
 })
 

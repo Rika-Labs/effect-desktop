@@ -8,6 +8,36 @@ const NonNegativeFiniteNumber = Schema.Number.check(
   Schema.isFinite(),
   Schema.isGreaterThanOrEqualTo(0)
 )
+const NativeFileSystemPath = CanonicalPath.check(
+  Schema.makeFilter(
+    (value) =>
+      isSafeNativeFileSystemPath(value.path) ||
+      "must be an absolute path without control characters or dot segments"
+  )
+)
+
+const WindowsDriveAbsolutePathPattern = /^[A-Za-z]:[\\/]/u
+const WindowsUncAbsolutePathPattern = /^\\\\[^\\/]+[\\/][^\\/]+(?:[\\/]|$)/u
+const ControlCharacterPattern = /\p{Cc}/u
+
+const isSafeNativeFileSystemPath = (value: string): boolean => {
+  if (ControlCharacterPattern.test(value)) {
+    return false
+  }
+
+  if (value.startsWith("/")) {
+    return !hasDotPathSegment(value, /\/+/u)
+  }
+
+  if (WindowsDriveAbsolutePathPattern.test(value) || WindowsUncAbsolutePathPattern.test(value)) {
+    return !hasDotPathSegment(value, /[\\/]+/u)
+  }
+
+  return false
+}
+
+const hasDotPathSegment = (value: string, separator: RegExp): boolean =>
+  value.split(separator).some((segment) => segment === "." || segment === "..")
 
 export const NativeFileSystemHandleResource = ResourceHandleSchema(
   "native-file-system-handle",
@@ -42,7 +72,7 @@ export type NativeFileSystemEventType = typeof NativeFileSystemEventType.Type
 export class NativeFileSystemOpenInput extends Schema.Class<NativeFileSystemOpenInput>(
   "NativeFileSystemOpenInput"
 )({
-  path: CanonicalPath,
+  path: NativeFileSystemPath,
   mode: Schema.optionalKey(NativeFileSystemOpenMode),
   handleId: Schema.optionalKey(BridgeSafeNonEmptyString)
 }) {}
@@ -52,7 +82,7 @@ export type NativeFileSystemOpenOptions = Schema.Schema.Type<typeof NativeFileSy
 export class NativeFileSystemStatInput extends Schema.Class<NativeFileSystemStatInput>(
   "NativeFileSystemStatInput"
 )({
-  path: CanonicalPath
+  path: NativeFileSystemPath
 }) {}
 
 export type NativeFileSystemStatOptions = Schema.Schema.Type<typeof NativeFileSystemStatInput>
@@ -60,7 +90,7 @@ export type NativeFileSystemStatOptions = Schema.Schema.Type<typeof NativeFileSy
 export class NativeFileSystemWatchInput extends Schema.Class<NativeFileSystemWatchInput>(
   "NativeFileSystemWatchInput"
 )({
-  path: CanonicalPath,
+  path: NativeFileSystemPath,
   recursive: Schema.optionalKey(Schema.Boolean),
   watchId: Schema.optionalKey(BridgeSafeNonEmptyString),
   ownerScope: Schema.optionalKey(BridgeSafeNonEmptyString)
@@ -81,7 +111,7 @@ export type NativeFileSystemStopWatchingOptions = Schema.Schema.Type<
 export class NativeFileSystemMetadata extends Schema.Class<NativeFileSystemMetadata>(
   "NativeFileSystemMetadata"
 )({
-  path: CanonicalPath,
+  path: NativeFileSystemPath,
   kind: NativeFileSystemEntryKind,
   sizeBytes: Schema.optionalKey(NonNegativeFiniteNumber),
   modifiedMillis: Schema.optionalKey(NonNegativeFiniteNumber)
@@ -98,7 +128,7 @@ export class NativeFileSystemWatchResult extends Schema.Class<NativeFileSystemWa
   "NativeFileSystemWatchResult"
 )({
   watch: NativeFileSystemWatchResource,
-  path: CanonicalPath,
+  path: NativeFileSystemPath,
   recursive: Schema.Boolean
 }) {}
 
@@ -122,7 +152,7 @@ export class NativeFileSystemEvent extends Schema.Class<NativeFileSystemEvent>(
   type: NativeFileSystemEventType,
   timestamp: NonNegativeFiniteNumber,
   watchId: Schema.optionalKey(BridgeSafeNonEmptyString),
-  path: Schema.optionalKey(CanonicalPath),
+  path: Schema.optionalKey(NativeFileSystemPath),
   phase: NativeFileSystemEventPhase,
   reason: Schema.optionalKey(BridgeSafeString)
 }) {}

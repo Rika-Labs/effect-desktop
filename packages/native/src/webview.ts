@@ -6,9 +6,9 @@ import {
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
   makeHostProtocolInvalidArgumentError,
-  type RpcCapabilityMetadata,
   RpcGroup,
-  type HostProtocolError
+  type HostProtocolError,
+  type RpcSupportMetadata
 } from "@effect-desktop/bridge"
 import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
@@ -18,28 +18,30 @@ import { subscribeNativeEvent } from "./event-stream.js"
 export * from "./contracts/webview.js"
 import {
   type WebViewCapabilityName,
-  WebViewCapabilityResult,
-  WebViewCapabilityInput,
-  type WebViewCapabilityOptions,
+  WebViewApiCallEvent,
+  type WebViewCreateNavigationOptions,
   type WebViewCreateOptions,
   WebViewCreateInput,
+  WebViewFrameEvent,
+  WebViewNavigationBlockedEvent,
+  WebViewNavigationState,
+  type WebViewNavigationPolicyOptions,
   type WebViewHandle,
   WebViewHandleInput,
   WebViewLoadRouteInput,
   WebViewLoadUrlInput,
-  WebViewNavigationBlockedEvent,
-  WebViewNavigationState,
-  type WebViewNavigationPolicyOptions,
+  WebViewRuntimeEvent,
   WebViewResource,
   type WebViewPlatform,
   type WebViewRuntimeMode,
   WebViewSetNavigationPolicyInput,
-  WebViewScreenshot
+  WebViewSetZoomInput
 } from "./contracts/webview.js"
-import { isSupportedImageHeader } from "./contracts/image.js"
+import type { WindowHandle } from "./contracts/window.js"
 const StrictParseOptions = { onExcessProperty: "error" } as const
 type WebViewError = HostProtocolError
 const WebViewUnsupportedReason = "host-adapter-unimplemented"
+const WebViewNavigationPartialReason = "host-navigation-state-tracked"
 const WebViewRpcSupport = NativeSurface.support.unsupported(WebViewUnsupportedReason, {
   platforms: [
     { platform: "macos", status: "unsupported", reason: WebViewUnsupportedReason },
@@ -47,82 +49,293 @@ const WebViewRpcSupport = NativeSurface.support.unsupported(WebViewUnsupportedRe
     { platform: "linux", status: "unsupported", reason: WebViewUnsupportedReason }
   ]
 })
+const WebViewNavigationSupport = NativeSurface.support.partial(WebViewNavigationPartialReason, {
+  platforms: [
+    { platform: "macos", status: "partial", reason: WebViewNavigationPartialReason },
+    { platform: "windows", status: "partial", reason: WebViewNavigationPartialReason },
+    { platform: "linux", status: "partial", reason: WebViewNavigationPartialReason }
+  ]
+})
+const WebViewDevToolsPartialReason = "host-devtools-debug-build-only"
+const WebViewDebuggerUnsupportedReason = "host-debugger-protocol-unavailable"
+const WebViewDevToolsSupport = NativeSurface.support.partial(WebViewDevToolsPartialReason, {
+  platforms: [
+    { platform: "macos", status: "partial", reason: WebViewDevToolsPartialReason },
+    { platform: "windows", status: "partial", reason: WebViewDevToolsPartialReason },
+    { platform: "linux", status: "partial", reason: WebViewDevToolsPartialReason }
+  ]
+})
+const WebViewDebuggerSupport = NativeSurface.support.unsupported(WebViewDebuggerUnsupportedReason, {
+  platforms: [
+    { platform: "macos", status: "unsupported", reason: WebViewDebuggerUnsupportedReason },
+    { platform: "windows", status: "unsupported", reason: WebViewDebuggerUnsupportedReason },
+    { platform: "linux", status: "unsupported", reason: WebViewDebuggerUnsupportedReason }
+  ]
+})
+const WebViewDocumentUnsupportedReason = "host-document-output-unavailable"
+const WebViewRuntimeUserAgentUnsupportedReason = "host-user-agent-runtime-unavailable"
+const WebViewRuntimeMediaControlUnsupportedReason = "host-runtime-media-control-unavailable"
+const WebViewRuntimePermissionUnsupportedReason = "host-permission-request-routing-unavailable"
+const WebViewFrameRoutingUnsupportedReason = "host-frame-routing-unavailable"
+const WebViewPrintZoomPartialReason = "host-print-zoom-provider-backed"
+const WebViewDocumentUnsupportedSupport = NativeSurface.support.unsupported(
+  WebViewDocumentUnsupportedReason,
+  {
+    platforms: [
+      { platform: "macos", status: "unsupported", reason: WebViewDocumentUnsupportedReason },
+      { platform: "windows", status: "unsupported", reason: WebViewDocumentUnsupportedReason },
+      { platform: "linux", status: "unsupported", reason: WebViewDocumentUnsupportedReason }
+    ]
+  }
+)
+const WebViewRuntimeUserAgentSupport = NativeSurface.support.unsupported(
+  WebViewRuntimeUserAgentUnsupportedReason,
+  {
+    platforms: [
+      {
+        platform: "macos",
+        status: "unsupported",
+        reason: WebViewRuntimeUserAgentUnsupportedReason
+      },
+      {
+        platform: "windows",
+        status: "unsupported",
+        reason: WebViewRuntimeUserAgentUnsupportedReason
+      },
+      { platform: "linux", status: "unsupported", reason: WebViewRuntimeUserAgentUnsupportedReason }
+    ]
+  }
+)
+const WebViewPrintZoomSupport = NativeSurface.support.partial(WebViewPrintZoomPartialReason, {
+  platforms: [
+    { platform: "macos", status: "partial", reason: WebViewPrintZoomPartialReason },
+    { platform: "windows", status: "partial", reason: WebViewPrintZoomPartialReason },
+    { platform: "linux", status: "partial", reason: WebViewPrintZoomPartialReason }
+  ]
+})
+const WebViewRuntimeMediaControlSupport = NativeSurface.support.unsupported(
+  WebViewRuntimeMediaControlUnsupportedReason,
+  {
+    platforms: [
+      {
+        platform: "macos",
+        status: "unsupported",
+        reason: WebViewRuntimeMediaControlUnsupportedReason
+      },
+      {
+        platform: "windows",
+        status: "unsupported",
+        reason: WebViewRuntimeMediaControlUnsupportedReason
+      },
+      {
+        platform: "linux",
+        status: "unsupported",
+        reason: WebViewRuntimeMediaControlUnsupportedReason
+      }
+    ]
+  }
+)
+const WebViewRuntimePermissionSupport = NativeSurface.support.unsupported(
+  WebViewRuntimePermissionUnsupportedReason,
+  {
+    platforms: [
+      {
+        platform: "macos",
+        status: "unsupported",
+        reason: WebViewRuntimePermissionUnsupportedReason
+      },
+      {
+        platform: "windows",
+        status: "unsupported",
+        reason: WebViewRuntimePermissionUnsupportedReason
+      },
+      {
+        platform: "linux",
+        status: "unsupported",
+        reason: WebViewRuntimePermissionUnsupportedReason
+      }
+    ]
+  }
+)
+const WebViewFrameRoutingSupport = NativeSurface.support.unsupported(
+  WebViewFrameRoutingUnsupportedReason,
+  {
+    platforms: [
+      { platform: "macos", status: "unsupported", reason: WebViewFrameRoutingUnsupportedReason },
+      { platform: "windows", status: "unsupported", reason: WebViewFrameRoutingUnsupportedReason },
+      { platform: "linux", status: "unsupported", reason: WebViewFrameRoutingUnsupportedReason }
+    ]
+  }
+)
 
-export const WebViewCreate = webviewRpc(
-  "create",
-  WebViewCreateInput,
-  WebViewResource,
-  P.nativeInvoke({ primitive: "WebView", methods: ["create"] })
-)
-export const WebViewLoadRoute = webviewRpc(
-  "loadRoute",
-  WebViewLoadRouteInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "WebView", methods: ["loadRoute"] })
-)
-export const WebViewLoadUrl = webviewRpc(
-  "loadUrl",
-  WebViewLoadUrlInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "WebView", methods: ["loadUrl"] })
-)
-export const WebViewReload = webviewRpc(
-  "reload",
-  WebViewHandleInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "WebView", methods: ["reload"] })
-)
-export const WebViewStop = webviewRpc(
-  "stop",
-  WebViewHandleInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "WebView", methods: ["stop"] })
-)
-export const WebViewGoBack = webviewRpc(
-  "goBack",
-  WebViewHandleInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "WebView", methods: ["goBack"] })
-)
-export const WebViewGoForward = webviewRpc(
-  "goForward",
-  WebViewHandleInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "WebView", methods: ["goForward"] })
-)
-export const WebViewGetNavigationState = webviewRpc(
-  "getNavigationState",
-  WebViewHandleInput,
-  WebViewNavigationState,
-  P.nativeInvoke({ primitive: "WebView", methods: ["getNavigationState"] })
-)
-export const WebViewCaptureScreenshot = webviewRpc(
-  "captureScreenshot",
-  WebViewHandleInput,
-  WebViewScreenshot,
-  P.nativeInvoke({ primitive: "WebView", methods: ["captureScreenshot"] })
-)
-export const WebViewSetNavigationPolicy = webviewRpc(
-  "setNavigationPolicy",
-  WebViewSetNavigationPolicyInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "WebView", methods: ["setNavigationPolicy"] })
-)
-export const WebViewCapability = webviewRpc(
-  "capability",
-  WebViewCapabilityInput,
-  WebViewCapabilityResult,
-  { kind: "none" }
-)
-export const WebViewDestroy = webviewRpc(
-  "destroy",
-  WebViewHandleInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "WebView", methods: ["destroy"] })
-)
+export const WebViewCreate = NativeSurface.rpc("WebView", "create", {
+  payload: WebViewCreateInput,
+  success: WebViewResource,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "WebView", methods: ["create"] })
+  ),
+  endpoint: "mutation",
+  support: WebViewNavigationSupport
+})
+export const WebViewLoadRoute = NativeSurface.rpc("WebView", "loadRoute", {
+  payload: WebViewLoadRouteInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "WebView", methods: ["loadRoute"] })
+  ),
+  endpoint: "mutation",
+  support: WebViewNavigationSupport
+})
+export const WebViewLoadUrl = NativeSurface.rpc("WebView", "loadUrl", {
+  payload: WebViewLoadUrlInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "WebView", methods: ["loadUrl"] })
+  ),
+  endpoint: "mutation",
+  support: WebViewNavigationSupport
+})
+export const WebViewReload = NativeSurface.rpc("WebView", "reload", {
+  payload: WebViewHandleInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "WebView", methods: ["reload"] })
+  ),
+  endpoint: "mutation",
+  support: WebViewNavigationSupport
+})
+export const WebViewStop = NativeSurface.rpc("WebView", "stop", {
+  payload: WebViewHandleInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "WebView", methods: ["stop"] })
+  ),
+  endpoint: "mutation",
+  support: WebViewNavigationSupport
+})
+export const WebViewGoBack = NativeSurface.rpc("WebView", "goBack", {
+  payload: WebViewHandleInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "WebView", methods: ["goBack"] })
+  ),
+  endpoint: "mutation",
+  support: WebViewNavigationSupport
+})
+export const WebViewGoForward = NativeSurface.rpc("WebView", "goForward", {
+  payload: WebViewHandleInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "WebView", methods: ["goForward"] })
+  ),
+  endpoint: "mutation",
+  support: WebViewNavigationSupport
+})
+export const WebViewGetNavigationState = NativeSurface.rpc("WebView", "getNavigationState", {
+  payload: WebViewHandleInput,
+  success: WebViewNavigationState,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "WebView", methods: ["getNavigationState"] })
+  ),
+  endpoint: "mutation",
+  support: WebViewNavigationSupport
+})
+export const WebViewPrint = NativeSurface.rpc("WebView", "print", {
+  payload: WebViewHandleInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "WebView", methods: ["print"] })
+  ),
+  endpoint: "mutation",
+  support: WebViewPrintZoomSupport
+})
+export const WebViewSetZoom = NativeSurface.rpc("WebView", "setZoom", {
+  payload: WebViewSetZoomInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "WebView", methods: ["setZoom"] })
+  ),
+  endpoint: "mutation",
+  support: WebViewPrintZoomSupport
+})
+export const WebViewOpenDevTools = NativeSurface.rpc("WebView", "openDevTools", {
+  payload: WebViewHandleInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "WebView", methods: ["openDevTools"] })
+  ),
+  endpoint: "mutation",
+  support: WebViewDevToolsSupport
+})
+export const WebViewCloseDevTools = NativeSurface.rpc("WebView", "closeDevTools", {
+  payload: WebViewHandleInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "WebView", methods: ["closeDevTools"] })
+  ),
+  endpoint: "mutation",
+  support: WebViewDevToolsSupport
+})
+export const WebViewSetNavigationPolicy = NativeSurface.rpc("WebView", "setNavigationPolicy", {
+  payload: WebViewSetNavigationPolicyInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "WebView", methods: ["setNavigationPolicy"] })
+  ),
+  endpoint: "mutation",
+  support: WebViewNavigationSupport
+})
+export const WebViewDestroy = NativeSurface.rpc("WebView", "destroy", {
+  payload: WebViewHandleInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "WebView", methods: ["destroy"] })
+  ),
+  endpoint: "mutation",
+  support: WebViewNavigationSupport
+})
+
+const webViewCapabilityFact = (
+  method:
+    | "captureScreenshot"
+    | "printToPdf"
+    | "findInPage"
+    | "setUserAgent"
+    | "setAudioMuted"
+    | "respondToPermission"
+    | "listFrames"
+    | "postToFrame"
+    | "attachDebugger",
+  support: RpcSupportMetadata
+) =>
+  NativeSurface.capabilityFact("WebView", method, {
+    authority: NativeSurface.authority.custom(
+      P.nativeInvoke({ primitive: "WebView", methods: [method] })
+    ),
+    support
+  })
+
+export const WebViewCapabilityFacts = Object.freeze([
+  webViewCapabilityFact("captureScreenshot", WebViewDocumentUnsupportedSupport),
+  webViewCapabilityFact("printToPdf", WebViewDocumentUnsupportedSupport),
+  webViewCapabilityFact("findInPage", WebViewDocumentUnsupportedSupport),
+  webViewCapabilityFact("setUserAgent", WebViewRuntimeUserAgentSupport),
+  webViewCapabilityFact("setAudioMuted", WebViewRuntimeMediaControlSupport),
+  webViewCapabilityFact("respondToPermission", WebViewRuntimePermissionSupport),
+  webViewCapabilityFact("listFrames", WebViewFrameRoutingSupport),
+  webViewCapabilityFact("postToFrame", WebViewFrameRoutingSupport),
+  webViewCapabilityFact("attachDebugger", WebViewDebuggerSupport),
+  NativeSurface.capabilityFact("WebView", "capability", {
+    authority: NativeSurface.authority.custom({ kind: "none" }),
+    support: WebViewRpcSupport
+  })
+])
 
 export const WebViewRpcEvents = Object.freeze({
-  NavigationBlocked: { payload: WebViewNavigationBlockedEvent }
+  NavigationBlocked: { payload: WebViewNavigationBlockedEvent },
+  ApiCall: { payload: WebViewApiCallEvent },
+  Runtime: { payload: WebViewRuntimeEvent },
+  Frame: { payload: WebViewFrameEvent }
 })
 
 export type WebViewRpcEvents = typeof WebViewRpcEvents
@@ -136,9 +349,11 @@ const WebViewRpcGroup = RpcGroup.make(
   WebViewGoBack,
   WebViewGoForward,
   WebViewGetNavigationState,
-  WebViewCaptureScreenshot,
+  WebViewPrint,
+  WebViewSetZoom,
+  WebViewOpenDevTools,
+  WebViewCloseDevTools,
   WebViewSetNavigationPolicy,
-  WebViewCapability,
   WebViewDestroy
 )
 
@@ -153,9 +368,11 @@ export const WebViewMethodNames = Object.freeze([
   "goBack",
   "goForward",
   "getNavigationState",
-  "captureScreenshot",
+  "print",
+  "setZoom",
+  "openDevTools",
+  "closeDevTools",
   "setNavigationPolicy",
-  "capability",
   "destroy"
 ] as const)
 
@@ -168,7 +385,10 @@ const WebViewCapabilityMethods = Object.freeze([
   "goBack",
   "goForward",
   "getNavigationState",
-  "captureScreenshot",
+  "print",
+  "setZoom",
+  "openDevTools",
+  "closeDevTools",
   "setNavigationPolicy",
   "destroy"
 ] as const satisfies readonly (typeof WebViewMethodNames)[number][])
@@ -192,36 +412,41 @@ export interface WebViewClientApi {
   readonly getNavigationState: (
     webview: WebViewHandle
   ) => Effect.Effect<WebViewNavigationState, WebViewError, never>
-  readonly captureScreenshot: (
-    webview: WebViewHandle
-  ) => Effect.Effect<WebViewScreenshot, WebViewError, never>
+  readonly print: (webview: WebViewHandle) => Effect.Effect<void, WebViewError, never>
+  readonly setZoom: (
+    webview: WebViewHandle,
+    zoom: number
+  ) => Effect.Effect<void, WebViewError, never>
+  readonly openDevTools: (webview: WebViewHandle) => Effect.Effect<void, WebViewError, never>
+  readonly closeDevTools: (webview: WebViewHandle) => Effect.Effect<void, WebViewError, never>
   readonly setNavigationPolicy: (
     webview: WebViewHandle,
     policy: WebViewNavigationPolicyOptions
   ) => Effect.Effect<void, WebViewError, never>
-  readonly capability: (
-    input: WebViewCapabilityOptions
-  ) => Effect.Effect<WebViewCapabilityResult, WebViewError, never>
   readonly destroy: (webview: WebViewHandle) => Effect.Effect<void, WebViewError, never>
   readonly onNavigationBlocked: () => Stream.Stream<
     WebViewNavigationBlockedEvent,
     WebViewError,
     never
   >
+  readonly onApiCall: () => Stream.Stream<WebViewApiCallEvent, WebViewError, never>
+  readonly onRuntimeEvent: (
+    webview?: WebViewHandle
+  ) => Stream.Stream<WebViewRuntimeEvent, WebViewError, never>
+  readonly onFrameEvent: (
+    webview?: WebViewHandle
+  ) => Stream.Stream<WebViewFrameEvent, WebViewError, never>
 }
 
 export class WebViewClient extends Context.Service<WebViewClient, WebViewClientApi>()(
   "@effect-desktop/native/WebViewClient"
 ) {}
 
-export interface WebViewServiceApi extends Omit<WebViewClientApi, "create" | "capability"> {
+export interface WebViewServiceApi extends Omit<WebViewClientApi, "create"> {
   readonly create: (
-    input?: WebViewCreateOptions
+    window: WindowHandle,
+    input?: WebViewCreateNavigationOptions
   ) => Effect.Effect<WebViewHandle, WebViewError, never>
-  readonly capability: (
-    name: WebViewCapabilityName,
-    options?: { readonly mode?: WebViewRuntimeMode; readonly platform?: WebViewPlatform }
-  ) => Effect.Effect<boolean, WebViewError, never>
 }
 
 export class WebView extends Context.Service<WebView, WebViewServiceApi>()(
@@ -256,7 +481,11 @@ export const WebViewHandlersLive = WebViewRpcGroup.toLayer({
   "WebView.create": (input) =>
     Effect.gen(function* () {
       const webview = yield* WebView
-      return yield* webview.create(input)
+      return yield* webview.create(input.window, {
+        url: input.url,
+        originPolicy: input.originPolicy,
+        ...(input.isolation === undefined ? {} : { isolation: input.isolation })
+      })
     }),
   "WebView.loadRoute": (input) =>
     Effect.gen(function* () {
@@ -293,24 +522,30 @@ export const WebViewHandlersLive = WebViewRpcGroup.toLayer({
       const webview = yield* WebView
       return yield* webview.getNavigationState(input.webview)
     }),
-  "WebView.captureScreenshot": (input) =>
+  "WebView.print": (input) =>
     Effect.gen(function* () {
       const webview = yield* WebView
-      return yield* webview.captureScreenshot(input.webview)
+      yield* webview.print(input.webview)
+    }),
+  "WebView.setZoom": (input) =>
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      yield* webview.setZoom(input.webview, input.zoom)
+    }),
+  "WebView.openDevTools": (input) =>
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      yield* webview.openDevTools(input.webview)
+    }),
+  "WebView.closeDevTools": (input) =>
+    Effect.gen(function* () {
+      const webview = yield* WebView
+      yield* webview.closeDevTools(input.webview)
     }),
   "WebView.setNavigationPolicy": (input) =>
     Effect.gen(function* () {
       const webview = yield* WebView
       yield* webview.setNavigationPolicy(input.webview, input.policy)
-    }),
-  "WebView.capability": (input) =>
-    Effect.gen(function* () {
-      const webview = yield* WebView
-      const supported = yield* webview.capability(input.name, {
-        ...(input.mode === undefined ? {} : { mode: input.mode }),
-        ...(input.platform === undefined ? {} : { platform: input.platform })
-      })
-      return new WebViewCapabilityResult({ supported })
     }),
   "WebView.destroy": (input) =>
     Effect.gen(function* () {
@@ -323,6 +558,7 @@ export const WebViewSurface = NativeSurface.make("WebView", WebViewRpcGroup, {
   service: WebViewClient,
   capabilities: WebViewCapabilityMethods,
   handlers: WebViewHandlersLive,
+  capabilityFacts: WebViewCapabilityFacts,
   client: (client) => webViewClientFromRpcClient(client, undefined),
   bridgeClient: (client, exchange) => webViewClientFromRpcClient(client, exchange)
 })
@@ -343,7 +579,8 @@ export const webViewCapability = (
 
 const makeWebViewService = (client: WebViewClientApi): WebViewServiceApi => {
   const service: WebViewServiceApi = {
-    create: (input) => client.create(input ?? defaultWebViewCreateOptions()),
+    create: (window, input) =>
+      client.create({ window: toWindowHandle(window), ...defaultWebViewCreateOptions(input) }),
     loadRoute: (webview, route) => client.loadRoute(webview, route),
     loadUrl: (webview, url) => client.loadUrl(webview, url),
     reload: (webview) => client.reload(webview),
@@ -351,18 +588,16 @@ const makeWebViewService = (client: WebViewClientApi): WebViewServiceApi => {
     goBack: (webview) => client.goBack(webview),
     goForward: (webview) => client.goForward(webview),
     getNavigationState: (webview) => client.getNavigationState(webview),
-    captureScreenshot: (webview) => client.captureScreenshot(webview),
+    print: (webview) => client.print(webview),
+    setZoom: (webview, zoom) => client.setZoom(webview, zoom),
+    openDevTools: (webview) => client.openDevTools(webview),
+    closeDevTools: (webview) => client.closeDevTools(webview),
     setNavigationPolicy: (webview, policy) => client.setNavigationPolicy(webview, policy),
-    capability: (name, options) =>
-      client
-        .capability({
-          name,
-          ...(options?.platform === undefined ? {} : { platform: options.platform }),
-          ...(options?.mode === undefined ? {} : { mode: options.mode })
-        })
-        .pipe(Effect.map((result) => result.supported)),
     destroy: (webview) => client.destroy(webview),
-    onNavigationBlocked: () => client.onNavigationBlocked()
+    onNavigationBlocked: () => client.onNavigationBlocked(),
+    onApiCall: () => client.onApiCall(),
+    onRuntimeEvent: (webview) => client.onRuntimeEvent(webview),
+    onFrameEvent: (webview) => client.onFrameEvent(webview)
   }
 
   return Object.freeze(service)
@@ -420,12 +655,29 @@ const webViewClientFromRpcClient = (
         ),
         Effect.flatMap(decodeWebViewNavigationState)
       ),
-    captureScreenshot: (webview) =>
+    print: (webview) =>
       decodeWebViewHandleInput({ webview: toWebViewHandle(webview) }).pipe(
         Effect.flatMap((decoded) =>
-          runWebViewRpc(client["WebView.captureScreenshot"](decoded), "WebView.captureScreenshot")
-        ),
-        Effect.flatMap(validateWebViewScreenshot)
+          runWebViewRpc(client["WebView.print"](decoded), "WebView.print")
+        )
+      ),
+    setZoom: (webview, zoom) =>
+      decodeWebViewSetZoomInput({ webview: toWebViewHandle(webview), zoom }).pipe(
+        Effect.flatMap((decoded) =>
+          runWebViewRpc(client["WebView.setZoom"](decoded), "WebView.setZoom")
+        )
+      ),
+    openDevTools: (webview) =>
+      decodeWebViewHandleInput({ webview: toWebViewHandle(webview) }).pipe(
+        Effect.flatMap((decoded) =>
+          runWebViewRpc(client["WebView.openDevTools"](decoded), "WebView.openDevTools")
+        )
+      ),
+    closeDevTools: (webview) =>
+      decodeWebViewHandleInput({ webview: toWebViewHandle(webview) }).pipe(
+        Effect.flatMap((decoded) =>
+          runWebViewRpc(client["WebView.closeDevTools"](decoded), "WebView.closeDevTools")
+        )
       ),
     setNavigationPolicy: (webview, policy) =>
       decodeWebViewSetNavigationPolicyInput({ webview: toWebViewHandle(webview), policy }).pipe(
@@ -436,37 +688,70 @@ const webViewClientFromRpcClient = (
           )
         )
       ),
-    capability: (input) =>
-      decodeWebViewCapabilityInput(input).pipe(
-        Effect.flatMap((decoded) =>
-          runWebViewRpc(client["WebView.capability"](decoded), "WebView.capability")
-        )
-      ),
     destroy: (webview) =>
       decodeWebViewHandleInput({ webview: toWebViewHandle(webview) }).pipe(
         Effect.flatMap((decoded) =>
           runWebViewRpc(client["WebView.destroy"](decoded), "WebView.destroy")
         )
       ),
-    onNavigationBlocked: () => subscribeWebViewEvent(exchange, "WebView.NavigationBlocked")
+    onNavigationBlocked: () => subscribeWebViewNavigationBlockedEvent(exchange),
+    onApiCall: () => subscribeWebViewApiCallEvent(exchange),
+    onRuntimeEvent: (webview) => subscribeWebViewRuntimeEvent(exchange, webview),
+    onFrameEvent: (webview) => subscribeWebViewFrameEvent(exchange, webview)
   }
 
   return Object.freeze(webViewClient)
 }
 
-const subscribeWebViewEvent = (
-  exchange: BridgeClientExchange | undefined,
-  method: "WebView.NavigationBlocked"
+const subscribeWebViewNavigationBlockedEvent = (
+  exchange: BridgeClientExchange | undefined
 ): Stream.Stream<WebViewNavigationBlockedEvent, WebViewError, never> =>
-  subscribeNativeEvent(exchange, method, WebViewNavigationBlockedEvent)
+  subscribeNativeEvent(exchange, "WebView.NavigationBlocked", WebViewNavigationBlockedEvent)
 
-const defaultWebViewCreateOptions = (): WebViewCreateOptions => ({
-  url: "app://localhost/",
-  originPolicy: {
+const subscribeWebViewApiCallEvent = (
+  exchange: BridgeClientExchange | undefined
+): Stream.Stream<WebViewApiCallEvent, WebViewError, never> =>
+  subscribeNativeEvent(exchange, "WebView.ApiCall", WebViewApiCallEvent)
+
+const subscribeWebViewRuntimeEvent = (
+  exchange: BridgeClientExchange | undefined,
+  webview?: WebViewHandle
+): Stream.Stream<WebViewRuntimeEvent, WebViewError, never> => {
+  const stream = subscribeNativeEvent(exchange, "WebView.RuntimeEvent", WebViewRuntimeEvent)
+  return webview === undefined
+    ? stream
+    : stream.pipe(Stream.filter((event) => event.webview.id === webview.id))
+}
+
+const subscribeWebViewFrameEvent = (
+  exchange: BridgeClientExchange | undefined,
+  webview?: WebViewHandle
+): Stream.Stream<WebViewFrameEvent, WebViewError, never> => {
+  const stream = subscribeNativeEvent(exchange, "WebView.FrameEvent", WebViewFrameEvent)
+  return webview === undefined
+    ? stream
+    : stream.pipe(Stream.filter((event) => event.webview.id === webview.id))
+}
+
+const defaultWebViewCreateOptions = (
+  input?: WebViewCreateNavigationOptions
+): WebViewCreateNavigationOptions => ({
+  ...input,
+  url: input?.url ?? "app://localhost/",
+  originPolicy: input?.originPolicy ?? {
     allowedOrigins: ["app://localhost"],
     onDisallowed: "block"
   }
 })
+
+const toWindowHandle = (handle: WindowHandle): WindowHandle =>
+  Object.freeze({
+    kind: handle.kind,
+    id: handle.id,
+    generation: handle.generation,
+    ownerScope: handle.ownerScope,
+    state: handle.state
+  })
 
 const toWebViewHandle = (handle: WebViewHandle): WebViewHandle =>
   Object.freeze({
@@ -511,35 +796,10 @@ const decodeWebViewSetNavigationPolicyInput = (
 ): Effect.Effect<WebViewSetNavigationPolicyInput, WebViewError, never> =>
   decodeInput(WebViewSetNavigationPolicyInput, input, "WebView.setNavigationPolicy")
 
-const decodeWebViewCapabilityInput = (
+const decodeWebViewSetZoomInput = (
   input: unknown
-): Effect.Effect<WebViewCapabilityInput, WebViewError, never> =>
-  decodeInput(WebViewCapabilityInput, input, "WebView.capability")
-
-const validateWebViewScreenshot = (
-  screenshot: WebViewScreenshot
-): Effect.Effect<WebViewScreenshot, WebViewError, never> =>
-  Effect.gen(function* () {
-    if (screenshot.bytes.length === 0) {
-      return yield* Effect.fail(
-        makeHostProtocolInvalidOutputError(
-          "WebView.captureScreenshot",
-          "screenshot bytes must not be empty"
-        )
-      )
-    }
-
-    if (!isSupportedImageHeader(screenshot.mime, screenshot.bytes)) {
-      return yield* Effect.fail(
-        makeHostProtocolInvalidOutputError(
-          "WebView.captureScreenshot",
-          `declared ${screenshot.mime} does not match image header`
-        )
-      )
-    }
-
-    return screenshot
-  })
+): Effect.Effect<WebViewSetZoomInput, WebViewError, never> =>
+  decodeInput(WebViewSetZoomInput, input, "WebView.setZoom")
 
 const decodeInput = <A>(
   schema: Schema.Codec<A, unknown, never, never>,
@@ -551,20 +811,6 @@ const decodeInput = <A>(
       makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
     )
   )
-
-function webviewRpc<
-  const Method extends string,
-  Payload extends Schema.Codec<unknown, unknown, never, never>,
-  Success extends Schema.Codec<unknown, unknown, never, never>
->(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
-  return NativeSurface.rpc("WebView", method, {
-    payload,
-    success,
-    authority: NativeSurface.authority.custom(capability),
-    endpoint: "mutation",
-    support: WebViewRpcSupport
-  })
-}
 
 const runWebViewRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
@@ -615,13 +861,13 @@ const WEBVIEW_CAPABILITY_MATRIX: Readonly<
     print: true,
     "popup blocking": true,
     autofill: true,
-    "devtools open": true,
+    "devtools open": "dev-only",
     getUserMedia: true,
     "service workers in app:": true,
     "PDF embedded viewer": true
   }),
   linux: Object.freeze({
-    print: false,
+    print: true,
     "popup blocking": false,
     autofill: false,
     "devtools open": "dev-only",

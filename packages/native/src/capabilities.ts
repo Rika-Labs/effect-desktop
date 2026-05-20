@@ -56,6 +56,7 @@ export type NativeCapabilitySupport = Schema.Schema.Type<typeof NativeCapability
 
 export interface NativeCapabilityFact {
   readonly tag: string
+  readonly callable: boolean
   readonly capability: RpcCapabilityMetadata
   readonly support: NativeCapabilitySupport
 }
@@ -148,6 +149,7 @@ export const makeNativeCapabilityManifest = (
         facts.push(
           Object.freeze({
             tag: doc.tag,
+            callable: doc.callable,
             capability,
             support: support.value
           })

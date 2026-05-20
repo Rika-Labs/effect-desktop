@@ -5,7 +5,6 @@ import {
   type BridgeHandlerRuntimeOptions,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
-  type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
@@ -27,63 +26,76 @@ import { isSupportedImageHeader } from "./contracts/image.js"
 
 export type ClipboardError = HostProtocolError
 
-const ClipboardUnsupportedReason = "host-adapter-unimplemented"
-const ClipboardUnsupportedSupport = NativeSurface.support.unsupported(ClipboardUnsupportedReason, {
-  platforms: [
-    { platform: "macos", status: "unsupported", reason: ClipboardUnsupportedReason },
-    { platform: "windows", status: "unsupported", reason: ClipboardUnsupportedReason },
-    { platform: "linux", status: "unsupported", reason: ClipboardUnsupportedReason }
-  ]
+export const ClipboardReadText = NativeSurface.rpc("Clipboard", "readText", {
+  payload: Schema.Void,
+  success: ClipboardText,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Clipboard", methods: ["readText"] })
+  ),
+  endpoint: "query",
+  support: NativeSurface.support.supported
 })
-
-export const ClipboardReadText = clipboardRpc(
-  "readText",
-  Schema.Void,
-  ClipboardText,
-  P.nativeInvoke({ primitive: "Clipboard", methods: ["readText"] })
-)
-export const ClipboardWriteText = clipboardRpc(
-  "writeText",
-  ClipboardText,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Clipboard", methods: ["writeText"] })
-)
-export const ClipboardReadHtml = clipboardRpc(
-  "readHtml",
-  Schema.Void,
-  ClipboardHtml,
-  P.nativeInvoke({ primitive: "Clipboard", methods: ["readHtml"] })
-)
-export const ClipboardWriteHtml = clipboardRpc(
-  "writeHtml",
-  ClipboardHtml,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Clipboard", methods: ["writeHtml"] })
-)
-export const ClipboardReadImage = clipboardRpc(
-  "readImage",
-  Schema.Void,
-  ClipboardImage,
-  P.nativeInvoke({ primitive: "Clipboard", methods: ["readImage"] })
-)
-export const ClipboardWriteImage = clipboardRpc(
-  "writeImage",
-  ClipboardImage,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Clipboard", methods: ["writeImage"] })
-)
-export const ClipboardClear = clipboardRpc(
-  "clear",
-  Schema.Void,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Clipboard", methods: ["clear"] })
-)
-export const ClipboardIsSupported = clipboardRpc(
-  "isSupported",
-  ClipboardIsSupportedInput,
-  ClipboardSupportedResult,
-  { kind: "none" }
-)
+export const ClipboardWriteText = NativeSurface.rpc("Clipboard", "writeText", {
+  payload: ClipboardText,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Clipboard", methods: ["writeText"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const ClipboardReadHtml = NativeSurface.rpc("Clipboard", "readHtml", {
+  payload: Schema.Void,
+  success: ClipboardHtml,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Clipboard", methods: ["readHtml"] })
+  ),
+  endpoint: "query",
+  support: NativeSurface.support.supported
+})
+export const ClipboardWriteHtml = NativeSurface.rpc("Clipboard", "writeHtml", {
+  payload: ClipboardHtml,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Clipboard", methods: ["writeHtml"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const ClipboardReadImage = NativeSurface.rpc("Clipboard", "readImage", {
+  payload: Schema.Void,
+  success: ClipboardImage,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Clipboard", methods: ["readImage"] })
+  ),
+  endpoint: "query",
+  support: NativeSurface.support.supported
+})
+export const ClipboardWriteImage = NativeSurface.rpc("Clipboard", "writeImage", {
+  payload: ClipboardImage,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Clipboard", methods: ["writeImage"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const ClipboardClear = NativeSurface.rpc("Clipboard", "clear", {
+  payload: Schema.Void,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Clipboard", methods: ["clear"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const ClipboardIsSupported = NativeSurface.rpc("Clipboard", "isSupported", {
+  payload: ClipboardIsSupportedInput,
+  success: ClipboardSupportedResult,
+  authority: NativeSurface.authority.custom({ kind: "none" }),
+  endpoint: "query",
+  support: NativeSurface.support.supported
+})
 
 export const ClipboardRpcEvents = Object.freeze({})
 
@@ -338,18 +350,3 @@ const runClipboardRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
   operation: string
 ): Effect.Effect<A, ClipboardError, never> => runNativeRpc(effect, operation, "Clipboard")
-
-function clipboardRpc<
-  const Method extends string,
-  Payload extends Schema.Codec<unknown, unknown, never, never>,
-  Success extends Schema.Codec<unknown, unknown, never, never>
->(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
-  return NativeSurface.rpc("Clipboard", method, {
-    payload,
-    success,
-    authority: NativeSurface.authority.custom(capability),
-    endpoint: method === "isSupported" || method.startsWith("read") ? "query" : "mutation",
-    support:
-      method === "isSupported" ? NativeSurface.support.supported : ClipboardUnsupportedSupport
-  })
-}

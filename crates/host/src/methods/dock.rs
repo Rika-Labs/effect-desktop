@@ -31,6 +31,18 @@ pub(crate) fn set_badge_text(
     Ok(None)
 }
 
+pub(crate) fn set_progress(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let payload = decode_progress(payload)?;
+    validate_progress_value(payload.value())?;
+
+    handler.set_dock_progress(&payload)?;
+
+    Ok(None)
+}
+
 pub(crate) fn request_attention(
     handler: &dyn WindowMethodHandler,
     payload: Option<Value>,
@@ -41,48 +53,45 @@ pub(crate) fn request_attention(
     Ok(None)
 }
 
-pub(crate) fn set_menu(
-    handler: &dyn WindowMethodHandler,
+fn decode_progress(
     payload: Option<Value>,
-) -> Result<Option<Value>, HostProtocolError> {
-    let menu = decode_menu(payload)?;
-    handler.set_dock_menu(menu)?;
-
-    Ok(None)
+) -> Result<host_protocol::DockSetProgressPayload, HostProtocolError> {
+    let payload = required_payload(payload, host_protocol::DOCK_SET_PROGRESS_METHOD)?;
+    serde_json::from_value::<host_protocol::DockSetProgressPayload>(payload).map_err(|error| {
+        HostProtocolError::invalid_argument(
+            "payload",
+            error.to_string(),
+            host_protocol::DOCK_SET_PROGRESS_METHOD,
+        )
+    })
 }
 
-fn decode_menu(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
-    let payload = required_payload(payload, host_protocol::DOCK_SET_MENU_METHOD)?;
-    match payload.get("menu") {
-        Some(Value::Null) => Ok(None),
-        Some(menu) => {
-            validate_template(menu)?;
-            Ok(Some(menu.clone()))
+fn validate_progress_value(value: &Value) -> Result<(), HostProtocolError> {
+    match value {
+        Value::Null => Ok(()),
+        Value::Number(number) => {
+            let Some(progress) = number.as_f64() else {
+                return Err(HostProtocolError::invalid_argument(
+                    "value",
+                    "must be null or a finite number between 0 and 1",
+                    host_protocol::DOCK_SET_PROGRESS_METHOD,
+                ));
+            };
+            if !progress.is_finite() || !(0.0..=1.0).contains(&progress) {
+                return Err(HostProtocolError::invalid_argument(
+                    "value",
+                    "must be null or a finite number between 0 and 1",
+                    host_protocol::DOCK_SET_PROGRESS_METHOD,
+                ));
+            }
+            Ok(())
         }
-        None => Err(HostProtocolError::invalid_argument(
-            "menu",
-            "is required",
-            host_protocol::DOCK_SET_MENU_METHOD,
+        _ => Err(HostProtocolError::invalid_argument(
+            "value",
+            "must be null or a finite number between 0 and 1",
+            host_protocol::DOCK_SET_PROGRESS_METHOD,
         )),
     }
-}
-
-fn validate_template(template: &Value) -> Result<(), HostProtocolError> {
-    let Some(items) = template.get("items").and_then(Value::as_array) else {
-        return Err(HostProtocolError::invalid_argument(
-            "menu.items",
-            "must be an array",
-            host_protocol::DOCK_SET_MENU_METHOD,
-        ));
-    };
-    if items.is_empty() {
-        return Err(HostProtocolError::invalid_argument(
-            "menu.items",
-            "must not be empty",
-            host_protocol::DOCK_SET_MENU_METHOD,
-        ));
-    }
-    Ok(())
 }
 
 fn decode_count(payload: Option<Value>) -> Result<u64, HostProtocolError> {
@@ -164,7 +173,9 @@ fn required_payload(payload: Option<Value>, operation: &str) -> Result<Value, Ho
 
 #[cfg(test)]
 mod tests {
-    use super::{decode_count, decode_critical, decode_menu, decode_text};
+    use super::{
+        decode_count, decode_critical, decode_progress, decode_text, validate_progress_value,
+    };
     use serde_json::json;
 
     #[test]
@@ -214,15 +225,29 @@ mod tests {
     }
 
     #[test]
-    fn dock_menu_accepts_null_clear() {
-        assert_eq!(
-            decode_menu(Some(json!({ "menu": null }))).expect("menu"),
-            None
-        );
+    fn progress_accepts_null_and_fractional_values() {
+        let clear = decode_progress(Some(json!({ "value": null }))).expect("clear progress");
+        validate_progress_value(clear.value()).expect("clear progress should validate");
+
+        let progress = decode_progress(Some(json!({
+            "value": 0.5,
+            "options": { "state": "normal" }
+        })))
+        .expect("fractional progress");
+        validate_progress_value(progress.value()).expect("fractional progress should validate");
     }
 
     #[test]
-    fn dock_menu_requires_items() {
-        assert!(decode_menu(Some(json!({ "menu": { "items": [] } }))).is_err());
+    fn progress_rejects_invalid_shape_before_side_effects() {
+        assert!(decode_progress(Some(json!({}))).is_err());
+        assert!(decode_progress(Some(json!({ "value": 0.5, "extra": true }))).is_err());
+        assert!(decode_progress(Some(json!({
+            "value": 0.5,
+            "options": { "state": "bogus" }
+        })))
+        .is_err());
+        assert!(validate_progress_value(&json!(-0.1)).is_err());
+        assert!(validate_progress_value(&json!(1.1)).is_err());
+        assert!(validate_progress_value(&json!("0.5")).is_err());
     }
 }

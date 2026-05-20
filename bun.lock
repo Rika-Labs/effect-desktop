@@ -40,6 +40,9 @@
       "dependencies": {
         "effect": "4.0.0-beta.60",
       },
+      "devDependencies": {
+        "@effect/platform-bun": "4.0.0-beta.60",
+      },
     },
     "packages/cli": {
       "name": "@effect-desktop/cli",
@@ -89,6 +92,9 @@
         "@effect-desktop/core": "workspace:*",
         "effect": "4.0.0-beta.60",
       },
+      "devDependencies": {
+        "@effect/platform-bun": "4.0.0-beta.60",
+      },
     },
     "packages/native": {
       "name": "@effect-desktop/native",
@@ -124,6 +130,9 @@
         "@effect/wa-sqlite": "^0.1.2",
         "effect": "4.0.0-beta.60",
       },
+      "devDependencies": {
+        "@effect/platform-bun": "4.0.0-beta.60",
+      },
       "optionalDependencies": {
         "@effect/sql-pglite": "4.0.0-beta.60",
         "@electric-sql/pglite": "^0.4.4",
@@ -141,6 +150,7 @@
         "effect": "4.0.0-beta.60",
       },
       "devDependencies": {
+        "@effect/platform-bun": "4.0.0-beta.60",
         "@types/react": "^19.2.7",
         "@types/react-dom": "^19.2.3",
         "react": "^19.2.3",
@@ -202,6 +212,7 @@
         "effect": "4.0.0-beta.60",
       },
       "devDependencies": {
+        "@effect/platform-bun": "4.0.0-beta.60",
         "vue": "^3.5.0",
       },
       "peerDependencies": {

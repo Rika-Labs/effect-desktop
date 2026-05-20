@@ -3,8 +3,10 @@ import { Schema } from "effect"
 
 import { BridgeSafeNonEmptyString, BridgeSafeString } from "./strings.js"
 import { ImageMime } from "./image.js"
+import { WindowResource } from "./window.js"
 
 export const WebViewResource = ResourceHandleSchema("webview", "open")
+export const WebViewFrameResource = ResourceHandleSchema("webview-frame", "open")
 const WebViewPlatform = Schema.Literals(["macos", "windows", "linux"])
 const WebViewRuntimeMode = Schema.Literals(["dev", "prod"])
 const WebViewCapabilityName = Schema.Literals([
@@ -31,7 +33,69 @@ const WebViewOrigin = BridgeSafeNonEmptyString.check(
 const WebViewRoute = BridgeSafeNonEmptyString.check(
   Schema.isPattern(/^\/(?!.*(?:^|\/)\.\.(?:\/|$))[^?#]*$/u)
 )
+const WebViewApiName = BridgeSafeNonEmptyString.check(Schema.isPattern(/^[A-Za-z_$][\w$]*$/u))
+const WebViewApiMethodName = BridgeSafeNonEmptyString.check(Schema.isPattern(/^[A-Za-z_$][\w$]*$/u))
+const WebViewApiPayload = BridgeSafeString
+const WebViewFindQuery = BridgeSafeNonEmptyString
+const WebViewUserAgent = BridgeSafeNonEmptyString
+const WebViewNonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
+const WebViewZoomFactor = Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0))
+const WebViewRuntimeRequestId = BridgeSafeNonEmptyString
+const WebViewRuntimeEventReason = BridgeSafeString
+const WebViewRuntimePath = BridgeSafeNonEmptyString.check(
+  Schema.isPattern(/^(?!.*(?:^|[\\/])\.\.(?:[\\/]|$))[\s\S]*$/u)
+)
+const WebViewRuntimeUrl = BridgeSafeNonEmptyString.check(
+  Schema.isPattern(/^(?!javascript:|data:|vbscript:|blob:)[\s\S]*$/iu),
+  Schema.makeFilter((value) => isAbsoluteUrl(value) || "must be an absolute URL")
+)
+const WebViewRuntimeEventPhase = Schema.Literals([
+  "page-load-started",
+  "page-load-finished",
+  "drag-enter",
+  "drag-over",
+  "drag-drop",
+  "drag-leave",
+  "download-started",
+  "download-completed",
+  "permission-requested",
+  "permission-resolved",
+  "crashed",
+  "unresponsive",
+  "media-started",
+  "media-stopped",
+  "file-input-requested",
+  "failed"
+])
+const WebViewPermissionDecision = Schema.Literals(["grant", "deny"])
+const WebViewRuntimePermissionKind = Schema.Literals([
+  "camera",
+  "microphone",
+  "display-capture",
+  "geolocation",
+  "notifications",
+  "midi",
+  "clipboard-read",
+  "clipboard-write",
+  "file-system",
+  "unknown"
+])
+const WebViewFrameUrl = WebViewRuntimeUrl
+const WebViewFrameMessagePayload = BridgeSafeString
+const WebViewFrameEventReason = BridgeSafeString
+const WebViewFrameEventPhase = Schema.Literals([
+  "created",
+  "navigated",
+  "destroyed",
+  "message",
+  "failed"
+])
 export type WebViewHandle = ResourceHandle<"webview", "open">
+export type WebViewFrameHandle = ResourceHandle<"webview-frame", "open">
+export type WebViewRuntimeEventPhase = Schema.Schema.Type<typeof WebViewRuntimeEventPhase>
+export type WebViewPermissionDecision = Schema.Schema.Type<typeof WebViewPermissionDecision>
+export type WebViewRuntimePermissionKind = Schema.Schema.Type<typeof WebViewRuntimePermissionKind>
+export type WebViewFrameEventPhase = Schema.Schema.Type<typeof WebViewFrameEventPhase>
 
 export class WebViewNavigationPolicy extends Schema.Class<WebViewNavigationPolicy>(
   "WebViewNavigationPolicy"
@@ -42,12 +106,28 @@ export class WebViewNavigationPolicy extends Schema.Class<WebViewNavigationPolic
 
 export type WebViewNavigationPolicyOptions = Schema.Schema.Type<typeof WebViewNavigationPolicy>
 
+export class WebViewExposedApi extends Schema.Class<WebViewExposedApi>("WebViewExposedApi")({
+  name: WebViewApiName,
+  methods: Schema.NonEmptyArray(WebViewApiMethodName)
+}) {}
+
+export class WebViewIsolationPolicy extends Schema.Class<WebViewIsolationPolicy>(
+  "WebViewIsolationPolicy"
+)({
+  exposedApis: Schema.NonEmptyArray(WebViewExposedApi)
+}) {}
+
+export type WebViewIsolationPolicyOptions = Schema.Schema.Type<typeof WebViewIsolationPolicy>
+
 export class WebViewCreateInput extends Schema.Class<WebViewCreateInput>("WebViewCreateInput")({
+  window: WindowResource,
   url: WebViewNavigationUrl,
-  originPolicy: WebViewNavigationPolicy
+  originPolicy: WebViewNavigationPolicy,
+  isolation: Schema.optionalKey(WebViewIsolationPolicy)
 }) {}
 
 export type WebViewCreateOptions = Schema.Schema.Type<typeof WebViewCreateInput>
+export type WebViewCreateNavigationOptions = Omit<WebViewCreateOptions, "window">
 
 export class WebViewHandleInput extends Schema.Class<WebViewHandleInput>("WebViewHandleInput")({
   webview: WebViewResource
@@ -104,12 +184,111 @@ export class WebViewScreenshot extends Schema.Class<WebViewScreenshot>("WebViewS
   bytes: Schema.Uint8Array
 }) {}
 
+export class WebViewPdf extends Schema.Class<WebViewPdf>("WebViewPdf")({
+  mime: Schema.Literal("application/pdf"),
+  bytes: Schema.Uint8Array
+}) {}
+
+export class WebViewFindInPageInput extends Schema.Class<WebViewFindInPageInput>(
+  "WebViewFindInPageInput"
+)({
+  webview: WebViewResource,
+  query: WebViewFindQuery
+}) {}
+
+export class WebViewFindInPageResult extends Schema.Class<WebViewFindInPageResult>(
+  "WebViewFindInPageResult"
+)({
+  matches: WebViewNonNegativeInt,
+  activeMatchOrdinal: WebViewNonNegativeInt
+}) {}
+
+export class WebViewSetZoomInput extends Schema.Class<WebViewSetZoomInput>("WebViewSetZoomInput")({
+  webview: WebViewResource,
+  zoom: WebViewZoomFactor
+}) {}
+
+export class WebViewSetUserAgentInput extends Schema.Class<WebViewSetUserAgentInput>(
+  "WebViewSetUserAgentInput"
+)({
+  webview: WebViewResource,
+  userAgent: WebViewUserAgent
+}) {}
+
+export class WebViewSetAudioMutedInput extends Schema.Class<WebViewSetAudioMutedInput>(
+  "WebViewSetAudioMutedInput"
+)({
+  webview: WebViewResource,
+  muted: Schema.Boolean
+}) {}
+
+export class WebViewRespondToPermissionInput extends Schema.Class<WebViewRespondToPermissionInput>(
+  "WebViewRespondToPermissionInput"
+)({
+  webview: WebViewResource,
+  requestId: WebViewRuntimeRequestId,
+  decision: WebViewPermissionDecision
+}) {}
+
+export class WebViewFrame extends Schema.Class<WebViewFrame>("WebViewFrame")({
+  frame: WebViewFrameResource,
+  parentFrame: Schema.optionalKey(WebViewFrameResource),
+  url: Schema.optionalKey(WebViewFrameUrl)
+}) {}
+
+export class WebViewFrameList extends Schema.Class<WebViewFrameList>("WebViewFrameList")({
+  webview: WebViewResource,
+  frames: Schema.Array(WebViewFrame)
+}) {}
+
+export class WebViewPostToFrameInput extends Schema.Class<WebViewPostToFrameInput>(
+  "WebViewPostToFrameInput"
+)({
+  webview: WebViewResource,
+  frame: WebViewFrameResource,
+  payload: WebViewFrameMessagePayload
+}) {}
+
 export class WebViewNavigationBlockedEvent extends Schema.Class<WebViewNavigationBlockedEvent>(
   "WebViewNavigationBlockedEvent"
 )({
   webview: WebViewResource,
   url: WebViewNavigationUrl,
   reason: WebViewNavigationBlockedReason
+}) {}
+
+export class WebViewApiCallEvent extends Schema.Class<WebViewApiCallEvent>("WebViewApiCallEvent")({
+  webview: WebViewResource,
+  api: WebViewApiName,
+  method: WebViewApiMethodName,
+  payload: WebViewApiPayload
+}) {}
+
+export class WebViewRuntimePoint extends Schema.Class<WebViewRuntimePoint>("WebViewRuntimePoint")({
+  x: Schema.Int,
+  y: Schema.Int
+}) {}
+
+export class WebViewRuntimeEvent extends Schema.Class<WebViewRuntimeEvent>("WebViewRuntimeEvent")({
+  webview: WebViewResource,
+  phase: WebViewRuntimeEventPhase,
+  url: Schema.optionalKey(WebViewRuntimeUrl),
+  reason: Schema.optionalKey(WebViewRuntimeEventReason),
+  requestId: Schema.optionalKey(WebViewRuntimeRequestId),
+  permission: Schema.optionalKey(WebViewRuntimePermissionKind),
+  decision: Schema.optionalKey(WebViewPermissionDecision),
+  position: Schema.optionalKey(WebViewRuntimePoint),
+  paths: Schema.optionalKey(Schema.Array(WebViewRuntimePath))
+}) {}
+
+export class WebViewFrameEvent extends Schema.Class<WebViewFrameEvent>("WebViewFrameEvent")({
+  webview: WebViewResource,
+  frame: WebViewFrameResource,
+  parentFrame: Schema.optionalKey(WebViewFrameResource),
+  phase: WebViewFrameEventPhase,
+  url: Schema.optionalKey(WebViewFrameUrl),
+  payload: Schema.optionalKey(WebViewFrameMessagePayload),
+  reason: Schema.optionalKey(WebViewFrameEventReason)
 }) {}
 
 const isAbsoluteUrl = (value: string): boolean => {

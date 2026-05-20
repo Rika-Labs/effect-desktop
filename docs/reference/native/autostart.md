@@ -11,36 +11,39 @@ effect_version: 4
 Declare OS-level login-item and autostart operations through the native host
 boundary.
 
-The TypeScript surface is present for contract and bridge-client validation
-work, but the Rust host Autostart adapter is not implemented. The native surface
-reports `unsupported` on macOS, Windows, and Linux until the host owns
-platform-specific login-item persistence.
+The Rust host owns the platform persistence write. `enable` creates or updates
+the startup registration, `disable` removes it if present, and `isEnabled`
+reports whether the registration exists for the current app identity.
 
 ## Status
 
 | Method      | Success           | Runtime support |
 | ----------- | ----------------- | --------------- |
-| `isEnabled` | `AutostartStatus` | unsupported     |
-| `enable`    | `AutostartStatus` | unsupported     |
-| `disable`   | `AutostartStatus` | unsupported     |
+| `isEnabled` | `AutostartStatus` | supported       |
+| `enable`    | `AutostartStatus` | supported       |
+| `disable`   | `AutostartStatus` | supported       |
 
 ## Mechanisms
 
-`AutostartStatus.mechanism` reports the platform mechanism when a host adapter
-exists:
+`AutostartStatus.mechanism` reports the platform mechanism used by the host:
 
 | Platform | Mechanism             | Runtime support |
 | -------- | --------------------- | --------------- |
-| macOS    | `macos-login-item`    | unsupported     |
-| Windows  | `windows-run-key`     | unsupported     |
-| Linux    | `linux-xdg-autostart` | unsupported     |
+| macOS    | `macos-login-item`    | supported       |
+| Windows  | `windows-run-key`     | supported       |
+| Linux    | `linux-xdg-autostart` | supported       |
 | Any      | `unsupported`         | unsupported     |
+
+macOS uses a per-user LaunchAgent-style login item under
+`~/Library/LaunchAgents`. Windows uses the current user's Run key. Linux uses a
+per-user XDG autostart desktop file under `$XDG_CONFIG_HOME/autostart` or
+`~/.config/autostart`.
 
 ## Events
 
 The current event stream is `events()`. Event phases are `checked`, `enabled`,
-`disabled`, and `failed`. Native event delivery is currently unsupported until
-the host adapter exists.
+`disabled`, and `failed`. The host emits an event after `isEnabled`, `enable`,
+and `disable` when a runtime event sink is installed.
 
 ## Validation
 
@@ -50,10 +53,10 @@ transport.
 
 ## Errors
 
-`AutostartError` is the host protocol error union. Malformed launch arguments
-return `InvalidArgument`. Host transport failure returns `HostUnavailable`.
-Until a platform adapter exists, decoded Autostart methods fail closed as typed
-`Unsupported` with reason `host-adapter-unimplemented`.
+`AutostartError` is the host protocol error union. Malformed launch arguments or
+unsafe app identity values return `InvalidArgument`. Host filesystem or registry
+failure returns `HostUnavailable`. Platforms outside macOS, Windows, and Linux
+return typed `Unsupported` with reason `host-adapter-unimplemented`.
 
 ## Related
 

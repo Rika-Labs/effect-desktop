@@ -11,10 +11,29 @@ effect_version: 4
 App-level lifecycle and host-operation service. `AppMetadata` owns app identity,
 paths, launch context, and environment-shape reads.
 
-The TypeScript surface is present for contract and bridge-client validation
-work, but the Rust host App lifecycle adapter is not implemented. The native
-surface reports `unsupported` on macOS, Windows, and Linux until the host owns
-app lifecycle control, single instance coordination, and lifecycle events.
+The TypeScript surface is present for contract and bridge-client validation.
+The Rust host implements `App.quit` and `App.exit` by requesting event-loop exit
+with a portable exit code, `App.restart` and `App.relaunch` by launching the
+current executable with validated restart args before requesting event-loop
+exit, and `App.focus` and `App.activate` by focusing the current native window.
+The Rust host also implements `App.requestSingleInstanceLock` with a
+process-held OS file lock and returns the primary process id when another
+process already owns the lock. `App.releaseSingleInstanceLock` explicitly drops
+the process-held lock and any duplicate-launch handoff listener. When the
+primary process owns a runtime event stream, duplicate launch attempts forward
+`argv`, `cwd`, `activationReason`, and `traceId` to the primary process as
+`App.onSecondInstance`. Safe open-file and open-url intents from the primary
+launch argv and duplicate-launch argv are also emitted through `App.onOpenFile`
+or `App.onOpenUrl`.
+`activationReason` is classified from argv as `"open-file"` when exactly one
+safe absolute file path is present, `"open-url"` when exactly one safe
+non-dangerous URL is present, `"unknown"` when intent-like argv is unsafe or
+ambiguous, and `"launch"` otherwise. `--single-instance-lock-smoke-test`
+verifies this lock across host processes.
+The host binary includes `--app-quit-smoke-test`, `--app-focus-smoke-test`, and
+`--app-restart-smoke-test` to verify live startup windows can exit through the
+app-quit lifecycle path, focus through the native window-manager path, and
+launch a smoke-only replacement process.
 `Association` owns OS-level protocol and file association contracts.
 `Autostart` owns open-at-login and login-item operations.
 
@@ -22,18 +41,31 @@ app lifecycle control, single instance coordination, and lifecycle events.
 
 | Method                      | Success                   | Runtime support |
 | --------------------------- | ------------------------- | --------------- |
-| `quit`                      | `void`                    | unsupported     |
-| `restart`                   | `void`                    | unsupported     |
-| `focus`                     | `void`                    | unsupported     |
-| `requestSingleInstanceLock` | `AppSingleInstanceResult` | unsupported     |
+| `quit`                      | `void`                    | supported       |
+| `exit`                      | `void`                    | supported       |
+| `restart`                   | `void`                    | supported       |
+| `relaunch`                  | `void`                    | supported       |
+| `focus`                     | `void`                    | supported       |
+| `activate`                  | `void`                    | supported       |
+| `requestSingleInstanceLock` | `AppSingleInstanceResult` | supported       |
+| `releaseSingleInstanceLock` | `void`                    | supported       |
 
 ## Events
 
 The current TypeScript event streams are `onSecondInstance`, `onOpenFile`,
 `onOpenUrl`, and `onBeforeQuit`. `onSecondInstance` events carry `argv`, `cwd`,
 `activationReason`, and `traceId`; `activationReason` is `"launch"`,
-`"open-file"`, `"open-url"`, or `"unknown"`. Native event delivery is currently
-unsupported until the host adapter exists.
+`"open-file"`, `"open-url"`, or `"unknown"`. `onBeforeQuit` is emitted by the
+Rust host before the current `App.quit` path exits the event loop and before a
+native close request exits the app. Native `onSecondInstance` is emitted by the
+single-instance handoff path for duplicate launches, including argv-derived
+open-file/open-url activation reasons. Native `onOpenFile` and `onOpenUrl`
+are emitted from the same argv classifier: the host emits at most one open
+intent event, after `onSecondInstance` for duplicate launches, and does not emit
+an open intent event for unsafe or ambiguous argv. Event delivery uses the host
+runtime event stream; if no renderer subscription is installed yet, the primary
+launch intent remains pending until `requestSingleInstanceLock` installs the
+runtime event sender.
 
 `onOpenUrl` requires a syntactically valid URL with no ASCII control characters
 and rejects dangerous schemes before application code receives the event:
@@ -46,10 +78,11 @@ the event.
 
 ## Errors
 
-`AppError` is the host protocol error union. Until the host adapter is
-implemented, App methods decode through Rust `App.*` routes and fail closed as
-typed `Unsupported`. Subscriptions still do not have native lifecycle event
-sources.
+`AppError` is the host protocol error union. Unsupported App methods decode
+through Rust `App.*` routes and fail closed as typed `Unsupported`.
+`onBeforeQuit` has a host event source for app-exit paths, and
+`onSecondInstance`, `onOpenFile`, and `onOpenUrl` have host event sources for
+single-instance launch and duplicate-launch handoff paths.
 
 ## Notes
 

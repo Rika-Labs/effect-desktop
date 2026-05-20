@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Effect, Fiber, Layer, Stream } from "effect"
+import { Effect, Fiber, Layer, ManagedRuntime, Schema, Stream } from "effect"
 import { EventJournal, EventLog as EL, EventLogEncryption } from "effect/unstable/eventlog"
 
 import {
@@ -36,8 +36,21 @@ const auditLayer = Layer.mergeAll(
 
 const eventLogLayer = Layer.provide(EL.layerEventLog, auditLayer)
 
-test("PermissionInspectorCollector streams permission allow and deny decisions", async () => {
-  await Effect.runPromise(
+const encodeUnknownJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
+
+const runScoped = <A, E, R, LE>(
+  effect: Effect.Effect<A, E, R>,
+  layer: Layer.Layer<R, LE, never>
+): Effect.Effect<A, E | LE, never> =>
+  Effect.gen(function* () {
+    const runtime = ManagedRuntime.make(layer)
+    const exit = yield* Effect.promise(() => runtime.runPromiseExit(effect))
+    yield* Effect.promise(() => runtime.dispose())
+    return yield* exit
+  })
+
+test("PermissionInspectorCollector streams permission allow and deny decisions", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
       const registry = yield* makePermissionRegistry({
         traceId: () => "trace-allow"
@@ -65,43 +78,44 @@ test("PermissionInspectorCollector streams permission allow and deny decisions",
       expect(events.map((event) => event.outcome)).toEqual(["granted", "denied"])
       expect(events[1]?.reason).toBe("default-deny")
     })
-  )
-})
+  ))
 
-test("AuditInspectorCollector projects secret access without secret values", async () => {
-  await Effect.runPromise(
-    Effect.gen(function* () {
-      const log = yield* EL.EventLog
-      const audit = makeAuditEvents(log)
-      const fiber = yield* AuditInspectorCollector(audit).pipe(
-        Stream.take(1),
-        (stream) => Stream.runCollect(stream),
-        Effect.forkChild({ startImmediately: true })
-      )
+test("AuditInspectorCollector projects secret access without secret values", () =>
+  Effect.runPromise(
+    runScoped(
+      Effect.gen(function* () {
+        const log = yield* EL.EventLog
+        const audit = makeAuditEvents(log)
+        const fiber = yield* AuditInspectorCollector(audit).pipe(
+          Stream.take(1),
+          (stream) => Stream.runCollect(stream),
+          Effect.forkChild({ startImmediately: true })
+        )
 
-      yield* audit.emit(
-        secretsAuditEvent({
-          source: "Secrets.get",
-          traceId: "trace-secret",
-          outcome: "ok",
-          operation: "read",
-          namespace: "app",
-          key: "api-token"
-        })
-      )
+        yield* audit.emit(
+          secretsAuditEvent({
+            source: "Secrets.get",
+            traceId: "trace-secret",
+            outcome: "ok",
+            operation: "read",
+            namespace: "app",
+            key: "api-token"
+          })
+        )
 
-      const events = yield* Fiber.join(fiber)
-      const encoded = JSON.stringify(events[0])
-      expect(events[0]?.kind).toBe("secret-access")
-      expect(encoded).toContain("api-token")
-      expect(encoded).not.toContain("secret-value")
-      expect(encoded).not.toContain("refresh-token")
-    }).pipe(Effect.provide(eventLogLayer))
-  )
-})
+        const events = yield* Fiber.join(fiber)
+        const encoded = encodeUnknownJson(events[0])
+        expect(events[0]?.kind).toBe("secret-access")
+        expect(encoded).toContain("api-token")
+        expect(encoded).not.toContain("secret-value")
+        expect(encoded).not.toContain("refresh-token")
+      }),
+      eventLogLayer
+    )
+  ))
 
-test("SecurityInspectorCollector merges CSP events with security streams", async () => {
-  await Effect.runPromise(
+test("SecurityInspectorCollector merges CSP events with security streams", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
       const csp = Stream.make(
         cspInspectorEvent({
@@ -122,5 +136,4 @@ test("SecurityInspectorCollector merges CSP events with security streams", async
       expect(events[0]?.kind).toBe("csp")
       expect(events[0]?.outcome).toBe("blocked")
     })
-  )
-})
+  ))

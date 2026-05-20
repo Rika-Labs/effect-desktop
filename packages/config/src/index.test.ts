@@ -139,64 +139,70 @@ test("defineDesktopConfig rejects invalid app metadata types at compile time", (
   expect(config.app?.id).toBe("dev.example.app")
 })
 
-test("decodeDesktopConfig accepts schema-coded windows and signing config", async () => {
-  const config = await Effect.runPromise(
-    decodeDesktopConfig({
-      app: { id: "dev.example.app", name: "Example", version: "1.0.0" },
-      signing: {
+test("decodeDesktopConfig accepts schema-coded windows and signing config", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const config = yield* decodeDesktopConfig({
+        app: { id: "dev.example.app", name: "Example", version: "1.0.0" },
+        signing: {
+          macos: {
+            identity: "Developer ID Application: Example Inc."
+          }
+        },
+        windows: [
+          {
+            height: 768,
+            id: "main",
+            title: "Main",
+            width: 1024
+          }
+        ]
+      })
+
+      expect(Array.isArray(config.windows)).toBe(true)
+      expect(config.signing).toEqual({
         macos: {
           identity: "Developer ID Application: Example Inc."
         }
-      },
-      windows: [
-        {
-          height: 768,
-          id: "main",
-          title: "Main",
-          width: 1024
-        }
-      ]
+      })
     })
-  )
+  ))
 
-  expect(Array.isArray(config.windows)).toBe(true)
-  expect(config.signing).toEqual({
-    macos: {
-      identity: "Developer ID Application: Example Inc."
-    }
-  })
-})
+test("decodeDesktopConfig defaults web engine to system when web config is present", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const config = yield* decodeDesktopConfig({
+        web: {}
+      })
 
-test("decodeDesktopConfig defaults web engine to system when web config is present", async () => {
-  const config = await Effect.runPromise(
-    decodeDesktopConfig({
-      web: {}
+      expect(config.web?.engine).toBe("system")
     })
-  )
+  ))
 
-  expect(config.web?.engine).toBe("system")
-})
+test("decodeDesktopConfig normalizes legacy chromium web engine to chrome", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const config = yield* decodeDesktopConfig({
+        web: { engine: "chromium" }
+      })
 
-test("decodeDesktopConfig normalizes legacy chromium web engine to chrome", async () => {
-  const config = await Effect.runPromise(
-    decodeDesktopConfig({
-      web: { engine: "chromium" }
+      expect(config.web?.engine).toBe("chrome")
     })
-  )
+  ))
 
-  expect(config.web?.engine).toBe("chrome")
-})
-
-test("decodeDesktopConfig rejects non-json windows and signing values", async () => {
-  for (const invalid of [
-    { windows: "main" },
-    { signing: "Developer ID Application: Example Inc." },
-    { windows: [{ id: "main", onOpen: () => undefined }] }
-  ]) {
-    const exit = await Effect.runPromiseExit(decodeDesktopConfig(invalid))
-    expect(Exit.isFailure(exit)).toBe(true)
-  }
-})
+test("decodeDesktopConfig rejects non-json windows and signing values", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      for (const invalid of [
+        { windows: "main" },
+        { signing: "Developer ID Application: Example Inc." },
+        { windows: [{ id: "main", onOpen: () => undefined }] }
+      ]) {
+        const exit = yield* Effect.exit(decodeDesktopConfig(invalid))
+        expect(Exit.isFailure(exit)).toBe(true)
+      }
+    })
+  ))
 
 test("mergeDesktopConfig combines decoded shared and app config by typed policy", () => {
   const merged = mergeDesktopConfig(
@@ -249,23 +255,24 @@ test("CSP disabled policy reports disabled weakening", () => {
   ])
 })
 
-test("CSP disabled is rejected by the production checker without acknowledgement", async () => {
-  const report = await Effect.runPromise(
-    runProductionCheck({
-      config: {
-        security: {
-          csp: {
-            disabled: true
+test("CSP disabled is rejected by the production checker without acknowledgement", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {
+          security: {
+            csp: {
+              disabled: true
+            }
           }
         }
-      }
-    })
-  )
+      })
 
-  expect(report.passed).toBe(false)
-  expect(report.failures.map((violation) => violation.rule)).toEqual(["weakened-csp"])
-  expect(report.failures[0]?.message).toContain("content security policy is disabled")
-})
+      expect(report.passed).toBe(false)
+      expect(report.failures.map((violation) => violation.rule)).toEqual(["weakened-csp"])
+      expect(report.failures[0]?.message).toContain("content security policy is disabled")
+    })
+  ))
 
 test("CSP config still rejects script-src 'unsafe-inline' as a weakening", () => {
   expect(cspWeakenings({ policy: "script-src 'self' 'unsafe-inline'" })).toEqual([
@@ -380,707 +387,735 @@ test("CSP config flags static nonces as weaker than request nonces", () => {
   ])
 })
 
-test("ProductionChecker fails unsafe CSP without acknowledgement", async () => {
-  const report = await Effect.runPromise(
-    runProductionCheck({
-      configPath: "desktop.config.ts",
-      config: {
-        security: {
-          csp: {
-            policy: "default-src 'self'; script-src 'self' 'unsafe-inline'"
-          }
-        }
-      }
-    })
-  )
-
-  expect(report.passed).toBe(false)
-  expect(report.failures.map((violation) => violation.rule)).toEqual(["weakened-csp"])
-  expect(formatProductionCheckReport(report)).toContain("security.csp")
-})
-
-test("ProductionChecker accepts tightened CSP without acknowledgement", async () => {
-  const report = await Effect.runPromise(
-    runProductionCheck({
-      config: {
-        security: {
-          csp: {
-            policy: "connect-src 'self'"
-          }
-        }
-      }
-    })
-  )
-
-  expect(report.passed).toBe(true)
-  expect(report.failures).toEqual([])
-  expect(report.acknowledgements).toEqual([])
-})
-
-test("ProductionChecker fails CSP directive loosening without acknowledgement", async () => {
-  const report = await Effect.runPromise(
-    runProductionCheck({
-      config: {
-        security: {
-          csp: {
-            policy: "connect-src 'self' app: https:"
-          }
-        }
-      }
-    })
-  )
-
-  expect(report.passed).toBe(false)
-  expect(report.failures).toMatchObject([
-    {
-      rule: "weakened-csp",
-      message:
-        "content security policy weakens the production default: connect-src adds source https:"
-    }
-  ])
-})
-
-test("ProductionChecker accepts hardening-only CSP additions", async () => {
-  const report = await Effect.runPromise(
-    runProductionCheck({
-      config: {
-        security: {
-          csp: {
-            policy: "frame-src 'none'; upgrade-insecure-requests"
-          }
-        }
-      }
-    })
-  )
-
-  expect(report.passed).toBe(true)
-  expect(report.failures).toEqual([])
-})
-
-test("ProductionChecker reports acknowledged CSP weakenings without failing", async () => {
-  const report = await Effect.runPromise(
-    runProductionCheck({
-      config: {
-        security: {
-          csp: {
-            policy: "default-src 'self'; script-src 'self' 'unsafe-inline'",
-            acknowledgeWeakening: true,
-            justification: "Legacy payment provider inline bootstrap until SDK v3 ships"
-          }
-        }
-      }
-    })
-  )
-
-  expect(report.passed).toBe(true)
-  expect(report.failures).toEqual([])
-  expect(report.acknowledgements.map((violation) => violation.rule)).toEqual(["weakened-csp"])
-})
-
-test("ProductionChecker acknowledges devtools-in-prod because launch flag is still required", async () => {
-  const report = await Effect.runPromise(
-    runProductionCheck({
-      config: {
-        security: {
-          devtoolsInProd: true
-        }
-      }
-    })
-  )
-
-  expect(report.passed).toBe(true)
-  expect(report.failures).toEqual([])
-  expect(report.acknowledgements).toMatchObject([
-    {
-      rule: "devtools-in-prod",
-      location: {
-        path: "desktop.config.ts#security.devtoolsInProd"
-      }
-    }
-  ])
-})
-
-test("ProductionChecker fails renderer raw bridge calls with file and line", async () => {
-  const report = await Effect.runPromise(
-    runProductionCheck({
-      config: {},
-      rendererFiles: [
-        {
-          path: "src/renderer/main.ts",
-          content: ["import { Client } from '@effect-desktop/bridge'", "rawBridge.send({})"].join(
-            "\n"
-          )
-        }
-      ]
-    })
-  )
-
-  expect(report.passed).toBe(false)
-  expect(report.failures).toMatchObject([
-    {
-      rule: "raw-bridge-call",
-      location: {
-        path: "src/renderer/main.ts",
-        line: 2
-      }
-    }
-  ])
-})
-
-test("ProductionChecker ignores raw bridge names inside comments", async () => {
-  const report = await Effect.runPromise(
-    runProductionCheck({
-      config: {},
-      rendererFiles: [
-        {
-          path: "src/renderer/main.ts",
-          content: [
-            "// Do not call sendRaw({}) from renderer code.",
-            "/* rawBridge.send({}) and HostProtocol.send({}) are forbidden. */",
-            "const client = makeClient()"
-          ].join("\n")
-        }
-      ]
-    })
-  )
-
-  expect(report.passed).toBe(true)
-  expect(report.failures).toEqual([])
-})
-
-test("ProductionChecker blocks host protocol symbols imported from the bridge barrel", async () => {
-  const report = await Effect.runPromise(
-    runProductionCheck({
-      config: {},
-      rendererFiles: [
-        {
-          path: "src/renderer/main.ts",
-          content: [
-            "import { HostProtocolRequestEnvelope } from '@effect-desktop/bridge'",
-            "new HostProtocolRequestEnvelope({ id: '1' })"
-          ].join("\n")
-        }
-      ]
-    })
-  )
-
-  expect(report.passed).toBe(false)
-  expect(report.failures).toMatchObject([
-    {
-      rule: "renderer-native-host-protocol",
-      location: {
-        path: "src/renderer/main.ts",
-        line: 1
-      }
-    }
-  ])
-})
-
-test("ProductionChecker still blocks bridge protocol subpath imports", async () => {
-  const report = await Effect.runPromise(
-    runProductionCheck({
-      config: {},
-      rendererFiles: [
-        {
-          path: "src/renderer/main.ts",
-          content: "import { HostProtocolRequestEnvelope } from '@effect-desktop/bridge/protocol'"
-        }
-      ]
-    })
-  )
-
-  expect(report.passed).toBe(false)
-  expect(report.failures.map((violation) => violation.rule)).toEqual([
-    "renderer-native-host-protocol"
-  ])
-})
-
-test("ProductionChecker allows renderer-safe bridge barrel imports", async () => {
-  const report = await Effect.runPromise(
-    runProductionCheck({
-      config: {},
-      rendererFiles: [
-        {
-          path: "src/renderer/main.ts",
-          content: "import { Client } from '@effect-desktop/bridge'"
-        }
-      ]
-    })
-  )
-
-  expect(report.passed).toBe(true)
-})
-
-test("ProductionChecker fails unguarded source native capability usage", async () => {
-  const report = await Effect.runPromise(
-    runProductionCheck({
-      config: {},
-      rendererFiles: [
-        {
-          path: "src/renderer/dock.ts",
-          content: "Dock.setJumpList([{ title: 'Recent', path: '/tmp/a' }])"
-        }
-      ]
-    })
-  )
-
-  expect(report.passed).toBe(false)
-  expect(report.failures).toMatchObject([
-    {
-      rule: "unsupported-capability-without-guard",
-      location: {
-        path: "src/renderer/dock.ts",
-        line: 1,
-        column: 1
-      }
-    }
-  ])
-})
-
-test("ProductionChecker accepts guarded source native capability usage", async () => {
-  const report = await Effect.runPromise(
-    runProductionCheck({
-      config: {},
-      rendererFiles: [
-        {
-          path: "src/renderer/dock.ts",
-          content: ['if (Dock.isSupported("setJumpList")) {', "  Dock.setJumpList([])", "}"].join(
-            "\n"
-          )
-        }
-      ]
-    })
-  )
-
-  expect(report.failures.map((violation) => violation.rule)).not.toContain(
-    "unsupported-capability-without-guard"
-  )
-  expect(report.passed).toBe(true)
-})
-
-test("ProductionChecker flags unguarded partial Dock badge count usage", async () => {
-  const report = await Effect.runPromise(
-    runProductionCheck({
-      config: {},
-      rendererFiles: [
-        {
-          path: "src/renderer/dock.ts",
-          content: "Dock.setBadgeCount(7)"
-        }
-      ]
-    })
-  )
-
-  expect(report.passed).toBe(false)
-  expect(report.failures).toMatchObject([
-    {
-      rule: "unsupported-capability-without-guard",
-      location: {
-        path: "src/renderer/dock.ts",
-        line: 1,
-        column: 1
-      }
-    }
-  ])
-})
-
-test("ProductionChecker flags unguarded unsupported Dock progress usage", async () => {
-  const report = await Effect.runPromise(
-    runProductionCheck({
-      config: {},
-      rendererFiles: [
-        {
-          path: "src/renderer/dock.ts",
-          content: "Dock.setProgress(0.5)"
-        }
-      ]
-    })
-  )
-
-  expect(report.passed).toBe(false)
-  expect(report.failures).toMatchObject([
-    {
-      rule: "unsupported-capability-without-guard",
-      location: {
-        path: "src/renderer/dock.ts",
-        line: 1,
-        column: 1
-      }
-    }
-  ])
-})
-
-test("ProductionChecker flags unguarded partial realtime media session usage", async () => {
-  const report = await Effect.runPromise(
-    runProductionCheck({
-      config: {},
-      rendererFiles: [
-        {
-          path: "src/renderer/media.ts",
-          content: 'RealtimeMediaSession.open({ profileId: "p1", sessionId: "s1" })'
-        }
-      ]
-    })
-  )
-
-  expect(report.passed).toBe(false)
-  expect(report.failures).toMatchObject([
-    {
-      rule: "unsupported-capability-without-guard",
-      location: {
-        path: "src/renderer/media.ts",
-        line: 1,
-        column: 1
-      }
-    }
-  ])
-})
-
-test("ProductionChecker accepts diagnostics bundle usage as a supported native capability", async () => {
-  const report = await Effect.runPromise(
-    runProductionCheck({
-      config: {},
-      rendererFiles: [
-        {
-          path: "src/renderer/diagnostics.ts",
-          content: 'DiagnosticsBundle.collect({ bundleId: "bundle-1" })'
-        }
-      ]
-    })
-  )
-
-  expect(report.passed).toBe(true)
-  expect(report.failures).toEqual([])
-})
-
-test("ProductionChecker accepts supported Dock requestAttention without a guard", async () => {
-  const report = await Effect.runPromise(
-    runProductionCheck({
-      config: {},
-      rendererFiles: [
-        {
-          path: "src/renderer/dock.ts",
-          content: "Dock.requestAttention()"
-        }
-      ]
-    })
-  )
-
-  expect(report.passed).toBe(true)
-  expect(report.failures).toEqual([])
-})
-
-test("ProductionChecker ignores source native capability usage inside comments", async () => {
-  const report = await Effect.runPromise(
-    runProductionCheck({
-      config: {},
-      rendererFiles: [
-        {
-          path: "src/renderer/dock.ts",
-          content: [
-            "// Dock.setJumpList([{ title: 'Recent', path: '/tmp/a' }])",
-            "/* Dock.requestAttention() */",
-            "const dockState = 'idle'"
-          ].join("\n")
-        }
-      ]
-    })
-  )
-
-  expect(report.passed).toBe(true)
-  expect(report.failures).toEqual([])
-})
-
-test("ProductionChecker fails filesystem writes without scoped roots", async () => {
-  const report = await Effect.runPromise(
-    runProductionCheck({
-      config: {
-        permissions: {
-          filesystem: {
-            write: {
-              enabled: true
+test("ProductionChecker fails unsafe CSP without acknowledgement", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        configPath: "desktop.config.ts",
+        config: {
+          security: {
+            csp: {
+              policy: "default-src 'self'; script-src 'self' 'unsafe-inline'"
             }
           }
         }
-      }
+      })
+
+      expect(report.passed).toBe(false)
+      expect(report.failures.map((violation) => violation.rule)).toEqual(["weakened-csp"])
+      expect(formatProductionCheckReport(report)).toContain("security.csp")
     })
-  )
+  ))
 
-  expect(report.passed).toBe(false)
-  expect(report.failures.map((violation) => violation.rule)).toEqual([
-    "filesystem-write-without-scope"
-  ])
-})
+test("ProductionChecker accepts tightened CSP without acknowledgement", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {
+          security: {
+            csp: {
+              policy: "connect-src 'self'"
+            }
+          }
+        }
+      })
 
-test("ProductionChecker rejects blank and wildcard-shaped permission scopes", async () => {
-  for (const roots of [[""], [" * "]]) {
-    const report = await Effect.runPromise(
-      runProductionCheck({
+      expect(report.passed).toBe(true)
+      expect(report.failures).toEqual([])
+      expect(report.acknowledgements).toEqual([])
+    })
+  ))
+
+test("ProductionChecker fails CSP directive loosening without acknowledgement", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {
+          security: {
+            csp: {
+              policy: "connect-src 'self' app: https:"
+            }
+          }
+        }
+      })
+
+      expect(report.passed).toBe(false)
+      expect(report.failures).toMatchObject([
+        {
+          rule: "weakened-csp",
+          message:
+            "content security policy weakens the production default: connect-src adds source https:"
+        }
+      ])
+    })
+  ))
+
+test("ProductionChecker accepts hardening-only CSP additions", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {
+          security: {
+            csp: {
+              policy: "frame-src 'none'; upgrade-insecure-requests"
+            }
+          }
+        }
+      })
+
+      expect(report.passed).toBe(true)
+      expect(report.failures).toEqual([])
+    })
+  ))
+
+test("ProductionChecker reports acknowledged CSP weakenings without failing", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {
+          security: {
+            csp: {
+              policy: "default-src 'self'; script-src 'self' 'unsafe-inline'",
+              acknowledgeWeakening: true,
+              justification: "Legacy payment provider inline bootstrap until SDK v3 ships"
+            }
+          }
+        }
+      })
+
+      expect(report.passed).toBe(true)
+      expect(report.failures).toEqual([])
+      expect(report.acknowledgements.map((violation) => violation.rule)).toEqual(["weakened-csp"])
+    })
+  ))
+
+test("ProductionChecker acknowledges devtools-in-prod because launch flag is still required", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {
+          security: {
+            devtoolsInProd: true
+          }
+        }
+      })
+
+      expect(report.passed).toBe(true)
+      expect(report.failures).toEqual([])
+      expect(report.acknowledgements).toMatchObject([
+        {
+          rule: "devtools-in-prod",
+          location: {
+            path: "desktop.config.ts#security.devtoolsInProd"
+          }
+        }
+      ])
+    })
+  ))
+
+test("ProductionChecker fails renderer raw bridge calls with file and line", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {},
+        rendererFiles: [
+          {
+            path: "src/renderer/main.ts",
+            content: ["import { Client } from '@effect-desktop/bridge'", "rawBridge.send({})"].join(
+              "\n"
+            )
+          }
+        ]
+      })
+
+      expect(report.passed).toBe(false)
+      expect(report.failures).toMatchObject([
+        {
+          rule: "raw-bridge-call",
+          location: {
+            path: "src/renderer/main.ts",
+            line: 2
+          }
+        }
+      ])
+    })
+  ))
+
+test("ProductionChecker ignores raw bridge names inside comments", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {},
+        rendererFiles: [
+          {
+            path: "src/renderer/main.ts",
+            content: [
+              "// Do not call sendRaw({}) from renderer code.",
+              "/* rawBridge.send({}) and HostProtocol.send({}) are forbidden. */",
+              "const client = makeClient()"
+            ].join("\n")
+          }
+        ]
+      })
+
+      expect(report.passed).toBe(true)
+      expect(report.failures).toEqual([])
+    })
+  ))
+
+test("ProductionChecker blocks host protocol symbols imported from the bridge barrel", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {},
+        rendererFiles: [
+          {
+            path: "src/renderer/main.ts",
+            content: [
+              "import { HostProtocolRequestEnvelope } from '@effect-desktop/bridge'",
+              "new HostProtocolRequestEnvelope({ id: '1' })"
+            ].join("\n")
+          }
+        ]
+      })
+
+      expect(report.passed).toBe(false)
+      expect(report.failures).toMatchObject([
+        {
+          rule: "renderer-native-host-protocol",
+          location: {
+            path: "src/renderer/main.ts",
+            line: 1
+          }
+        }
+      ])
+    })
+  ))
+
+test("ProductionChecker still blocks bridge protocol subpath imports", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {},
+        rendererFiles: [
+          {
+            path: "src/renderer/main.ts",
+            content: "import { HostProtocolRequestEnvelope } from '@effect-desktop/bridge/protocol'"
+          }
+        ]
+      })
+
+      expect(report.passed).toBe(false)
+      expect(report.failures.map((violation) => violation.rule)).toEqual([
+        "renderer-native-host-protocol"
+      ])
+    })
+  ))
+
+test("ProductionChecker allows renderer-safe bridge barrel imports", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {},
+        rendererFiles: [
+          {
+            path: "src/renderer/main.ts",
+            content: "import { Client } from '@effect-desktop/bridge'"
+          }
+        ]
+      })
+
+      expect(report.passed).toBe(true)
+    })
+  ))
+
+test("ProductionChecker fails unguarded source native capability usage", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {},
+        rendererFiles: [
+          {
+            path: "src/renderer/dock.ts",
+            content: "Dock.setJumpList([{ title: 'Recent', path: '/tmp/a' }])"
+          }
+        ]
+      })
+
+      expect(report.passed).toBe(false)
+      expect(report.failures).toMatchObject([
+        {
+          rule: "unsupported-capability-without-guard",
+          location: {
+            path: "src/renderer/dock.ts",
+            line: 1,
+            column: 1
+          }
+        }
+      ])
+    })
+  ))
+
+test("ProductionChecker accepts guarded source native capability usage", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {},
+        rendererFiles: [
+          {
+            path: "src/renderer/dock.ts",
+            content: ['if (Dock.isSupported("setJumpList")) {', "  Dock.setJumpList([])", "}"].join(
+              "\n"
+            )
+          }
+        ]
+      })
+
+      expect(report.failures.map((violation) => violation.rule)).not.toContain(
+        "unsupported-capability-without-guard"
+      )
+      expect(report.passed).toBe(true)
+    })
+  ))
+
+test("ProductionChecker flags unguarded partial Dock badge count usage", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {},
+        rendererFiles: [
+          {
+            path: "src/renderer/dock.ts",
+            content: "Dock.setBadgeCount(7)"
+          }
+        ]
+      })
+
+      expect(report.passed).toBe(false)
+      expect(report.failures).toMatchObject([
+        {
+          rule: "unsupported-capability-without-guard",
+          location: {
+            path: "src/renderer/dock.ts",
+            line: 1,
+            column: 1
+          }
+        }
+      ])
+    })
+  ))
+
+test("ProductionChecker flags unguarded unsupported Dock progress usage", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {},
+        rendererFiles: [
+          {
+            path: "src/renderer/dock.ts",
+            content: "Dock.setProgress(0.5)"
+          }
+        ]
+      })
+
+      expect(report.passed).toBe(false)
+      expect(report.failures).toMatchObject([
+        {
+          rule: "unsupported-capability-without-guard",
+          location: {
+            path: "src/renderer/dock.ts",
+            line: 1,
+            column: 1
+          }
+        }
+      ])
+    })
+  ))
+
+test("ProductionChecker flags unguarded partial realtime media session usage", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {},
+        rendererFiles: [
+          {
+            path: "src/renderer/media.ts",
+            content: 'RealtimeMediaSession.open({ profileId: "p1", sessionId: "s1" })'
+          }
+        ]
+      })
+
+      expect(report.passed).toBe(false)
+      expect(report.failures).toMatchObject([
+        {
+          rule: "unsupported-capability-without-guard",
+          location: {
+            path: "src/renderer/media.ts",
+            line: 1,
+            column: 1
+          }
+        }
+      ])
+    })
+  ))
+
+test("ProductionChecker accepts diagnostics bundle usage as a supported native capability", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {},
+        rendererFiles: [
+          {
+            path: "src/renderer/diagnostics.ts",
+            content: 'DiagnosticsBundle.collect({ bundleId: "bundle-1" })'
+          }
+        ]
+      })
+
+      expect(report.passed).toBe(true)
+      expect(report.failures).toEqual([])
+    })
+  ))
+
+test("ProductionChecker accepts supported Dock requestAttention without a guard", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {},
+        rendererFiles: [
+          {
+            path: "src/renderer/dock.ts",
+            content: "Dock.requestAttention()"
+          }
+        ]
+      })
+
+      expect(report.passed).toBe(true)
+      expect(report.failures).toEqual([])
+    })
+  ))
+
+test("ProductionChecker ignores source native capability usage inside comments", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {},
+        rendererFiles: [
+          {
+            path: "src/renderer/dock.ts",
+            content: [
+              "// Dock.setJumpList([{ title: 'Recent', path: '/tmp/a' }])",
+              "/* Dock.requestAttention() */",
+              "const dockState = 'idle'"
+            ].join("\n")
+          }
+        ]
+      })
+
+      expect(report.passed).toBe(true)
+      expect(report.failures).toEqual([])
+    })
+  ))
+
+test("ProductionChecker fails filesystem writes without scoped roots", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
         config: {
           permissions: {
             filesystem: {
               write: {
-                enabled: true,
-                roots
+                enabled: true
               }
             }
           }
         }
       })
-    )
 
-    expect(report.failures.map((violation) => violation.rule)).toContain(
-      "filesystem-write-without-scope"
-    )
-  }
+      expect(report.passed).toBe(false)
+      expect(report.failures.map((violation) => violation.rule)).toEqual([
+        "filesystem-write-without-scope"
+      ])
+    })
+  ))
 
-  const processReport = await Effect.runPromise(
-    runProductionCheck({
-      config: {
-        permissions: {
-          process: {
-            spawn: {
-              enabled: true,
-              allow: [" * "]
+test("ProductionChecker rejects blank and wildcard-shaped permission scopes", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      for (const roots of [[""], [" * "]]) {
+        const report = yield* runProductionCheck({
+          config: {
+            permissions: {
+              filesystem: {
+                write: {
+                  enabled: true,
+                  roots
+                }
+              }
+            }
+          }
+        })
+
+        expect(report.failures.map((violation) => violation.rule)).toContain(
+          "filesystem-write-without-scope"
+        )
+      }
+
+      const processReport = yield* runProductionCheck({
+        config: {
+          permissions: {
+            process: {
+              spawn: {
+                enabled: true,
+                allow: [" * "]
+              }
             }
           }
         }
-      }
-    })
-  )
-  const scopedReport = await Effect.runPromise(
-    runProductionCheck({
-      config: {
-        permissions: {
-          filesystem: {
-            write: {
-              enabled: true,
-              roots: ["/tmp/app"]
-            }
-          },
-          process: {
-            spawn: {
-              enabled: true,
-              allow: ["git"]
+      })
+      const scopedReport = yield* runProductionCheck({
+        config: {
+          permissions: {
+            filesystem: {
+              write: {
+                enabled: true,
+                roots: ["/tmp/app"]
+              }
+            },
+            process: {
+              spawn: {
+                enabled: true,
+                allow: ["git"]
+              }
             }
           }
         }
-      }
+      })
+
+      expect(processReport.failures.map((violation) => violation.rule)).toContain(
+        "process-permission-without-policy"
+      )
+      expect(scopedReport.failures.map((violation) => violation.rule)).not.toContain(
+        "filesystem-write-without-scope"
+      )
+      expect(scopedReport.failures.map((violation) => violation.rule)).not.toContain(
+        "process-permission-without-policy"
+      )
     })
-  )
+  ))
 
-  expect(processReport.failures.map((violation) => violation.rule)).toContain(
-    "process-permission-without-policy"
-  )
-  expect(scopedReport.failures.map((violation) => violation.rule)).not.toContain(
-    "filesystem-write-without-scope"
-  )
-  expect(scopedReport.failures.map((violation) => violation.rule)).not.toContain(
-    "process-permission-without-policy"
-  )
-})
-
-test("ProductionChecker rule registry covers the current production rule set", async () => {
-  const config: ProductionSecurityConfig = {
-    security: {
-      requireTypedBridge: false,
-      rendererNativeAccess: true,
-      requirePermissions: false,
-      externalNavigation: "allow",
-      csp: { disabled: true },
-      redaction: { defaultPatternEnabled: false }
-    },
-    permissions: {
-      filesystem: { write: { enabled: true } },
-      process: { spawn: { enabled: true } },
-      secrets: { read: ["auth"], audit: "never" }
-    },
-    update: { install: { enabled: true } },
-    appProtocol: { allowPathTraversal: true },
-    resources: { allowUnscoped: true },
-    contracts: [
-      {
-        contract: "WebView.capture",
-        capability: "screen-capture",
-        support: "partial"
-      }
-    ]
-  }
-
-  const report = await Effect.runPromise(
-    runProductionCheck({
-      config,
-      rendererFiles: [
-        {
-          path: "src/renderer/main.ts",
-          content: [
-            "import { Filesystem } from '@effect-desktop/core'",
-            "HostProtocol.send({})",
-            "sendRaw({})"
-          ].join("\n")
-        }
-      ]
-    })
-  )
-
-  expect(new Set(report.failures.map((violation) => violation.rule))).toEqual(
-    new Set([
-      "renderer-backend-import",
-      "raw-bridge-call",
-      "renderer-native-host-protocol",
-      "filesystem-write-without-scope",
-      "process-permission-without-policy",
-      "secret-access-without-audit",
-      "update-install-without-signature",
-      "app-protocol-path-traversal",
-      "weakened-csp",
-      "unsafe-external-navigation",
-      "unscoped-resource",
-      "unsupported-capability-without-guard",
-      "secret-pattern-not-redacted"
-    ])
-  )
-})
-
-test("ProductionChecker requires audit for wildcard secret reads", async () => {
-  const report = await Effect.runPromise(
-    runProductionCheck({
-      config: {
+test("ProductionChecker rule registry covers the current production rule set", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const config: ProductionSecurityConfig = {
+        security: {
+          requireTypedBridge: false,
+          rendererNativeAccess: true,
+          requirePermissions: false,
+          externalNavigation: "allow",
+          csp: { disabled: true },
+          redaction: { defaultPatternEnabled: false }
+        },
         permissions: {
-          secrets: {
-            read: ["*"],
-            audit: "never"
-          }
-        }
-      }
-    })
-  )
-
-  expect(report.passed).toBe(false)
-  expect(report.failures.map((violation) => violation.rule)).toEqual([
-    "secret-access-without-audit"
-  ])
-})
-
-test("ProductionChecker requires audit for wildcard secret writes", async () => {
-  const report = await Effect.runPromise(
-    runProductionCheck({
-      config: {
-        permissions: {
-          secrets: {
-            write: ["*"]
-          }
-        }
-      }
-    })
-  )
-
-  expect(report.passed).toBe(false)
-  expect(report.failures.map((violation) => violation.rule)).toEqual([
-    "secret-access-without-audit"
-  ])
-})
-
-test("ProductionChecker accepts missing secret audit when no secret access is declared", async () => {
-  const report = await Effect.runPromise(
-    runProductionCheck({
-      config: {
-        permissions: {
-          secrets: {
-            audit: "never"
-          }
-        }
-      }
-    })
-  )
-
-  expect(report.passed).toBe(true)
-  expect(report.failures).toEqual([])
-})
-
-test("ProductionChecker accepts guarded partial OS-state contracts", async () => {
-  const report = await Effect.runPromise(
-    runProductionCheck({
-      config: {
+          filesystem: { write: { enabled: true } },
+          process: { spawn: { enabled: true } },
+          secrets: { read: ["auth"], audit: "never" }
+        },
+        update: { install: { enabled: true } },
+        appProtocol: { allowPathTraversal: true },
+        resources: { allowUnscoped: true },
         contracts: [
           {
-            contract: "Screen.getPointerPoint",
-            capability: "native.invoke:Screen.getPointerPoint",
-            support: "partial",
-            isSupportedGuard: true
-          },
-          {
-            contract: "PowerMonitor.onPowerSourceChanged",
-            capability: "native.event:PowerMonitor.PowerSourceChanged",
-            support: "partial",
-            isSupportedGuard: true
-          },
-          {
-            contract: "SystemAppearance.getAccentColor",
-            capability: "native.invoke:SystemAppearance.getAccentColor",
-            support: "unsupported",
-            isSupportedGuard: true
+            contract: "WebView.capture",
+            capability: "screen-capture",
+            support: "partial"
           }
         ]
       }
+
+      const report = yield* runProductionCheck({
+        config,
+        rendererFiles: [
+          {
+            path: "src/renderer/main.ts",
+            content: [
+              "import { Filesystem } from '@effect-desktop/core'",
+              "HostProtocol.send({})",
+              "sendRaw({})"
+            ].join("\n")
+          }
+        ]
+      })
+
+      expect(new Set(report.failures.map((violation) => violation.rule))).toEqual(
+        new Set([
+          "renderer-backend-import",
+          "raw-bridge-call",
+          "renderer-native-host-protocol",
+          "filesystem-write-without-scope",
+          "process-permission-without-policy",
+          "secret-access-without-audit",
+          "update-install-without-signature",
+          "app-protocol-path-traversal",
+          "weakened-csp",
+          "unsafe-external-navigation",
+          "unscoped-resource",
+          "unsupported-capability-without-guard",
+          "secret-pattern-not-redacted"
+        ])
+      )
     })
-  )
+  ))
 
-  expect(report.failures.map((violation) => violation.rule)).not.toContain(
-    "unsupported-capability-without-guard"
-  )
-})
+test("ProductionChecker requires audit for wildcard secret reads", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {
+          permissions: {
+            secrets: {
+              read: ["*"],
+              audit: "never"
+            }
+          }
+        }
+      })
 
-test("ProductionChecker rejects empty config paths", async () => {
-  const emptyExit = await Effect.runPromiseExit(
-    runProductionCheck({
-      configPath: "",
-      config: {
-        security: { externalNavigation: "deny" }
+      expect(report.passed).toBe(false)
+      expect(report.failures.map((violation) => violation.rule)).toEqual([
+        "secret-access-without-audit"
+      ])
+    })
+  ))
+
+test("ProductionChecker requires audit for wildcard secret writes", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {
+          permissions: {
+            secrets: {
+              write: ["*"]
+            }
+          }
+        }
+      })
+
+      expect(report.passed).toBe(false)
+      expect(report.failures.map((violation) => violation.rule)).toEqual([
+        "secret-access-without-audit"
+      ])
+    })
+  ))
+
+test("ProductionChecker accepts missing secret audit when no secret access is declared", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {
+          permissions: {
+            secrets: {
+              audit: "never"
+            }
+          }
+        }
+      })
+
+      expect(report.passed).toBe(true)
+      expect(report.failures).toEqual([])
+    })
+  ))
+
+test("ProductionChecker accepts guarded partial OS-state contracts", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {
+          contracts: [
+            {
+              contract: "Screen.getPointerPoint",
+              capability: "native.invoke:Screen.getPointerPoint",
+              support: "partial",
+              isSupportedGuard: true
+            },
+            {
+              contract: "PowerMonitor.onPowerSourceChanged",
+              capability: "native.event:PowerMonitor.PowerSourceChanged",
+              support: "partial",
+              isSupportedGuard: true
+            },
+            {
+              contract: "SystemAppearance.getAccentColor",
+              capability: "native.invoke:SystemAppearance.getAccentColor",
+              support: "unsupported",
+              isSupportedGuard: true
+            }
+          ]
+        }
+      })
+
+      expect(report.failures.map((violation) => violation.rule)).not.toContain(
+        "unsupported-capability-without-guard"
+      )
+    })
+  ))
+
+test("ProductionChecker rejects empty config paths", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const emptyExit = yield* Effect.exit(
+        runProductionCheck({
+          configPath: "",
+          config: {
+            security: { externalNavigation: "deny" }
+          }
+        })
+      )
+      const whitespaceExit = yield* Effect.exit(
+        runProductionCheck({
+          configPath: "   ",
+          config: {
+            security: { externalNavigation: "deny" }
+          }
+        })
+      )
+      const absentExit = yield* Effect.exit(
+        runProductionCheck({
+          config: {
+            security: { externalNavigation: "deny" }
+          }
+        })
+      )
+
+      expect(Exit.isFailure(emptyExit)).toBe(true)
+      expect(Exit.isFailure(whitespaceExit)).toBe(true)
+      expect(Exit.isSuccess(absentExit)).toBe(true)
+
+      if (Exit.isFailure(emptyExit)) {
+        const failReason = emptyExit.cause.reasons.find((r) => r._tag === "Fail")
+        expect(failReason?.error).toBeInstanceOf(ProductionCheckInvalidInput)
+      }
+      if (Exit.isFailure(whitespaceExit)) {
+        const failReason = whitespaceExit.cause.reasons.find((r) => r._tag === "Fail")
+        expect(failReason?.error).toBeInstanceOf(ProductionCheckInvalidInput)
       }
     })
-  )
-  const whitespaceExit = await Effect.runPromiseExit(
-    runProductionCheck({
-      configPath: "   ",
-      config: {
-        security: { externalNavigation: "deny" }
+  ))
+
+test("ProductionChecker rejects malformed renderer file inputs", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const exit = yield* Effect.exit(
+        runProductionCheck({
+          config: {},
+          rendererFiles: [{ path: "src/renderer/main.ts" }]
+        })
+      )
+
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const failReason = exit.cause.reasons.find((r) => r._tag === "Fail")
+        expect(failReason?.error).toBeInstanceOf(ProductionCheckInvalidInput)
       }
     })
-  )
-  const absentExit = await Effect.runPromiseExit(
-    runProductionCheck({
-      config: {
-        security: { externalNavigation: "deny" }
-      }
-    })
-  )
-
-  expect(Exit.isFailure(emptyExit)).toBe(true)
-  expect(Exit.isFailure(whitespaceExit)).toBe(true)
-  expect(Exit.isSuccess(absentExit)).toBe(true)
-
-  if (Exit.isFailure(emptyExit)) {
-    const failReason = emptyExit.cause.reasons.find((r) => r._tag === "Fail")
-    expect(failReason?.error).toBeInstanceOf(ProductionCheckInvalidInput)
-  }
-  if (Exit.isFailure(whitespaceExit)) {
-    const failReason = whitespaceExit.cause.reasons.find((r) => r._tag === "Fail")
-    expect(failReason?.error).toBeInstanceOf(ProductionCheckInvalidInput)
-  }
-})
-
-test("ProductionChecker rejects malformed renderer file inputs", async () => {
-  const exit = await Effect.runPromiseExit(
-    runProductionCheck({
-      config: {},
-      rendererFiles: [{ path: "src/renderer/main.ts" }]
-    })
-  )
-
-  expect(Exit.isFailure(exit)).toBe(true)
-  if (Exit.isFailure(exit)) {
-    const failReason = exit.cause.reasons.find((r) => r._tag === "Fail")
-    expect(failReason?.error).toBeInstanceOf(ProductionCheckInvalidInput)
-  }
-})
+  ))

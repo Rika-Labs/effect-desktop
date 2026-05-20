@@ -15,9 +15,13 @@ pub const HOST_PING_METHOD: &str = "host.ping";
 pub const HOST_VERSION_METHOD: &str = "host.version";
 pub const PROTOCOL_VERSION: &str = env!("EFFECT_DESKTOP_HOST_PROTOCOL_VERSION");
 pub const APP_QUIT_METHOD: &str = "App.quit";
+pub const APP_EXIT_METHOD: &str = "App.exit";
 pub const APP_RESTART_METHOD: &str = "App.restart";
+pub const APP_RELAUNCH_METHOD: &str = "App.relaunch";
 pub const APP_FOCUS_METHOD: &str = "App.focus";
+pub const APP_ACTIVATE_METHOD: &str = "App.activate";
 pub const APP_REQUEST_SINGLE_INSTANCE_LOCK_METHOD: &str = "App.requestSingleInstanceLock";
+pub const APP_RELEASE_SINGLE_INSTANCE_LOCK_METHOD: &str = "App.releaseSingleInstanceLock";
 pub const APP_SECOND_INSTANCE_EVENT: &str = "App.onSecondInstance";
 pub const APP_OPEN_FILE_EVENT: &str = "App.onOpenFile";
 pub const APP_OPEN_URL_EVENT: &str = "App.onOpenUrl";
@@ -54,14 +58,22 @@ pub const WINDOW_GET_CURRENT_METHOD: &str = "Window.getCurrent";
 pub const WINDOW_GET_BY_ID_METHOD: &str = "Window.getById";
 pub const WINDOW_LIST_METHOD: &str = "Window.list";
 pub const WINDOW_GET_PARENT_METHOD: &str = "Window.getParent";
+pub const WINDOW_GET_CHILDREN_METHOD: &str = "Window.getChildren";
 pub const WINDOW_GET_BOUNDS_METHOD: &str = "Window.getBounds";
 pub const WINDOW_SET_BOUNDS_METHOD: &str = "Window.setBounds";
+pub const WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD: &str = "Window.setBoundsOnDisplay";
 pub const WINDOW_CENTER_METHOD: &str = "Window.center";
 pub const WINDOW_CENTER_ON_DISPLAY_METHOD: &str = "Window.centerOnDisplay";
 pub const WINDOW_SET_TITLE_METHOD: &str = "Window.setTitle";
 pub const WINDOW_SET_RESIZABLE_METHOD: &str = "Window.setResizable";
 pub const WINDOW_SET_DECORATIONS_METHOD: &str = "Window.setDecorations";
 pub const WINDOW_SET_TRAFFIC_LIGHTS_METHOD: &str = "Window.setTrafficLights";
+pub const WINDOW_SET_VIBRANCY_METHOD: &str = "Window.setVibrancy";
+pub const WINDOW_CLEAR_VIBRANCY_METHOD: &str = "Window.clearVibrancy";
+pub const WINDOW_SET_SHADOW_METHOD: &str = "Window.setShadow";
+pub const WINDOW_SET_TITLE_BAR_STYLE_METHOD: &str = "Window.setTitleBarStyle";
+pub const WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD: &str = "Window.setTitleBarTransparent";
+pub const WINDOW_SET_TRANSPARENT_METHOD: &str = "Window.setTransparent";
 pub const WINDOW_SET_ALWAYS_ON_TOP_METHOD: &str = "Window.setAlwaysOnTop";
 pub const WINDOW_SET_SKIP_TASKBAR_METHOD: &str = "Window.setSkipTaskbar";
 pub const WINDOW_SET_PROGRESS_METHOD: &str = "Window.setProgress";
@@ -71,20 +83,23 @@ pub const WINDOW_MINIMIZE_METHOD: &str = "Window.minimize";
 pub const WINDOW_MAXIMIZE_METHOD: &str = "Window.maximize";
 pub const WINDOW_RESTORE_METHOD: &str = "Window.restore";
 pub const WINDOW_SET_FULLSCREEN_METHOD: &str = "Window.setFullscreen";
+pub const WINDOW_SET_SIMPLE_FULLSCREEN_METHOD: &str = "Window.setSimpleFullscreen";
 pub const WINDOW_GET_STATE_METHOD: &str = "Window.getState";
 pub const WINDOW_DESTROY_METHOD: &str = "Window.destroy";
 pub const WINDOW_EVENT: &str = "Window.Event";
 pub const DOCK_SET_BADGE_COUNT_METHOD: &str = "Dock.setBadgeCount";
 pub const DOCK_SET_BADGE_TEXT_METHOD: &str = "Dock.setBadgeText";
-pub const DOCK_SET_MENU_METHOD: &str = "Dock.setMenu";
+pub const DOCK_SET_PROGRESS_METHOD: &str = "Dock.setProgress";
 pub const DOCK_REQUEST_ATTENTION_METHOD: &str = "Dock.requestAttention";
 pub const DOCK_IS_SUPPORTED_METHOD: &str = "Dock.isSupported";
-pub const GLOBAL_SHORTCUT_REGISTER_METHOD: &str = "GlobalShortcut.register";
-pub const GLOBAL_SHORTCUT_UNREGISTER_METHOD: &str = "GlobalShortcut.unregister";
-pub const GLOBAL_SHORTCUT_UNREGISTER_ALL_METHOD: &str = "GlobalShortcut.unregisterAll";
 pub const GLOBAL_SHORTCUT_IS_REGISTERED_METHOD: &str = "GlobalShortcut.isRegistered";
 pub const GLOBAL_SHORTCUT_IS_SUPPORTED_METHOD: &str = "GlobalShortcut.isSupported";
+pub const SAFE_STORAGE_SET_METHOD: &str = "SafeStorage.set";
+pub const SAFE_STORAGE_GET_METHOD: &str = "SafeStorage.get";
+pub const SAFE_STORAGE_DELETE_METHOD: &str = "SafeStorage.delete";
+pub const SAFE_STORAGE_LIST_METHOD: &str = "SafeStorage.list";
 pub const SAFE_STORAGE_IS_AVAILABLE_METHOD: &str = "SafeStorage.isAvailable";
+pub const SAFE_STORAGE_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const DIALOG_OPEN_FILE_METHOD: &str = "Dialog.openFile";
 pub const DIALOG_OPEN_DIRECTORY_METHOD: &str = "Dialog.openDirectory";
 pub const DIALOG_SAVE_FILE_METHOD: &str = "Dialog.saveFile";
@@ -187,16 +202,9 @@ pub const ATTACHMENT_INTAKE_INSPECT_METHOD: &str = "AttachmentIntake.inspect";
 pub const ATTACHMENT_INTAKE_DISPOSE_METHOD: &str = "AttachmentIntake.dispose";
 pub const ATTACHMENT_INTAKE_IS_SUPPORTED_METHOD: &str = "AttachmentIntake.isSupported";
 pub const ATTACHMENT_INTAKE_EVENT: &str = "AttachmentIntake.Event";
-pub const SELECTION_CONTEXT_READ_SELECTION_METHOD: &str = "SelectionContext.readSelection";
-pub const SELECTION_CONTEXT_READ_DOCUMENT_METHOD: &str = "SelectionContext.readDocumentContext";
-pub const SELECTION_CONTEXT_WATCH_FOCUS_METHOD: &str = "SelectionContext.watchFocus";
-pub const SELECTION_CONTEXT_STOP_WATCHING_METHOD: &str = "SelectionContext.stopWatching";
 pub const SELECTION_CONTEXT_IS_SUPPORTED_METHOD: &str = "SelectionContext.isSupported";
 pub const SELECTION_CONTEXT_EVENT: &str = "SelectionContext.Event";
 pub const FOCUSED_APPLICATION_CONTEXT_SNAPSHOT_METHOD: &str = "FocusedApplicationContext.snapshot";
-pub const FOCUSED_APPLICATION_CONTEXT_WATCH_METHOD: &str = "FocusedApplicationContext.watch";
-pub const FOCUSED_APPLICATION_CONTEXT_STOP_WATCHING_METHOD: &str =
-    "FocusedApplicationContext.stopWatching";
 pub const FOCUSED_APPLICATION_CONTEXT_IS_SUPPORTED_METHOD: &str =
     "FocusedApplicationContext.isSupported";
 pub const FOCUSED_APPLICATION_CONTEXT_EVENT: &str = "FocusedApplicationContext.Event";
@@ -205,9 +213,6 @@ pub const DISPLAY_CAPTURE_CAPTURE_WINDOW_METHOD: &str = "DisplayCapture.captureW
 pub const DISPLAY_CAPTURE_CAPTURE_REGION_METHOD: &str = "DisplayCapture.captureRegion";
 pub const DISPLAY_CAPTURE_IS_SUPPORTED_METHOD: &str = "DisplayCapture.isSupported";
 pub const DISPLAY_CAPTURE_EVENT: &str = "DisplayCapture.Event";
-pub const TRANSIENT_WINDOW_ROLE_OPEN_METHOD: &str = "TransientWindowRole.open";
-pub const TRANSIENT_WINDOW_ROLE_REPOSITION_METHOD: &str = "TransientWindowRole.reposition";
-pub const TRANSIENT_WINDOW_ROLE_DISMISS_METHOD: &str = "TransientWindowRole.dismiss";
 pub const TRANSIENT_WINDOW_ROLE_IS_SUPPORTED_METHOD: &str = "TransientWindowRole.isSupported";
 pub const TRANSIENT_WINDOW_ROLE_EVENT: &str = "TransientWindowRole.Event";
 pub const ACTIVATION_REGISTRY_REGISTER_SURFACE_METHOD: &str = "ActivationRegistry.registerSurface";
@@ -239,9 +244,6 @@ pub const EGRESS_POLICY_DECIDE_METHOD: &str = "EgressPolicy.decide";
 pub const EGRESS_POLICY_RECORD_METHOD: &str = "EgressPolicy.record";
 pub const EGRESS_POLICY_IS_SUPPORTED_METHOD: &str = "EgressPolicy.isSupported";
 pub const EGRESS_POLICY_DECISION_RECORDED_EVENT: &str = "EgressPolicy.DecisionRecorded";
-pub const EXECUTION_SANDBOX_CREATE_METHOD: &str = "ExecutionSandbox.create";
-pub const EXECUTION_SANDBOX_RUN_METHOD: &str = "ExecutionSandbox.run";
-pub const EXECUTION_SANDBOX_DESTROY_METHOD: &str = "ExecutionSandbox.destroy";
 pub const EXECUTION_SANDBOX_IS_SUPPORTED_METHOD: &str = "ExecutionSandbox.isSupported";
 pub const EXECUTION_SANDBOX_EVENT: &str = "ExecutionSandbox.Event";
 pub const EXTENSION_CONFIG_READ_METHOD: &str = "ExtensionConfig.read";
@@ -267,9 +269,6 @@ pub const WORKSPACE_INDEX_REFRESH_METHOD: &str = "WorkspaceIndex.refresh";
 pub const WORKSPACE_INDEX_CLOSE_METHOD: &str = "WorkspaceIndex.close";
 pub const WORKSPACE_INDEX_IS_SUPPORTED_METHOD: &str = "WorkspaceIndex.isSupported";
 pub const WORKSPACE_INDEX_EVENT: &str = "WorkspaceIndex.Event";
-pub const SCOPED_ACCESS_GRANT_GRANT_METHOD: &str = "ScopedAccessGrant.grant";
-pub const SCOPED_ACCESS_GRANT_RESOLVE_METHOD: &str = "ScopedAccessGrant.resolve";
-pub const SCOPED_ACCESS_GRANT_REVOKE_METHOD: &str = "ScopedAccessGrant.revoke";
 pub const SCOPED_ACCESS_GRANT_IS_SUPPORTED_METHOD: &str = "ScopedAccessGrant.isSupported";
 pub const SCOPED_ACCESS_GRANT_EVENT: &str = "ScopedAccessGrant.Event";
 pub const TRANSACTIONAL_FILE_MUTATION_PREPARE_METHOD: &str = "TransactionalFileMutation.prepare";
@@ -280,6 +279,46 @@ pub const TRANSACTIONAL_FILE_MUTATION_IS_SUPPORTED_METHOD: &str =
 pub const TRANSACTIONAL_FILE_MUTATION_EVENT: &str = "TransactionalFileMutation.Event";
 pub const MENU_SET_APPLICATION_MENU_METHOD: &str = "Menu.setApplicationMenu";
 pub const MENU_SET_WINDOW_MENU_METHOD: &str = "Menu.setWindowMenu";
+pub const MENU_CLEAR_METHOD: &str = "Menu.clear";
+pub const MENU_CAPABILITY_METHOD: &str = "Menu.capability";
+pub const MENU_ACTIVATED_EVENT: &str = "Menu.Activated";
+pub const CONTEXT_MENU_ACTIVATED_EVENT: &str = "ContextMenu.Activated";
+pub const MENU_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
+pub const WEBVIEW_CREATE_METHOD: &str = "WebView.create";
+pub const WEBVIEW_LOAD_ROUTE_METHOD: &str = "WebView.loadRoute";
+pub const WEBVIEW_LOAD_URL_METHOD: &str = "WebView.loadUrl";
+pub const WEBVIEW_RELOAD_METHOD: &str = "WebView.reload";
+pub const WEBVIEW_STOP_METHOD: &str = "WebView.stop";
+pub const WEBVIEW_GO_BACK_METHOD: &str = "WebView.goBack";
+pub const WEBVIEW_GO_FORWARD_METHOD: &str = "WebView.goForward";
+pub const WEBVIEW_GET_NAVIGATION_STATE_METHOD: &str = "WebView.getNavigationState";
+pub const WEBVIEW_PRINT_METHOD: &str = "WebView.print";
+pub const WEBVIEW_SET_ZOOM_METHOD: &str = "WebView.setZoom";
+pub const WEBVIEW_OPEN_DEVTOOLS_METHOD: &str = "WebView.openDevTools";
+pub const WEBVIEW_CLOSE_DEVTOOLS_METHOD: &str = "WebView.closeDevTools";
+pub const WEBVIEW_SET_NAVIGATION_POLICY_METHOD: &str = "WebView.setNavigationPolicy";
+pub const WEBVIEW_DESTROY_METHOD: &str = "WebView.destroy";
+pub const WEBVIEW_NAVIGATION_BLOCKED_EVENT: &str = "WebView.NavigationBlocked";
+pub const WEBVIEW_API_CALL_EVENT: &str = "WebView.ApiCall";
+pub const WEBVIEW_RUNTIME_EVENT: &str = "WebView.RuntimeEvent";
+pub const WEBVIEW_FRAME_EVENT: &str = "WebView.FrameEvent";
+pub const SESSION_PROFILE_IS_SUPPORTED_METHOD: &str = "SessionProfile.isSupported";
+pub const SESSION_PROFILE_EVENT: &str = "SessionProfile.Event";
+pub const COOKIE_STORE_IS_SUPPORTED_METHOD: &str = "CookieStore.isSupported";
+pub const COOKIE_STORE_EVENT: &str = "CookieStore.Event";
+pub const BROWSING_DATA_IS_SUPPORTED_METHOD: &str = "BrowsingData.isSupported";
+pub const BROWSING_DATA_EVENT: &str = "BrowsingData.Event";
+pub const SESSION_PERMISSION_IS_SUPPORTED_METHOD: &str = "SessionPermission.isSupported";
+pub const SESSION_PERMISSION_EVENT: &str = "SessionPermission.Event";
+pub const DOWNLOAD_IS_SUPPORTED_METHOD: &str = "Download.isSupported";
+pub const DOWNLOAD_EVENT: &str = "Download.Event";
+pub const NETWORK_AUTH_IS_SUPPORTED_METHOD: &str = "NetworkAuth.isSupported";
+pub const NETWORK_AUTH_EVENT: &str = "NetworkAuth.Event";
+pub const WEB_REQUEST_IS_SUPPORTED_METHOD: &str = "WebRequest.isSupported";
+pub const WEB_REQUEST_EVENT: &str = "WebRequest.Event";
+pub const NATIVE_NETWORK_IS_SUPPORTED_METHOD: &str = "NativeNetwork.isSupported";
+pub const NATIVE_NETWORK_EVENT: &str = "NativeNetwork.Event";
+pub const WEBVIEW_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const RENDERER_DISCONNECTED_EVENT: &str = "renderer.disconnected";
 pub const RENDERER_RESUME_METHOD: &str = "renderer.resume";
 pub const RENDERER_RESUMED_EVENT: &str = "renderer.resumed";
@@ -430,6 +469,22 @@ impl AppSecondInstanceEventPayload {
             cwd: cwd.into(),
             trace_id: trace_id.into(),
         }
+    }
+
+    pub fn trace_id(&self) -> &str {
+        &self.trace_id
+    }
+
+    pub fn argv(&self) -> &[String] {
+        &self.argv
+    }
+
+    pub fn cwd(&self) -> &str {
+        &self.cwd
+    }
+
+    pub fn activation_reason(&self) -> AppActivationReasonPayload {
+        self.activation_reason
     }
 }
 
@@ -847,6 +902,10 @@ impl NativeFileSystemOpenPayload {
     pub fn handle_id(&self) -> Option<&str> {
         self.handle_id.as_deref()
     }
+
+    pub fn mode(&self) -> Option<NativeFileSystemOpenModePayload> {
+        self.mode
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -896,6 +955,10 @@ impl NativeFileSystemWatchPayload {
         &self.path
     }
 
+    pub fn recursive(&self) -> Option<bool> {
+        self.recursive
+    }
+
     pub fn watch_id(&self) -> Option<&str> {
         self.watch_id.as_deref()
     }
@@ -942,6 +1005,16 @@ impl NativeFileSystemMetadataPayload {
             size_bytes: None,
             modified_millis: None,
         }
+    }
+
+    pub fn with_size_bytes(mut self, size_bytes: u64) -> Self {
+        self.size_bytes = Some(size_bytes);
+        self
+    }
+
+    pub fn with_modified_millis(mut self, modified_millis: u64) -> Self {
+        self.modified_millis = Some(modified_millis);
+        self
     }
 }
 
@@ -1008,6 +1081,13 @@ pub struct NativeFileSystemSupportedPayload {
 }
 
 impl NativeFileSystemSupportedPayload {
+    pub fn supported() -> Self {
+        Self {
+            supported: true,
+            reason: None,
+        }
+    }
+
     pub fn unsupported(reason: impl Into<String>) -> Self {
         Self {
             supported: false,
@@ -1040,6 +1120,21 @@ impl NativeFileSystemEventPayload {
             phase,
             reason: None,
         }
+    }
+
+    pub fn with_watch_id(mut self, watch_id: impl Into<String>) -> Self {
+        self.watch_id = Some(watch_id.into());
+        self
+    }
+
+    pub fn with_path(mut self, path: CanonicalPathPayload) -> Self {
+        self.path = Some(path);
+        self
+    }
+
+    pub fn with_reason(mut self, reason: impl Into<String>) -> Self {
+        self.reason = Some(reason.into());
+        self
     }
 }
 
@@ -1079,6 +1174,10 @@ pub struct AutostartStatusPayload {
 impl AutostartStatusPayload {
     pub fn new(enabled: bool, mechanism: AutostartMechanismPayload) -> Self {
         Self { enabled, mechanism }
+    }
+
+    pub fn mechanism(&self) -> AutostartMechanismPayload {
+        self.mechanism
     }
 }
 
@@ -2396,15 +2495,67 @@ impl ClipboardSupportedPayload {
 pub struct UpdaterCheckPayload {
     #[serde(skip_serializing_if = "Option::is_none")]
     current_version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    manifest_json: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trust_anchors: Option<Vec<UpdaterTrustAnchorPayload>>,
 }
 
 impl UpdaterCheckPayload {
     pub fn new(current_version: Option<String>) -> Self {
-        Self { current_version }
+        Self {
+            current_version,
+            manifest_json: None,
+            trust_anchors: None,
+        }
+    }
+
+    pub fn with_signed_manifest(
+        current_version: Option<String>,
+        manifest_json: String,
+        trust_anchors: Vec<UpdaterTrustAnchorPayload>,
+    ) -> Self {
+        Self {
+            current_version,
+            manifest_json: Some(manifest_json),
+            trust_anchors: Some(trust_anchors),
+        }
     }
 
     pub fn current_version(&self) -> Option<&str> {
         self.current_version.as_deref()
+    }
+
+    pub fn manifest_json(&self) -> Option<&str> {
+        self.manifest_json.as_deref()
+    }
+
+    pub fn trust_anchors(&self) -> Option<&[UpdaterTrustAnchorPayload]> {
+        self.trust_anchors.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UpdaterTrustAnchorPayload {
+    key_version: u32,
+    public_key: String,
+}
+
+impl UpdaterTrustAnchorPayload {
+    pub fn new(key_version: u32, public_key: String) -> Self {
+        Self {
+            key_version,
+            public_key,
+        }
+    }
+
+    pub fn key_version(&self) -> u32 {
+        self.key_version
+    }
+
+    pub fn public_key(&self) -> &str {
+        &self.public_key
     }
 }
 
@@ -2758,6 +2909,53 @@ impl PowerMonitorSupportedPayload {
 
     pub fn is_supported(&self) -> bool {
         self.supported
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PowerMonitorReasonEventPayload {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+pub type PowerMonitorSuspendEventPayload = PowerMonitorReasonEventPayload;
+pub type PowerMonitorResumeEventPayload = PowerMonitorReasonEventPayload;
+pub type PowerMonitorShutdownEventPayload = PowerMonitorReasonEventPayload;
+pub type PowerMonitorLockScreenEventPayload = PowerMonitorReasonEventPayload;
+pub type PowerMonitorUnlockScreenEventPayload = PowerMonitorReasonEventPayload;
+
+impl PowerMonitorReasonEventPayload {
+    pub fn new(reason: Option<String>) -> Self {
+        Self { reason }
+    }
+
+    pub fn reason(&self) -> Option<&str> {
+        self.reason.as_deref()
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PowerMonitorSourcePayload {
+    Ac,
+    Battery,
+    Unknown,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PowerMonitorSourceChangedEventPayload {
+    source: PowerMonitorSourcePayload,
+}
+
+impl PowerMonitorSourceChangedEventPayload {
+    pub fn new(source: PowerMonitorSourcePayload) -> Self {
+        Self { source }
+    }
+
+    pub fn source(&self) -> PowerMonitorSourcePayload {
+        self.source
     }
 }
 
@@ -3119,7 +3317,10 @@ impl WindowParentResponse {
 #[serde(rename_all = "camelCase")]
 pub enum WindowRegistryEventPhase {
     Opened,
+    Shown,
+    Hidden,
     Focused,
+    CloseRequested,
     Closed,
 }
 
@@ -3189,6 +3390,65 @@ impl WindowStateEventPayload {
 
     pub fn state(&self) -> &WindowStatePayload {
         &self.state
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowBoundsEventPayload {
+    #[serde(rename = "type")]
+    type_name: String,
+    window_id: String,
+    bounds: WindowBoundsPayload,
+}
+
+impl WindowBoundsEventPayload {
+    pub fn new(window_id: impl Into<String>, bounds: WindowBoundsPayload) -> Self {
+        Self {
+            type_name: "window-bounds-event".to_string(),
+            window_id: window_id.into(),
+            bounds,
+        }
+    }
+
+    pub fn type_name(&self) -> &str {
+        &self.type_name
+    }
+
+    pub fn window_id(&self) -> &str {
+        &self.window_id
+    }
+
+    pub fn bounds(&self) -> &WindowBoundsPayload {
+        &self.bounds
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawWindowBoundsEventPayload {
+    #[serde(rename = "type")]
+    type_name: String,
+    window_id: String,
+    bounds: WindowBoundsPayload,
+}
+
+impl<'de> Deserialize<'de> for WindowBoundsEventPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let raw = RawWindowBoundsEventPayload::deserialize(deserializer)?;
+        if raw.type_name != "window-bounds-event" {
+            return Err(de::Error::custom(
+                "window bounds event type must be window-bounds-event",
+            ));
+        }
+        Ok(Self {
+            type_name: raw.type_name,
+            window_id: raw.window_id,
+            bounds: raw.bounds,
+        })
     }
 }
 
@@ -3318,6 +3578,40 @@ impl WindowSetBoundsPayload {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowSetBoundsOnDisplayPayload {
+    window_id: String,
+    display_id: String,
+    bounds: WindowBoundsPayload,
+}
+
+impl WindowSetBoundsOnDisplayPayload {
+    pub fn new(
+        window_id: impl Into<String>,
+        display_id: impl Into<String>,
+        bounds: WindowBoundsPayload,
+    ) -> Self {
+        Self {
+            window_id: window_id.into(),
+            display_id: display_id.into(),
+            bounds,
+        }
+    }
+
+    pub fn window_id(&self) -> &str {
+        &self.window_id
+    }
+
+    pub fn display_id(&self) -> &str {
+        &self.display_id
+    }
+
+    pub fn bounds(&self) -> &WindowBoundsPayload {
+        &self.bounds
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WindowCenterOnDisplayPayload {
     window_id: String,
     display_id: String,
@@ -3438,6 +3732,144 @@ impl WindowSetTrafficLightsPayload {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowSetVibrancyPayload {
+    window_id: String,
+    material: String,
+}
+
+impl WindowSetVibrancyPayload {
+    pub fn new(window_id: impl Into<String>, material: impl Into<String>) -> Self {
+        Self {
+            window_id: window_id.into(),
+            material: material.into(),
+        }
+    }
+
+    pub fn window_id(&self) -> &str {
+        &self.window_id
+    }
+
+    pub fn material(&self) -> &str {
+        &self.material
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowClearVibrancyPayload {
+    window_id: String,
+}
+
+impl WindowClearVibrancyPayload {
+    pub fn new(window_id: impl Into<String>) -> Self {
+        Self {
+            window_id: window_id.into(),
+        }
+    }
+
+    pub fn window_id(&self) -> &str {
+        &self.window_id
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowSetShadowPayload {
+    window_id: String,
+    has_shadow: bool,
+}
+
+impl WindowSetShadowPayload {
+    pub fn new(window_id: impl Into<String>, has_shadow: bool) -> Self {
+        Self {
+            window_id: window_id.into(),
+            has_shadow,
+        }
+    }
+
+    pub fn window_id(&self) -> &str {
+        &self.window_id
+    }
+
+    pub fn has_shadow(&self) -> bool {
+        self.has_shadow
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowSetTitleBarStylePayload {
+    window_id: String,
+    title_bar_style: WindowTitleBarStyle,
+}
+
+impl WindowSetTitleBarStylePayload {
+    pub fn new(window_id: impl Into<String>, title_bar_style: WindowTitleBarStyle) -> Self {
+        Self {
+            window_id: window_id.into(),
+            title_bar_style,
+        }
+    }
+
+    pub fn window_id(&self) -> &str {
+        &self.window_id
+    }
+
+    pub fn title_bar_style(&self) -> WindowTitleBarStyle {
+        self.title_bar_style
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowSetTitleBarTransparentPayload {
+    window_id: String,
+    title_bar_transparent: bool,
+}
+
+impl WindowSetTitleBarTransparentPayload {
+    pub fn new(window_id: impl Into<String>, title_bar_transparent: bool) -> Self {
+        Self {
+            window_id: window_id.into(),
+            title_bar_transparent,
+        }
+    }
+
+    pub fn window_id(&self) -> &str {
+        &self.window_id
+    }
+
+    pub fn title_bar_transparent(&self) -> bool {
+        self.title_bar_transparent
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowSetTransparentPayload {
+    window_id: String,
+    transparent: bool,
+}
+
+impl WindowSetTransparentPayload {
+    pub fn new(window_id: impl Into<String>, transparent: bool) -> Self {
+        Self {
+            window_id: window_id.into(),
+            transparent,
+        }
+    }
+
+    pub fn window_id(&self) -> &str {
+        &self.window_id
+    }
+
+    pub fn transparent(&self) -> bool {
+        self.transparent
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WindowSetAlwaysOnTopPayload {
     window_id: String,
     always_on_top: bool,
@@ -3539,6 +3971,160 @@ impl WindowSetProgressPayload {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DockProgressState {
+    Normal,
+    Indeterminate,
+    Error,
+    Paused,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DockSetProgressOptionsPayload {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    state: Option<DockProgressState>,
+}
+
+impl DockSetProgressOptionsPayload {
+    pub fn new(state: Option<DockProgressState>) -> Self {
+        Self { state }
+    }
+
+    pub fn state(&self) -> Option<DockProgressState> {
+        self.state
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DockSetProgressPayload {
+    value: serde_json::Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    options: Option<DockSetProgressOptionsPayload>,
+}
+
+impl DockSetProgressPayload {
+    pub fn new(value: serde_json::Value, options: Option<DockSetProgressOptionsPayload>) -> Self {
+        Self { value, options }
+    }
+
+    pub fn value(&self) -> &serde_json::Value {
+        &self.value
+    }
+
+    pub fn options(&self) -> Option<&DockSetProgressOptionsPayload> {
+        self.options.as_ref()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DockJumpListItemPayload {
+    id: String,
+    title: String,
+    command_id: String,
+}
+
+impl DockJumpListItemPayload {
+    pub fn new(
+        id: impl Into<String>,
+        title: impl Into<String>,
+        command_id: impl Into<String>,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            title: title.into(),
+            command_id: command_id.into(),
+        }
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn title(&self) -> &str {
+        &self.title
+    }
+
+    pub fn command_id(&self) -> &str {
+        &self.command_id
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DockSetJumpListPayload {
+    items: Vec<DockJumpListItemPayload>,
+}
+
+impl DockSetJumpListPayload {
+    pub fn new(items: Vec<DockJumpListItemPayload>) -> Self {
+        Self { items }
+    }
+
+    pub fn items(&self) -> &[DockJumpListItemPayload] {
+        &self.items
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SafeStorageKeyPayload {
+    key: String,
+}
+
+impl SafeStorageKeyPayload {
+    pub fn new(key: impl Into<String>) -> Self {
+        Self { key: key.into() }
+    }
+
+    pub fn key(&self) -> &str {
+        &self.key
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SafeStorageSetPayload {
+    key: String,
+    value: String,
+}
+
+impl SafeStorageSetPayload {
+    pub fn new(key: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            key: key.into(),
+            value: value.into(),
+        }
+    }
+
+    pub fn key(&self) -> &str {
+        &self.key
+    }
+
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SafeStorageListResultPayload {
+    keys: Vec<String>,
+}
+
+impl SafeStorageListResultPayload {
+    pub fn new(keys: Vec<String>) -> Self {
+        Self { keys }
+    }
+
+    pub fn keys(&self) -> &[String] {
+        &self.keys
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum WindowAttentionType {
     Critical,
@@ -3595,18 +4181,49 @@ impl WindowSetFullscreenPayload {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowSetSimpleFullscreenPayload {
+    window_id: String,
+    simple_fullscreen: bool,
+}
+
+impl WindowSetSimpleFullscreenPayload {
+    pub fn new(window_id: impl Into<String>, simple_fullscreen: bool) -> Self {
+        Self {
+            window_id: window_id.into(),
+            simple_fullscreen,
+        }
+    }
+
+    pub fn window_id(&self) -> &str {
+        &self.window_id
+    }
+
+    pub fn simple_fullscreen(&self) -> bool {
+        self.simple_fullscreen
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WindowStatePayload {
     minimized: bool,
     maximized: bool,
     fullscreen: bool,
+    simple_fullscreen: bool,
 }
 
 impl WindowStatePayload {
-    pub fn new(minimized: bool, maximized: bool, fullscreen: bool) -> Self {
+    pub fn new(
+        minimized: bool,
+        maximized: bool,
+        fullscreen: bool,
+        simple_fullscreen: bool,
+    ) -> Self {
         Self {
             minimized,
             maximized,
             fullscreen,
+            simple_fullscreen,
         }
     }
 
@@ -3620,6 +4237,10 @@ impl WindowStatePayload {
 
     pub fn fullscreen(&self) -> bool {
         self.fullscreen
+    }
+
+    pub fn simple_fullscreen(&self) -> bool {
+        self.simple_fullscreen
     }
 }
 
@@ -4081,6 +4702,10 @@ impl AttachmentIntakeItemInputPayload {
         &self.mime_type
     }
 
+    pub fn source(&self) -> AttachmentIntakeSource {
+        self.source
+    }
+
     pub fn bytes(&self) -> &[u8] {
         &self.bytes
     }
@@ -4289,6 +4914,13 @@ pub struct AttachmentIntakeSupportedPayload {
 }
 
 impl AttachmentIntakeSupportedPayload {
+    pub fn supported() -> Self {
+        Self {
+            supported: true,
+            reason: None,
+        }
+    }
+
     pub fn unsupported(reason: impl Into<String>) -> Self {
         Self {
             supported: false,
@@ -4313,6 +4945,52 @@ pub struct AttachmentIntakeEventPayload {
     reason: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     message: Option<String>,
+}
+
+impl AttachmentIntakeEventPayload {
+    pub fn ingested(timestamp: u64, intake_id: impl Into<String>, item_count: u64) -> Self {
+        Self {
+            r#type: "attachment-intake-event".to_string(),
+            timestamp,
+            intake_id: Some(intake_id.into()),
+            phase: AttachmentIntakeEventPhase::Ingested,
+            state: Some(AttachmentIntakeState::Ingested),
+            item_count: Some(item_count),
+            reason: None,
+            message: None,
+        }
+    }
+
+    pub fn disposed(timestamp: u64, intake_id: impl Into<String>) -> Self {
+        Self {
+            r#type: "attachment-intake-event".to_string(),
+            timestamp,
+            intake_id: Some(intake_id.into()),
+            phase: AttachmentIntakeEventPhase::Disposed,
+            state: Some(AttachmentIntakeState::Disposed),
+            item_count: None,
+            reason: None,
+            message: None,
+        }
+    }
+
+    pub fn failed(
+        timestamp: u64,
+        intake_id: impl Into<String>,
+        reason: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            r#type: "attachment-intake-event".to_string(),
+            timestamp,
+            intake_id: Some(intake_id.into()),
+            phase: AttachmentIntakeEventPhase::Failed,
+            state: None,
+            item_count: None,
+            reason: Some(reason.into()),
+            message: Some(message.into()),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -4877,6 +5555,26 @@ impl FocusedApplicationMetadataPayload {
             process_id: None,
         }
     }
+
+    pub fn with_name(mut self, name: impl Into<String>) -> Self {
+        self.name = Some(name.into());
+        self
+    }
+
+    pub fn with_bundle_id(mut self, bundle_id: impl Into<String>) -> Self {
+        self.bundle_id = Some(bundle_id.into());
+        self
+    }
+
+    pub fn with_executable_path(mut self, executable_path: impl Into<String>) -> Self {
+        self.executable_path = Some(executable_path.into());
+        self
+    }
+
+    pub fn with_process_id(mut self, process_id: u64) -> Self {
+        self.process_id = Some(process_id);
+        self
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -5265,6 +5963,21 @@ impl DisplayCaptureMetadataPayload {
             observed_at,
         }
     }
+
+    pub fn with_display_id(mut self, display_id: impl Into<String>) -> Self {
+        self.display_id = Some(display_id.into());
+        self
+    }
+
+    pub fn with_window_id(mut self, window_id: impl Into<String>) -> Self {
+        self.window_id = Some(window_id.into());
+        self
+    }
+
+    pub fn with_region(mut self, region: DisplayCaptureRegionPayload) -> Self {
+        self.region = Some(region);
+        self
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -5289,6 +6002,13 @@ pub struct DisplayCaptureSupportedPayload {
 }
 
 impl DisplayCaptureSupportedPayload {
+    pub fn supported() -> Self {
+        Self {
+            supported: true,
+            reason: None,
+        }
+    }
+
     pub fn unsupported(reason: impl Into<String>) -> Self {
         Self {
             supported: false,
@@ -5878,6 +6598,26 @@ impl ActivationRegistryResourcePayload {
             state: "registered".to_string(),
         }
     }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn kind(&self) -> &str {
+        &self.kind
+    }
+
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    pub fn owner_scope(&self) -> &str {
+        &self.owner_scope
+    }
+
+    pub fn state(&self) -> &str {
+        &self.state
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -5890,6 +6630,14 @@ impl ActivationRegistrySurfaceListPayload {
     pub fn empty() -> Self {
         Self { surfaces: vec![] }
     }
+
+    pub fn new(surfaces: Vec<ActivationRegistrySurfacePayload>) -> Self {
+        Self { surfaces }
+    }
+
+    pub fn surfaces(&self) -> &[ActivationRegistrySurfacePayload] {
+        &self.surfaces
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -5901,11 +6649,26 @@ pub struct ActivationRegistrySupportedPayload {
 }
 
 impl ActivationRegistrySupportedPayload {
+    pub fn supported() -> Self {
+        Self {
+            supported: true,
+            reason: None,
+        }
+    }
+
     pub fn unsupported(reason: impl Into<String>) -> Self {
         Self {
             supported: false,
             reason: Some(reason.into()),
         }
+    }
+
+    pub fn is_supported(&self) -> bool {
+        self.supported
+    }
+
+    pub fn reason(&self) -> Option<&str> {
+        self.reason.as_deref()
     }
 }
 
@@ -6007,6 +6770,22 @@ impl ResidentLifecyclePolicyPayload {
             launch_at_login,
         }
     }
+
+    pub fn process(&self) -> &ResidentLifecycleProcessPolicy {
+        &self.process
+    }
+
+    pub fn windows(&self) -> &ResidentLifecycleWindowPolicy {
+        &self.windows
+    }
+
+    pub fn background(&self) -> &ResidentLifecycleBackgroundAvailability {
+        &self.background
+    }
+
+    pub fn launch_at_login(&self) -> Option<bool> {
+        self.launch_at_login
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -6030,6 +6809,10 @@ impl ResidentLifecycleEnablePayload {
 
     pub fn owner_scope(&self) -> Option<&str> {
         self.owner_scope.as_deref()
+    }
+
+    pub fn policy(&self) -> &ResidentLifecyclePolicyPayload {
+        &self.policy
     }
 
     pub fn trace_id(&self) -> Option<&str> {
@@ -6063,11 +6846,22 @@ pub struct ResidentLifecycleStatePayload {
 }
 
 impl ResidentLifecycleStatePayload {
+    pub fn enabled(policy: ResidentLifecyclePolicyPayload) -> Self {
+        Self {
+            enabled: true,
+            policy: Some(policy),
+        }
+    }
+
     pub fn disabled() -> Self {
         Self {
             enabled: false,
             policy: None,
         }
+    }
+
+    pub fn policy(&self) -> Option<&ResidentLifecyclePolicyPayload> {
+        self.policy.as_ref()
     }
 }
 
@@ -6080,6 +6874,13 @@ pub struct ResidentLifecycleSupportedPayload {
 }
 
 impl ResidentLifecycleSupportedPayload {
+    pub fn supported() -> Self {
+        Self {
+            supported: true,
+            reason: None,
+        }
+    }
+
     pub fn unsupported(reason: impl Into<String>) -> Self {
         Self {
             supported: false,
@@ -8759,6 +9560,1793 @@ impl ScopedAccessGrantEventPayload {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionProfileResourcePayload {
+    kind: String,
+    id: String,
+    generation: u64,
+    owner_scope: String,
+    state: String,
+}
+
+impl SessionProfileResourcePayload {
+    pub fn new(id: impl Into<String>, generation: u64, owner_scope: impl Into<String>) -> Self {
+        Self {
+            kind: "session-profile".to_string(),
+            id: id.into(),
+            generation,
+            owner_scope: owner_scope.into(),
+            state: "open".to_string(),
+        }
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn owner_scope(&self) -> &str {
+        &self.owner_scope
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionProfileFromPartitionPayload {
+    partition: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    owner_scope: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl SessionProfileFromPartitionPayload {
+    pub fn new(partition: impl Into<String>) -> Self {
+        Self {
+            partition: partition.into(),
+            owner_scope: None,
+            trace_id: None,
+        }
+    }
+
+    pub fn with_owner_scope(mut self, owner_scope: impl Into<String>) -> Self {
+        self.owner_scope = Some(owner_scope.into());
+        self
+    }
+
+    pub fn partition(&self) -> &str {
+        &self.partition
+    }
+
+    pub fn owner_scope(&self) -> Option<&str> {
+        self.owner_scope.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionProfileHandlePayload {
+    profile: SessionProfileResourcePayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl SessionProfileHandlePayload {
+    pub fn new(profile: SessionProfileResourcePayload) -> Self {
+        Self {
+            profile,
+            trace_id: None,
+        }
+    }
+
+    pub fn profile(&self) -> &SessionProfileResourcePayload {
+        &self.profile
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionProfileListPayload {
+    profiles: Vec<SessionProfileResourcePayload>,
+}
+
+impl SessionProfileListPayload {
+    pub fn new(profiles: Vec<SessionProfileResourcePayload>) -> Self {
+        Self { profiles }
+    }
+
+    pub fn profiles(&self) -> &[SessionProfileResourcePayload] {
+        &self.profiles
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionProfileSupportedPayload {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl SessionProfileSupportedPayload {
+    pub fn supported() -> Self {
+        Self {
+            supported: true,
+            reason: None,
+        }
+    }
+
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            reason: Some(reason.into()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum CookieStoreSameSitePayload {
+    Lax,
+    Strict,
+    None,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CookieStoreCookiePayload {
+    name: String,
+    value: String,
+    domain: String,
+    path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    secure: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    http_only: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    same_site: Option<CookieStoreSameSitePayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    expires_at: Option<f64>,
+}
+
+impl CookieStoreCookiePayload {
+    pub fn new(
+        name: impl Into<String>,
+        value: impl Into<String>,
+        domain: impl Into<String>,
+        path: impl Into<String>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            value: value.into(),
+            domain: domain.into(),
+            path: path.into(),
+            secure: None,
+            http_only: None,
+            same_site: None,
+            expires_at: None,
+        }
+    }
+
+    pub fn with_secure(mut self, secure: bool) -> Self {
+        self.secure = Some(secure);
+        self
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CookieStoreGetPayload {
+    profile: SessionProfileResourcePayload,
+    url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl CookieStoreGetPayload {
+    pub fn new(profile: SessionProfileResourcePayload, url: impl Into<String>) -> Self {
+        Self {
+            profile,
+            url: url.into(),
+            name: None,
+            trace_id: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CookieStoreSetPayload {
+    profile: SessionProfileResourcePayload,
+    url: String,
+    cookie: CookieStoreCookiePayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl CookieStoreSetPayload {
+    pub fn new(
+        profile: SessionProfileResourcePayload,
+        url: impl Into<String>,
+        cookie: CookieStoreCookiePayload,
+    ) -> Self {
+        Self {
+            profile,
+            url: url.into(),
+            cookie,
+            trace_id: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CookieStoreRemovePayload {
+    profile: SessionProfileResourcePayload,
+    url: String,
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl CookieStoreRemovePayload {
+    pub fn new(
+        profile: SessionProfileResourcePayload,
+        url: impl Into<String>,
+        name: impl Into<String>,
+    ) -> Self {
+        Self {
+            profile,
+            url: url.into(),
+            name: name.into(),
+            trace_id: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CookieStoreGetResultPayload {
+    cookies: Vec<CookieStoreCookiePayload>,
+}
+
+impl CookieStoreGetResultPayload {
+    pub fn new(cookies: Vec<CookieStoreCookiePayload>) -> Self {
+        Self { cookies }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CookieStoreSupportedPayload {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl CookieStoreSupportedPayload {
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            reason: Some(reason.into()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum BrowsingDataTypePayload {
+    Cache,
+    Cookies,
+    LocalStorage,
+    IndexedDb,
+    History,
+    ServiceWorkers,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowsingDataClearPayload {
+    profile: SessionProfileResourcePayload,
+    types: Vec<BrowsingDataTypePayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl BrowsingDataClearPayload {
+    pub fn new(
+        profile: SessionProfileResourcePayload,
+        types: Vec<BrowsingDataTypePayload>,
+    ) -> Self {
+        Self {
+            profile,
+            types,
+            trace_id: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowsingDataEstimatePayload {
+    profile: SessionProfileResourcePayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    types: Option<Vec<BrowsingDataTypePayload>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl BrowsingDataEstimatePayload {
+    pub fn new(profile: SessionProfileResourcePayload) -> Self {
+        Self {
+            profile,
+            types: None,
+            trace_id: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowsingDataTypeEstimatePayload {
+    r#type: BrowsingDataTypePayload,
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    bytes: Option<u64>,
+}
+
+impl BrowsingDataTypeEstimatePayload {
+    pub fn new(r#type: BrowsingDataTypePayload, supported: bool, bytes: Option<u64>) -> Self {
+        Self {
+            r#type,
+            supported,
+            bytes,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowsingDataClearResultPayload {
+    cleared: Vec<BrowsingDataTypePayload>,
+    unsupported: Vec<BrowsingDataTypePayload>,
+}
+
+impl BrowsingDataClearResultPayload {
+    pub fn new(
+        cleared: Vec<BrowsingDataTypePayload>,
+        unsupported: Vec<BrowsingDataTypePayload>,
+    ) -> Self {
+        Self {
+            cleared,
+            unsupported,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowsingDataEstimateResultPayload {
+    estimates: Vec<BrowsingDataTypeEstimatePayload>,
+}
+
+impl BrowsingDataEstimateResultPayload {
+    pub fn new(estimates: Vec<BrowsingDataTypeEstimatePayload>) -> Self {
+        Self { estimates }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowsingDataListTypesPayload {
+    types: Vec<BrowsingDataTypePayload>,
+}
+
+impl BrowsingDataListTypesPayload {
+    pub fn new(types: Vec<BrowsingDataTypePayload>) -> Self {
+        Self { types }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowsingDataSupportedPayload {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl BrowsingDataSupportedPayload {
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            reason: Some(reason.into()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", rename_all_fields = "camelCase")]
+pub enum SessionPermissionKindPayload {
+    Camera,
+    Microphone,
+    Notifications,
+    Geolocation,
+    ClipboardRead,
+    ClipboardWrite,
+    DisplayCapture,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum SessionPermissionDecisionPayload {
+    Grant,
+    Deny,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum SessionPermissionRequestStatusPayload {
+    Pending,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum SessionPermissionEventPhasePayload {
+    Requested,
+    Decided,
+    Failed,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionPermissionRequestPayload {
+    profile: SessionProfileResourcePayload,
+    kind: SessionPermissionKindPayload,
+    origin: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    request_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl SessionPermissionRequestPayload {
+    pub fn new(
+        profile: SessionProfileResourcePayload,
+        kind: SessionPermissionKindPayload,
+        origin: impl Into<String>,
+    ) -> Self {
+        Self {
+            profile,
+            kind,
+            origin: origin.into(),
+            request_id: None,
+            trace_id: None,
+        }
+    }
+
+    pub fn with_request_id(mut self, request_id: impl Into<String>) -> Self {
+        self.request_id = Some(request_id.into());
+        self
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionPermissionDecidePayload {
+    profile: SessionProfileResourcePayload,
+    request_id: String,
+    kind: SessionPermissionKindPayload,
+    origin: String,
+    decision: SessionPermissionDecisionPayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl SessionPermissionDecidePayload {
+    pub fn new(
+        profile: SessionProfileResourcePayload,
+        request_id: impl Into<String>,
+        kind: SessionPermissionKindPayload,
+        origin: impl Into<String>,
+        decision: SessionPermissionDecisionPayload,
+    ) -> Self {
+        Self {
+            profile,
+            request_id: request_id.into(),
+            kind,
+            origin: origin.into(),
+            decision,
+            trace_id: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionPermissionListPayload {
+    profile: SessionProfileResourcePayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    kind: Option<SessionPermissionKindPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    origin: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl SessionPermissionListPayload {
+    pub fn new(profile: SessionProfileResourcePayload) -> Self {
+        Self {
+            profile,
+            kind: None,
+            origin: None,
+            trace_id: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionPermissionRequestResultPayload {
+    request_id: String,
+    status: SessionPermissionRequestStatusPayload,
+}
+
+impl SessionPermissionRequestResultPayload {
+    pub fn new(request_id: impl Into<String>) -> Self {
+        Self {
+            request_id: request_id.into(),
+            status: SessionPermissionRequestStatusPayload::Pending,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionPermissionDecisionRecordPayload {
+    profile: SessionProfileResourcePayload,
+    request_id: String,
+    kind: SessionPermissionKindPayload,
+    origin: String,
+    decision: SessionPermissionDecisionPayload,
+    decided_at: u64,
+}
+
+impl SessionPermissionDecisionRecordPayload {
+    pub fn new(
+        profile: SessionProfileResourcePayload,
+        request_id: impl Into<String>,
+        kind: SessionPermissionKindPayload,
+        origin: impl Into<String>,
+        decision: SessionPermissionDecisionPayload,
+        decided_at: u64,
+    ) -> Self {
+        Self {
+            profile,
+            request_id: request_id.into(),
+            kind,
+            origin: origin.into(),
+            decision,
+            decided_at,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionPermissionListResultPayload {
+    decisions: Vec<SessionPermissionDecisionRecordPayload>,
+}
+
+impl SessionPermissionListResultPayload {
+    pub fn new(decisions: Vec<SessionPermissionDecisionRecordPayload>) -> Self {
+        Self { decisions }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionPermissionSupportedPayload {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl SessionPermissionSupportedPayload {
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            reason: Some(reason.into()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionPermissionEventPayload {
+    r#type: String,
+    timestamp: u64,
+    phase: SessionPermissionEventPhasePayload,
+    profile: SessionProfileResourcePayload,
+    request_id: String,
+    kind: SessionPermissionKindPayload,
+    origin: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    decision: Option<SessionPermissionDecisionPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<String>,
+}
+
+impl SessionPermissionEventPayload {
+    pub fn new(
+        timestamp: u64,
+        phase: SessionPermissionEventPhasePayload,
+        profile: SessionProfileResourcePayload,
+        request_id: impl Into<String>,
+        kind: SessionPermissionKindPayload,
+        origin: impl Into<String>,
+    ) -> Self {
+        Self {
+            r#type: "session-permission-event".to_string(),
+            timestamp,
+            phase,
+            profile,
+            request_id: request_id.into(),
+            kind,
+            origin: origin.into(),
+            decision: None,
+            message: None,
+        }
+    }
+
+    pub fn with_decision(mut self, decision: SessionPermissionDecisionPayload) -> Self {
+        self.decision = Some(decision);
+        self
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DownloadResourcePayload {
+    kind: String,
+    id: String,
+    generation: u64,
+    owner_scope: String,
+    state: String,
+}
+
+impl DownloadResourcePayload {
+    pub fn new(id: impl Into<String>, generation: u64, owner_scope: impl Into<String>) -> Self {
+        Self {
+            kind: "download".to_string(),
+            id: id.into(),
+            generation,
+            owner_scope: owner_scope.into(),
+            state: "open".to_string(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum DownloadStatePayload {
+    Running,
+    Paused,
+    Completed,
+    Canceled,
+    Failed,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum DownloadEventPhasePayload {
+    Started,
+    Progressed,
+    Paused,
+    Resumed,
+    Completed,
+    Canceled,
+    Failed,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DownloadStartPayload {
+    profile: SessionProfileResourcePayload,
+    url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    destination: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    owner_scope: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl DownloadStartPayload {
+    pub fn new(profile: SessionProfileResourcePayload, url: impl Into<String>) -> Self {
+        Self {
+            profile,
+            url: url.into(),
+            destination: None,
+            owner_scope: None,
+            trace_id: None,
+        }
+    }
+
+    pub fn with_destination(mut self, destination: impl Into<String>) -> Self {
+        self.destination = Some(destination.into());
+        self
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DownloadHandlePayload {
+    download: DownloadResourcePayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl DownloadHandlePayload {
+    pub fn new(download: DownloadResourcePayload) -> Self {
+        Self {
+            download,
+            trace_id: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DownloadListPayload {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    profile: Option<SessionProfileResourcePayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl DownloadListPayload {
+    pub fn all() -> Self {
+        Self {
+            profile: None,
+            trace_id: None,
+        }
+    }
+
+    pub fn for_profile(profile: SessionProfileResourcePayload) -> Self {
+        Self {
+            profile: Some(profile),
+            trace_id: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DownloadSnapshotPayload {
+    download: DownloadResourcePayload,
+    profile: SessionProfileResourcePayload,
+    url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    destination: Option<String>,
+    state: DownloadStatePayload,
+    received_bytes: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    total_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<String>,
+}
+
+impl DownloadSnapshotPayload {
+    pub fn new(
+        download: DownloadResourcePayload,
+        profile: SessionProfileResourcePayload,
+        url: impl Into<String>,
+        state: DownloadStatePayload,
+        received_bytes: u64,
+    ) -> Self {
+        Self {
+            download,
+            profile,
+            url: url.into(),
+            destination: None,
+            state,
+            received_bytes,
+            total_bytes: None,
+            message: None,
+        }
+    }
+
+    pub fn with_total_bytes(mut self, total_bytes: u64) -> Self {
+        self.total_bytes = Some(total_bytes);
+        self
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DownloadListResultPayload {
+    downloads: Vec<DownloadSnapshotPayload>,
+}
+
+impl DownloadListResultPayload {
+    pub fn new(downloads: Vec<DownloadSnapshotPayload>) -> Self {
+        Self { downloads }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DownloadSupportedPayload {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl DownloadSupportedPayload {
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            reason: Some(reason.into()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DownloadEventPayload {
+    r#type: String,
+    timestamp: u64,
+    phase: DownloadEventPhasePayload,
+    download: DownloadResourcePayload,
+    profile: SessionProfileResourcePayload,
+    url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    destination: Option<String>,
+    received_bytes: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    total_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<String>,
+}
+
+impl DownloadEventPayload {
+    pub fn new(
+        timestamp: u64,
+        phase: DownloadEventPhasePayload,
+        download: DownloadResourcePayload,
+        profile: SessionProfileResourcePayload,
+        url: impl Into<String>,
+        received_bytes: u64,
+    ) -> Self {
+        Self {
+            r#type: "download-event".to_string(),
+            timestamp,
+            phase,
+            download,
+            profile,
+            url: url.into(),
+            destination: None,
+            received_bytes,
+            total_bytes: None,
+            message: None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum NetworkAuthProxyModePayload {
+    Direct,
+    System,
+    Fixed,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum NetworkAuthDecisionPayload {
+    Allow,
+    Deny,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", rename_all_fields = "camelCase")]
+pub enum NetworkAuthDecisionKindPayload {
+    HttpAuth,
+    Certificate,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", rename_all_fields = "camelCase")]
+pub enum NetworkAuthEventPhasePayload {
+    ProxyUpdated,
+    AuthDecided,
+    CertificateDecided,
+    Failed,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NetworkAuthSetProxyPayload {
+    profile: SessionProfileResourcePayload,
+    mode: NetworkAuthProxyModePayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    server: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    bypass: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl NetworkAuthSetProxyPayload {
+    pub fn new(profile: SessionProfileResourcePayload, mode: NetworkAuthProxyModePayload) -> Self {
+        Self {
+            profile,
+            mode,
+            server: None,
+            bypass: Vec::new(),
+            trace_id: None,
+        }
+    }
+
+    pub fn with_server(mut self, server: impl Into<String>) -> Self {
+        self.server = Some(server.into());
+        self
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NetworkAuthProxyResultPayload {
+    profile: SessionProfileResourcePayload,
+    mode: NetworkAuthProxyModePayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    server: Option<String>,
+    bypass: Vec<String>,
+}
+
+impl NetworkAuthProxyResultPayload {
+    pub fn new(profile: SessionProfileResourcePayload, mode: NetworkAuthProxyModePayload) -> Self {
+        Self {
+            profile,
+            mode,
+            server: None,
+            bypass: Vec::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NetworkAuthHttpAuthPayload {
+    profile: SessionProfileResourcePayload,
+    request_id: String,
+    origin: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    realm: Option<String>,
+    decision: NetworkAuthDecisionPayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    username: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    password: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl NetworkAuthHttpAuthPayload {
+    pub fn new(
+        profile: SessionProfileResourcePayload,
+        request_id: impl Into<String>,
+        origin: impl Into<String>,
+        decision: NetworkAuthDecisionPayload,
+    ) -> Self {
+        Self {
+            profile,
+            request_id: request_id.into(),
+            origin: origin.into(),
+            realm: None,
+            decision,
+            username: None,
+            password: None,
+            trace_id: None,
+        }
+    }
+
+    pub fn with_credentials(
+        mut self,
+        username: impl Into<String>,
+        password: impl Into<String>,
+    ) -> Self {
+        self.username = Some(username.into());
+        self.password = Some(password.into());
+        self
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NetworkAuthCertificatePayload {
+    profile: SessionProfileResourcePayload,
+    request_id: String,
+    origin: String,
+    fingerprint_sha256: String,
+    decision: NetworkAuthDecisionPayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl NetworkAuthCertificatePayload {
+    pub fn new(
+        profile: SessionProfileResourcePayload,
+        request_id: impl Into<String>,
+        origin: impl Into<String>,
+        fingerprint_sha256: impl Into<String>,
+        decision: NetworkAuthDecisionPayload,
+    ) -> Self {
+        Self {
+            profile,
+            request_id: request_id.into(),
+            origin: origin.into(),
+            fingerprint_sha256: fingerprint_sha256.into(),
+            decision,
+            trace_id: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NetworkAuthDecisionRecordPayload {
+    profile: SessionProfileResourcePayload,
+    request_id: String,
+    origin: String,
+    kind: NetworkAuthDecisionKindPayload,
+    decision: NetworkAuthDecisionPayload,
+    decided_at: u64,
+}
+
+impl NetworkAuthDecisionRecordPayload {
+    pub fn new(
+        profile: SessionProfileResourcePayload,
+        request_id: impl Into<String>,
+        origin: impl Into<String>,
+        kind: NetworkAuthDecisionKindPayload,
+        decision: NetworkAuthDecisionPayload,
+        decided_at: u64,
+    ) -> Self {
+        Self {
+            profile,
+            request_id: request_id.into(),
+            origin: origin.into(),
+            kind,
+            decision,
+            decided_at,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NetworkAuthSupportedPayload {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl NetworkAuthSupportedPayload {
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            reason: Some(reason.into()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NetworkAuthEventPayload {
+    r#type: String,
+    timestamp: u64,
+    phase: NetworkAuthEventPhasePayload,
+    profile: SessionProfileResourcePayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    request_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    origin: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    decision: Option<NetworkAuthDecisionPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<String>,
+}
+
+impl NetworkAuthEventPayload {
+    pub fn new(
+        timestamp: u64,
+        phase: NetworkAuthEventPhasePayload,
+        profile: SessionProfileResourcePayload,
+    ) -> Self {
+        Self {
+            r#type: "network-auth-event".to_string(),
+            timestamp,
+            phase,
+            profile,
+            request_id: None,
+            origin: None,
+            decision: None,
+            message: None,
+        }
+    }
+
+    pub fn with_decision(
+        mut self,
+        request_id: impl Into<String>,
+        origin: impl Into<String>,
+        decision: NetworkAuthDecisionPayload,
+    ) -> Self {
+        self.request_id = Some(request_id.into());
+        self.origin = Some(origin.into());
+        self.decision = Some(decision);
+        self
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WebRequestInterceptorResourcePayload {
+    kind: String,
+    id: String,
+    generation: u64,
+    owner_scope: String,
+    state: String,
+}
+
+impl WebRequestInterceptorResourcePayload {
+    pub fn new(id: impl Into<String>, generation: u64, owner_scope: impl Into<String>) -> Self {
+        Self {
+            kind: "web-request-interceptor".to_string(),
+            id: id.into(),
+            generation,
+            owner_scope: owner_scope.into(),
+            state: "open".to_string(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", rename_all_fields = "camelCase")]
+pub enum WebRequestPhasePayload {
+    BeforeRequest,
+    HeadersReceived,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", rename_all_fields = "camelCase")]
+pub enum WebRequestActionPayload {
+    Allow,
+    Block,
+    Redirect,
+    ModifyHeaders,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", rename_all_fields = "camelCase")]
+pub enum WebRequestEventPhasePayload {
+    Registered,
+    Removed,
+    Matched,
+    Failed,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WebRequestHeaderPayload {
+    name: String,
+    value: String,
+}
+
+impl WebRequestHeaderPayload {
+    pub fn new(name: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            value: value.into(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WebRequestBeforeRequestPayload {
+    profile: SessionProfileResourcePayload,
+    url_pattern: String,
+    action: WebRequestActionPayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    redirect_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    owner_scope: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl WebRequestBeforeRequestPayload {
+    pub fn new(
+        profile: SessionProfileResourcePayload,
+        url_pattern: impl Into<String>,
+        action: WebRequestActionPayload,
+    ) -> Self {
+        Self {
+            profile,
+            url_pattern: url_pattern.into(),
+            action,
+            redirect_url: None,
+            owner_scope: None,
+            trace_id: None,
+        }
+    }
+
+    pub fn with_redirect_url(mut self, redirect_url: impl Into<String>) -> Self {
+        self.redirect_url = Some(redirect_url.into());
+        self
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WebRequestHeadersReceivedPayload {
+    profile: SessionProfileResourcePayload,
+    url_pattern: String,
+    response_headers: Vec<WebRequestHeaderPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    owner_scope: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl WebRequestHeadersReceivedPayload {
+    pub fn new(
+        profile: SessionProfileResourcePayload,
+        url_pattern: impl Into<String>,
+        response_headers: Vec<WebRequestHeaderPayload>,
+    ) -> Self {
+        Self {
+            profile,
+            url_pattern: url_pattern.into(),
+            response_headers,
+            owner_scope: None,
+            trace_id: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WebRequestRemoveListenerPayload {
+    interceptor: WebRequestInterceptorResourcePayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl WebRequestRemoveListenerPayload {
+    pub fn new(interceptor: WebRequestInterceptorResourcePayload) -> Self {
+        Self {
+            interceptor,
+            trace_id: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WebRequestInterceptorSnapshotPayload {
+    interceptor: WebRequestInterceptorResourcePayload,
+    profile: SessionProfileResourcePayload,
+    phase: WebRequestPhasePayload,
+    url_pattern: String,
+    action: WebRequestActionPayload,
+    order: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    redirect_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    response_headers: Option<Vec<WebRequestHeaderPayload>>,
+}
+
+impl WebRequestInterceptorSnapshotPayload {
+    pub fn new(
+        interceptor: WebRequestInterceptorResourcePayload,
+        profile: SessionProfileResourcePayload,
+        phase: WebRequestPhasePayload,
+        url_pattern: impl Into<String>,
+        action: WebRequestActionPayload,
+        order: u64,
+    ) -> Self {
+        Self {
+            interceptor,
+            profile,
+            phase,
+            url_pattern: url_pattern.into(),
+            action,
+            order,
+            redirect_url: None,
+            response_headers: None,
+        }
+    }
+
+    pub fn with_redirect_url(mut self, redirect_url: impl Into<String>) -> Self {
+        self.redirect_url = Some(redirect_url.into());
+        self
+    }
+
+    pub fn with_response_headers(mut self, headers: Vec<WebRequestHeaderPayload>) -> Self {
+        self.response_headers = Some(headers);
+        self
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WebRequestSupportedPayload {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl WebRequestSupportedPayload {
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            reason: Some(reason.into()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WebRequestEventPayload {
+    r#type: String,
+    timestamp: u64,
+    phase: WebRequestEventPhasePayload,
+    interceptor: WebRequestInterceptorResourcePayload,
+    profile: SessionProfileResourcePayload,
+    request_phase: WebRequestPhasePayload,
+    url_pattern: String,
+    action: WebRequestActionPayload,
+    order: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<String>,
+}
+
+impl WebRequestEventPayload {
+    pub fn new(
+        timestamp: u64,
+        phase: WebRequestEventPhasePayload,
+        snapshot: WebRequestInterceptorSnapshotPayload,
+    ) -> Self {
+        Self {
+            r#type: "web-request-event".to_string(),
+            timestamp,
+            phase,
+            interceptor: snapshot.interceptor,
+            profile: snapshot.profile,
+            request_phase: snapshot.phase,
+            url_pattern: snapshot.url_pattern,
+            action: snapshot.action,
+            order: snapshot.order,
+            message: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeNetworkRequestResourcePayload {
+    kind: String,
+    id: String,
+    generation: u64,
+    owner_scope: String,
+    state: String,
+}
+
+impl NativeNetworkRequestResourcePayload {
+    pub fn new(id: impl Into<String>, generation: u64, owner_scope: impl Into<String>) -> Self {
+        Self {
+            kind: "native-network-request".to_string(),
+            id: id.into(),
+            generation,
+            owner_scope: owner_scope.into(),
+            state: "open".to_string(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeNetworkWebSocketResourcePayload {
+    kind: String,
+    id: String,
+    generation: u64,
+    owner_scope: String,
+    state: String,
+}
+
+impl NativeNetworkWebSocketResourcePayload {
+    pub fn new(id: impl Into<String>, generation: u64, owner_scope: impl Into<String>) -> Self {
+        Self {
+            kind: "native-network-websocket".to_string(),
+            id: id.into(),
+            generation,
+            owner_scope: owner_scope.into(),
+            state: "open".to_string(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE", rename_all_fields = "camelCase")]
+pub enum NativeNetworkHttpMethodPayload {
+    Get,
+    Post,
+    Put,
+    Patch,
+    Delete,
+    Head,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum NativeNetworkWebSocketStatePayload {
+    Open,
+    Closing,
+    Closed,
+    Failed,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", rename_all_fields = "camelCase")]
+pub enum NativeNetworkEventPhasePayload {
+    FetchStarted,
+    FetchCompleted,
+    UploadStarted,
+    UploadProgress,
+    UploadCompleted,
+    WebsocketOpened,
+    WebsocketClosed,
+    Failed,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeNetworkHeaderPayload {
+    name: String,
+    value: String,
+}
+
+impl NativeNetworkHeaderPayload {
+    pub fn new(name: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            value: value.into(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeNetworkFetchPayload {
+    url: String,
+    method: NativeNetworkHttpMethodPayload,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    headers: Vec<NativeNetworkHeaderPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    body: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    owner_scope: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl NativeNetworkFetchPayload {
+    pub fn new(url: impl Into<String>, method: NativeNetworkHttpMethodPayload) -> Self {
+        Self {
+            url: url.into(),
+            method,
+            headers: Vec::new(),
+            body: None,
+            owner_scope: None,
+            trace_id: None,
+        }
+    }
+
+    pub fn with_body(mut self, body: impl Into<String>) -> Self {
+        self.body = Some(body.into());
+        self
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeNetworkUploadPayload {
+    url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    method: Option<NativeNetworkHttpMethodPayload>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    headers: Vec<NativeNetworkHeaderPayload>,
+    body: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    file_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    owner_scope: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl NativeNetworkUploadPayload {
+    pub fn new(url: impl Into<String>, body: impl Into<String>) -> Self {
+        Self {
+            url: url.into(),
+            method: None,
+            headers: Vec::new(),
+            body: body.into(),
+            file_name: None,
+            owner_scope: None,
+            trace_id: None,
+        }
+    }
+
+    pub fn with_file_name(mut self, file_name: impl Into<String>) -> Self {
+        self.file_name = Some(file_name.into());
+        self
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeNetworkWebSocketConnectPayload {
+    url: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    protocols: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    owner_scope: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl NativeNetworkWebSocketConnectPayload {
+    pub fn new(url: impl Into<String>) -> Self {
+        Self {
+            url: url.into(),
+            protocols: Vec::new(),
+            owner_scope: None,
+            trace_id: None,
+        }
+    }
+
+    pub fn with_protocol(mut self, protocol: impl Into<String>) -> Self {
+        self.protocols.push(protocol.into());
+        self
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeNetworkWebSocketHandlePayload {
+    socket: NativeNetworkWebSocketResourcePayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl NativeNetworkWebSocketHandlePayload {
+    pub fn new(socket: NativeNetworkWebSocketResourcePayload) -> Self {
+        Self {
+            socket,
+            trace_id: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeNetworkLocalhostUrlPayload {
+    port: u16,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    secure: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<String>,
+}
+
+impl NativeNetworkLocalhostUrlPayload {
+    pub fn new(port: u16) -> Self {
+        Self {
+            port,
+            path: None,
+            secure: None,
+            trace_id: None,
+        }
+    }
+
+    pub fn with_path(mut self, path: impl Into<String>) -> Self {
+        self.path = Some(path.into());
+        self
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeNetworkFetchResultPayload {
+    request: NativeNetworkRequestResourcePayload,
+    url: String,
+    method: NativeNetworkHttpMethodPayload,
+    status: u16,
+    response_headers: Vec<NativeNetworkHeaderPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    body: Option<String>,
+}
+
+impl NativeNetworkFetchResultPayload {
+    pub fn new(
+        request: NativeNetworkRequestResourcePayload,
+        url: impl Into<String>,
+        method: NativeNetworkHttpMethodPayload,
+        status: u16,
+    ) -> Self {
+        Self {
+            request,
+            url: url.into(),
+            method,
+            status,
+            response_headers: Vec::new(),
+            body: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeNetworkUploadResultPayload {
+    request: NativeNetworkRequestResourcePayload,
+    url: String,
+    status: u16,
+    sent_bytes: u64,
+    response_headers: Vec<NativeNetworkHeaderPayload>,
+}
+
+impl NativeNetworkUploadResultPayload {
+    pub fn new(
+        request: NativeNetworkRequestResourcePayload,
+        url: impl Into<String>,
+        status: u16,
+        sent_bytes: u64,
+    ) -> Self {
+        Self {
+            request,
+            url: url.into(),
+            status,
+            sent_bytes,
+            response_headers: Vec::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeNetworkWebSocketSnapshotPayload {
+    socket: NativeNetworkWebSocketResourcePayload,
+    url: String,
+    state: NativeNetworkWebSocketStatePayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    protocol: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<String>,
+}
+
+impl NativeNetworkWebSocketSnapshotPayload {
+    pub fn new(
+        socket: NativeNetworkWebSocketResourcePayload,
+        url: impl Into<String>,
+        state: NativeNetworkWebSocketStatePayload,
+    ) -> Self {
+        Self {
+            socket,
+            url: url.into(),
+            state,
+            protocol: None,
+            message: None,
+        }
+    }
+
+    pub fn with_protocol(mut self, protocol: impl Into<String>) -> Self {
+        self.protocol = Some(protocol.into());
+        self
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeNetworkLocalhostUrlResultPayload {
+    url: String,
+}
+
+impl NativeNetworkLocalhostUrlResultPayload {
+    pub fn new(url: impl Into<String>) -> Self {
+        Self { url: url.into() }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeNetworkSupportedPayload {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+impl NativeNetworkSupportedPayload {
+    pub fn unsupported(reason: impl Into<String>) -> Self {
+        Self {
+            supported: false,
+            reason: Some(reason.into()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeNetworkEventPayload {
+    r#type: String,
+    timestamp: u64,
+    phase: NativeNetworkEventPhasePayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    request: Option<NativeNetworkRequestResourcePayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    socket: Option<NativeNetworkWebSocketResourcePayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sent_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    total_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<String>,
+}
+
+impl NativeNetworkEventPayload {
+    pub fn new(timestamp: u64, phase: NativeNetworkEventPhasePayload) -> Self {
+        Self {
+            r#type: "native-network-event".to_string(),
+            timestamp,
+            phase,
+            request: None,
+            socket: None,
+            url: None,
+            sent_bytes: None,
+            total_bytes: None,
+            message: None,
+        }
+    }
+
+    pub fn with_request(
+        mut self,
+        request: NativeNetworkRequestResourcePayload,
+        url: impl Into<String>,
+    ) -> Self {
+        self.request = Some(request);
+        self.url = Some(url.into());
+        self
+    }
+
+    pub fn with_socket(
+        mut self,
+        socket: NativeNetworkWebSocketResourcePayload,
+        url: impl Into<String>,
+    ) -> Self {
+        self.socket = Some(socket);
+        self.url = Some(url.into());
+        self
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkspaceIndexEventPayload {
     r#type: String,
     timestamp: u64,
@@ -11190,11 +13778,16 @@ mod tests {
         AssociationFileAssociationsPayload, AssociationFileAssociationsResultPayload,
         AssociationProtocolPayload, AssociationProtocolStatusPayload, AutostartEnablePayload,
         AutostartEventPayload, AutostartEventPhasePayload, AutostartMechanismPayload,
-        AutostartStatusPayload, CanonicalPathPayload, ClipboardCapabilityPayload,
-        ClipboardHtmlPayload, ClipboardImagePayload, ClipboardIsSupportedPayload,
-        ClipboardSupportedPayload, ClipboardTextPayload, CrashReporterBreadcrumbPayload,
-        CrashReporterFlushPayload, CrashReporterGetReportsPayload, CrashReporterReportPayload,
-        CrashReporterStartPayload, DiagnosticsBundleCollectPayload,
+        AutostartStatusPayload, BrowsingDataClearPayload, BrowsingDataClearResultPayload,
+        BrowsingDataEstimatePayload, BrowsingDataEstimateResultPayload,
+        BrowsingDataListTypesPayload, BrowsingDataSupportedPayload,
+        BrowsingDataTypeEstimatePayload, BrowsingDataTypePayload, CanonicalPathPayload,
+        ClipboardCapabilityPayload, ClipboardHtmlPayload, ClipboardImagePayload,
+        ClipboardIsSupportedPayload, ClipboardSupportedPayload, ClipboardTextPayload,
+        CookieStoreCookiePayload, CookieStoreGetPayload, CookieStoreGetResultPayload,
+        CookieStoreRemovePayload, CookieStoreSetPayload, CookieStoreSupportedPayload,
+        CrashReporterBreadcrumbPayload, CrashReporterFlushPayload, CrashReporterGetReportsPayload,
+        CrashReporterReportPayload, CrashReporterStartPayload, DiagnosticsBundleCollectPayload,
         DiagnosticsBundleCollectResultPayload, DiagnosticsBundleRedactPayload,
         DiagnosticsBundleRedactResultPayload, DiagnosticsBundleRedactionEvidencePayload,
         DiagnosticsBundleRedactionPolicyPayload, DiagnosticsBundleSourceKind,
@@ -11211,7 +13804,12 @@ mod tests {
         DistributionParityEventPayload, DistributionParityEventPhase,
         DistributionParityEvidenceKind, DistributionParityEvidencePayload,
         DistributionParitySupportedPayload, DistributionParityVerifyPayload,
-        DistributionParityVerifyResultPayload, EgressPolicyActorKind, EgressPolicyActorPayload,
+        DistributionParityVerifyResultPayload, DockJumpListItemPayload, DockProgressState,
+        DockSetJumpListPayload, DockSetProgressOptionsPayload, DockSetProgressPayload,
+        DownloadEventPayload, DownloadEventPhasePayload, DownloadHandlePayload,
+        DownloadListPayload, DownloadListResultPayload, DownloadResourcePayload,
+        DownloadSnapshotPayload, DownloadStartPayload, DownloadStatePayload,
+        DownloadSupportedPayload, EgressPolicyActorKind, EgressPolicyActorPayload,
         EgressPolicyDecisionPayload, EgressPolicyDecisionRecordedEventPayload,
         EgressPolicyDecisionResultPayload, EgressPolicyDestinationPayload, EgressPolicyOutcome,
         EgressPolicyProtocol, EgressPolicyRecordPayload, EgressPolicyRecordResultPayload,
@@ -11257,12 +13855,25 @@ mod tests {
         NativeFileSystemStatPayload, NativeFileSystemStopWatchingPayload,
         NativeFileSystemStopWatchingResultPayload, NativeFileSystemSupportedPayload,
         NativeFileSystemWatchPayload, NativeFileSystemWatchResultPayload,
-        NotificationActionEventPayload, NotificationActionPayload, NotificationClickEventPayload,
-        NotificationPermissionPayload, NotificationPermissionStatePayload,
-        NotificationResourcePayload, NotificationShowPayload, NotificationSupportedPayload,
-        PowerMonitorIsSupportedPayload, PowerMonitorMethodPayload, PowerMonitorSupportedPayload,
-        ProtocolDenyPayload, ProtocolRegisterAppProtocolPayload, ProtocolServeAssetPayload,
-        ProtocolServeRoutePayload, RealtimeMediaDeviceKind, RealtimeMediaDeviceStateEventPayload,
+        NativeNetworkEventPayload, NativeNetworkEventPhasePayload, NativeNetworkFetchPayload,
+        NativeNetworkFetchResultPayload, NativeNetworkHeaderPayload,
+        NativeNetworkHttpMethodPayload, NativeNetworkLocalhostUrlPayload,
+        NativeNetworkLocalhostUrlResultPayload, NativeNetworkRequestResourcePayload,
+        NativeNetworkSupportedPayload, NativeNetworkUploadPayload,
+        NativeNetworkUploadResultPayload, NativeNetworkWebSocketConnectPayload,
+        NativeNetworkWebSocketHandlePayload, NativeNetworkWebSocketResourcePayload,
+        NativeNetworkWebSocketSnapshotPayload, NativeNetworkWebSocketStatePayload,
+        NetworkAuthCertificatePayload, NetworkAuthDecisionKindPayload, NetworkAuthDecisionPayload,
+        NetworkAuthDecisionRecordPayload, NetworkAuthEventPayload, NetworkAuthEventPhasePayload,
+        NetworkAuthHttpAuthPayload, NetworkAuthProxyModePayload, NetworkAuthProxyResultPayload,
+        NetworkAuthSetProxyPayload, NetworkAuthSupportedPayload, NotificationActionEventPayload,
+        NotificationActionPayload, NotificationClickEventPayload, NotificationPermissionPayload,
+        NotificationPermissionStatePayload, NotificationResourcePayload, NotificationShowPayload,
+        NotificationSupportedPayload, PowerMonitorIsSupportedPayload, PowerMonitorMethodPayload,
+        PowerMonitorReasonEventPayload, PowerMonitorSourceChangedEventPayload,
+        PowerMonitorSourcePayload, PowerMonitorSupportedPayload, ProtocolDenyPayload,
+        ProtocolRegisterAppProtocolPayload, ProtocolServeAssetPayload, ProtocolServeRoutePayload,
+        RealtimeMediaDeviceKind, RealtimeMediaDeviceStateEventPayload,
         RealtimeMediaDeviceStatePayload, RealtimeMediaInterruptionEventPayload,
         RealtimeMediaInterruptionReason, RealtimeMediaPermissionState,
         RealtimeMediaPermissionStateEventPayload, RealtimeMediaSessionIdentityPayload,
@@ -11276,9 +13887,17 @@ mod tests {
         ResidentLifecycleEventPayload, ResidentLifecycleEventPhase, ResidentLifecyclePolicyPayload,
         ResidentLifecycleProcessPolicy, ResidentLifecycleStatePayload,
         ResidentLifecycleSupportedPayload, ResidentLifecycleWindowPolicy, ResumeTicket,
+        SafeStorageKeyPayload, SafeStorageListResultPayload, SafeStorageSetPayload,
         ScreenBoundsPayload, ScreenDisplayPayload, ScreenDisplaysChangedEventPayload,
         ScreenDisplaysResultPayload, ScreenIsSupportedPayload, ScreenPointPayload,
-        ScreenSupportedPayload, ShellOpenExternalPayload, ShellOpenPathPayload,
+        ScreenSupportedPayload, SessionPermissionDecidePayload, SessionPermissionDecisionPayload,
+        SessionPermissionDecisionRecordPayload, SessionPermissionEventPayload,
+        SessionPermissionEventPhasePayload, SessionPermissionKindPayload,
+        SessionPermissionListPayload, SessionPermissionListResultPayload,
+        SessionPermissionRequestPayload, SessionPermissionRequestResultPayload,
+        SessionPermissionSupportedPayload, SessionProfileFromPartitionPayload,
+        SessionProfileHandlePayload, SessionProfileListPayload, SessionProfileResourcePayload,
+        SessionProfileSupportedPayload, ShellOpenExternalPayload, ShellOpenPathPayload,
         ShellShowItemInFolderPayload, ShellTrashItemPayload, SystemAppearanceAccentColorPayload,
         SystemAppearanceBooleanPayload, SystemAppearanceChangedPayload,
         SystemAppearanceColorPayload, SystemAppearanceIsSupportedPayload,
@@ -11299,31 +13918,38 @@ mod tests {
         TransientWindowZOrderPolicy, TrayActivatedEventPayload, TrayCreatePayload,
         TrayResourcePayload, TraySupportedPayload, UpdaterCheckPayload, UpdaterCheckResultPayload,
         UpdaterDownloadPayload, UpdaterInstallPayload, UpdaterPreparingRestartPayload,
-        UpdaterStatusPayload, UpdaterStatusState, WindowAttentionType, WindowBoundsPayload,
-        WindowCenterOnDisplayPayload, WindowCreatePayload, WindowCreateResponse,
-        WindowDestroyPayload, WindowListResponse, WindowLookupResponse, WindowParentResponse,
-        WindowProgressState, WindowRegistryEventPayload, WindowRegistryEventPhase,
-        WindowRequestAttentionPayload, WindowSetAlwaysOnTopPayload, WindowSetBoundsPayload,
-        WindowSetDecorationsPayload, WindowSetFullscreenPayload, WindowSetProgressPayload,
-        WindowSetResizablePayload, WindowSetSkipTaskbarPayload, WindowSetTitlePayload,
-        WindowSetTrafficLightsPayload, WindowStateEventPayload, WindowStatePayload,
-        WindowTitleBarStyle, WindowTrafficLights, WorkspaceIndexActorKind,
-        WorkspaceIndexActorPayload, WorkspaceIndexClosePayload, WorkspaceIndexCloseResultPayload,
-        WorkspaceIndexEventPayload, WorkspaceIndexEventPhase, WorkspaceIndexIgnoreRulePayload,
-        WorkspaceIndexOpenPayload, WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
+        UpdaterStatusPayload, UpdaterStatusState, UpdaterTrustAnchorPayload,
+        WebRequestActionPayload, WebRequestBeforeRequestPayload, WebRequestEventPayload,
+        WebRequestEventPhasePayload, WebRequestHeaderPayload, WebRequestHeadersReceivedPayload,
+        WebRequestInterceptorResourcePayload, WebRequestInterceptorSnapshotPayload,
+        WebRequestPhasePayload, WebRequestRemoveListenerPayload, WebRequestSupportedPayload,
+        WindowAttentionType, WindowBoundsEventPayload, WindowBoundsPayload,
+        WindowCenterOnDisplayPayload, WindowClearVibrancyPayload, WindowCreatePayload,
+        WindowCreateResponse, WindowDestroyPayload, WindowListResponse, WindowLookupResponse,
+        WindowParentResponse, WindowProgressState, WindowRegistryEventPayload,
+        WindowRegistryEventPhase, WindowRequestAttentionPayload, WindowSetAlwaysOnTopPayload,
+        WindowSetBoundsOnDisplayPayload, WindowSetBoundsPayload, WindowSetDecorationsPayload,
+        WindowSetFullscreenPayload, WindowSetProgressPayload, WindowSetResizablePayload,
+        WindowSetShadowPayload, WindowSetSimpleFullscreenPayload, WindowSetSkipTaskbarPayload,
+        WindowSetTitleBarStylePayload, WindowSetTitleBarTransparentPayload, WindowSetTitlePayload,
+        WindowSetTrafficLightsPayload, WindowSetTransparentPayload, WindowSetVibrancyPayload,
+        WindowStateEventPayload, WindowStatePayload, WindowTitleBarStyle, WindowTrafficLights,
+        WorkspaceIndexActorKind, WorkspaceIndexActorPayload, WorkspaceIndexClosePayload,
+        WorkspaceIndexCloseResultPayload, WorkspaceIndexEventPayload, WorkspaceIndexEventPhase,
+        WorkspaceIndexIgnoreRulePayload, WorkspaceIndexOpenPayload,
+        WorkspaceIndexOpenResultPayload, WorkspaceIndexRefreshPayload,
         WorkspaceIndexRefreshResultPayload, WorkspaceIndexScopePayload, WorkspaceIndexState,
-        WorkspaceIndexSupportedPayload, ACTIVATION_REGISTRY_UNSUPPORTED_REASON,
-        CLIPBOARD_UNSUPPORTED_REASON, CRASH_REPORTER_UNSUPPORTED_REASON,
-        DEFAULT_MAX_BACKFILL_EVENTS, DEFAULT_RECONNECT_WINDOW_MS,
-        DIAGNOSTICS_BUNDLE_UNSUPPORTED_REASON, DISPLAY_CAPTURE_UNSUPPORTED_REASON,
-        DISTRIBUTION_PARITY_UNSUPPORTED_REASON, EGRESS_POLICY_UNSUPPORTED_REASON,
-        EXECUTION_SANDBOX_UNSUPPORTED_REASON, EXTENSION_CONFIG_UNSUPPORTED_REASON,
-        EXTENSION_PACKAGE_UNSUPPORTED_REASON, HOST_PROTOCOL_ERROR_SPECS, JOB_UNSUPPORTED_REASON,
-        LOCAL_TOOL_RUNTIME_UNSUPPORTED_REASON, NATIVE_FILE_SYSTEM_UNSUPPORTED_REASON,
-        NOTIFICATION_UNSUPPORTED_REASON, PROTOCOL_VERSION,
-        REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON, RESIDENT_LIFECYCLE_UNSUPPORTED_REASON,
-        TRANSACTIONAL_FILE_MUTATION_UNSUPPORTED_REASON, TRANSIENT_WINDOW_ROLE_UNSUPPORTED_REASON,
-        TRAY_UNSUPPORTED_REASON, UPDATER_UNSUPPORTED_REASON, WORKSPACE_INDEX_UNSUPPORTED_REASON,
+        WorkspaceIndexSupportedPayload, CLIPBOARD_UNSUPPORTED_REASON,
+        CRASH_REPORTER_UNSUPPORTED_REASON, DEFAULT_MAX_BACKFILL_EVENTS,
+        DEFAULT_RECONNECT_WINDOW_MS, DIAGNOSTICS_BUNDLE_UNSUPPORTED_REASON,
+        DISPLAY_CAPTURE_UNSUPPORTED_REASON, DISTRIBUTION_PARITY_UNSUPPORTED_REASON,
+        EGRESS_POLICY_UNSUPPORTED_REASON, EXECUTION_SANDBOX_UNSUPPORTED_REASON,
+        EXTENSION_CONFIG_UNSUPPORTED_REASON, EXTENSION_PACKAGE_UNSUPPORTED_REASON,
+        HOST_PROTOCOL_ERROR_SPECS, JOB_UNSUPPORTED_REASON, LOCAL_TOOL_RUNTIME_UNSUPPORTED_REASON,
+        NATIVE_FILE_SYSTEM_UNSUPPORTED_REASON, NOTIFICATION_UNSUPPORTED_REASON, PROTOCOL_VERSION,
+        REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON, TRANSACTIONAL_FILE_MUTATION_UNSUPPORTED_REASON,
+        TRANSIENT_WINDOW_ROLE_UNSUPPORTED_REASON, TRAY_UNSUPPORTED_REASON,
+        UPDATER_UNSUPPORTED_REASON, WORKSPACE_INDEX_UNSUPPORTED_REASON,
     };
     use std::{
         collections::{BTreeMap, BTreeSet},
@@ -12095,6 +14721,18 @@ mod tests {
             serde_json::to_string(&check).expect("updater check should encode"),
             r#"{"currentVersion":"1.0.0"}"#
         );
+        let signed_check = UpdaterCheckPayload::with_signed_manifest(
+            Some("1.0.0".to_string()),
+            r#"{"schemaVersion":1}"#.to_string(),
+            vec![UpdaterTrustAnchorPayload::new(
+                7,
+                "ed25519:public-key".to_string(),
+            )],
+        );
+        assert_eq!(
+            serde_json::to_string(&signed_check).expect("signed updater check should encode"),
+            r#"{"currentVersion":"1.0.0","manifestJson":"{\"schemaVersion\":1}","trustAnchors":[{"keyVersion":7,"publicKey":"ed25519:public-key"}]}"#
+        );
 
         let download = UpdaterDownloadPayload::new(Some("1.1.0".to_string()));
         assert_eq!(download.version(), Some("1.1.0"));
@@ -12272,6 +14910,28 @@ mod tests {
             serde_json::to_string(&unsupported).expect("power monitor unsupported should encode"),
             r#"{"supported":false}"#
         );
+
+        let suspend = PowerMonitorReasonEventPayload::new(Some("sleep".to_string()));
+        assert_eq!(suspend.reason(), Some("sleep"));
+        assert_eq!(
+            serde_json::to_string(&suspend).expect("power monitor reason event should encode"),
+            r#"{"reason":"sleep"}"#
+        );
+
+        let resume = PowerMonitorReasonEventPayload::new(None);
+        assert_eq!(resume.reason(), None);
+        assert_eq!(
+            serde_json::to_string(&resume).expect("power monitor empty reason event should encode"),
+            r#"{}"#
+        );
+
+        let source = PowerMonitorSourceChangedEventPayload::new(PowerMonitorSourcePayload::Battery);
+        assert_eq!(source.source(), PowerMonitorSourcePayload::Battery);
+        assert_eq!(
+            serde_json::to_string(&source)
+                .expect("power monitor source changed event should encode"),
+            r#"{"source":"battery"}"#
+        );
     }
 
     #[test]
@@ -12297,6 +14957,17 @@ mod tests {
         )
         .expect_err("excess power monitor support field should be rejected");
         assert!(error.to_string().contains("unknown field `watch`"));
+
+        let error = serde_json::from_str::<PowerMonitorReasonEventPayload>(
+            r#"{"reason":"sleep","timestamp":1710000000000}"#,
+        )
+        .expect_err("excess power monitor event field should be rejected");
+        assert!(error.to_string().contains("unknown field `timestamp`"));
+
+        let error =
+            serde_json::from_str::<PowerMonitorSourceChangedEventPayload>(r#"{"source":"ups"}"#)
+                .expect_err("unknown power source should be rejected");
+        assert!(error.to_string().contains("unknown variant `ups`"));
     }
 
     #[test]
@@ -12525,6 +15196,29 @@ mod tests {
             r#"{"type":"window-registry-event","phase":"opened","windowId":"window-1","terminal":false}"#
         );
 
+        let shown = WindowRegistryEventPayload::new("window-1", WindowRegistryEventPhase::Shown);
+        assert!(!shown.terminal());
+        assert_eq!(
+            serde_json::to_string(&shown).expect("window shown event should encode"),
+            r#"{"type":"window-registry-event","phase":"shown","windowId":"window-1","terminal":false}"#
+        );
+
+        let hidden = WindowRegistryEventPayload::new("window-1", WindowRegistryEventPhase::Hidden);
+        assert!(!hidden.terminal());
+        assert_eq!(
+            serde_json::to_string(&hidden).expect("window hidden event should encode"),
+            r#"{"type":"window-registry-event","phase":"hidden","windowId":"window-1","terminal":false}"#
+        );
+
+        let close_requested =
+            WindowRegistryEventPayload::new("window-1", WindowRegistryEventPhase::CloseRequested);
+        assert!(!close_requested.terminal());
+        assert_eq!(
+            serde_json::to_string(&close_requested)
+                .expect("window close-requested event should encode"),
+            r#"{"type":"window-registry-event","phase":"closeRequested","windowId":"window-1","terminal":false}"#
+        );
+
         let closed = WindowRegistryEventPayload::new("window-1", WindowRegistryEventPhase::Closed);
         assert!(closed.terminal());
         assert_eq!(
@@ -12590,6 +15284,18 @@ mod tests {
             r#"{"windowId":"window-1","bounds":{"x":10.0,"y":20.0,"width":640.0,"height":480.0}}"#
         );
 
+        let display_bounds = WindowBoundsPayload::new(5.0, 15.0, 320.0, 240.0);
+        let set_bounds_on_display =
+            WindowSetBoundsOnDisplayPayload::new("window-1", "display-1", display_bounds);
+        assert_eq!(set_bounds_on_display.window_id(), "window-1");
+        assert_eq!(set_bounds_on_display.display_id(), "display-1");
+        assert_eq!(set_bounds_on_display.bounds().height(), 240.0);
+        assert_eq!(
+            serde_json::to_string(&set_bounds_on_display)
+                .expect("window display bounds payload should encode"),
+            r#"{"windowId":"window-1","displayId":"display-1","bounds":{"x":5.0,"y":15.0,"width":320.0,"height":240.0}}"#
+        );
+
         let center_on_display = WindowCenterOnDisplayPayload::new("window-1", "display-1");
         assert_eq!(center_on_display.window_id(), "window-1");
         assert_eq!(center_on_display.display_id(), "display-1");
@@ -12633,6 +15339,62 @@ mod tests {
             serde_json::to_string(&traffic_lights)
                 .expect("window set traffic lights payload should encode"),
             r#"{"windowId":"window-1","trafficLights":{"x":12.0,"y":13.0}}"#
+        );
+
+        let set_vibrancy = WindowSetVibrancyPayload::new("window-1", "windowBackground");
+        assert_eq!(set_vibrancy.window_id(), "window-1");
+        assert_eq!(set_vibrancy.material(), "windowBackground");
+        assert_eq!(
+            serde_json::to_string(&set_vibrancy)
+                .expect("window set vibrancy payload should encode"),
+            r#"{"windowId":"window-1","material":"windowBackground"}"#
+        );
+
+        let clear_vibrancy = WindowClearVibrancyPayload::new("window-1");
+        assert_eq!(clear_vibrancy.window_id(), "window-1");
+        assert_eq!(
+            serde_json::to_string(&clear_vibrancy)
+                .expect("window clear vibrancy payload should encode"),
+            r#"{"windowId":"window-1"}"#
+        );
+
+        let set_shadow = WindowSetShadowPayload::new("window-1", false);
+        assert_eq!(set_shadow.window_id(), "window-1");
+        assert!(!set_shadow.has_shadow());
+        assert_eq!(
+            serde_json::to_string(&set_shadow).expect("window set shadow payload should encode"),
+            r#"{"windowId":"window-1","hasShadow":false}"#
+        );
+
+        let set_title_bar_style =
+            WindowSetTitleBarStylePayload::new("window-1", WindowTitleBarStyle::HiddenInset);
+        assert_eq!(set_title_bar_style.window_id(), "window-1");
+        assert_eq!(
+            set_title_bar_style.title_bar_style(),
+            WindowTitleBarStyle::HiddenInset
+        );
+        assert_eq!(
+            serde_json::to_string(&set_title_bar_style)
+                .expect("window set titlebar style payload should encode"),
+            r#"{"windowId":"window-1","titleBarStyle":"hiddenInset"}"#
+        );
+
+        let set_title_bar_transparent = WindowSetTitleBarTransparentPayload::new("window-1", true);
+        assert_eq!(set_title_bar_transparent.window_id(), "window-1");
+        assert!(set_title_bar_transparent.title_bar_transparent());
+        assert_eq!(
+            serde_json::to_string(&set_title_bar_transparent)
+                .expect("window set title bar transparent payload should encode"),
+            r#"{"windowId":"window-1","titleBarTransparent":true}"#
+        );
+
+        let set_transparent = WindowSetTransparentPayload::new("window-1", true);
+        assert_eq!(set_transparent.window_id(), "window-1");
+        assert!(set_transparent.transparent());
+        assert_eq!(
+            serde_json::to_string(&set_transparent)
+                .expect("window set transparent payload should encode"),
+            r#"{"windowId":"window-1","transparent":true}"#
         );
 
         let set_always_on_top = WindowSetAlwaysOnTopPayload::new("window-1", true);
@@ -12691,13 +15453,23 @@ mod tests {
             r#"{"windowId":"window-1","fullscreen":true}"#
         );
 
-        let state = WindowStatePayload::new(false, true, true);
+        let set_simple_fullscreen = WindowSetSimpleFullscreenPayload::new("window-1", true);
+        assert_eq!(set_simple_fullscreen.window_id(), "window-1");
+        assert!(set_simple_fullscreen.simple_fullscreen());
+        assert_eq!(
+            serde_json::to_string(&set_simple_fullscreen)
+                .expect("window set simple fullscreen payload should encode"),
+            r#"{"windowId":"window-1","simpleFullscreen":true}"#
+        );
+
+        let state = WindowStatePayload::new(false, true, true, true);
         assert!(!state.minimized());
         assert!(state.maximized());
         assert!(state.fullscreen());
+        assert!(state.simple_fullscreen());
         assert_eq!(
             serde_json::to_string(&state).expect("window state payload should encode"),
-            r#"{"minimized":false,"maximized":true,"fullscreen":true}"#
+            r#"{"minimized":false,"maximized":true,"fullscreen":true,"simpleFullscreen":true}"#
         );
 
         let state_event = WindowStateEventPayload::new("window-1", state);
@@ -12706,11 +15478,11 @@ mod tests {
         assert!(state_event.state().maximized());
         assert_eq!(
             serde_json::to_string(&state_event).expect("window state event should encode"),
-            r#"{"type":"window-state-event","windowId":"window-1","state":{"minimized":false,"maximized":true,"fullscreen":true}}"#
+            r#"{"type":"window-state-event","windowId":"window-1","state":{"minimized":false,"maximized":true,"fullscreen":true,"simpleFullscreen":true}}"#
         );
 
         let error = serde_json::from_str::<WindowStateEventPayload>(
-            r#"{"type":"not-window-state-event","windowId":"window-1","state":{"minimized":false,"maximized":true,"fullscreen":true}}"#,
+            r#"{"type":"not-window-state-event","windowId":"window-1","state":{"minimized":false,"maximized":true,"fullscreen":true,"simpleFullscreen":true}}"#,
         )
         .expect_err("invalid window state event type must fail");
         assert!(
@@ -12718,6 +15490,132 @@ mod tests {
                 .to_string()
                 .contains("window state event type must be window-state-event"),
             "unexpected error: {error}"
+        );
+
+        let bounds_event =
+            WindowBoundsEventPayload::new("window-1", WindowBoundsPayload::new(1.0, 2.0, 3.0, 4.0));
+        assert_eq!(bounds_event.type_name(), "window-bounds-event");
+        assert_eq!(bounds_event.window_id(), "window-1");
+        assert_eq!(bounds_event.bounds().width(), 3.0);
+        assert_eq!(
+            serde_json::to_string(&bounds_event).expect("window bounds event should encode"),
+            r#"{"type":"window-bounds-event","windowId":"window-1","bounds":{"x":1.0,"y":2.0,"width":3.0,"height":4.0}}"#
+        );
+
+        let error = serde_json::from_str::<WindowBoundsEventPayload>(
+            r#"{"type":"not-window-bounds-event","windowId":"window-1","bounds":{"x":1.0,"y":2.0,"width":3.0,"height":4.0}}"#,
+        )
+        .expect_err("invalid window bounds event type must fail");
+        assert!(
+            error
+                .to_string()
+                .contains("window bounds event type must be window-bounds-event"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn dock_taskbar_payloads_serialize_canonically() {
+        let progress = DockSetProgressPayload::new(
+            serde_json::json!(0.5),
+            Some(DockSetProgressOptionsPayload::new(Some(
+                DockProgressState::Indeterminate,
+            ))),
+        );
+        assert_eq!(progress.value(), &serde_json::json!(0.5));
+        assert_eq!(
+            progress
+                .options()
+                .and_then(DockSetProgressOptionsPayload::state),
+            Some(DockProgressState::Indeterminate)
+        );
+        assert_eq!(
+            serde_json::to_string(&progress).expect("dock progress payload should encode"),
+            r#"{"value":0.5,"options":{"state":"indeterminate"}}"#
+        );
+
+        let clear_progress = DockSetProgressPayload::new(serde_json::Value::Null, None);
+        assert_eq!(
+            serde_json::to_string(&clear_progress)
+                .expect("dock clear progress payload should encode"),
+            r#"{"value":null}"#
+        );
+
+        let item = DockJumpListItemPayload::new("open", "Open", "app.open");
+        assert_eq!(item.id(), "open");
+        assert_eq!(item.title(), "Open");
+        assert_eq!(item.command_id(), "app.open");
+
+        let jump_list = DockSetJumpListPayload::new(vec![item]);
+        assert_eq!(jump_list.items()[0].command_id(), "app.open");
+        assert_eq!(
+            serde_json::to_string(&jump_list).expect("dock jump list payload should encode"),
+            r#"{"items":[{"id":"open","title":"Open","commandId":"app.open"}]}"#
+        );
+    }
+
+    #[test]
+    fn dock_taskbar_payloads_reject_excess_fields() {
+        let progress_error =
+            serde_json::from_str::<DockSetProgressPayload>(r#"{"value":0.5,"unexpected":true}"#)
+                .expect_err("dock progress excess fields should reject");
+        assert!(
+            progress_error.to_string().contains("unknown field"),
+            "unexpected progress error: {progress_error}"
+        );
+
+        let item_error = serde_json::from_str::<DockSetJumpListPayload>(
+            r#"{"items":[{"id":"open","title":"Open","commandId":"app.open","unexpected":true}]}"#,
+        )
+        .expect_err("dock jump list item excess fields should reject");
+        assert!(
+            item_error.to_string().contains("unknown field"),
+            "unexpected jump list error: {item_error}"
+        );
+    }
+
+    #[test]
+    fn safe_storage_payloads_serialize_canonically() {
+        let key = SafeStorageKeyPayload::new("token");
+        assert_eq!(key.key(), "token");
+        assert_eq!(
+            serde_json::to_string(&key).expect("safe storage key payload should encode"),
+            r#"{"key":"token"}"#
+        );
+
+        let set = SafeStorageSetPayload::new("token", "AAE=");
+        assert_eq!(set.key(), "token");
+        assert_eq!(set.value(), "AAE=");
+        assert_eq!(
+            serde_json::to_string(&set).expect("safe storage set payload should encode"),
+            r#"{"key":"token","value":"AAE="}"#
+        );
+
+        let list = SafeStorageListResultPayload::new(vec!["token".to_string()]);
+        assert_eq!(list.keys(), &["token".to_string()]);
+        assert_eq!(
+            serde_json::to_string(&list).expect("safe storage list payload should encode"),
+            r#"{"keys":["token"]}"#
+        );
+    }
+
+    #[test]
+    fn safe_storage_payloads_reject_excess_fields() {
+        let set_error = serde_json::from_str::<SafeStorageSetPayload>(
+            r#"{"key":"token","value":"AAE=","unexpected":true}"#,
+        )
+        .expect_err("safe storage set excess fields should reject");
+        assert!(
+            set_error.to_string().contains("unknown field"),
+            "unexpected safe storage set error: {set_error}"
+        );
+
+        let key_error =
+            serde_json::from_str::<SafeStorageKeyPayload>(r#"{"key":"token","unexpected":true}"#)
+                .expect_err("safe storage key excess fields should reject");
+        assert!(
+            key_error.to_string().contains("unknown field"),
+            "unexpected safe storage key error: {key_error}"
         );
     }
 
@@ -13035,8 +15933,7 @@ mod tests {
             actor,
             permission_context,
         );
-        let supported =
-            ActivationRegistrySupportedPayload::unsupported(ACTIVATION_REGISTRY_UNSUPPORTED_REASON);
+        let supported = ActivationRegistrySupportedPayload::supported();
 
         assert_eq!(surface.surface_id(), "palette");
         assert_eq!(surface.command_id(), "activation.open");
@@ -13050,7 +15947,7 @@ mod tests {
         );
         assert_eq!(
             serde_json::to_string(&supported).expect("activation support should encode"),
-            r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#
+            r#"{"supported":true}"#
         );
     }
 
@@ -13070,8 +15967,7 @@ mod tests {
             ResidentLifecycleStatePayload::disabled(),
             "trace-disable",
         );
-        let supported =
-            ResidentLifecycleSupportedPayload::unsupported(RESIDENT_LIFECYCLE_UNSUPPORTED_REASON);
+        let supported = ResidentLifecycleSupportedPayload::supported();
 
         assert_eq!(
             serde_json::to_string(&enable).expect("resident enable should encode"),
@@ -13087,7 +15983,7 @@ mod tests {
         );
         assert_eq!(
             serde_json::to_string(&supported).expect("resident support should encode"),
-            r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#
+            r#"{"supported":true}"#
         );
     }
 
@@ -13962,6 +16858,571 @@ mod tests {
     fn reconnect_defaults_match_spec_values() {
         assert_eq!(DEFAULT_RECONNECT_WINDOW_MS, 30_000);
         assert_eq!(DEFAULT_MAX_BACKFILL_EVENTS, 1_024);
+    }
+
+    #[test]
+    fn session_profile_payloads_serialize_canonically() {
+        let profile =
+            SessionProfileResourcePayload::new("session-profile:workspace-1", 0, "workspace:1");
+        assert_eq!(profile.id(), "session-profile:workspace-1");
+        assert_eq!(profile.owner_scope(), "workspace:1");
+        assert_eq!(
+            serde_json::to_string(&profile).expect("profile handle should encode"),
+            r#"{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"}"#
+        );
+
+        let from_partition =
+            SessionProfileFromPartitionPayload::new("workspace-1").with_owner_scope("workspace:1");
+        assert_eq!(from_partition.partition(), "workspace-1");
+        assert_eq!(from_partition.owner_scope(), Some("workspace:1"));
+        assert_eq!(
+            serde_json::to_string(&from_partition).expect("partition payload should encode"),
+            r#"{"partition":"workspace-1","ownerScope":"workspace:1"}"#
+        );
+
+        let destroy = SessionProfileHandlePayload::new(profile.clone());
+        assert_eq!(destroy.profile().id(), "session-profile:workspace-1");
+        assert_eq!(
+            serde_json::to_string(&destroy).expect("destroy payload should encode"),
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"}}"#
+        );
+
+        let list = SessionProfileListPayload::new(vec![profile]);
+        assert_eq!(list.profiles().len(), 1);
+        assert_eq!(
+            serde_json::to_string(&list).expect("list payload should encode"),
+            r#"{"profiles":[{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"}]}"#
+        );
+
+        assert_eq!(
+            serde_json::to_string(&SessionProfileSupportedPayload::unsupported(
+                "host-session-profile-routing-unavailable"
+            ))
+            .expect("support payload should encode"),
+            r#"{"supported":false,"reason":"host-session-profile-routing-unavailable"}"#
+        );
+    }
+
+    #[test]
+    fn cookie_store_payloads_serialize_canonically() {
+        let profile =
+            SessionProfileResourcePayload::new("session-profile:workspace-1", 0, "workspace:1");
+        let cookie =
+            CookieStoreCookiePayload::new("token", "secret", "example.test", "/").with_secure(true);
+        assert_eq!(
+            serde_json::to_string(&cookie).expect("cookie should encode"),
+            r#"{"name":"token","value":"secret","domain":"example.test","path":"/","secure":true}"#
+        );
+
+        assert_eq!(
+            serde_json::to_string(&CookieStoreGetPayload::new(
+                profile.clone(),
+                "https://example.test/account"
+            ))
+            .expect("get payload should encode"),
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/account"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&CookieStoreSetPayload::new(
+                profile.clone(),
+                "https://example.test/account",
+                cookie.clone()
+            ))
+            .expect("set payload should encode"),
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/account","cookie":{"name":"token","value":"secret","domain":"example.test","path":"/","secure":true}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&CookieStoreRemovePayload::new(
+                profile,
+                "https://example.test/account",
+                "token"
+            ))
+            .expect("remove payload should encode"),
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/account","name":"token"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&CookieStoreGetResultPayload::new(vec![cookie]))
+                .expect("get result should encode"),
+            r#"{"cookies":[{"name":"token","value":"secret","domain":"example.test","path":"/","secure":true}]}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&CookieStoreSupportedPayload::unsupported(
+                "host-cookie-store-unavailable"
+            ))
+            .expect("support payload should encode"),
+            r#"{"supported":false,"reason":"host-cookie-store-unavailable"}"#
+        );
+    }
+
+    #[test]
+    fn browsing_data_payloads_serialize_canonically() {
+        let profile =
+            SessionProfileResourcePayload::new("session-profile:workspace-1", 0, "workspace:1");
+        assert_eq!(
+            serde_json::to_string(&BrowsingDataClearPayload::new(
+                profile.clone(),
+                vec![
+                    BrowsingDataTypePayload::Cache,
+                    BrowsingDataTypePayload::Cookies,
+                    BrowsingDataTypePayload::LocalStorage
+                ]
+            ))
+            .expect("clear payload should encode"),
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"types":["cache","cookies","localStorage"]}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&BrowsingDataEstimatePayload::new(profile))
+                .expect("estimate payload should encode"),
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&BrowsingDataClearResultPayload::new(
+                vec![BrowsingDataTypePayload::Cache],
+                vec![BrowsingDataTypePayload::ServiceWorkers]
+            ))
+            .expect("clear result should encode"),
+            r#"{"cleared":["cache"],"unsupported":["serviceWorkers"]}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&BrowsingDataEstimateResultPayload::new(vec![
+                BrowsingDataTypeEstimatePayload::new(
+                    BrowsingDataTypePayload::IndexedDb,
+                    true,
+                    Some(1024)
+                )
+            ]))
+            .expect("estimate result should encode"),
+            r#"{"estimates":[{"type":"indexedDb","supported":true,"bytes":1024}]}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&BrowsingDataListTypesPayload::new(vec![
+                BrowsingDataTypePayload::Cache,
+                BrowsingDataTypePayload::Cookies,
+                BrowsingDataTypePayload::LocalStorage,
+                BrowsingDataTypePayload::IndexedDb,
+                BrowsingDataTypePayload::History,
+                BrowsingDataTypePayload::ServiceWorkers
+            ]))
+            .expect("list types payload should encode"),
+            r#"{"types":["cache","cookies","localStorage","indexedDb","history","serviceWorkers"]}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&BrowsingDataSupportedPayload::unsupported(
+                "host-browsing-data-unavailable"
+            ))
+            .expect("support payload should encode"),
+            r#"{"supported":false,"reason":"host-browsing-data-unavailable"}"#
+        );
+    }
+
+    #[test]
+    fn session_permission_payloads_serialize_canonically() {
+        let profile =
+            SessionProfileResourcePayload::new("session-profile:workspace-1", 0, "workspace:1");
+        assert_eq!(
+            serde_json::to_string(
+                &SessionPermissionRequestPayload::new(
+                    profile.clone(),
+                    SessionPermissionKindPayload::DisplayCapture,
+                    "https://example.test"
+                )
+                .with_request_id("permission-request-1")
+            )
+            .expect("request payload should encode"),
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"kind":"display-capture","origin":"https://example.test","requestId":"permission-request-1"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&SessionPermissionDecidePayload::new(
+                profile.clone(),
+                "permission-request-1",
+                SessionPermissionKindPayload::ClipboardRead,
+                "app://localhost",
+                SessionPermissionDecisionPayload::Grant
+            ))
+            .expect("decide payload should encode"),
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"requestId":"permission-request-1","kind":"clipboard-read","origin":"app://localhost","decision":"grant"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&SessionPermissionListPayload::new(profile.clone()))
+                .expect("list payload should encode"),
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&SessionPermissionRequestResultPayload::new(
+                "permission-request-1"
+            ))
+            .expect("request result should encode"),
+            r#"{"requestId":"permission-request-1","status":"pending"}"#
+        );
+        let record = SessionPermissionDecisionRecordPayload::new(
+            profile.clone(),
+            "permission-request-1",
+            SessionPermissionKindPayload::Notifications,
+            "https://example.test",
+            SessionPermissionDecisionPayload::Deny,
+            1710000000000,
+        );
+        assert_eq!(
+            serde_json::to_string(&record).expect("decision record should encode"),
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"requestId":"permission-request-1","kind":"notifications","origin":"https://example.test","decision":"deny","decidedAt":1710000000000}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&SessionPermissionListResultPayload::new(vec![record]))
+                .expect("list result should encode"),
+            r#"{"decisions":[{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"requestId":"permission-request-1","kind":"notifications","origin":"https://example.test","decision":"deny","decidedAt":1710000000000}]}"#
+        );
+        assert_eq!(
+            serde_json::to_string(
+                &SessionPermissionEventPayload::new(
+                    1710000000001,
+                    SessionPermissionEventPhasePayload::Decided,
+                    profile,
+                    "permission-request-1",
+                    SessionPermissionKindPayload::Camera,
+                    "https://example.test"
+                )
+                .with_decision(SessionPermissionDecisionPayload::Grant)
+            )
+            .expect("event should encode"),
+            r#"{"type":"session-permission-event","timestamp":1710000000001,"phase":"decided","profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"requestId":"permission-request-1","kind":"camera","origin":"https://example.test","decision":"grant"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&SessionPermissionSupportedPayload::unsupported(
+                "host-session-permission-unavailable"
+            ))
+            .expect("support payload should encode"),
+            r#"{"supported":false,"reason":"host-session-permission-unavailable"}"#
+        );
+    }
+
+    #[test]
+    fn download_payloads_serialize_canonically() {
+        let profile =
+            SessionProfileResourcePayload::new("session-profile:workspace-1", 0, "workspace:1");
+        let download = DownloadResourcePayload::new("download:1", 0, "workspace:1");
+        assert_eq!(
+            serde_json::to_string(
+                &DownloadStartPayload::new(profile.clone(), "https://example.test/file.zip")
+                    .with_destination("/tmp/file.zip")
+            )
+            .expect("start payload should encode"),
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/file.zip","destination":"/tmp/file.zip"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&DownloadHandlePayload::new(download.clone()))
+                .expect("handle payload should encode"),
+            r#"{"download":{"kind":"download","id":"download:1","generation":0,"ownerScope":"workspace:1","state":"open"}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&DownloadListPayload::for_profile(profile.clone()))
+                .expect("list payload should encode"),
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"}}"#
+        );
+        let snapshot = DownloadSnapshotPayload::new(
+            download.clone(),
+            profile.clone(),
+            "https://example.test/file.zip",
+            DownloadStatePayload::Running,
+            128,
+        )
+        .with_total_bytes(1024);
+        assert_eq!(
+            serde_json::to_string(&snapshot).expect("snapshot should encode"),
+            r#"{"download":{"kind":"download","id":"download:1","generation":0,"ownerScope":"workspace:1","state":"open"},"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/file.zip","state":"running","receivedBytes":128,"totalBytes":1024}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&DownloadListResultPayload::new(vec![snapshot]))
+                .expect("list result should encode"),
+            r#"{"downloads":[{"download":{"kind":"download","id":"download:1","generation":0,"ownerScope":"workspace:1","state":"open"},"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/file.zip","state":"running","receivedBytes":128,"totalBytes":1024}]}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&DownloadEventPayload::new(
+                1710000000000,
+                DownloadEventPhasePayload::Canceled,
+                download,
+                profile,
+                "https://example.test/file.zip",
+                128
+            ))
+            .expect("event should encode"),
+            r#"{"type":"download-event","timestamp":1710000000000,"phase":"canceled","download":{"kind":"download","id":"download:1","generation":0,"ownerScope":"workspace:1","state":"open"},"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/file.zip","receivedBytes":128}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&DownloadSupportedPayload::unsupported(
+                "host-download-unavailable"
+            ))
+            .expect("support payload should encode"),
+            r#"{"supported":false,"reason":"host-download-unavailable"}"#
+        );
+    }
+
+    #[test]
+    fn network_auth_payloads_serialize_canonically() {
+        let profile =
+            SessionProfileResourcePayload::new("session-profile:workspace-1", 0, "workspace:1");
+        assert_eq!(
+            serde_json::to_string(
+                &NetworkAuthSetProxyPayload::new(
+                    profile.clone(),
+                    NetworkAuthProxyModePayload::Fixed
+                )
+                .with_server("http://proxy.example.test:8080")
+            )
+            .expect("set proxy payload should encode"),
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"mode":"fixed","server":"http://proxy.example.test:8080"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&NetworkAuthProxyResultPayload::new(
+                profile.clone(),
+                NetworkAuthProxyModePayload::System
+            ))
+            .expect("proxy result should encode"),
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"mode":"system","bypass":[]}"#
+        );
+        assert_eq!(
+            serde_json::to_string(
+                &NetworkAuthHttpAuthPayload::new(
+                    profile.clone(),
+                    "auth-request-1",
+                    "https://example.test",
+                    NetworkAuthDecisionPayload::Allow
+                )
+                .with_credentials("user", "secret")
+            )
+            .expect("http auth payload should encode"),
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"requestId":"auth-request-1","origin":"https://example.test","decision":"allow","username":"user","password":"secret"}"#
+        );
+        let fingerprint = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        assert_eq!(
+            serde_json::to_string(&NetworkAuthCertificatePayload::new(
+                profile.clone(),
+                "cert-request-1",
+                "https://example.test",
+                fingerprint,
+                NetworkAuthDecisionPayload::Deny
+            ))
+            .expect("certificate payload should encode"),
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"requestId":"cert-request-1","origin":"https://example.test","fingerprintSha256":"sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","decision":"deny"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&NetworkAuthDecisionRecordPayload::new(
+                profile.clone(),
+                "cert-request-1",
+                "https://example.test",
+                NetworkAuthDecisionKindPayload::Certificate,
+                NetworkAuthDecisionPayload::Allow,
+                1710000000000
+            ))
+            .expect("decision record should encode"),
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"requestId":"cert-request-1","origin":"https://example.test","kind":"certificate","decision":"allow","decidedAt":1710000000000}"#
+        );
+        assert_eq!(
+            serde_json::to_string(
+                &NetworkAuthEventPayload::new(
+                    1710000000001,
+                    NetworkAuthEventPhasePayload::CertificateDecided,
+                    profile
+                )
+                .with_decision(
+                    "cert-request-1",
+                    "https://example.test",
+                    NetworkAuthDecisionPayload::Allow
+                )
+            )
+            .expect("event should encode"),
+            r#"{"type":"network-auth-event","timestamp":1710000000001,"phase":"certificate-decided","profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"requestId":"cert-request-1","origin":"https://example.test","decision":"allow"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&NetworkAuthSupportedPayload::unsupported(
+                "host-network-auth-unavailable"
+            ))
+            .expect("support payload should encode"),
+            r#"{"supported":false,"reason":"host-network-auth-unavailable"}"#
+        );
+    }
+
+    #[test]
+    fn web_request_payloads_serialize_canonically() {
+        let profile =
+            SessionProfileResourcePayload::new("session-profile:workspace-1", 0, "workspace:1");
+        let interceptor = WebRequestInterceptorResourcePayload::new(
+            "web-request-interceptor:1",
+            0,
+            "workspace:1",
+        );
+        let headers = vec![WebRequestHeaderPayload::new("x-audit", "1")];
+        assert_eq!(
+            serde_json::to_string(
+                &WebRequestBeforeRequestPayload::new(
+                    profile.clone(),
+                    "https://example.test/*",
+                    WebRequestActionPayload::Redirect
+                )
+                .with_redirect_url("https://redirect.example.test/")
+            )
+            .expect("before request payload should encode"),
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"urlPattern":"https://example.test/*","action":"redirect","redirectUrl":"https://redirect.example.test/"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&WebRequestHeadersReceivedPayload::new(
+                profile.clone(),
+                "https://example.test/*",
+                headers.clone()
+            ))
+            .expect("headers received payload should encode"),
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"urlPattern":"https://example.test/*","responseHeaders":[{"name":"x-audit","value":"1"}]}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&WebRequestRemoveListenerPayload::new(interceptor.clone()))
+                .expect("remove listener payload should encode"),
+            r#"{"interceptor":{"kind":"web-request-interceptor","id":"web-request-interceptor:1","generation":0,"ownerScope":"workspace:1","state":"open"}}"#
+        );
+        let headers_snapshot = WebRequestInterceptorSnapshotPayload::new(
+            interceptor.clone(),
+            profile.clone(),
+            WebRequestPhasePayload::HeadersReceived,
+            "https://example.test/*",
+            WebRequestActionPayload::ModifyHeaders,
+            2,
+        )
+        .with_response_headers(headers);
+        assert_eq!(
+            serde_json::to_string(&headers_snapshot).expect("snapshot should encode"),
+            r#"{"interceptor":{"kind":"web-request-interceptor","id":"web-request-interceptor:1","generation":0,"ownerScope":"workspace:1","state":"open"},"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"phase":"headers-received","urlPattern":"https://example.test/*","action":"modify-headers","order":2,"responseHeaders":[{"name":"x-audit","value":"1"}]}"#
+        );
+        let before_snapshot = WebRequestInterceptorSnapshotPayload::new(
+            interceptor,
+            profile,
+            WebRequestPhasePayload::BeforeRequest,
+            "https://example.test/*",
+            WebRequestActionPayload::Block,
+            1,
+        );
+        assert_eq!(
+            serde_json::to_string(&WebRequestEventPayload::new(
+                1710000000002,
+                WebRequestEventPhasePayload::Registered,
+                before_snapshot,
+            ))
+            .expect("event should encode"),
+            r#"{"type":"web-request-event","timestamp":1710000000002,"phase":"registered","interceptor":{"kind":"web-request-interceptor","id":"web-request-interceptor:1","generation":0,"ownerScope":"workspace:1","state":"open"},"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"requestPhase":"before-request","urlPattern":"https://example.test/*","action":"block","order":1}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&WebRequestSupportedPayload::unsupported(
+                "host-web-request-unavailable"
+            ))
+            .expect("support payload should encode"),
+            r#"{"supported":false,"reason":"host-web-request-unavailable"}"#
+        );
+    }
+
+    #[test]
+    fn native_network_payloads_serialize_canonically() {
+        let request =
+            NativeNetworkRequestResourcePayload::new("native-network-request:1", 0, "workspace:1");
+        let socket = NativeNetworkWebSocketResourcePayload::new(
+            "native-network-websocket:1",
+            0,
+            "workspace:1",
+        );
+        assert_eq!(
+            serde_json::to_string(&NativeNetworkFetchPayload::new(
+                "https://example.test/data.json",
+                NativeNetworkHttpMethodPayload::Get
+            ))
+            .expect("fetch payload should encode"),
+            r#"{"url":"https://example.test/data.json","method":"GET"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(
+                &NativeNetworkUploadPayload::new("https://example.test/upload", "payload")
+                    .with_file_name("payload.txt")
+            )
+            .expect("upload payload should encode"),
+            r#"{"url":"https://example.test/upload","body":"payload","fileName":"payload.txt"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(
+                &NativeNetworkWebSocketConnectPayload::new("wss://example.test/socket")
+                    .with_protocol("events")
+            )
+            .expect("websocket connect payload should encode"),
+            r#"{"url":"wss://example.test/socket","protocols":["events"]}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&NativeNetworkWebSocketHandlePayload::new(socket.clone()))
+                .expect("websocket handle payload should encode"),
+            r#"{"socket":{"kind":"native-network-websocket","id":"native-network-websocket:1","generation":0,"ownerScope":"workspace:1","state":"open"}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(
+                &NativeNetworkLocalhostUrlPayload::new(3010).with_path("/health")
+            )
+            .expect("localhost payload should encode"),
+            r#"{"port":3010,"path":"/health"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&NativeNetworkFetchResultPayload::new(
+                request.clone(),
+                "https://example.test/data.json",
+                NativeNetworkHttpMethodPayload::Get,
+                200
+            ))
+            .expect("fetch result should encode"),
+            r#"{"request":{"kind":"native-network-request","id":"native-network-request:1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/data.json","method":"GET","status":200,"responseHeaders":[]}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&NativeNetworkUploadResultPayload::new(
+                request.clone(),
+                "https://example.test/upload",
+                200,
+                7
+            ))
+            .expect("upload result should encode"),
+            r#"{"request":{"kind":"native-network-request","id":"native-network-request:1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/upload","status":200,"sentBytes":7,"responseHeaders":[]}"#
+        );
+        assert_eq!(
+            serde_json::to_string(
+                &NativeNetworkWebSocketSnapshotPayload::new(
+                    socket.clone(),
+                    "wss://example.test/socket",
+                    NativeNetworkWebSocketStatePayload::Open
+                )
+                .with_protocol("events")
+            )
+            .expect("websocket snapshot should encode"),
+            r#"{"socket":{"kind":"native-network-websocket","id":"native-network-websocket:1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"wss://example.test/socket","state":"open","protocol":"events"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&NativeNetworkLocalhostUrlResultPayload::new(
+                "http://127.0.0.1:3010/health"
+            ))
+            .expect("localhost result should encode"),
+            r#"{"url":"http://127.0.0.1:3010/health"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(
+                &NativeNetworkEventPayload::new(
+                    1710000000003,
+                    NativeNetworkEventPhasePayload::WebsocketOpened
+                )
+                .with_socket(socket, "wss://example.test/socket")
+            )
+            .expect("event should encode"),
+            r#"{"type":"native-network-event","timestamp":1710000000003,"phase":"websocket-opened","socket":{"kind":"native-network-websocket","id":"native-network-websocket:1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"wss://example.test/socket"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&NativeNetworkSupportedPayload::unsupported(
+                "host-native-network-unavailable"
+            ))
+            .expect("support payload should encode"),
+            r#"{"supported":false,"reason":"host-native-network-unavailable"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&NativeNetworkHeaderPayload::new("x-audit", "1"))
+                .expect("header should encode"),
+            r#"{"name":"x-audit","value":"1"}"#
+        );
     }
 
     #[test]

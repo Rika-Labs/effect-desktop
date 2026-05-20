@@ -107,31 +107,38 @@ test("release target policy exposes the macOS-only subset", () => {
   expect(isMacosDesktopTargetId("windows-x64")).toBe(false)
 })
 
-test("release target schema reports decode failures as Effect errors", async () => {
-  const exit = await Effect.runPromiseExit(decodeDesktopTarget("linux-ia32"))
+test("release target schema reports decode failures as Effect errors", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const exit = yield* Effect.exit(decodeDesktopTarget("linux-ia32"))
 
-  expect(exit._tag).toBe("Failure")
-})
+      expect(exit._tag).toBe("Failure")
+    })
+  ))
 
-test("release target resolution decodes defaults and rejects mismatches", async () => {
-  const host = await Effect.runPromise(resolveDesktopHostTarget(undefined, "linux", "x64"))
-  expect(host.id).toBe("linux-x64")
-  expect(await Effect.runPromise(resolveDesktopTarget(undefined, host))).toEqual(host)
-  const requestedTarget = await Effect.runPromise(resolveDesktopTarget("linux-x64", host))
-  expect(requestedTarget.id).toBe("linux-x64")
+test("release target resolution decodes defaults and rejects mismatches", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const host = yield* resolveDesktopHostTarget(undefined, "linux", "x64")
+      expect(host.id).toBe("linux-x64")
+      expect(yield* resolveDesktopTarget(undefined, host)).toEqual(host)
+      const requestedTarget = yield* resolveDesktopTarget("linux-x64", host)
+      expect(requestedTarget.id).toBe("linux-x64")
 
-  const unsupported = await Effect.runPromiseExit(resolveDesktopTarget("linux-ia32", host))
-  expect(unsupported._tag).toBe("Failure")
+      const unsupported = yield* Effect.exit(resolveDesktopTarget("linux-ia32", host))
+      expect(unsupported._tag).toBe("Failure")
 
-  const mismatch = await Effect.runPromiseExit(resolveDesktopTarget("windows-x64", host))
-  expect(mismatch._tag).toBe("Failure")
-})
+      const mismatch = yield* Effect.exit(resolveDesktopTarget("windows-x64", host))
+      expect(mismatch._tag).toBe("Failure")
+    })
+  ))
 
-test("release target resolution keeps macOS host requirements centralized", async () => {
-  const macosHost = await Effect.runPromise(
-    resolveMacosDesktopHostTarget(undefined, "darwin", "arm64")
-  )
-  expect(macosHost.id).toBe("macos-arm64")
-  const exit = await Effect.runPromiseExit(resolveMacosDesktopHostTarget(undefined, "linux", "x64"))
-  expect(exit._tag).toBe("Failure")
-})
+test("release target resolution keeps macOS host requirements centralized", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const macosHost = yield* resolveMacosDesktopHostTarget(undefined, "darwin", "arm64")
+      expect(macosHost.id).toBe("macos-arm64")
+      const exit = yield* Effect.exit(resolveMacosDesktopHostTarget(undefined, "linux", "x64"))
+      expect(exit._tag).toBe("Failure")
+    })
+  ))

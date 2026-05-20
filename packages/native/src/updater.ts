@@ -6,7 +6,6 @@ import {
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
-  type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@effect-desktop/bridge"
@@ -26,13 +25,49 @@ import {
 
 export type UpdaterError = HostProtocolError
 
-const UnsupportedReason = "host-adapter-unimplemented"
+const CheckPartialSupportReason = "signed-manifest-check-only"
+const DownloadPartialSupportReason = "signed-manifest-file-artifact-only"
+const InstallPartialSupportReason = "signed-manifest-staged-install-only"
+const RestartPartialSupportReason = "signed-manifest-restart-handshake-only"
+const StatusPartialSupportReason = "signed-manifest-status-only"
 
-const UpdaterSupport = NativeSurface.support.unsupported(UnsupportedReason, {
+const UpdaterCheckSupport = NativeSurface.support.partial(CheckPartialSupportReason, {
   platforms: [
-    { platform: "macos", status: "unsupported", reason: UnsupportedReason },
-    { platform: "windows", status: "unsupported", reason: UnsupportedReason },
-    { platform: "linux", status: "unsupported", reason: UnsupportedReason }
+    { platform: "macos", status: "partial", reason: CheckPartialSupportReason },
+    { platform: "windows", status: "partial", reason: CheckPartialSupportReason },
+    { platform: "linux", status: "partial", reason: CheckPartialSupportReason }
+  ]
+})
+
+const UpdaterStatusSupport = NativeSurface.support.partial(StatusPartialSupportReason, {
+  platforms: [
+    { platform: "macos", status: "partial", reason: StatusPartialSupportReason },
+    { platform: "windows", status: "partial", reason: StatusPartialSupportReason },
+    { platform: "linux", status: "partial", reason: StatusPartialSupportReason }
+  ]
+})
+
+const UpdaterDownloadSupport = NativeSurface.support.partial(DownloadPartialSupportReason, {
+  platforms: [
+    { platform: "macos", status: "partial", reason: DownloadPartialSupportReason },
+    { platform: "windows", status: "partial", reason: DownloadPartialSupportReason },
+    { platform: "linux", status: "partial", reason: DownloadPartialSupportReason }
+  ]
+})
+
+const UpdaterInstallSupport = NativeSurface.support.partial(InstallPartialSupportReason, {
+  platforms: [
+    { platform: "macos", status: "partial", reason: InstallPartialSupportReason },
+    { platform: "windows", status: "partial", reason: InstallPartialSupportReason },
+    { platform: "linux", status: "partial", reason: InstallPartialSupportReason }
+  ]
+})
+
+const UpdaterRestartSupport = NativeSurface.support.partial(RestartPartialSupportReason, {
+  platforms: [
+    { platform: "macos", status: "partial", reason: RestartPartialSupportReason },
+    { platform: "windows", status: "partial", reason: RestartPartialSupportReason },
+    { platform: "linux", status: "partial", reason: RestartPartialSupportReason }
   ]
 })
 
@@ -42,42 +77,60 @@ export type UpdaterDownloadOptions = Schema.Schema.Type<typeof UpdaterDownloadIn
 
 export type UpdaterInstallOptions = Schema.Schema.Type<typeof UpdaterInstallInput>
 
-export const UpdaterCheck = updaterRpc(
-  "check",
-  UpdaterCheckInput,
-  UpdaterCheckResult,
-  P.nativeInvoke({ primitive: "Updater", methods: ["check"] })
-)
-export const UpdaterDownload = updaterRpc(
-  "download",
-  UpdaterDownloadInput,
-  UpdaterStatusResult,
-  P.nativeInvoke({ primitive: "Updater", methods: ["download"] })
-)
-export const UpdaterInstall = updaterRpc(
-  "install",
-  UpdaterInstallInput,
-  UpdaterStatusResult,
-  P.nativeInvoke({ primitive: "Updater", methods: ["install"] })
-)
-export const UpdaterInstallAndRestart = updaterRpc(
-  "installAndRestart",
-  UpdaterInstallInput,
-  UpdaterStatusResult,
-  P.nativeInvoke({ primitive: "Updater", methods: ["installAndRestart"] })
-)
-export const UpdaterGetStatus = updaterRpc(
-  "getStatus",
-  Schema.Void,
-  UpdaterStatusResult,
-  P.nativeInvoke({ primitive: "Updater", methods: ["getStatus"] })
-)
-export const UpdaterReadyForRestart = updaterRpc(
-  "readyForRestart",
-  Schema.Void,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Updater", methods: ["readyForRestart"] })
-)
+export const UpdaterCheck = NativeSurface.rpc("Updater", "check", {
+  payload: UpdaterCheckInput,
+  success: UpdaterCheckResult,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Updater", methods: ["check"] })
+  ),
+  endpoint: "mutation",
+  support: UpdaterCheckSupport
+})
+export const UpdaterDownload = NativeSurface.rpc("Updater", "download", {
+  payload: UpdaterDownloadInput,
+  success: UpdaterStatusResult,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Updater", methods: ["download"] })
+  ),
+  endpoint: "mutation",
+  support: UpdaterDownloadSupport
+})
+export const UpdaterInstall = NativeSurface.rpc("Updater", "install", {
+  payload: UpdaterInstallInput,
+  success: UpdaterStatusResult,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Updater", methods: ["install"] })
+  ),
+  endpoint: "mutation",
+  support: UpdaterInstallSupport
+})
+export const UpdaterInstallAndRestart = NativeSurface.rpc("Updater", "installAndRestart", {
+  payload: UpdaterInstallInput,
+  success: UpdaterStatusResult,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Updater", methods: ["installAndRestart"] })
+  ),
+  endpoint: "mutation",
+  support: UpdaterRestartSupport
+})
+export const UpdaterGetStatus = NativeSurface.rpc("Updater", "getStatus", {
+  payload: Schema.Void,
+  success: UpdaterStatusResult,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Updater", methods: ["getStatus"] })
+  ),
+  endpoint: "mutation",
+  support: UpdaterStatusSupport
+})
+export const UpdaterReadyForRestart = NativeSurface.rpc("Updater", "readyForRestart", {
+  payload: Schema.Void,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Updater", methods: ["readyForRestart"] })
+  ),
+  endpoint: "mutation",
+  support: UpdaterRestartSupport
+})
 
 export const UpdaterRpcEvents = Object.freeze({
   PreparingRestart: { payload: UpdaterPreparingRestartEvent }
@@ -273,7 +326,9 @@ const decodeUpdaterCheckInput = (
   input: unknown,
   operation: string
 ): Effect.Effect<UpdaterCheckInput, UpdaterError, never> =>
-  decodeInput(UpdaterCheckInput, input, operation)
+  decodeInput(UpdaterCheckInput, input, operation).pipe(
+    Effect.flatMap((decoded) => validateUpdaterCheckInput(decoded, operation))
+  )
 
 const decodeUpdaterDownloadInput = (
   input: unknown,
@@ -298,18 +353,20 @@ const decodeInput = <A>(
     )
   )
 
-function updaterRpc<
-  const Method extends string,
-  Payload extends Schema.Codec<unknown, unknown, never, never>,
-  Success extends Schema.Codec<unknown, unknown, never, never>
->(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
-  return NativeSurface.rpc("Updater", method, {
-    payload,
-    success,
-    authority: NativeSurface.authority.custom(capability),
-    endpoint: "mutation",
-    support: UpdaterSupport
-  })
+const validateUpdaterCheckInput = (
+  input: UpdaterCheckInput,
+  operation: string
+): Effect.Effect<UpdaterCheckInput, UpdaterError, never> => {
+  const hasManifest = input.manifestJson !== undefined
+  const hasTrustAnchors = input.trustAnchors !== undefined
+  if (hasManifest === hasTrustAnchors) {
+    return Effect.succeed(input)
+  }
+  const field = hasManifest ? "trustAnchors" : "manifestJson"
+  const reason = hasManifest
+    ? "is required when manifestJson is provided"
+    : "is required when trustAnchors is provided"
+  return Effect.fail(makeHostProtocolInvalidArgumentError(field, reason, operation))
 }
 
 const runUpdaterRpc = <A, E>(

@@ -12,7 +12,7 @@ export interface MessagePortProviderApi {
 export class MessagePortProvider extends Context.Service<
   MessagePortProvider,
   MessagePortProviderApi
->()("effect-desktop/cluster/MessagePortProvider") {}
+>()("@effect-desktop/core/runtime/cluster-prototype/webview-runner/MessagePortProvider") {}
 
 export const webViewRunnerDesignNote = `
 WebViewRunner design (T29 prototype, verdict: not needed for v1).

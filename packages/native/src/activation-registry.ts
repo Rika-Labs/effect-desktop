@@ -56,13 +56,6 @@ export * from "./contracts/activation-registry.js"
 const Surface = "ActivationRegistry"
 const UnsupportedReason = "host-adapter-unimplemented"
 const EventMethod = "ActivationRegistry.Event"
-const UnsupportedSupport = NativeSurface.support.unsupported(UnsupportedReason, {
-  platforms: [
-    { platform: "macos", status: "unsupported", reason: UnsupportedReason },
-    { platform: "windows", status: "unsupported", reason: UnsupportedReason },
-    { platform: "linux", status: "unsupported", reason: UnsupportedReason }
-  ]
-})
 
 export type ActivationRegistryError = HostProtocolError | CommandRegistryError
 
@@ -83,7 +76,7 @@ export const ActivationRegistryListSurfaces = NativeSurface.rpc(Surface, "listSu
   success: ActivationSurfaceList,
   authority: NativeSurface.authority.none,
   endpoint: "query",
-  support: UnsupportedSupport
+  support: NativeSurface.support.supported
 })
 export const ActivationRegistryIsSupported = NativeSurface.rpc(Surface, "isSupported", {
   payload: Schema.Void,
@@ -589,7 +582,7 @@ function activationRpc<
     success,
     authority: NativeSurface.authority.custom(cap),
     endpoint: "mutation",
-    support: UnsupportedSupport
+    support: NativeSurface.support.supported
   })
 }
 

@@ -1,16 +1,18 @@
 import { afterEach, expect } from "bun:test"
-import { posix, sep } from "node:path"
 import {
   Clock,
   Context,
   Data,
+  DateTime,
   Deferred,
   Effect,
   Exit,
   FileSystem,
   Layer,
   Option,
+  Path,
   Queue,
+  Schema,
   Sink,
   Stream
 } from "effect"
@@ -37,6 +39,7 @@ import {
   WINDOW_FOCUS_METHOD,
   WINDOW_GET_BOUNDS_METHOD,
   WINDOW_GET_BY_ID_METHOD,
+  WINDOW_GET_CHILDREN_METHOD,
   WINDOW_GET_CURRENT_METHOD,
   WINDOW_GET_PARENT_METHOD,
   WINDOW_GET_STATE_METHOD,
@@ -46,13 +49,21 @@ import {
   WINDOW_MINIMIZE_METHOD,
   WINDOW_RESTORE_METHOD,
   WINDOW_REQUEST_ATTENTION_METHOD,
+  WINDOW_CLEAR_VIBRANCY_METHOD,
   WINDOW_SET_ALWAYS_ON_TOP_METHOD,
   WINDOW_SET_BOUNDS_METHOD,
   WINDOW_SET_DECORATIONS_METHOD,
   WINDOW_SET_FULLSCREEN_METHOD,
+  WINDOW_SET_SIMPLE_FULLSCREEN_METHOD,
   WINDOW_SET_PROGRESS_METHOD,
   WINDOW_SET_RESIZABLE_METHOD,
+  WINDOW_SET_SHADOW_METHOD,
+  WINDOW_SET_TITLE_BAR_STYLE_METHOD,
+  WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD,
+  WINDOW_SET_TRANSPARENT_METHOD,
   WINDOW_SET_TITLE_METHOD,
+  WINDOW_SET_TRAFFIC_LIGHTS_METHOD,
+  WINDOW_SET_VIBRANCY_METHOD,
   WINDOW_SHOW_METHOD,
   hostProtocolErrorRecoverableDefault,
   makeHostProtocolInvalidStateError,
@@ -240,11 +251,19 @@ export const makeMockHost = (options: MockHostOptions = {}): MockHostApi => {
           request.method === WINDOW_FOCUS_METHOD ||
           request.method === WINDOW_GET_BY_ID_METHOD ||
           request.method === WINDOW_GET_PARENT_METHOD ||
+          request.method === WINDOW_GET_CHILDREN_METHOD ||
           request.method === WINDOW_GET_BOUNDS_METHOD ||
           request.method === WINDOW_CENTER_METHOD ||
           request.method === WINDOW_SET_TITLE_METHOD ||
           request.method === WINDOW_SET_RESIZABLE_METHOD ||
           request.method === WINDOW_SET_DECORATIONS_METHOD ||
+          request.method === WINDOW_SET_TRAFFIC_LIGHTS_METHOD ||
+          request.method === WINDOW_SET_VIBRANCY_METHOD ||
+          request.method === WINDOW_CLEAR_VIBRANCY_METHOD ||
+          request.method === WINDOW_SET_SHADOW_METHOD ||
+          request.method === WINDOW_SET_TITLE_BAR_STYLE_METHOD ||
+          request.method === WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD ||
+          request.method === WINDOW_SET_TRANSPARENT_METHOD ||
           request.method === WINDOW_SET_ALWAYS_ON_TOP_METHOD ||
           request.method === WINDOW_SET_PROGRESS_METHOD ||
           request.method === WINDOW_REQUEST_ATTENTION_METHOD ||
@@ -354,35 +373,28 @@ export const makeMockBridge = (options: MockBridgeOptions = {}): MockBridgeApi =
         )
       }
 
-      return Stream.fromIterable(chunks)
-        .pipe(
-          Stream.mapEffect((chunk) =>
+      return Stream.fromIterable(chunks).pipe(
+        Stream.mapEffect((chunk) =>
+          currentTimeMillis(options.now).pipe(
+            Effect.map((timestamp) =>
+              streamEnvelope(request, timestamp, new BridgeStreamDataFrame({ type: "data", chunk }))
+            )
+          )
+        ),
+        Stream.concat(
+          Stream.fromEffect(
             currentTimeMillis(options.now).pipe(
               Effect.map((timestamp) =>
                 streamEnvelope(
                   request,
                   timestamp,
-                  new BridgeStreamDataFrame({ type: "data", chunk })
+                  new BridgeStreamCompleteFrame({ type: "complete" })
                 )
               )
             )
           )
         )
-        .pipe(
-          Stream.concat(
-            Stream.fromEffect(
-              currentTimeMillis(options.now).pipe(
-                Effect.map((timestamp) =>
-                  streamEnvelope(
-                    request,
-                    timestamp,
-                    new BridgeStreamCompleteFrame({ type: "complete" })
-                  )
-                )
-              )
-            )
-          )
-        )
+      )
     },
     cancel: (request: HostProtocolCancelByRequestEnvelope) =>
       Effect.sync(() => {
@@ -451,7 +463,8 @@ export const makeMemoryFilesystem = (
     const now = options.now ?? (() => clock.currentTimeMillisUnsafe())
     const memory = makeMemoryFilesystemRuntime(options, now)
     return yield* makeFilesystem(registry, owner, memory.options).pipe(
-      Effect.provide(memory.fileSystem)
+      Effect.provideService(FileSystem.FileSystem, memory.fileSystem),
+      Effect.provide(Path.layer)
     )
   })
 
@@ -643,8 +656,8 @@ export const runHeadlessRuntime = <A, E, R>(
 ) =>
   Effect.gen(function* () {
     const registry = yield* makeResourceRegistry(options.registry)
-    const layer = Layer.effectContext(makeHeadlessRuntimeContext(options, registry))
-    const result = yield* Effect.exit(effect.pipe(Effect.provide(layer)))
+    const context = yield* makeHeadlessRuntimeContext(options, registry)
+    const result = yield* Effect.exit(effect.pipe(Effect.provideContext(context)))
     if (options.leakDetection !== false) {
       yield* assertNoOpenResourcesIn(registry, {
         testName: "HeadlessRuntime.run",
@@ -676,39 +689,15 @@ const makeHeadlessRuntimeContext = (
     const process = yield* makeMockProcess(registry, owner, options.process)
     const pty = yield* makeMockPty(registry, owner, options.pty)
 
-    return Context.add(
-      PermissionRegistry,
-      permissions
-    )(
-      Context.add(
-        Telemetry,
-        telemetry
-      )(
-        Context.add(
-          ResourceRegistry,
-          registry
-        )(
-          Context.add(
-            PTY,
-            pty
-          )(
-            Context.add(
-              Process,
-              process
-            )(
-              Context.add(
-                Filesystem,
-                filesystem
-              )(
-                Context.add(
-                  ResourceOwner,
-                  owner
-                )(Context.add(MockBridge, bridge)(Context.make(MockHost, host)))
-              )
-            )
-          )
-        )
-      )
+    return Context.make(MockHost, host).pipe(
+      Context.add(MockBridge, bridge),
+      Context.add(ResourceOwner, owner),
+      Context.add(Filesystem, filesystem),
+      Context.add(Process, process),
+      Context.add(PTY, pty),
+      Context.add(ResourceRegistry, registry),
+      Context.add(Telemetry, telemetry),
+      Context.add(PermissionRegistry, permissions)
     )
   })
 
@@ -827,8 +816,11 @@ export const runHeadless = <A, E, R>(
         getById: (windowId) => rawWindow.getById(windowId),
         list: () => rawWindow.list(),
         getParent: (windowId) => rawWindow.getParent(windowId),
+        getChildren: (windowId) => rawWindow.getChildren(windowId),
         getBounds: (windowId) => rawWindow.getBounds(windowId),
         setBounds: (windowId, bounds) => rawWindow.setBounds(windowId, bounds),
+        setBoundsOnDisplay: (windowId, displayId, bounds) =>
+          rawWindow.setBoundsOnDisplay(windowId, displayId, bounds),
         center: (windowId) => rawWindow.center(windowId),
         centerOnDisplay: (windowId, displayId) => rawWindow.centerOnDisplay(windowId, displayId),
         setTitle: (windowId, title) => rawWindow.setTitle(windowId, title),
@@ -836,6 +828,14 @@ export const runHeadless = <A, E, R>(
         setDecorations: (windowId, decorations) => rawWindow.setDecorations(windowId, decorations),
         setTrafficLights: (windowId, trafficLights) =>
           rawWindow.setTrafficLights(windowId, trafficLights),
+        setVibrancy: (windowId, material) => rawWindow.setVibrancy(windowId, material),
+        clearVibrancy: (windowId) => rawWindow.clearVibrancy(windowId),
+        setShadow: (windowId, hasShadow) => rawWindow.setShadow(windowId, hasShadow),
+        setTitleBarStyle: (windowId, titleBarStyle) =>
+          rawWindow.setTitleBarStyle(windowId, titleBarStyle),
+        setTitleBarTransparent: (windowId, titleBarTransparent) =>
+          rawWindow.setTitleBarTransparent(windowId, titleBarTransparent),
+        setTransparent: (windowId, transparent) => rawWindow.setTransparent(windowId, transparent),
         setAlwaysOnTop: (windowId, alwaysOnTop) => rawWindow.setAlwaysOnTop(windowId, alwaysOnTop),
         setSkipTaskbar: (windowId, skipTaskbar) => rawWindow.setSkipTaskbar(windowId, skipTaskbar),
         setProgress: (windowId, input) => rawWindow.setProgress(windowId, input),
@@ -846,6 +846,8 @@ export const runHeadless = <A, E, R>(
         maximize: (windowId) => rawWindow.maximize(windowId),
         restore: (windowId) => rawWindow.restore(windowId),
         setFullscreen: (windowId, fullscreen) => rawWindow.setFullscreen(windowId, fullscreen),
+        setSimpleFullscreen: (windowId, simpleFullscreen) =>
+          rawWindow.setSimpleFullscreen(windowId, simpleFullscreen),
         getState: (windowId) => rawWindow.getState(windowId),
         events: () => rawWindow.events()
       }
@@ -881,13 +883,11 @@ export const assertNoOpenResources = (
     if (leaks.length > 0) {
       const report = formatLeakedHandleReport(leaks, options.testName)
 
-      return yield* Effect.fail(
-        new ResourceLeakError({
-          leaks,
-          message: report,
-          report
-        })
-      )
+      return yield* new ResourceLeakError({
+        leaks,
+        message: report,
+        report
+      })
     }
   })
 
@@ -902,13 +902,11 @@ export const assertNoOpenResourcesIn = (
     if (leaks.length > 0) {
       const report = formatLeakedHandleReport(leaks, options.testName)
 
-      return yield* Effect.fail(
-        new ResourceLeakError({
-          leaks,
-          message: report,
-          report
-        })
-      )
+      return yield* new ResourceLeakError({
+        leaks,
+        message: report,
+        report
+      })
     }
   })
 
@@ -917,9 +915,7 @@ export const installResourceLeakDetection = (
   options: LeakDetectionOptions = {}
 ): void => {
   registerLeakMatchers()
-  afterEach(async () => {
-    await Effect.runPromise(assertNoOpenResourcesIn(registry, options))
-  })
+  afterEach(() => Effect.runPromise(assertNoOpenResourcesIn(registry, options)))
 }
 
 const defaultFixture = (method: string): HeadlessFixture => {
@@ -935,10 +931,18 @@ const defaultFixture = (method: string): HeadlessFixture => {
     case WINDOW_FOCUS_METHOD:
     case WINDOW_GET_BY_ID_METHOD:
     case WINDOW_GET_PARENT_METHOD:
+    case WINDOW_GET_CHILDREN_METHOD:
     case WINDOW_CENTER_METHOD:
     case WINDOW_SET_TITLE_METHOD:
     case WINDOW_SET_RESIZABLE_METHOD:
     case WINDOW_SET_DECORATIONS_METHOD:
+    case WINDOW_SET_TRAFFIC_LIGHTS_METHOD:
+    case WINDOW_SET_VIBRANCY_METHOD:
+    case WINDOW_CLEAR_VIBRANCY_METHOD:
+    case WINDOW_SET_SHADOW_METHOD:
+    case WINDOW_SET_TITLE_BAR_STYLE_METHOD:
+    case WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD:
+    case WINDOW_SET_TRANSPARENT_METHOD:
     case WINDOW_SET_ALWAYS_ON_TOP_METHOD:
     case WINDOW_SET_PROGRESS_METHOD:
     case WINDOW_REQUEST_ATTENTION_METHOD:
@@ -958,6 +962,13 @@ const defaultFixture = (method: string): HeadlessFixture => {
           if (request.method === WINDOW_GET_PARENT_METHOD) {
             const parentWindowId = state.windows.get(windowId)?.parentWindowId
             return parentWindowId === undefined ? {} : { parentWindowId }
+          }
+          if (request.method === WINDOW_GET_CHILDREN_METHOD) {
+            return {
+              windows: Array.from(state.windows.entries())
+                .filter(([, input]) => input.parentWindowId === windowId)
+                .map(([childWindowId]) => ({ windowId: childWindowId }))
+            }
           }
           return undefined
         })
@@ -992,10 +1003,11 @@ const defaultFixture = (method: string): HeadlessFixture => {
           if (!state.windows.has(windowId)) {
             return yield* Effect.fail(makeHostProtocolNotFoundError(windowId, request.method))
           }
-          return { minimized: false, maximized: false, fullscreen: false }
+          return { minimized: false, maximized: false, fullscreen: false, simpleFullscreen: false }
         })
     case WINDOW_SET_BOUNDS_METHOD:
     case WINDOW_SET_FULLSCREEN_METHOD:
+    case WINDOW_SET_SIMPLE_FULLSCREEN_METHOD:
       return (request, state) =>
         Effect.gen(function* () {
           const windowId = yield* readWindowId(request.payload, request.method)
@@ -1161,13 +1173,11 @@ const makeMockProcessSpawner = (
       const input = processSpawnInputFromCommand(command)
       const fixture = takeProcessFixture(fixtures, input)
       if (fixture === undefined) {
-        return yield* Effect.fail(
-          PlatformError.badArgument({
-            description: `missing MockProcess fixture for ${input.command}`,
-            method: "spawn",
-            module: "MockProcess"
-          })
-        )
+        return yield* PlatformError.badArgument({
+          description: `missing MockProcess fixture for ${input.command}`,
+          method: "spawn",
+          module: "MockProcess"
+        })
       }
       const pid = fixture.pid ?? nextPid++
       const record: MutableMockProcessSpawnRecord = {
@@ -1201,9 +1211,7 @@ const makeMockProcessChild = (
     }).pipe(Effect.andThen(Deferred.succeed(exitState, status)), Effect.asVoid)
 
   if (fixture.exit !== false) {
-    setTimeout(() => {
-      Effect.runFork(finish(processExitStatus(fixture.exit)))
-    }, 0)
+    Effect.runFork(Effect.yieldNow.pipe(Effect.andThen(finish(processExitStatus(fixture.exit)))))
   }
 
   return ChildProcessSpawner.makeHandle({
@@ -1323,17 +1331,20 @@ const cloneProcessCalls = (
 const processExitStatus = (
   exit: MockProcessFixture["exit"] | undefined,
   fallbackSignal?: string
-): ProcessExitStatus =>
-  exit instanceof ProcessExitStatus
-    ? exit
-    : new ProcessExitStatus({
-        code: exit === false || exit === undefined ? 0 : exit.code,
-        ...(fallbackSignal === undefined
-          ? exit !== false && exit !== undefined && exit.signal !== undefined
-            ? { signal: exit.signal }
-            : {}
-          : { signal: fallbackSignal })
-      })
+): ProcessExitStatus => {
+  if (Schema.is(ProcessExitStatus)(exit)) {
+    return exit
+  }
+  const fixture = exit as { readonly code: number; readonly signal?: string } | false | undefined
+  return new ProcessExitStatus({
+    code: fixture === false || fixture === undefined ? 0 : fixture.code,
+    ...(fallbackSignal === undefined
+      ? fixture !== false && fixture !== undefined && fixture.signal !== undefined
+        ? { signal: fixture.signal }
+        : {}
+      : { signal: fallbackSignal })
+  })
+}
 
 const streamBytes = (chunks: readonly Uint8Array[]): Stream.Stream<Uint8Array> =>
   Stream.fromIterable(chunks).pipe(Stream.map(copyBytes))
@@ -1381,49 +1392,53 @@ const makeMockPtyChild = (fixture: MockPtyFixture, record: MutableMockPtyOpenRec
   }
 
   if (fixture.exit !== false) {
-    setTimeout(() => {
-      finish(ptyExitStatus(fixture.exit))
-    }, 0)
+    Effect.runFork(
+      Effect.yieldNow.pipe(Effect.andThen(Effect.sync(() => finish(ptyExitStatus(fixture.exit)))))
+    )
   }
 
   return Object.freeze({
     pid: record.pid === undefined ? Option.none() : Option.some(record.pid),
     output: readableBytes(fixture.output ?? []),
     exited,
-    write: async (chunk: Uint8Array) => {
+    write: (chunk: Uint8Array): Promise<void> => {
       if (!running) {
-        throw mockNodeError("EINVAL", `MockPTY ${record.input.command} is not running`)
+        return Promise.reject(
+          mockNodeError("EINVAL", `MockPTY ${record.input.command} is not running`)
+        )
       }
-
-      await yieldMockHostTurn()
-      record.writes.push(copyBytes(chunk))
+      return yieldMockHostTurn().then(() => {
+        record.writes.push(copyBytes(chunk))
+      })
     },
-    resize: async (size: PtyResizeInput) => {
+    resize: (size: PtyResizeInput): Promise<void> => {
       if (!running) {
-        throw mockNodeError("EINVAL", `MockPTY ${record.input.command} is not running`)
+        return Promise.reject(
+          mockNodeError("EINVAL", `MockPTY ${record.input.command} is not running`)
+        )
       }
-
-      await yieldMockHostTurn()
-      record.resizes.push({ rows: size.rows, cols: size.cols })
+      return yieldMockHostTurn().then(() => {
+        record.resizes.push({ rows: size.rows, cols: size.cols })
+      })
     },
     isRunning: () => running,
-    terminateTree: async () => {
-      await yieldMockHostTurn()
-      record.terminateTreeCalls += 1
-      record.killedWith = "SIGTERM"
-      finish(ptyExitStatus(undefined, "SIGTERM"))
-    },
-    forceKillTree: async () => {
-      await yieldMockHostTurn()
-      record.forceKillTreeCalls += 1
-      record.killedWith = "SIGKILL"
-      finish(ptyExitStatus(undefined, "SIGKILL"))
-    },
-    kill: async (signal?: PtySignalInput) => {
-      await yieldMockHostTurn()
-      record.killedWith = signal
-      finish(ptyExitStatus(undefined, signalNameForMock(signal)))
-    }
+    terminateTree: (): Promise<void> =>
+      yieldMockHostTurn().then(() => {
+        record.terminateTreeCalls += 1
+        record.killedWith = "SIGTERM"
+        finish(ptyExitStatus(undefined, "SIGTERM"))
+      }),
+    forceKillTree: (): Promise<void> =>
+      yieldMockHostTurn().then(() => {
+        record.forceKillTreeCalls += 1
+        record.killedWith = "SIGKILL"
+        finish(ptyExitStatus(undefined, "SIGKILL"))
+      }),
+    kill: (signal?: PtySignalInput): Promise<void> =>
+      yieldMockHostTurn().then(() => {
+        record.killedWith = signal
+        finish(ptyExitStatus(undefined, signalNameForMock(signal)))
+      })
   })
 }
 
@@ -1459,17 +1474,20 @@ const clonePtyCalls = (calls: readonly MutableMockPtyOpenRecord[]): readonly Moc
 const ptyExitStatus = (
   exit: MockPtyFixture["exit"] | undefined,
   fallbackSignal?: string
-): PtyExitStatus =>
-  exit instanceof PtyExitStatus
-    ? exit
-    : new PtyExitStatus({
-        code: exit === false || exit === undefined ? 0 : exit.code,
-        ...(fallbackSignal === undefined
-          ? exit !== false && exit !== undefined && exit.signal !== undefined
-            ? { signal: exit.signal }
-            : {}
-          : { signal: fallbackSignal })
-      })
+): PtyExitStatus => {
+  if (Schema.is(PtyExitStatus)(exit)) {
+    return exit
+  }
+  const fixture = exit as { readonly code: number; readonly signal?: string } | false | undefined
+  return new PtyExitStatus({
+    code: fixture === false || fixture === undefined ? 0 : fixture.code,
+    ...(fallbackSignal === undefined
+      ? fixture !== false && fixture !== undefined && fixture.signal !== undefined
+        ? { signal: fixture.signal }
+        : {}
+      : { signal: fallbackSignal })
+  })
+}
 
 const readableBytes = (chunks: readonly Uint8Array[]): ReadableStream<Uint8Array> =>
   new ReadableStream<Uint8Array>({
@@ -1517,8 +1535,49 @@ interface MemoryWatchRegistration {
 
 const ROOT_PATH = "/"
 
+const PATH_SEP = "/"
+
+const posixDirname = (path: string): string => {
+  if (path.length === 0) return "."
+  const trimmed = path.length > 1 && path.endsWith("/") ? path.slice(0, -1) : path
+  const idx = trimmed.lastIndexOf("/")
+  if (idx === -1) return "."
+  if (idx === 0) return "/"
+  return trimmed.slice(0, idx)
+}
+
+const posixNormalize = (path: string): string => {
+  if (path.length === 0) return "."
+  const isAbsolute = path.startsWith("/")
+  const trailingSlash = path.length > 1 && path.endsWith("/")
+  const segments: string[] = []
+  for (const part of path.split("/")) {
+    if (part === "" || part === ".") continue
+    if (part === "..") {
+      if (segments.length > 0 && segments[segments.length - 1] !== "..") {
+        segments.pop()
+      } else if (!isAbsolute) {
+        segments.push("..")
+      }
+      continue
+    }
+    segments.push(part)
+  }
+  let result = segments.join("/")
+  if (isAbsolute) result = `/${result}`
+  if (trailingSlash && !result.endsWith("/")) result = `${result}/`
+  if (result.length === 0) return isAbsolute ? "/" : "."
+  return result
+}
+
+const posixJoin = (...parts: readonly string[]): string => {
+  const filtered = parts.filter((part) => part.length > 0)
+  if (filtered.length === 0) return "."
+  return posixNormalize(filtered.join("/"))
+}
+
 interface MemoryFilesystemRuntime {
-  readonly fileSystem: Layer.Layer<FileSystem.FileSystem>
+  readonly fileSystem: FileSystem.FileSystem
   readonly options: FilesystemOptions
 }
 
@@ -1536,12 +1595,12 @@ const makeMemoryFilesystemRuntime = (
   }
   for (const file of options.files ?? []) {
     const path = normalizeMemoryPath(file.path)
-    ensureDirectory(nodes, posix.dirname(path), now())
+    ensureDirectory(nodes, posixDirname(path), now())
     nodes.set(path, { kind: "file", bytes: copyBytes(file.bytes), modifiedAtMs: now() })
   }
   for (const symlink of options.symlinks ?? []) {
     const path = normalizeMemoryPath(symlink.path)
-    ensureDirectory(nodes, posix.dirname(path), now())
+    ensureDirectory(nodes, posixDirname(path), now())
     nodes.set(path, {
       kind: "symlink",
       target: normalizeMemorySymlinkTarget(symlink.target),
@@ -1549,7 +1608,7 @@ const makeMemoryFilesystemRuntime = (
     })
   }
 
-  const fileSystem = FileSystem.layerNoop({
+  const fileSystem = FileSystem.makeNoop({
     readFile: (path) =>
       Effect.try({
         try: () => {
@@ -1576,7 +1635,7 @@ const makeMemoryFilesystemRuntime = (
           if (node === undefined) {
             throw nodeError("ENOENT", fromPath)
           }
-          const parentPath = posix.dirname(toPath)
+          const parentPath = posixDirname(toPath)
           const parent = nodes.get(parentPath)
           if (parent?.kind !== "directory") {
             throw nodeError("ENOENT", parentPath)
@@ -1626,7 +1685,7 @@ const makeMemoryFilesystemRuntime = (
       Effect.try({
         try: () => {
           const target = normalizeMemoryPath(memoryPathLikeToString(path))
-          const parentPath = posix.dirname(target)
+          const parentPath = posixDirname(target)
           const parent = nodes.get(parentPath)
           if (parent?.kind !== "directory") {
             throw nodeError("ENOENT", parentPath)
@@ -1671,9 +1730,9 @@ const makeMemoryFilesystemRuntime = (
       Effect.try({
         try: () => {
           const target = normalizeMemoryPath(path)
-          const parent = nodes.get(posix.dirname(target))
+          const parent = nodes.get(posixDirname(target))
           if (parent?.kind !== "directory" && mkdirOptions?.recursive !== true) {
-            throw nodeError("ENOENT", posix.dirname(target))
+            throw nodeError("ENOENT", posixDirname(target))
           }
 
           if (mkdirOptions?.recursive === true) {
@@ -1758,7 +1817,7 @@ const writeMemoryFile = (
   modifiedAtMs: number
 ): void => {
   const target = normalizeMemoryPath(path)
-  const parentPath = posix.dirname(target)
+  const parentPath = posixDirname(target)
   const parent = nodes.get(parentPath)
   if (parent?.kind !== "directory") {
     throw nodeError("ENOENT", parentPath)
@@ -1780,7 +1839,7 @@ const ensureDirectory = (
 ): void => {
   const normalized = normalizeMemoryPath(path)
   if (normalized !== ROOT_PATH) {
-    ensureDirectory(nodes, posix.dirname(normalized), modifiedAtMs)
+    ensureDirectory(nodes, posixDirname(normalized), modifiedAtMs)
   }
   nodes.set(normalized, { kind: "directory", modifiedAtMs })
 }
@@ -1842,8 +1901,8 @@ const lookupPath = (
       const remaining = segments.slice(index + 1)
       const target = node.target.startsWith("/")
         ? node.target
-        : normalizeMemoryPath(posix.join(posix.dirname(current), node.target))
-      return lookupPath(nodes, posix.join(target, ...remaining), mode, new Set([...seen, current]))
+        : normalizeMemoryPath(posixJoin(posixDirname(current), node.target))
+      return lookupPath(nodes, posixJoin(target, ...remaining), mode, new Set([...seen, current]))
     }
     if (node.kind !== "directory" && !isFinalSegment) {
       throw nodeError("ENOTDIR", current)
@@ -1865,17 +1924,17 @@ const resolveExistingPath = (
 
 const normalizeMemoryPath = (path: string): string => {
   const withoutDrive = path.replaceAll("\\", "/").replace(/^\/?[A-Za-z]:/, "")
-  const normalized = posix.normalize(withoutDrive)
+  const normalized = posixNormalize(withoutDrive)
   return normalized.startsWith("/") ? normalized : `/${normalized}`
 }
 
 const normalizeMemorySymlinkTarget = (target: string): string => {
   const normalized = target.replaceAll("\\", "/")
-  return normalized.startsWith("/") ? normalizeMemoryPath(normalized) : posix.normalize(normalized)
+  return normalized.startsWith("/") ? normalizeMemoryPath(normalized) : posixNormalize(normalized)
 }
 
 const toPlatformMemoryPath = (path: string): string =>
-  sep === "/" ? path : path.replaceAll("/", sep)
+  PATH_SEP === "/" ? path : path.replaceAll("/", PATH_SEP)
 
 const memoryPathLikeToString = (path: unknown): string => {
   if (typeof path === "string") {
@@ -1901,7 +1960,7 @@ const emitMemoryWatch = (
   path: string,
   type: "create" | "remove" | "update"
 ): void => {
-  const directory = posix.dirname(path)
+  const directory = posixDirname(path)
   for (const watcher of watchers) {
     if (!watcher.closed && watcher.directory === directory) {
       watcher.listener(memoryWatchEvent(type, path))
@@ -1949,7 +2008,7 @@ const memoryFile = (path: string, writeAllBytes: (bytes: Uint8Array) => void): F
 
 const memoryStats = (node: MemoryNode): FileSystem.File.Info => ({
   type: node.kind === "file" ? "File" : node.kind === "directory" ? "Directory" : "SymbolicLink",
-  mtime: Option.some(new Date(node.modifiedAtMs)),
+  mtime: Option.some(DateTime.toDateUtc(DateTime.makeUnsafe(node.modifiedAtMs))),
   atime: Option.none(),
   birthtime: Option.none(),
   dev: 1,
@@ -2189,14 +2248,8 @@ const unsupportedSafeStorage = (operation: string): HostProtocolUnsupportedError
     recoverable: hostProtocolErrorRecoverableDefault("Unsupported")
   })
 
-const isRegistrySnapshot = (value: unknown): value is RegistrySnapshot => {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "entries" in value &&
-    Array.isArray(value.entries)
-  )
-}
+const isRegistrySnapshot = (value: unknown): value is RegistrySnapshot =>
+  typeof value === "object" && value !== null && "entries" in value && Array.isArray(value.entries)
 
 // oxlint-disable-next-line import/no-cycle -- package barrel intentionally includes the native harness.
 export * from "./native.js"

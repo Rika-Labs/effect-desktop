@@ -71,13 +71,13 @@ export class DesktopObservabilityConfigError extends Data.TaggedError(
 }> {}
 
 export class CollectorRegistry extends Context.Service<CollectorRegistry, CollectorRegistryApi>()(
-  "CollectorRegistry"
+  "@effect-desktop/core/runtime/desktop-observability/CollectorRegistry"
 ) {}
 
 export class DesktopObservability extends Context.Service<
   DesktopObservability,
   DesktopObservabilityApi
->()("DesktopObservability") {}
+>()("@effect-desktop/core/runtime/desktop-observability/DesktopObservability") {}
 
 export const makeCollectorRegistry = (options: {
   readonly enabled: boolean

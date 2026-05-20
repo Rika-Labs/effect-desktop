@@ -4,8 +4,6 @@ import {
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
-  type RpcCapabilityMetadata,
-  type RpcEndpointKind,
   RpcGroup
 } from "@effect-desktop/bridge"
 import { type DesktopRpcClient, type PermissionRegistry, P } from "@effect-desktop/core"
@@ -25,9 +23,9 @@ export * from "./contracts/recent-documents.js"
 
 const Surface = "RecentDocuments"
 const UnsupportedReason = "host-adapter-unimplemented"
-const RecentDocumentsSupport = NativeSurface.support.unsupported(UnsupportedReason, {
+const RecentDocumentsSupport = NativeSurface.support.partial("macos-recent-documents-only", {
   platforms: [
-    { platform: "macos", status: "unsupported", reason: UnsupportedReason },
+    { platform: "macos", status: "supported" },
     { platform: "windows", status: "unsupported", reason: UnsupportedReason },
     { platform: "linux", status: "unsupported", reason: UnsupportedReason }
   ]
@@ -35,27 +33,33 @@ const RecentDocumentsSupport = NativeSurface.support.unsupported(UnsupportedReas
 
 export type RecentDocumentsError = HostProtocolError
 
-export const RecentDocumentsAdd = recentDocumentsRpc(
-  "add",
-  RecentDocumentsAddInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: Surface, methods: ["add"] }),
-  "mutation"
-)
-export const RecentDocumentsClear = recentDocumentsRpc(
-  "clear",
-  Schema.Void,
-  Schema.Void,
-  P.nativeInvoke({ primitive: Surface, methods: ["clear"] }),
-  "mutation"
-)
-export const RecentDocumentsList = recentDocumentsRpc(
-  "list",
-  Schema.Void,
-  RecentDocumentsListResult,
-  P.nativeInvoke({ primitive: Surface, methods: ["list"] }),
-  "query"
-)
+export const RecentDocumentsAdd = NativeSurface.rpc(Surface, "add", {
+  payload: RecentDocumentsAddInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: Surface, methods: ["add"] })
+  ),
+  endpoint: "mutation",
+  support: RecentDocumentsSupport
+})
+export const RecentDocumentsClear = NativeSurface.rpc(Surface, "clear", {
+  payload: Schema.Void,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: Surface, methods: ["clear"] })
+  ),
+  endpoint: "mutation",
+  support: RecentDocumentsSupport
+})
+export const RecentDocumentsList = NativeSurface.rpc(Surface, "list", {
+  payload: Schema.Void,
+  success: RecentDocumentsListResult,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: Surface, methods: ["list"] })
+  ),
+  endpoint: "query",
+  support: RecentDocumentsSupport
+})
 
 export const RecentDocumentsRpcEvents = Object.freeze({
   Event: { payload: RecentDocumentsEvent }
@@ -177,26 +181,6 @@ const decodeRecentDocumentsAddInput = (
   operation: string
 ): Effect.Effect<RecentDocumentsAddInput, RecentDocumentsError> =>
   decodeNativeInput(RecentDocumentsAddInput, input, operation)
-
-function recentDocumentsRpc<
-  const Method extends string,
-  Payload extends Schema.Codec<unknown, unknown, never, never>,
-  Success extends Schema.Codec<unknown, unknown, never, never>
->(
-  method: Method,
-  payload: Payload,
-  success: Success,
-  authority: RpcCapabilityMetadata,
-  endpoint: RpcEndpointKind
-) {
-  return NativeSurface.rpc(Surface, method, {
-    payload,
-    success,
-    authority: NativeSurface.authority.custom(authority),
-    endpoint,
-    support: RecentDocumentsSupport
-  })
-}
 
 const runRecentDocumentsRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,

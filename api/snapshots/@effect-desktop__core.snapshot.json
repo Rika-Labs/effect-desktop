@@ -16,7 +16,7 @@
     {
       "name": "AnyDesktopRpcRegistration",
       "kind": "interface",
-      "signature": "export interface AnyDesktopRpcRegistration<E = unknown, R = unknown> { readonly _tag: \"DesktopRpcRegistration\" readonly group: DesktopRpcRegistrationGroup readonly handlers: Layer.Layer<never, E, R> readonly serverLayer: Layer.Layer<never, unknown, unknown> }"
+      "signature": "export interface AnyDesktopRpcRegistration<E = unknown, R = unknown> { readonly _tag: \"DesktopRpcRegistration\" readonly group: DesktopRpcRegistrationGroup readonly handlers: Layer.Layer<never, E, R> readonly serverLayer: Layer.Layer<never, E, R> }"
     },
     {
       "name": "AnyProvider",
@@ -36,7 +36,7 @@
     {
       "name": "ApprovalBroker",
       "kind": "class",
-      "signature": "export class ApprovalBroker extends Context.Service<ApprovalBroker, ApprovalBrokerApi>()( \"ApprovalBroker\", { make: Effect.fail( new ApprovalBrokerInvalidArgumentError({ operation: \"ApprovalBroker.make\", field: \"prompt\", message: \"ApprovalBroker requires an explicit host prompt port\", cause: Option.none() }) ) } ) {}"
+      "signature": "export class ApprovalBroker extends Context.Service<ApprovalBroker, ApprovalBrokerApi>()( \"@effect-desktop/core/runtime/approval-broker/ApprovalBroker\", { make: Effect.fail( new ApprovalBrokerInvalidArgumentError({ operation: \"ApprovalBroker.make\", field: \"prompt\", message: \"ApprovalBroker requires an explicit host prompt port\", cause: Option.none() }) ) } ) {}"
     },
     {
       "name": "ApprovalBrokerApi",
@@ -116,7 +116,7 @@
     {
       "name": "AuditEvents",
       "kind": "class",
-      "signature": "export class AuditEvents extends Context.Service<AuditEvents, AuditEventsApi>()(\"AuditEvents\", { make: Effect.succeed({ emit: () => Effect.void, observe: () => Stream.empty } satisfies AuditEventsApi) }) {}"
+      "signature": "export class AuditEvents extends Context.Service<AuditEvents, AuditEventsApi>()( \"@effect-desktop/core/runtime/audit-events/AuditEvents\", { make: Effect.succeed({ emit: () => Effect.void, observe: () => Stream.empty } satisfies AuditEventsApi) } ) {}"
     },
     {
       "name": "AuditEventsApi",
@@ -231,7 +231,7 @@
     {
       "name": "CollectorRegistry",
       "kind": "class",
-      "signature": "export class CollectorRegistry extends Context.Service<CollectorRegistry, CollectorRegistryApi>()( \"CollectorRegistry\" ) {}"
+      "signature": "export class CollectorRegistry extends Context.Service<CollectorRegistry, CollectorRegistryApi>()( \"@effect-desktop/core/runtime/desktop-observability/CollectorRegistry\" ) {}"
     },
     {
       "name": "CollectorRegistryApi",
@@ -251,7 +251,7 @@
     {
       "name": "CommandRegistry",
       "kind": "class",
-      "signature": "export class CommandRegistry extends Context.Service<CommandRegistry, CommandRegistryApi>()( \"CommandRegistry\", { make: Effect.gen(function* () { const resources = yield* ResourceRegistry const permissions = yield* PermissionRegistry return yield* makeCommandRegistry(resources, permissions) }) } ) {}"
+      "signature": "export class CommandRegistry extends Context.Service<CommandRegistry, CommandRegistryApi>()( \"@effect-desktop/core/runtime/commands/CommandRegistry\", { make: Effect.gen(function* () { const resources = yield* ResourceRegistry const permissions = yield* PermissionRegistry return yield* makeCommandRegistry(resources, permissions) }) } ) {}"
     },
     {
       "name": "CommandRegistryApi",
@@ -336,7 +336,7 @@
     {
       "name": "DesktopApp",
       "kind": "class",
-      "signature": "export class DesktopApp extends Context.Service<DesktopApp, DesktopAppApi>()(\"DesktopApp\") {}"
+      "signature": "export class DesktopApp extends Context.Service<DesktopApp, DesktopAppApi>()( \"@effect-desktop/core/runtime/desktop-app/DesktopApp\" ) {}"
     },
     {
       "name": "DesktopAppApi",
@@ -371,7 +371,7 @@
     {
       "name": "DesktopDevtools",
       "kind": "class",
-      "signature": "export class DesktopDevtools extends Context.Service<DesktopDevtools, DesktopDevtoolsApi>()( \"@effect-desktop/core/DesktopDevtools\" ) {}"
+      "signature": "export class DesktopDevtools extends Context.Service<DesktopDevtools, DesktopDevtoolsApi>()( \"@effect-desktop/core/runtime/desktop-devtools/DesktopDevtools\" ) {}"
     },
     {
       "name": "DesktopDevtoolsApi",
@@ -436,7 +436,7 @@
     {
       "name": "DesktopObservability",
       "kind": "class",
-      "signature": "export class DesktopObservability extends Context.Service< DesktopObservability, DesktopObservabilityApi >()(\"DesktopObservability\") {}"
+      "signature": "export class DesktopObservability extends Context.Service< DesktopObservability, DesktopObservabilityApi >()(\"@effect-desktop/core/runtime/desktop-observability/DesktopObservability\") {}"
     },
     {
       "name": "DesktopObservabilityApi",
@@ -504,6 +504,11 @@
       "signature": "const DesktopRpc: Readonly<{ surface: { <const Tag extends string, Group extends RpcGroup.RpcGroup<RpcGroup.Rpcs<Group>>, ServiceId, ServerE, ServerR>(tag: Tag, group: Group, options: DesktopRpcSurfaceDirectOptions<RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR>): DesktopRpcSurface<Tag, Group, RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR>; <const Tag extends string, Group extends RpcGroup.RpcGroup<RpcGroup.Rpcs<Group>>, ServiceId, Service, ServerE, ServerR>(tag: Tag, group: Group, options: DesktopRpcSurfaceMappedOptions<RpcGroup.Rpcs<Group>, ServiceId, Service, ServerE, ServerR>): DesktopRpcSurface<Tag, Group, RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR>; }; supportedGroup: <Rpcs extends Rpc.Any>(group: RpcGroup.RpcGroup<Rpcs>) => RpcGroup.RpcGroup<SupportedRpc<Rpcs>>; }>"
     },
     {
+      "name": "DesktopRpcCapabilityFact",
+      "kind": "interface",
+      "signature": "export interface DesktopRpcCapabilityFact { readonly tag: string readonly capability: RpcCapabilityMetadata readonly support: RpcSupportMetadata }"
+    },
+    {
       "name": "DesktopRpcClient",
       "kind": "type",
       "signature": "export type DesktopRpcClient<Rpcs extends Rpc.Any> = RpcClient.RpcClient< Rpcs, RpcClientError.RpcClientError >"
@@ -521,7 +526,7 @@
     {
       "name": "DesktopRpcSchemaDoc",
       "kind": "interface",
-      "signature": "export interface DesktopRpcSchemaDoc { readonly name: string readonly tag: string readonly kind: \"query\" | \"mutation\" | \"stream\" readonly payload: Schema.Top readonly success: Schema.Top readonly error: Schema.Top readonly stream: Option.Option<{ readonly chunk: Schema.Top readonly error: Schema.Top }> readonly capability: Option.Option<RpcCapabilityMetadata> readonly support: RpcSupportMetadata }"
+      "signature": "export interface DesktopRpcSchemaDoc { readonly name: string readonly tag: string readonly kind: \"query\" | \"mutation\" | \"stream\" readonly callable: boolean readonly payload: Option.Option<Schema.Top> readonly success: Option.Option<Schema.Top> readonly error: Option.Option<Schema.Top> readonly stream: Option.Option<{ readonly chunk: Schema.Top readonly error: Schema.Top }> readonly capability: Option.Option<RpcCapabilityMetadata> readonly support: RpcSupportMetadata }"
     },
     {
       "name": "DesktopRpcsLayer",
@@ -551,12 +556,12 @@
     {
       "name": "DesktopRpcSurfaceOptionsBase",
       "kind": "interface",
-      "signature": "export interface DesktopRpcSurfaceOptionsBase<Rpcs extends Rpc.Any, ServerE, ServerR> { readonly handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, ServerE, ServerR> }"
+      "signature": "export interface DesktopRpcSurfaceOptionsBase<Rpcs extends Rpc.Any, ServerE, ServerR> { readonly handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, ServerE, ServerR> readonly capabilityFacts?: readonly DesktopRpcCapabilityFact[] }"
     },
     {
       "name": "DesktopRuntime",
       "kind": "class",
-      "signature": "export class DesktopRuntime extends Context.Service<DesktopRuntime, DesktopRuntimeApi>()( \"DesktopRuntime\" ) {}"
+      "signature": "export class DesktopRuntime extends Context.Service<DesktopRuntime, DesktopRuntimeApi>()( \"@effect-desktop/core/runtime/desktop-app/DesktopRuntime\" ) {}"
     },
     {
       "name": "DesktopRuntimeApi",
@@ -736,7 +741,7 @@
     {
       "name": "EffectTelemetryCollector",
       "kind": "class",
-      "signature": "export class EffectTelemetryCollector extends Context.Service< EffectTelemetryCollector, EffectTelemetryCollectorApi >()(\"EffectTelemetryCollector\") {}"
+      "signature": "export class EffectTelemetryCollector extends Context.Service< EffectTelemetryCollector, EffectTelemetryCollectorApi >()(\"@effect-desktop/core/runtime/telemetry/EffectTelemetryCollector\") {}"
     },
     {
       "name": "EffectTelemetryCollectorApi",
@@ -766,7 +771,7 @@
     {
       "name": "EventLogInspectorCollector",
       "kind": "class",
-      "signature": "export class EventLogInspectorCollector extends Context.Service< EventLogInspectorCollector, EventLogInspectorCollectorApi >()(\"EventLogInspectorCollector\") {}"
+      "signature": "export class EventLogInspectorCollector extends Context.Service< EventLogInspectorCollector, EventLogInspectorCollectorApi >()(\"@effect-desktop/core/runtime/inspector-events/EventLogInspectorCollector\") {}"
     },
     {
       "name": "EventLogInspectorCollectorApi",
@@ -791,7 +796,7 @@
     {
       "name": "ExecutionInspectorCollector",
       "kind": "class",
-      "signature": "export class ExecutionInspectorCollector extends Context.Service< ExecutionInspectorCollector, ExecutionInspectorCollectorApi >()(\"ExecutionInspectorCollector\") {}"
+      "signature": "export class ExecutionInspectorCollector extends Context.Service< ExecutionInspectorCollector, ExecutionInspectorCollectorApi >()(\"@effect-desktop/core/runtime/inspector-events/ExecutionInspectorCollector\") {}"
     },
     {
       "name": "ExecutionInspectorCollectorApi",
@@ -806,7 +811,7 @@
     {
       "name": "Filesystem",
       "kind": "class",
-      "signature": "export class Filesystem extends Context.Service<Filesystem, FilesystemApi>()(\"Filesystem\") {}"
+      "signature": "export class Filesystem extends Context.Service<Filesystem, FilesystemApi>()( \"@effect-desktop/core/runtime/filesystem\" ) {}"
     },
     {
       "name": "FilesystemApi",
@@ -836,7 +841,7 @@
     {
       "name": "FilesystemInspectorCollector",
       "kind": "class",
-      "signature": "export class FilesystemInspectorCollector extends Context.Service< FilesystemInspectorCollector, FilesystemInspectorCollectorApi >()(\"FilesystemInspectorCollector\") {}"
+      "signature": "export class FilesystemInspectorCollector extends Context.Service< FilesystemInspectorCollector, FilesystemInspectorCollectorApi >()(\"@effect-desktop/core/runtime/inspector-events/FilesystemInspectorCollector\") {}"
     },
     {
       "name": "FilesystemInspectorCollectorApi",
@@ -856,7 +861,7 @@
     {
       "name": "FilesystemLive",
       "kind": "value",
-      "signature": "const FilesystemLive: Layer.Layer<Filesystem, never, ResourceRegistry | ResourceOwner | EffectFileSystem.FileSystem>"
+      "signature": "const FilesystemLive: Layer.Layer<Filesystem, never, ResourceRegistry | ResourceOwner | EffectFileSystem.FileSystem | Path.Path>"
     },
     {
       "name": "FilesystemMkdirInput",
@@ -936,7 +941,7 @@
     {
       "name": "InspectorCollectors",
       "kind": "class",
-      "signature": "export class InspectorCollectors extends Context.Service< InspectorCollectors, InspectorCollectorsApi >()(\"InspectorCollectors\") {}"
+      "signature": "export class InspectorCollectors extends Context.Service< InspectorCollectors, InspectorCollectorsApi >()(\"@effect-desktop/core/runtime/inspector-events/InspectorCollectors\") {}"
     },
     {
       "name": "InspectorCollectorsApi",
@@ -1046,7 +1051,7 @@
     {
       "name": "InspectorSafetyPolicy",
       "kind": "class",
-      "signature": "export class InspectorSafetyPolicy extends Context.Service< InspectorSafetyPolicy, InspectorSafetyPolicyApi >()(\"InspectorSafetyPolicy\", { make: makeInspectorSafetyPolicy() }) {}"
+      "signature": "export class InspectorSafetyPolicy extends Context.Service< InspectorSafetyPolicy, InspectorSafetyPolicyApi >()(\"@effect-desktop/core/runtime/inspector-safety-policy/InspectorSafetyPolicy\", { make: makeInspectorSafetyPolicy() }) {}"
     },
     {
       "name": "InspectorSafetyPolicyApi",
@@ -1091,7 +1096,7 @@
     {
       "name": "InspectorTransport",
       "kind": "class",
-      "signature": "export class InspectorTransport extends Context.Service< InspectorTransport, InspectorTransportApi >()(\"@effect-desktop/core/InspectorTransport\", { make: makeInspectorTransport() }) {}"
+      "signature": "export class InspectorTransport extends Context.Service< InspectorTransport, InspectorTransportApi >()(\"@effect-desktop/core/runtime/inspector-transport/InspectorTransport\", { make: makeInspectorTransport() }) {}"
     },
     {
       "name": "InspectorTransportApi",
@@ -1226,7 +1231,7 @@
     {
       "name": "makeFilesystem",
       "kind": "value",
-      "signature": "const makeFilesystem: (registry: ResourceRegistryApi, owner: ResourceOwnerApi, options?: FilesystemOptions) => Effect.Effect<FilesystemApi, never, EffectFileSystem.FileSystem>"
+      "signature": "const makeFilesystem: (registry: ResourceRegistryApi, owner: ResourceOwnerApi, options?: FilesystemOptions) => Effect.Effect<FilesystemApi, never, EffectFileSystem.FileSystem | Path.Path>"
     },
     {
       "name": "makeFilesystemInspectorCollector",
@@ -1426,7 +1431,7 @@
     {
       "name": "NativeHostInspectorCollector",
       "kind": "class",
-      "signature": "export class NativeHostInspectorCollector extends Context.Service< NativeHostInspectorCollector, NativeHostInspectorCollectorApi >()(\"NativeHostInspectorCollector\") {}"
+      "signature": "export class NativeHostInspectorCollector extends Context.Service< NativeHostInspectorCollector, NativeHostInspectorCollectorApi >()(\"@effect-desktop/core/runtime/inspector-events/NativeHostInspectorCollector\") {}"
     },
     {
       "name": "NativeHostInspectorCollectorApi",
@@ -1456,7 +1461,7 @@
     {
       "name": "NativeParityHostStatus",
       "kind": "type",
-      "signature": "const NativeParityHostStatus: Schema.Literals<readonly [\"routed\", \"missing\"]>"
+      "signature": "const NativeParityHostStatus: Schema.Literals<readonly [\"routed\", \"missing\", \"capability-fact\"]>"
     },
     {
       "name": "NativeParityMatrixError",
@@ -1646,7 +1651,7 @@
     {
       "name": "PermissionRegistry",
       "kind": "class",
-      "signature": "export class PermissionRegistry extends Context.Service< PermissionRegistry, PermissionRegistryApi >()(\"PermissionRegistry\", { make: makePermissionRegistry() }) {}"
+      "signature": "export class PermissionRegistry extends Context.Service< PermissionRegistry, PermissionRegistryApi >()(\"@effect-desktop/core/runtime/permission-registry/PermissionRegistry\", { make: makePermissionRegistry() }) {}"
     },
     {
       "name": "PermissionRegistryApi",
@@ -1681,7 +1686,7 @@
     {
       "name": "PersistenceInspectorCollector",
       "kind": "class",
-      "signature": "export class PersistenceInspectorCollector extends Context.Service< PersistenceInspectorCollector, PersistenceInspectorCollectorApi >()(\"PersistenceInspectorCollector\") {}"
+      "signature": "export class PersistenceInspectorCollector extends Context.Service< PersistenceInspectorCollector, PersistenceInspectorCollectorApi >()(\"@effect-desktop/core/runtime/inspector-events/PersistenceInspectorCollector\") {}"
     },
     {
       "name": "PersistenceInspectorCollectorApi",
@@ -1701,7 +1706,7 @@
     {
       "name": "Process",
       "kind": "class",
-      "signature": "export class Process extends Context.Service<Process, ProcessApi>()(\"Process\") {}"
+      "signature": "export class Process extends Context.Service<Process, ProcessApi>()( \"@effect-desktop/core/runtime/process\" ) {}"
     },
     {
       "name": "ProcessApi",
@@ -1816,7 +1821,7 @@
     {
       "name": "PTY",
       "kind": "class",
-      "signature": "export class PTY extends Context.Service<PTY, PtyApi>()(\"PTY\") {}"
+      "signature": "export class PTY extends Context.Service<PTY, PtyApi>()(\"@effect-desktop/core/runtime/pty\") {}"
     },
     {
       "name": "PtyAdapter",
@@ -1921,7 +1926,7 @@
     {
       "name": "RendererInspectorCollector",
       "kind": "class",
-      "signature": "export class RendererInspectorCollector extends Context.Service< RendererInspectorCollector, RendererInspectorCollectorApi >()(\"RendererInspectorCollector\") {}"
+      "signature": "export class RendererInspectorCollector extends Context.Service< RendererInspectorCollector, RendererInspectorCollectorApi >()(\"@effect-desktop/core/runtime/inspector-events/RendererInspectorCollector\") {}"
     },
     {
       "name": "RendererInspectorCollectorApi",
@@ -1937,6 +1942,11 @@
       "name": "RendererInspectorEvent",
       "kind": "class",
       "signature": "export class RendererInspectorEvent extends Schema.Class<RendererInspectorEvent>( \"RendererInspectorEvent\" )({ kind: Schema.Literals([\"rpc\", \"stream\", \"hook\", \"provider\", \"storage\"]), status: InspectorEventStatus, operation: Schema.String, framework: OptionalString, traceId: OptionalString, resourceId: OptionalString, ownerScope: OptionalString, errorTag: OptionalString, message: OptionalString, timestamp: NonNegativeNumber }) {}"
+    },
+    {
+      "name": "RendererRpcError",
+      "kind": "class",
+      "signature": "export class RendererRpcError extends Data.TaggedError(\"RendererRpcError\")<{ readonly framework: DesktopFramework readonly tag: string readonly cause: unknown }> {}"
     },
     {
       "name": "resolveApprovalDeferred",
@@ -1991,7 +2001,7 @@
     {
       "name": "ResourceOwner",
       "kind": "class",
-      "signature": "export class ResourceOwner extends Context.Service<ResourceOwner, ResourceOwnerApi>()( \"@effect-desktop/core/ResourceOwner\" ) { static app(appId: string): Layer.Layer<ResourceOwner, ResourceOwnerInvalidArgumentError> { return Layer.effect(ResourceOwner, makeAppResourceOwner(appId)) } static window(input: { readonly registrationId: string readonly hostWindowId: string }): Layer.Layer<ResourceOwner, ResourceOwnerInvalidArgumentError> { return Layer.unwrap( Effect.gen(function* () { const registrationId = yield* decodeOwnerText( input.registrationId, \"registrationId\", \"ResourceOwner.window\" ) const hostWindowId = yield* decodeOwnerText( input.hostWindowId, \"hostWindowId\", \"ResourceOwner.window\" ) const scopeId = `window:${hostWindowId}` return resourceOwnerLayer(\"ResourceOwner.window\", { kind: \"window\", scopeId, actor: new PermissionActor({ kind: \"window\", id: scopeId }), attributes: { registrationId, hostWindowId } }) }) ) } static job(jobId: string): Layer.Layer<ResourceOwner, ResourceOwnerInvalidArgumentError> { return Layer.effect(ResourceOwner, makeJobResourceOwner(jobId)) } static test(scopeId: string): Layer.Layer<ResourceOwner, ResourceOwnerInvalidArgumentError> { return Layer.effect(ResourceOwner, makeTestResourceOwner(scopeId)) } }"
+      "signature": "export class ResourceOwner extends Context.Service<ResourceOwner, ResourceOwnerApi>()( \"@effect-desktop/core/runtime/resource-owner/ResourceOwner\" ) { static app(appId: string): Layer.Layer<ResourceOwner, ResourceOwnerInvalidArgumentError> { return Layer.effect(ResourceOwner, makeAppResourceOwner(appId)) } static window(input: { readonly registrationId: string readonly hostWindowId: string }): Layer.Layer<ResourceOwner, ResourceOwnerInvalidArgumentError> { return Layer.unwrap( Effect.gen(function* () { const registrationId = yield* decodeOwnerText( input.registrationId, \"registrationId\", \"ResourceOwner.window\" ) const hostWindowId = yield* decodeOwnerText( input.hostWindowId, \"hostWindowId\", \"ResourceOwner.window\" ) const scopeId = `window:${hostWindowId}` return resourceOwnerLayer(\"ResourceOwner.window\", { kind: \"window\", scopeId, actor: new PermissionActor({ kind: \"window\", id: scopeId }), attributes: { registrationId, hostWindowId } }) }) ) } static job(jobId: string): Layer.Layer<ResourceOwner, ResourceOwnerInvalidArgumentError> { return Layer.effect(ResourceOwner, makeJobResourceOwner(jobId)) } static test(scopeId: string): Layer.Layer<ResourceOwner, ResourceOwnerInvalidArgumentError> { return Layer.effect(ResourceOwner, makeTestResourceOwner(scopeId)) } }"
     },
     {
       "name": "ResourceOwnerApi",
@@ -2011,7 +2021,7 @@
     {
       "name": "ResourceRegistry",
       "kind": "class",
-      "signature": "export class ResourceRegistry extends Context.Service<ResourceRegistry, ResourceRegistryApi>()( \"ResourceRegistry\" ) {}"
+      "signature": "export class ResourceRegistry extends Context.Service<ResourceRegistry, ResourceRegistryApi>()( \"@effect-desktop/core/runtime/resources/ResourceRegistry\" ) {}"
     },
     {
       "name": "ResourceRegistryApi",
@@ -2116,7 +2126,7 @@
     {
       "name": "Secrets",
       "kind": "class",
-      "signature": "export class Secrets extends Context.Service<Secrets, SecretsApi>()(\"Secrets\") {}"
+      "signature": "export class Secrets extends Context.Service<Secrets, SecretsApi>()( \"@effect-desktop/core/runtime/secrets\" ) {}"
     },
     {
       "name": "SecretsApi",
@@ -2191,7 +2201,7 @@
     {
       "name": "SecretsSafeStorage",
       "kind": "class",
-      "signature": "export class SecretsSafeStorage extends Context.Service< SecretsSafeStorage, SecretsSafeStorageApi >()(\"SecretsSafeStorage\") {}"
+      "signature": "export class SecretsSafeStorage extends Context.Service< SecretsSafeStorage, SecretsSafeStorageApi >()(\"@effect-desktop/core/runtime/secrets/SecretsSafeStorage\") {}"
     },
     {
       "name": "SecretsSafeStorageApi",
@@ -2226,7 +2236,7 @@
     {
       "name": "Settings",
       "kind": "class",
-      "signature": "export class Settings extends Context.Service<Settings, SettingsApi>()(\"Settings\") { static layer( options: SettingsOptions ): Layer.Layer< Settings, SettingsError | SqlitePolicyError, ResourceOwner | PermissionRegistry | ResourceRegistry > { return Layer.unwrap( Effect.gen(function* () { const owner = yield* ResourceOwner return settingsLayer(options, owner.scopeId) }) ) } static window( options: SettingsOptions ): Layer.Layer< Settings, SettingsError | SqlitePolicyError, ResourceOwner | PermissionRegistry | ResourceRegistry > { return Settings.layer(options) } static memory(options: SettingsMemoryOptions = {}): Layer.Layer<Settings, SettingsError, never> { return settingsMemoryLayer(options) } }"
+      "signature": "export class Settings extends Context.Service<Settings, SettingsApi>()( \"@effect-desktop/core/runtime/settings\" ) { static layer( options: SettingsOptions ): Layer.Layer< Settings, SettingsError | SqlitePolicyError, ResourceOwner | PermissionRegistry | ResourceRegistry | FileSystem | Path > { return Layer.unwrap( Effect.gen(function* () { const owner = yield* ResourceOwner return settingsLayer(options, owner.scopeId) }) ) } static window( options: SettingsOptions ): Layer.Layer< Settings, SettingsError | SqlitePolicyError, ResourceOwner | PermissionRegistry | ResourceRegistry | FileSystem | Path > { return Settings.layer(options) } static memory(options: SettingsMemoryOptions = {}): Layer.Layer<Settings, SettingsError, never> { return settingsMemoryLayer(options) } }"
     },
     {
       "name": "SettingsApi",
@@ -2311,7 +2321,7 @@
     {
       "name": "Sidecar",
       "kind": "class",
-      "signature": "export class Sidecar extends Context.Service<Sidecar, SidecarApi>()(\"Sidecar\") {}"
+      "signature": "export class Sidecar extends Context.Service<Sidecar, SidecarApi>()( \"@effect-desktop/core/runtime/sidecar\" ) {}"
     },
     {
       "name": "SidecarApi",
@@ -2376,7 +2386,7 @@
     {
       "name": "SqlClientLive",
       "kind": "value",
-      "signature": "const SqlClientLive: (config: SqlClientLayerConfig) => Layer.Layer<SqlClient | UpstreamSqliteClient.SqliteClient, SqlitePolicyError, ResourceOwner | ResourceRegistry | PermissionRegistry>"
+      "signature": "const SqlClientLive: (config: SqlClientLayerConfig) => Layer.Layer<SqlClient | UpstreamSqliteClient.SqliteClient, SqlitePolicyError, ResourceOwner | ResourceRegistry | PermissionRegistry | FileSystem | Path>"
     },
     {
       "name": "SqlError",
@@ -2456,7 +2466,7 @@
     {
       "name": "Telemetry",
       "kind": "class",
-      "signature": "export class Telemetry extends Context.Service<Telemetry, TelemetryApi>()(\"Telemetry\", { make: makeTelemetry() }) {}"
+      "signature": "export class Telemetry extends Context.Service<Telemetry, TelemetryApi>()( \"@effect-desktop/core/runtime/telemetry\", { make: makeTelemetry() } ) {}"
     },
     {
       "name": "TelemetryApi",
@@ -2546,7 +2556,7 @@
     {
       "name": "WindowContext",
       "kind": "class",
-      "signature": "export class WindowContext extends Context.Service<WindowContext, WindowContextApi>()( \"@effect-desktop/core/WindowContext\" ) {}"
+      "signature": "export class WindowContext extends Context.Service<WindowContext, WindowContextApi>()( \"@effect-desktop/core/runtime/window-context/WindowContext\" ) {}"
     },
     {
       "name": "WindowContextApi",
@@ -2581,7 +2591,7 @@
     {
       "name": "Worker",
       "kind": "class",
-      "signature": "export class Worker extends Context.Service<Worker, WorkerApi>()(\"Worker\") {}"
+      "signature": "export class Worker extends Context.Service<Worker, WorkerApi>()( \"@effect-desktop/core/runtime/worker\" ) {}"
     },
     {
       "name": "WorkerAdapter",
@@ -2706,7 +2716,7 @@
     {
       "name": "WorkflowInspectorCollector",
       "kind": "class",
-      "signature": "export class WorkflowInspectorCollector extends Context.Service< WorkflowInspectorCollector, WorkflowInspectorCollectorApi >()(\"WorkflowInspectorCollector\") {}"
+      "signature": "export class WorkflowInspectorCollector extends Context.Service< WorkflowInspectorCollector, WorkflowInspectorCollectorApi >()(\"@effect-desktop/core/runtime/inspector-events/WorkflowInspectorCollector\") {}"
     },
     {
       "name": "WorkflowInspectorCollectorApi",

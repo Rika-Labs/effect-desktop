@@ -2,9 +2,21 @@ import { Schema } from "effect"
 import { PrintableNonEmptyString } from "./strings.js"
 
 const UpdaterVersion = PrintableNonEmptyString
+const UpdaterSignedManifestJson = PrintableNonEmptyString
+const UpdaterPublicKey = PrintableNonEmptyString
+
+export class UpdaterTrustAnchor extends Schema.Class<UpdaterTrustAnchor>("UpdaterTrustAnchor")({
+  keyVersion: Schema.Int.check(
+    Schema.isGreaterThanOrEqualTo(0),
+    Schema.isLessThanOrEqualTo(4_294_967_295)
+  ),
+  publicKey: UpdaterPublicKey
+}) {}
 
 export class UpdaterCheckInput extends Schema.Class<UpdaterCheckInput>("UpdaterCheckInput")({
-  currentVersion: Schema.optionalKey(UpdaterVersion)
+  currentVersion: Schema.optionalKey(UpdaterVersion),
+  manifestJson: Schema.optionalKey(UpdaterSignedManifestJson),
+  trustAnchors: Schema.optionalKey(Schema.Array(UpdaterTrustAnchor).check(Schema.isNonEmpty()))
 }) {}
 
 export class UpdaterDownloadInput extends Schema.Class<UpdaterDownloadInput>(

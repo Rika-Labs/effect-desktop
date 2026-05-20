@@ -38,14 +38,21 @@ export interface DesktopRpcSchemaDoc {
   readonly name: string
   readonly tag: string
   readonly kind: "query" | "mutation" | "stream"
-  readonly payload: Schema.Top
-  readonly success: Schema.Top
-  readonly error: Schema.Top
+  readonly callable: boolean
+  readonly payload: Option.Option<Schema.Top>
+  readonly success: Option.Option<Schema.Top>
+  readonly error: Option.Option<Schema.Top>
   readonly stream: Option.Option<{
     readonly chunk: Schema.Top
     readonly error: Schema.Top
   }>
   readonly capability: Option.Option<RpcCapabilityMetadata>
+  readonly support: RpcSupportMetadata
+}
+
+export interface DesktopRpcCapabilityFact {
+  readonly tag: string
+  readonly capability: RpcCapabilityMetadata
   readonly support: RpcSupportMetadata
 }
 
@@ -63,6 +70,7 @@ export class DesktopRpcSurfaceError extends Data.TaggedError("DesktopRpcSurfaceE
 
 export interface DesktopRpcSurfaceOptionsBase<Rpcs extends Rpc.Any, ServerE, ServerR> {
   readonly handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, ServerE, ServerR>
+  readonly capabilityFacts?: readonly DesktopRpcCapabilityFact[]
 }
 
 export interface DesktopRpcSurfaceDirectOptions<
@@ -158,6 +166,8 @@ export function surface<
   const service = options.service as Context.Key<ServiceId, DesktopRpcClient<Rpcs> | Service>
   const toService = (client: DesktopRpcClient<Rpcs>): DesktopRpcClient<Rpcs> | Service =>
     "client" in options ? options.client(client) : client
+  const facts = options.capabilityFacts ?? []
+  assertCapabilityFacts(tag, group, facts)
 
   return Object.freeze({
     _tag: "DesktopRpcSurface" as const,
@@ -171,7 +181,7 @@ export function surface<
         Effect.map((client) => toService(client as DesktopRpcClient<Rpcs>))
       )
     ).pipe(Layer.provide(options.handlers)),
-    schemaDocs: schemaDocs(group),
+    schemaDocs: schemaDocs(group, facts),
     contractLaws: contractLaws(tag, group)
   })
 }
@@ -189,24 +199,64 @@ export const DesktopRpc = Object.freeze({
 const isSupportedRpc = <R extends Rpc.Any>(rpc: R): rpc is SupportedRpc<R> =>
   rpcSupport(rpc).status !== "unsupported"
 
-const schemaDocs = (group: RpcGroupRequests): readonly DesktopRpcSchemaDoc[] =>
-  Object.freeze(
-    Array.from(group.requests.values()).map((rpc) => {
-      const withSchemas = rpc as Rpc.AnyWithProps
-      const stream = streamSchemasFromRpcSuccess(withSchemas.successSchema)
-      return Object.freeze({
-        name: rpcEndpointName(rpc._tag),
-        tag: rpc._tag,
-        kind: Option.isSome(stream) ? "stream" : rpcEndpointKind(rpc),
-        payload: withSchemas.payloadSchema,
-        success: Option.isSome(stream) ? stream.value.success : withSchemas.successSchema,
-        error: Option.isSome(stream) ? stream.value.error : withSchemas.errorSchema,
-        stream: Option.map(stream, ({ success, error }) => ({ chunk: success, error })),
-        capability: rpcCapability(rpc),
-        support: rpcSupport(rpc)
-      })
-    })
-  )
+const assertCapabilityFacts = (
+  tag: string,
+  group: RpcGroupRequests,
+  facts: readonly DesktopRpcCapabilityFact[]
+): void => {
+  const seen = new Set<string>(group.requests.keys())
+  for (const fact of facts) {
+    if (!fact.tag.startsWith(`${tag}.`)) {
+      throw new TypeError(`Capability fact tag "${fact.tag}" must start with "${tag}.".`)
+    }
+    if (seen.has(fact.tag)) {
+      throw new TypeError(
+        `Capability fact tag "${fact.tag}" collides with a callable RPC on surface "${tag}".`
+      )
+    }
+    seen.add(fact.tag)
+  }
+}
+
+const callableSchemaDocs = (group: RpcGroupRequests): readonly DesktopRpcSchemaDoc[] =>
+  Array.from(group.requests.values()).map((rpc) => {
+    const withSchemas = rpc as Rpc.AnyWithProps
+    const stream = streamSchemasFromRpcSuccess(withSchemas.successSchema)
+    return Object.freeze({
+      name: rpcEndpointName(rpc._tag),
+      tag: rpc._tag,
+      kind: Option.isSome(stream) ? "stream" : rpcEndpointKind(rpc),
+      callable: true,
+      payload: Option.some(withSchemas.payloadSchema),
+      success: Option.some(
+        Option.isSome(stream) ? stream.value.success : withSchemas.successSchema
+      ),
+      error: Option.some(Option.isSome(stream) ? stream.value.error : withSchemas.errorSchema),
+      stream: Option.map(stream, ({ success, error }) => ({ chunk: success, error })),
+      capability: rpcCapability(rpc),
+      support: rpcSupport(rpc)
+    } satisfies DesktopRpcSchemaDoc)
+  })
+
+const factSchemaDoc = (fact: DesktopRpcCapabilityFact): DesktopRpcSchemaDoc =>
+  Object.freeze({
+    name: rpcEndpointName(fact.tag),
+    tag: fact.tag,
+    kind: "query",
+    callable: false,
+    payload: Option.none(),
+    success: Option.none(),
+    error: Option.none(),
+    stream: Option.none(),
+    capability: Option.some(fact.capability),
+    support: fact.support
+  } satisfies DesktopRpcSchemaDoc)
+
+const schemaDocs = (
+  group: RpcGroupRequests,
+  facts: readonly DesktopRpcCapabilityFact[]
+): readonly DesktopRpcSchemaDoc[] =>
+  Object.freeze([...callableSchemaDocs(group), ...facts.map(factSchemaDoc)])
 
 const contractLaws = (tag: string, group: RpcGroupRequests): readonly DesktopRpcContractLaw[] =>
   Object.freeze([

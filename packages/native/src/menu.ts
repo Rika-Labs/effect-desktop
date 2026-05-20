@@ -49,6 +49,7 @@ import type { WindowHandle } from "./window.js"
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
 const HostAdapterUnimplementedReason = "host-adapter-unimplemented"
+const MacosMenuClearOnlyReason = "macos-menu-clear-only"
 const MenuHostUnsupportedSupport = NativeSurface.support.unsupported(
   HostAdapterUnimplementedReason,
   {
@@ -59,6 +60,13 @@ const MenuHostUnsupportedSupport = NativeSurface.support.unsupported(
     ]
   }
 )
+const MenuClearSupport = NativeSurface.support.partial(MacosMenuClearOnlyReason, {
+  platforms: [
+    { platform: "macos", status: "supported" },
+    { platform: "windows", status: "unsupported", reason: HostAdapterUnimplementedReason },
+    { platform: "linux", status: "unsupported", reason: HostAdapterUnimplementedReason }
+  ]
+})
 export type MenuError = HostProtocolError
 export type MenuCommandBindingError = MenuError | CommandRegistryError
 
@@ -82,15 +90,18 @@ export const MenuClear = menuRpc(
   Schema.Void,
   P.nativeInvoke({ primitive: "Menu", methods: ["clear"] })
 )
-export const MenuBindCommand = menuRpc(
-  "bindCommand",
-  MenuBindCommandInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Menu", methods: ["bindCommand"] })
-)
 export const MenuCapability = menuRpc("capability", MenuCapabilityInput, MenuCapabilityResult, {
   kind: "none"
 })
+
+export const MenuCapabilityFacts = Object.freeze([
+  NativeSurface.capabilityFact("Menu", "bindCommand", {
+    authority: NativeSurface.authority.custom(
+      P.nativeInvoke({ primitive: "Menu", methods: ["bindCommand"] })
+    ),
+    support: MenuHostUnsupportedSupport
+  })
+])
 
 export const MenuRpcEvents = Object.freeze({
   Activated: { payload: MenuActivatedEvent }
@@ -102,7 +113,6 @@ const MenuRpcGroup = RpcGroup.make(
   MenuSetApplicationMenu,
   MenuSetWindowMenu,
   MenuClear,
-  MenuBindCommand,
   MenuCapability
 )
 
@@ -112,15 +122,13 @@ export const MenuMethodNames = Object.freeze([
   "setApplicationMenu",
   "setWindowMenu",
   "clear",
-  "bindCommand",
   "capability"
 ] as const)
 
 const MenuCapabilityMethods = Object.freeze([
   "setApplicationMenu",
   "setWindowMenu",
-  "clear",
-  "bindCommand"
+  "clear"
 ] as const satisfies readonly (typeof MenuMethodNames)[number][])
 
 export interface MenuClientApi {
@@ -200,7 +208,6 @@ export const MenuHandlersLive = MenuRpcGroup.toLayer({
       const menu = yield* Menu
       yield* menu.clear(input)
     }),
-  "Menu.bindCommand": () => Effect.fail(unsupportedError("Menu.bindCommand")),
   "Menu.capability": (input) =>
     Effect.gen(function* () {
       const menu = yield* Menu
@@ -214,6 +221,7 @@ export const MenuSurface = NativeSurface.make("Menu", MenuRpcGroup, {
   service: MenuClient,
   capabilities: MenuCapabilityMethods,
   handlers: MenuHandlersLive,
+  capabilityFacts: MenuCapabilityFacts,
   client: (client) => menuClientFromRpcClient(client, undefined),
   bridgeClient: (client, exchange) => menuClientFromRpcClient(client, exchange)
 })
@@ -330,9 +338,7 @@ const menuClientFromRpcClient = (
       ).pipe(Effect.flatMap((decoded) => runMenuRpc(client["Menu.clear"](decoded), "Menu.clear"))),
     bindCommand: (itemId, commandId) =>
       decodeMenuBindCommandInput({ itemId, commandId }).pipe(
-        Effect.flatMap((decoded) =>
-          runMenuRpc(client["Menu.bindCommand"](decoded), "Menu.bindCommand")
-        )
+        Effect.flatMap(() => Effect.fail(unsupportedError("Menu.bindCommand")))
       ),
     capability: (input) =>
       decodeMenuCapabilityInput(input).pipe(
@@ -429,9 +435,11 @@ function menuRpc<
   Success extends Schema.Codec<unknown, unknown, never, never>
 >(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
   const support =
-    method === "setApplicationMenu" || method === "setWindowMenu"
+    method === "setApplicationMenu" || method === "setWindowMenu" || method === "capability"
       ? NativeSurface.support.supported
-      : MenuHostUnsupportedSupport
+      : method === "clear"
+        ? MenuClearSupport
+        : MenuHostUnsupportedSupport
   return NativeSurface.rpc("Menu", method, {
     payload,
     success,

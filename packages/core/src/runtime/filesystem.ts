@@ -1,4 +1,3 @@
-import { dirname, join, resolve } from "node:path"
 import { randomUUID } from "node:crypto"
 
 import {
@@ -19,6 +18,7 @@ import {
   FileSystem as EffectFileSystem,
   Layer,
   Option,
+  Path,
   Queue,
   Schema,
   Stream
@@ -151,9 +151,10 @@ export const makeFilesystem = (
   registry: ResourceRegistryApi,
   owner: ResourceOwnerApi,
   options: FilesystemOptions = {}
-): Effect.Effect<FilesystemApi, never, EffectFileSystem.FileSystem> =>
+): Effect.Effect<FilesystemApi, never, EffectFileSystem.FileSystem | Path.Path> =>
   Effect.gen(function* () {
     const fileSystem = yield* EffectFileSystem.FileSystem
+    const pathService = yield* Path.Path
     const permissions = options.permissions ?? EMPTY_FILESYSTEM_PERMISSIONS
     const inspector = options.inspector ?? disabledFilesystemInspectorCollector
     const clock = yield* Clock.Clock
@@ -165,6 +166,7 @@ export const makeFilesystem = (
           const input = yield* decodePathInput({ path }, "Filesystem.read")
           const authorizedPath = yield* authorizeFilesystemPath(
             fileSystem,
+            pathService,
             permissions,
             input.path,
             "filesystem.read",
@@ -191,6 +193,7 @@ export const makeFilesystem = (
           )
           return yield* authorizeFilesystemPath(
             fileSystem,
+            pathService,
             permissions,
             input.path,
             input.capability ?? "filesystem.read",
@@ -207,6 +210,7 @@ export const makeFilesystem = (
           const input = yield* decodeWriteInput({ path, bytes }, "Filesystem.write")
           const authorizedPath = yield* authorizeFilesystemPath(
             fileSystem,
+            pathService,
             permissions,
             input.path,
             "filesystem.write",
@@ -229,6 +233,7 @@ export const makeFilesystem = (
           const input = yield* decodeWriteInput({ path, bytes }, "Filesystem.writeAtomic")
           const authorizedPath = yield* authorizeFilesystemPath(
             fileSystem,
+            pathService,
             permissions,
             input.path,
             "filesystem.write",
@@ -245,6 +250,7 @@ export const makeFilesystem = (
           const input = yield* decodePathInput({ path }, "Filesystem.stat")
           const authorizedPath = yield* authorizeFilesystemPath(
             fileSystem,
+            pathService,
             permissions,
             input.path,
             "filesystem.read",
@@ -265,6 +271,7 @@ export const makeFilesystem = (
           )
           const authorizedPath = yield* authorizeFilesystemPath(
             fileSystem,
+            pathService,
             permissions,
             input.path,
             "filesystem.write",
@@ -292,6 +299,7 @@ export const makeFilesystem = (
             input.recursive === true ? "filesystem.delete.recursive" : "filesystem.delete"
           const authorizedPath = yield* authorizeFilesystemPath(
             fileSystem,
+            pathService,
             permissions,
             input.path,
             capability,
@@ -321,6 +329,7 @@ export const makeFilesystem = (
             )
             const authorizedPath = yield* authorizeFilesystemPath(
               fileSystem,
+              pathService,
               permissions,
               input.path,
               "filesystem.read",
@@ -423,12 +432,14 @@ export const makeFilesystem = (
     })
   })
 
-export class Filesystem extends Context.Service<Filesystem, FilesystemApi>()("Filesystem") {}
+export class Filesystem extends Context.Service<Filesystem, FilesystemApi>()(
+  "@effect-desktop/core/runtime/filesystem"
+) {}
 
 export const FilesystemLive: Layer.Layer<
   Filesystem,
   never,
-  ResourceOwner | ResourceRegistry | EffectFileSystem.FileSystem
+  ResourceOwner | ResourceRegistry | EffectFileSystem.FileSystem | Path.Path
 > = Layer.effect(Filesystem)(
   Effect.gen(function* () {
     const owner = yield* ResourceOwner
@@ -513,15 +524,12 @@ const writeAtomicFile = (
 const cleanupAtomicTemp = (
   fileSystem: EffectFileSystem.FileSystem,
   tempPath: string
-): Effect.Effect<void, unknown, never> =>
-  fileSystem.remove(tempPath, { force: true }).pipe(
-    Effect.catch((error) => {
-      if (isNotFoundPlatformError(error)) {
-        return Effect.void
-      }
-      return Effect.fail(error)
-    })
-  )
+): Effect.Effect<void, PlatformError, never> =>
+  fileSystem
+    .remove(tempPath, { force: true })
+    .pipe(
+      Effect.catch((error) => (isNotFoundPlatformError(error) ? Effect.void : Effect.fail(error)))
+    )
 
 const makeAtomicTempPath = (path: string): string => `${path}.tmp.${randomUUID()}`
 
@@ -576,9 +584,7 @@ const removeFilesystemPath = (
                 )
             : Effect.fail(mapFilesystemError(error, path, "Filesystem.remove", capability))
         ),
-        Effect.catch(() =>
-          Effect.fail(mapFilesystemError(error, path, "Filesystem.remove", capability))
-        )
+        Effect.mapError(() => mapFilesystemError(error, path, "Filesystem.remove", capability))
       )
     })
   )
@@ -653,6 +659,7 @@ type CanonicalizationMode = "existing" | "leaf-may-be-missing" | "directory-entr
 
 const authorizeFilesystemPath = (
   fileSystem: EffectFileSystem.FileSystem,
+  pathService: Path.Path,
   permissions: FilesystemPermissionPolicy,
   path: string,
   capability: FilesystemCapability,
@@ -660,7 +667,7 @@ const authorizeFilesystemPath = (
   mode: CanonicalizationMode
 ): Effect.Effect<string, FilesystemError, never> =>
   Effect.gen(function* () {
-    const canonicalPath = yield* canonicalizePath(fileSystem, path, operation, mode)
+    const canonicalPath = yield* canonicalizePath(fileSystem, pathService, path, operation, mode)
     const roots = yield* canonicalizePermissionRoots(
       fileSystem,
       permissionRoots(permissions, capability),
@@ -675,6 +682,7 @@ const authorizeFilesystemPath = (
     if (!allowedByRoot) {
       const requestedPathWithinRoots = yield* requestedPathWithinPermissionRoots(
         fileSystem,
+        pathService,
         path,
         roots
       )
@@ -709,18 +717,18 @@ const denyEscapingHardLink = (
     }
 
     const stats = yield* fileSystem.stat(canonicalPath).pipe(
-      Effect.catch((error) => {
-        if (isNotFoundPlatformError(error)) {
-          return Effect.succeed(undefined)
-        }
-        return Effect.fail(mapFilesystemError(error, canonicalPath, operation))
-      })
+      Effect.map(Option.some),
+      Effect.catch((error) =>
+        isNotFoundPlatformError(error)
+          ? Effect.succeed(Option.none<EffectFileSystem.File.Info>())
+          : Effect.fail(mapFilesystemError(error, canonicalPath, operation))
+      )
     )
 
     if (
-      stats !== undefined &&
-      stats.type === "File" &&
-      Option.getOrElse(stats.nlink, () => 1) > 1
+      Option.isSome(stats) &&
+      stats.value.type === "File" &&
+      Option.getOrElse(stats.value.nlink, () => 1) > 1
     ) {
       return yield* Effect.fail(
         makeSymlinkEscapesRootError(requestedPath, canonicalPath, capabilityRoots, operation)
@@ -730,18 +738,19 @@ const denyEscapingHardLink = (
 
 const canonicalizePath = (
   fileSystem: EffectFileSystem.FileSystem,
+  pathService: Path.Path,
   path: string,
   operation: string,
   mode: CanonicalizationMode
 ): Effect.Effect<string, FilesystemError, never> =>
   mode === "directory-entry"
-    ? canonicalizeDirectoryEntry(fileSystem, path, operation)
+    ? canonicalizeDirectoryEntry(fileSystem, pathService, path, operation)
     : mode === "stat"
-      ? canonicalizeStatPath(fileSystem, path, operation)
+      ? canonicalizeStatPath(fileSystem, pathService, path, operation)
       : fileSystem.realPath(path).pipe(
           Effect.catch((error) => {
             if (mode === "leaf-may-be-missing" && isNotFoundPlatformError(error)) {
-              return canonicalizePossiblyMissingPath(fileSystem, path, operation)
+              return canonicalizePossiblyMissingPath(fileSystem, pathService, path, operation)
             }
             return Effect.fail(mapFilesystemError(error, path, operation))
           })
@@ -749,38 +758,41 @@ const canonicalizePath = (
 
 const canonicalizeStatPath = (
   fileSystem: EffectFileSystem.FileSystem,
+  pathService: Path.Path,
   path: string,
   operation: string
 ): Effect.Effect<string, FilesystemError, never> =>
-  fileSystem.realPath(dirname(path)).pipe(
-    Effect.map((parent) => join(parent, pathSegment(path))),
+  fileSystem.realPath(pathService.dirname(path)).pipe(
+    Effect.map((parent) => pathService.join(parent, pathSegment(path))),
     Effect.mapError((error) => mapFilesystemError(error, path, operation))
   )
 
 const canonicalizeDirectoryEntry = (
   fileSystem: EffectFileSystem.FileSystem,
+  pathService: Path.Path,
   path: string,
   operation: string
 ): Effect.Effect<string, FilesystemError, never> =>
-  fileSystem.realPath(dirname(path)).pipe(
-    Effect.map((parent) => join(parent, pathSegment(path))),
+  fileSystem.realPath(pathService.dirname(path)).pipe(
+    Effect.map((parent) => pathService.join(parent, pathSegment(path))),
     Effect.mapError((error) => mapFilesystemError(error, path, operation))
   )
 
 const canonicalizePossiblyMissingPath = (
   fileSystem: EffectFileSystem.FileSystem,
+  pathService: Path.Path,
   path: string,
   operation: string
 ): Effect.Effect<string, FilesystemError, never> =>
   fileSystem.realPath(path).pipe(
     Effect.catch((error) => {
       if (isNotFoundPlatformError(error)) {
-        const parent = dirname(path)
+        const parent = pathService.dirname(path)
         if (parent === path) {
           return Effect.fail(mapFilesystemError(error, path, operation))
         }
-        return canonicalizePossiblyMissingPath(fileSystem, parent, operation).pipe(
-          Effect.map((canonicalParent) => join(canonicalParent, pathSegment(path)))
+        return canonicalizePossiblyMissingPath(fileSystem, pathService, parent, operation).pipe(
+          Effect.map((canonicalParent) => pathService.join(canonicalParent, pathSegment(path)))
         )
       }
       return Effect.fail(mapFilesystemError(error, path, operation))
@@ -789,13 +801,20 @@ const canonicalizePossiblyMissingPath = (
 
 const requestedPathWithinPermissionRoots = (
   fileSystem: EffectFileSystem.FileSystem,
+  pathService: Path.Path,
   path: string,
   roots: readonly string[]
 ): Effect.Effect<boolean, never, never> =>
-  requestedAncestorWithinPermissionRoots(fileSystem, dirname(resolve(path)), roots)
+  requestedAncestorWithinPermissionRoots(
+    fileSystem,
+    pathService,
+    pathService.dirname(pathService.resolve(path)),
+    roots
+  )
 
 const requestedAncestorWithinPermissionRoots = (
   fileSystem: EffectFileSystem.FileSystem,
+  pathService: Path.Path,
   path: string,
   roots: readonly string[]
 ): Effect.Effect<boolean, never, never> =>
@@ -811,10 +830,10 @@ const requestedAncestorWithinPermissionRoots = (
       if (withinRoots) {
         return Effect.succeed(true)
       }
-      const parent = dirname(path)
+      const parent = pathService.dirname(path)
       return parent === path
         ? Effect.succeed(false)
-        : requestedAncestorWithinPermissionRoots(fileSystem, parent, roots)
+        : requestedAncestorWithinPermissionRoots(fileSystem, pathService, parent, roots)
     })
   )
 
@@ -888,8 +907,8 @@ const makeWatchEvent = (
   fileSystem: EffectFileSystem.FileSystem,
   directory: string,
   event: EffectFileSystem.WatchEvent
-): Effect.Effect<FilesystemEvent, FilesystemError, never> => {
-  return Effect.gen(function* () {
+): Effect.Effect<FilesystemEvent, FilesystemError, never> =>
+  Effect.gen(function* () {
     const path = watchEventPath(directory, event.path)
     const filename =
       path === directory ? undefined : yield* decodeWatchEventFilename(pathSegment(path))
@@ -900,7 +919,6 @@ const makeWatchEvent = (
       ...(filename === undefined ? {} : { filename })
     })
   })
-}
 
 const decodeWatchEventFilename = (
   filename: string

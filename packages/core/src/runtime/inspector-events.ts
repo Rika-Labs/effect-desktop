@@ -197,37 +197,37 @@ export interface RendererInspectorCollectorApi {
 export class ExecutionInspectorCollector extends Context.Service<
   ExecutionInspectorCollector,
   ExecutionInspectorCollectorApi
->()("ExecutionInspectorCollector") {}
+>()("@effect-desktop/core/runtime/inspector-events/ExecutionInspectorCollector") {}
 
 export class FilesystemInspectorCollector extends Context.Service<
   FilesystemInspectorCollector,
   FilesystemInspectorCollectorApi
->()("FilesystemInspectorCollector") {}
+>()("@effect-desktop/core/runtime/inspector-events/FilesystemInspectorCollector") {}
 
 export class NativeHostInspectorCollector extends Context.Service<
   NativeHostInspectorCollector,
   NativeHostInspectorCollectorApi
->()("NativeHostInspectorCollector") {}
+>()("@effect-desktop/core/runtime/inspector-events/NativeHostInspectorCollector") {}
 
 export class PersistenceInspectorCollector extends Context.Service<
   PersistenceInspectorCollector,
   PersistenceInspectorCollectorApi
->()("PersistenceInspectorCollector") {}
+>()("@effect-desktop/core/runtime/inspector-events/PersistenceInspectorCollector") {}
 
 export class WorkflowInspectorCollector extends Context.Service<
   WorkflowInspectorCollector,
   WorkflowInspectorCollectorApi
->()("WorkflowInspectorCollector") {}
+>()("@effect-desktop/core/runtime/inspector-events/WorkflowInspectorCollector") {}
 
 export class EventLogInspectorCollector extends Context.Service<
   EventLogInspectorCollector,
   EventLogInspectorCollectorApi
->()("EventLogInspectorCollector") {}
+>()("@effect-desktop/core/runtime/inspector-events/EventLogInspectorCollector") {}
 
 export class RendererInspectorCollector extends Context.Service<
   RendererInspectorCollector,
   RendererInspectorCollectorApi
->()("RendererInspectorCollector") {}
+>()("@effect-desktop/core/runtime/inspector-events/RendererInspectorCollector") {}
 
 export interface InspectorCollectorsApi {
   readonly execution: ExecutionInspectorCollectorApi
@@ -243,7 +243,7 @@ export interface InspectorCollectorsApi {
 export class InspectorCollectors extends Context.Service<
   InspectorCollectors,
   InspectorCollectorsApi
->()("InspectorCollectors") {}
+>()("@effect-desktop/core/runtime/inspector-events/InspectorCollectors") {}
 
 const makeCollector = <A>(): Effect.Effect<
   {

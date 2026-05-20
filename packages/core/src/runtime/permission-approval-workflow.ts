@@ -57,8 +57,8 @@ export interface PermissionApprovalWorkflowOptions {
   readonly notify?: (token: string, traceId: string) => Effect.Effect<void, never, never>
 }
 
-export const makePermissionApprovalWorkflowLayer = (options: PermissionApprovalWorkflowOptions) => {
-  return PermissionApprovalWorkflow.toLayer((payload, _executionId) =>
+export const makePermissionApprovalWorkflowLayer = (options: PermissionApprovalWorkflowOptions) =>
+  PermissionApprovalWorkflow.toLayer((payload, _executionId) =>
     Effect.gen(function* () {
       const capability = payload.capability
       const actor = payload.actor
@@ -175,7 +175,6 @@ export const makePermissionApprovalWorkflowLayer = (options: PermissionApprovalW
       })
     })
   )
-}
 
 const currentTimeMillis = (now: (() => number) | undefined): Effect.Effect<number, never, never> =>
   now === undefined ? Clock.currentTimeMillis : Effect.sync(now)

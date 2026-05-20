@@ -1,4 +1,3 @@
-import { resolve } from "node:path"
 import {
   makeFramedSocketConnection,
   type TransportError
@@ -9,7 +8,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 import { Socket } from "effect/unstable/socket"
 
 export interface RuntimeProcessOptions {
-  readonly entry: string
+  readonly entryPath: string
   readonly cwd: string
   readonly env?: Record<string, string | undefined>
 }
@@ -32,8 +31,7 @@ export const makeRuntimeProcess = (
   Effect.gen(function* () {
     const scope = yield* Scope.make()
     return yield* Effect.gen(function* () {
-      const entryPath = resolve(options.cwd, options.entry)
-      const command = ChildProcess.make("bun", ["run", entryPath], {
+      const command = ChildProcess.make("bun", ["run", options.entryPath], {
         cwd: options.cwd,
         env: options.env,
         extendEnv: true,
@@ -65,7 +63,7 @@ const makeChildProcessSocket = (child: ChildProcessSpawner.ChildProcessHandle): 
   Socket.make({
     runRaw: (handler, options) =>
       Effect.gen(function* () {
-        if (options?.onOpen) {
+        if (options?.onOpen !== undefined) {
           yield* options.onOpen
         }
         yield* child.stdout.pipe(

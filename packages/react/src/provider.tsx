@@ -100,12 +100,13 @@ export const DesktopProvider = ({
 }: DesktopProviderProps): ReactNode => {
   const ctx = useMemo(() => makeContext(client, currentWindow), [client, currentWindow])
 
-  useEffect(() => {
-    return () => {
+  useEffect(
+    () => () => {
       ctx.registry.dispose()
       disposeRuntime(ctx.runtime, onCleanupError)
-    }
-  }, [ctx, onCleanupError])
+    },
+    [ctx, onCleanupError]
+  )
 
   const value = Option.some(ctx)
   return createElement(

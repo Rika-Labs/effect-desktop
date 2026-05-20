@@ -148,11 +148,14 @@ const makeRequest = (
     )
   )
 
+let handshakeRequestSeq = 0
+let handshakeTraceSeq = 0
+
 const resolveOptions = (
   options: HostHandshakeClientOptions
 ): ResolvedHostHandshakeClientOptions => ({
-  nextRequestId: options.nextRequestId ?? (() => `request-${globalThis.crypto.randomUUID()}`),
-  nextTraceId: options.nextTraceId ?? (() => `trace-${globalThis.crypto.randomUUID()}`),
+  nextRequestId: options.nextRequestId ?? (() => `request-handshake-${++handshakeRequestSeq}`),
+  nextTraceId: options.nextTraceId ?? (() => `trace-handshake-${++handshakeTraceSeq}`),
   now: options.now
 })
 

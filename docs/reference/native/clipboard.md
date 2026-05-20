@@ -19,11 +19,11 @@ import { Clipboard, ClipboardError, ClipboardRpcs, Native } from "@effect-deskto
 
 ## Status
 
-The TypeScript service, Effect RPC contracts, and Rust host router are wired for text, HTML, image, clear,
-and capability checks. The current Rust host adapter returns typed `Unsupported` errors for clipboard
-operations on macOS, Windows, and Linux until an OS clipboard backend is added. `isSupported` reports
-`false` with reason `host-adapter-unimplemented`; Linux primary-selection behavior is explicitly
-unsupported through the `selection` capability.
+The TypeScript service, Effect RPC contracts, and Rust host router are wired to an OS clipboard backend
+for text, HTML, image, clear, and capability checks on macOS, Windows, and Linux. `isSupported` reports
+`true` for text, HTML, image, and clear when the host can open the system clipboard, and reports `false`
+with reason `host-clipboard-unavailable` or `host-clipboard-busy` when the OS clipboard is unavailable.
+Linux primary-selection behavior is explicitly unsupported through the `selection` capability.
 
 ## Methods
 
@@ -40,8 +40,9 @@ unsupported through the `selection` capability.
 
 ## Errors
 
-`ClipboardError` is the host protocol error union. Current host operations fail with
-`HostProtocolUnsupportedError` rather than silently succeeding or returning fake data.
+`ClipboardError` is the host protocol error union. Host operations return typed errors for unavailable
+clipboard content, unsupported OS clipboard access, busy clipboard ownership, and host failures rather
+than silently succeeding or returning fake data.
 
 ## App composition
 

@@ -5,9 +5,12 @@ use std::borrow::Cow;
 use std::path::Path;
 use tao::window::Window;
 use tracing::info;
-use wry::{WebView, WebViewBuilder};
+use wry::{
+    DragDropEvent, NewWindowFeatures, NewWindowResponse, PageLoadEvent, WebView, WebViewBuilder,
+};
 
 const WEBVIEW_OPENED_EVENT: &str = "host.webview.opened";
+const WEBVIEW_CHILD_OPENED_EVENT: &str = "host.webview.child_opened";
 const DEV_URL_ENV: &str = "EFFECT_DESKTOP_DEV_URL";
 const WEBVIEW_CREATE_OPERATION: &str = host_protocol::WINDOW_CREATE_METHOD;
 
@@ -39,6 +42,20 @@ trait WebEngineProvider {
 struct WebViewRequest {
     url: Cow<'static, str>,
     chrome_runtime_path: Option<String>,
+}
+
+pub(crate) struct ChildWebViewRequest {
+    pub(crate) url: String,
+    pub(crate) navigation_handler: Box<dyn Fn(String) -> bool>,
+    pub(crate) new_window_handler: Box<dyn Fn(String, NewWindowFeatures) -> NewWindowResponse>,
+    pub(crate) isolation: Option<ChildWebViewIsolation>,
+    pub(crate) page_load_handler: Box<dyn Fn(PageLoadEvent, String)>,
+    pub(crate) drag_drop_handler: Box<dyn Fn(DragDropEvent) -> bool>,
+}
+
+pub(crate) struct ChildWebViewIsolation {
+    pub(crate) initialization_script: String,
+    pub(crate) ipc_handler: Box<dyn Fn(wry::http::Request<String>)>,
 }
 
 struct SystemWebEngineProvider;
@@ -89,6 +106,13 @@ impl WebEngineProvider for ChromeWebEngineProvider {
 }
 
 fn chrome_provider_missing_error(runtime_path: Option<&str>) -> Box<HostProtocolError> {
+    chrome_provider_missing_error_for_operation(runtime_path, WEBVIEW_CREATE_OPERATION)
+}
+
+fn chrome_provider_missing_error_for_operation(
+    runtime_path: Option<&str>,
+    operation: &'static str,
+) -> Box<HostProtocolError> {
     let suffix = runtime_path
         .map(|path| format!(" at {path}"))
         .unwrap_or_default();
@@ -96,7 +120,7 @@ fn chrome_provider_missing_error(runtime_path: Option<&str>) -> Box<HostProtocol
         format!(
             "web.engine chrome was selected, but the bundled Chromium/CEF WebView provider is not installed{suffix}"
         ),
-        WEBVIEW_CREATE_OPERATION,
+        operation,
     ))
 }
 
@@ -124,6 +148,106 @@ pub(crate) fn attach_app_webview(window: &Window) -> WebViewResult<HostWebView> 
     Ok(webview)
 }
 
+pub(crate) fn attach_child_webview(
+    window: &Window,
+    request: ChildWebViewRequest,
+) -> WebViewResult<HostWebView> {
+    let selection = selected_web_engine_for_operation(host_protocol::WEBVIEW_CREATE_METHOD)?;
+    if matches!(selection.kind, WebEngineKind::Chrome) {
+        return Err(chrome_provider_missing_error_for_operation(
+            selection.chrome_runtime_path.as_deref(),
+            host_protocol::WEBVIEW_CREATE_METHOD,
+        ));
+    }
+
+    let url_for_log = request.url.clone();
+    let builder = scheme::register_app_scheme(WebViewBuilder::new())
+        .with_url(request.url)
+        .with_navigation_handler(request.navigation_handler)
+        .with_new_window_req_handler(request.new_window_handler);
+    let builder = match request.isolation {
+        Some(isolation) => builder
+            .with_initialization_script(isolation.initialization_script)
+            .with_ipc_handler(isolation.ipc_handler),
+        None => builder,
+    }
+    .with_on_page_load_handler(request.page_load_handler);
+    let builder = builder.with_drag_drop_handler(request.drag_drop_handler);
+    let webview = build_webview(builder, window).map_err(|error| {
+        Box::new(HostProtocolError::internal(
+            format!("failed to attach child WebView provider: {error}"),
+            host_protocol::WEBVIEW_CREATE_METHOD,
+        ))
+    })?;
+
+    info!(
+        event = WEBVIEW_CHILD_OPENED_EVENT,
+        engine = ?selection.kind,
+        source = scheme::APP_PROTOCOL_SOURCE_KIND,
+        url = url_for_log,
+        "host child webview opened"
+    );
+
+    Ok(webview)
+}
+
+#[allow(clippy::result_large_err)]
+pub(crate) fn open_devtools(webview: &HostWebView) -> std::result::Result<(), HostProtocolError> {
+    #[cfg(debug_assertions)]
+    {
+        webview.open_devtools();
+        Ok(())
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        let _ = webview;
+        Err(HostProtocolError::unsupported(
+            "host-devtools-debug-build-only",
+            host_protocol::WEBVIEW_OPEN_DEVTOOLS_METHOD,
+        ))
+    }
+}
+
+#[allow(clippy::result_large_err)]
+pub(crate) fn close_devtools(webview: &HostWebView) -> std::result::Result<(), HostProtocolError> {
+    #[cfg(debug_assertions)]
+    {
+        webview.close_devtools();
+        Ok(())
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        let _ = webview;
+        Err(HostProtocolError::unsupported(
+            "host-devtools-debug-build-only",
+            host_protocol::WEBVIEW_CLOSE_DEVTOOLS_METHOD,
+        ))
+    }
+}
+
+#[allow(clippy::result_large_err)]
+pub(crate) fn print(webview: &HostWebView) -> std::result::Result<(), HostProtocolError> {
+    webview.print().map_err(|error| {
+        HostProtocolError::internal(
+            format!("failed to print WebView: {error}"),
+            host_protocol::WEBVIEW_PRINT_METHOD,
+        )
+    })
+}
+
+#[allow(clippy::result_large_err)]
+pub(crate) fn zoom(
+    webview: &HostWebView,
+    scale_factor: f64,
+) -> std::result::Result<(), HostProtocolError> {
+    webview.zoom(scale_factor).map_err(|error| {
+        HostProtocolError::internal(
+            format!("failed to zoom WebView: {error}"),
+            host_protocol::WEBVIEW_SET_ZOOM_METHOD,
+        )
+    })
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct WebEngineSelection {
     kind: WebEngineKind,
@@ -131,10 +255,14 @@ struct WebEngineSelection {
 }
 
 fn selected_web_engine() -> WebViewResult<WebEngineSelection> {
+    selected_web_engine_for_operation(WEBVIEW_CREATE_OPERATION)
+}
+
+fn selected_web_engine_for_operation(operation: &'static str) -> WebViewResult<WebEngineSelection> {
     let current_exe = std::env::current_exe().map_err(|error| {
         Box::new(HostProtocolError::internal(
             format!("failed to read current executable while resolving web engine: {error}"),
-            WEBVIEW_CREATE_OPERATION,
+            operation,
         ))
     })?;
     let Some(manifest_path) = runtime::manifest_path_for_exe(&current_exe) else {
@@ -149,24 +277,35 @@ fn selected_web_engine() -> WebViewResult<WebEngineSelection> {
             chrome_runtime_path: None,
         });
     }
-    web_engine_from_manifest_path(&manifest_path)
+    web_engine_from_manifest_path(&manifest_path, operation)
 }
 
-fn web_engine_from_manifest_path(path: &Path) -> WebViewResult<WebEngineSelection> {
+fn web_engine_from_manifest_path(
+    path: &Path,
+    operation: &'static str,
+) -> WebViewResult<WebEngineSelection> {
     let source = std::fs::read_to_string(path).map_err(|error| {
         Box::new(HostProtocolError::internal(
             format!("failed to read app-manifest.json while resolving web engine: {error}"),
-            WEBVIEW_CREATE_OPERATION,
+            operation,
         ))
     })?;
-    web_engine_from_manifest_str(&source)
+    web_engine_from_manifest_str_for_operation(&source, operation)
 }
 
+#[cfg(test)]
 fn web_engine_from_manifest_str(source: &str) -> WebViewResult<WebEngineSelection> {
+    web_engine_from_manifest_str_for_operation(source, WEBVIEW_CREATE_OPERATION)
+}
+
+fn web_engine_from_manifest_str_for_operation(
+    source: &str,
+    operation: &'static str,
+) -> WebViewResult<WebEngineSelection> {
     let value: serde_json::Value = serde_json::from_str(source).map_err(|error| {
         Box::new(HostProtocolError::internal(
             format!("failed to parse app-manifest.json while resolving web engine: {error}"),
-            WEBVIEW_CREATE_OPERATION,
+            operation,
         ))
     })?;
     let Some(host_manifest) = value.get("hostManifest") else {
@@ -196,12 +335,12 @@ fn web_engine_from_manifest_str(source: &str) -> WebViewResult<WebEngineSelectio
         Some(other) => Err(Box::new(HostProtocolError::invalid_argument(
             "hostManifest.webEngine",
             format!("must be system or chrome, got {other}"),
-            WEBVIEW_CREATE_OPERATION,
+            operation,
         ))),
         None => Err(Box::new(HostProtocolError::invalid_argument(
             "hostManifest.webEngine",
             "must be a string",
-            WEBVIEW_CREATE_OPERATION,
+            operation,
         ))),
     }
 }

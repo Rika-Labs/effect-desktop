@@ -17,6 +17,7 @@ import {
 import {
   type AnyDesktopNativeRegistration,
   DesktopRpc,
+  type DesktopRpcCapabilityFact,
   type DesktopRpcClient,
   type DesktopNativeSurfaceSelection,
   type DesktopRpcSurface,
@@ -147,6 +148,22 @@ const rpc = <
     options.support
   )
 }
+
+export interface NativeCapabilityFactOptions {
+  readonly authority: NativeRpcAuthority
+  readonly support: RpcSupportMetadata
+}
+
+const capabilityFact = <const Surface extends string, const Method extends string>(
+  surface: Surface,
+  method: Method,
+  options: NativeCapabilityFactOptions
+): DesktopRpcCapabilityFact =>
+  Object.freeze({
+    tag: `${surface}.${method}` as const,
+    capability: capabilityFor(surface, method, options.authority),
+    support: options.support
+  })
 
 function make<
   const Tag extends string,
@@ -297,6 +314,9 @@ const allPermissionCapabilities = (
 
   for (const nativeSurface of surfaces) {
     for (const doc of nativeSurface.schemaDocs) {
+      if (!doc.callable) {
+        continue
+      }
       const capability = Option.getOrUndefined(doc.capability)
       if (capability === undefined) {
         continue
@@ -335,6 +355,9 @@ const permissionCapabilitiesByMethod = (
   const capabilities = new Map<string, NormalizedCapability>()
 
   for (const doc of surfaceRegistration.schemaDocs) {
+    if (!doc.callable) {
+      continue
+    }
     const method = methodNameFromTag(surfaceRegistration.tag, doc.tag)
     const capability = Option.getOrUndefined(doc.capability)
     if (capability === undefined) {
@@ -410,6 +433,7 @@ const capabilityFor = (
 
 export const NativeSurface = Object.freeze({
   authority: nativeAuthority,
+  capabilityFact,
   make,
   rpc,
   support: NativeRpcSupport

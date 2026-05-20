@@ -12,7 +12,7 @@ Product-neutral network egress decision service. Callers submit an actor and des
 
 The public service is Layer-first and test-substitutable. `decide` checks `network.connect` permission, asks the host to issue a decision receipt, then evaluates trusted service-layer rules in process using that host-issued `decisionId`. The Rust host adapter does not evaluate or accept caller-supplied policy rules on `decide`; lower native `record` accepts only `decisionId`, `actor`, and `destination`, verifies them against the host-issued receipt, appends the host receipt to the decision log under an OS file lock, and emits a native `decision-recorded` event after the append succeeds. Public service events observe that host or memory-client event source and map the host receipt back to the trusted service-layer decision.
 
-`EgressPolicy` is not a native network transport. It does not perform HTTP fetches, open WebSockets, upload data, bind localhost helpers, stream network progress, or cancel network I/O. Those operations still require a separate native network service and Rust host adapter.
+`EgressPolicy` is not a native network transport. It does not perform HTTP fetches, open WebSockets, upload data, bind localhost helpers, stream network progress, or cancel network I/O. `NativeNetwork` owns those typed transport contracts and currently fails closed as validation-first unsupported at the host boundary.
 
 It also does not configure proxies, handle HTTP auth challenges, or decide
 certificate trust. Those hooks are absent; adding them would require a new
@@ -77,7 +77,7 @@ Use `makeEgressPolicyMemoryClient()` for deterministic policy decisions, host-re
 
 ## Architecture Debt Sweep
 
-No wrapper was removed. `EgressPolicy` is durable policy, audit, and decision-receipt behavior, not a removable Effect wrapper over network transport. The remaining debt for native network parity is the absent `NativeNetwork` service and Rust host transport adapter for HTTP, WebSocket, upload, localhost helper, cancellation, and progress/event streams.
+No wrapper was removed. `EgressPolicy` is durable policy, audit, and decision-receipt behavior, not a removable Effect wrapper over network transport. `NativeNetwork` is now the transport contract; the remaining debt is a real Rust host transport adapter behind that contract.
 
 ## Related
 

@@ -319,7 +319,7 @@ export const makePty = (
     return api
   })
 
-export class PTY extends Context.Service<PTY, PtyApi>()("PTY") {}
+export class PTY extends Context.Service<PTY, PtyApi>()("@effect-desktop/core/runtime/pty") {}
 
 export const PtyLayer = (
   options: PtyOptions
@@ -396,27 +396,26 @@ const makeHandle = (
             catch: (error) => mapPtyError(error, command, "PTY.resize")
           })
         }),
-      kill: (signal?: unknown) =>
-        Effect.gen(function* () {
-          const decodedSignal =
-            signal === undefined ? undefined : yield* decodeSignalInput(signal, "PTY.kill")
-          yield* assertPtyHandleFresh(registry, resource, "PTY.kill")
-          yield* Effect.tryPromise({
-            try: () => child.kill(decodedSignal),
-            catch: (error) => mapPtyError(error, command, "PTY.kill")
+      kill: Effect.fn("PTY.kill", { attributes: { command } })(function* (signal?: unknown) {
+        const decodedSignal =
+          signal === undefined ? undefined : yield* decodeSignalInput(signal, "PTY.kill")
+        yield* assertPtyHandleFresh(registry, resource, "PTY.kill")
+        yield* Effect.tryPromise({
+          try: () => child.kill(decodedSignal),
+          catch: (error) => mapPtyError(error, command, "PTY.kill")
+        })
+        yield* inspector.publish(
+          new ExecutionEvent({
+            kind: "pty",
+            status: "interruption",
+            operation: "PTY.kill",
+            command,
+            resourceId: resource.id,
+            signal: decodedSignal === undefined ? "default" : String(decodedSignal),
+            timestamp: now()
           })
-          yield* inspector.publish(
-            new ExecutionEvent({
-              kind: "pty",
-              status: "interruption",
-              operation: "PTY.kill",
-              command,
-              resourceId: resource.id,
-              signal: decodedSignal === undefined ? "default" : String(decodedSignal),
-              timestamp: now()
-            })
-          )
-        }).pipe(Effect.withSpan("PTY.kill", { attributes: { command } }))
+        )
+      })
     })
   })
 
@@ -850,12 +849,11 @@ const waitForChildExit = (
   command: string,
   gracefulShutdownMs: number
 ): Effect.Effect<Option.Option<PtyExitStatus>, never, never> =>
-  Effect.gen(function* () {
-    return yield* Effect.tryPromise({
-      try: () => child.exited,
-      catch: (error) => mapPtyError(error, command, "PTY.dispose.wait")
-    }).pipe(Effect.timeoutOption(`${gracefulShutdownMs} millis`))
+  Effect.tryPromise({
+    try: () => child.exited,
+    catch: (error) => mapPtyError(error, command, "PTY.dispose.wait")
   }).pipe(
+    Effect.timeoutOption(`${gracefulShutdownMs} millis`),
     Effect.catch((error: HostProtocolError) =>
       Effect.gen(function* () {
         yield* Effect.logWarning("PTY.dispose.wait failed", {

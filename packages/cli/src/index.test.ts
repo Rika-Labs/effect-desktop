@@ -4,25 +4,21 @@ import {
   generateKeyPairSync,
   verify as cryptoVerify
 } from "node:crypto"
-import {
-  chmod,
-  lstat,
-  mkdir,
-  mkdtemp,
-  readdir,
-  readFile,
-  readlink,
-  rm,
-  stat,
-  symlink,
-  writeFile
-} from "node:fs/promises"
-import { basename, dirname, join, relative } from "node:path"
+import { createRequire } from "node:module"
+
+const nodeRequire = createRequire(import.meta.url)
+const fsPromises = nodeRequire("node:fs/promises") as typeof import("node:fs/promises")
+const nodePath = nodeRequire("node:path") as typeof import("node:path")
+const { chmod, lstat, mkdir, mkdtemp, readdir, readFile, readlink, rm, stat, symlink, writeFile } =
+  fsPromises
+const { basename, dirname, join, relative } = nodePath
 import { tmpdir } from "node:os"
 
 import { expect, test } from "bun:test"
-import { Clock, Effect, Exit, Option, Schema } from "effect"
+import { Clock, Effect, Exit, ManagedRuntime, Option, Schema } from "effect"
 import { WorkflowEngine } from "effect/unstable/workflow"
+
+const WorkflowMemoryRuntime = ManagedRuntime.make(WorkflowEngine.layerMemory)
 
 import {
   canonicalUpdateManifestBytes,
@@ -52,6 +48,18 @@ import { desktopArtifactExtension, desktopPlatformDirectory, hostBinaryName } fr
 import type { DesktopArtifactKind, DesktopTargetId } from "./targets.js"
 
 const REPO_ROOT = join(import.meta.dir, "../../..")
+
+const testEnv: Record<string, string | undefined> = globalThis.process.env
+
+const readTestEnv = (key: string): string | undefined => testEnv[key]
+
+const writeTestEnv = (key: string, value: string | undefined): void => {
+  if (value === undefined) {
+    delete testEnv[key]
+    return
+  }
+  testEnv[key] = value
+}
 
 const CliJsonError = Schema.fromJsonString(
   Schema.Struct({
@@ -86,6 +94,33 @@ const decodePackageMissingBuildArtifactJsonError = Schema.decodeUnknownSync(
 )
 const JsonObject = Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown))
 const decodeJsonObject = Schema.decodeUnknownSync(JsonObject)
+const JsonUnknown = Schema.fromJsonString(Schema.Unknown)
+const encodeJsonUnknown = Schema.encodeSync(JsonUnknown)
+const stringifyJson = (value: unknown, indent?: number): string => {
+  const encoded = encodeJsonUnknown(value)
+  return indent === undefined ? encoded : JSON.stringify(JSON.parse(encoded), null, indent)
+}
+const parseJsonObject = Schema.decodeUnknownSync(JsonObject)
+
+class ExpectedPromiseRejection extends Schema.TaggedErrorClass<ExpectedPromiseRejection>()(
+  "ExpectedPromiseRejection",
+  {}
+) {}
+
+const expectEffectPromiseRejects = (
+  promise: Promise<unknown>
+): Effect.Effect<void, ExpectedPromiseRejection> =>
+  Effect.matchEffect(Effect.tryPromise({ try: () => promise, catch: () => undefined }), {
+    onFailure: () => Effect.void,
+    onSuccess: () => Effect.fail(new ExpectedPromiseRejection())
+  })
+
+class TryPromiseError extends Schema.TaggedErrorClass<TryPromiseError>()("TryPromiseError", {
+  message: Schema.String
+}) {}
+
+const toTryPromiseError = (cause: unknown): TryPromiseError =>
+  new TryPromiseError({ message: cause instanceof Error ? cause.message : String(cause) })
 const SignReportJson = Schema.fromJsonString(
   Schema.Struct({
     artifacts: Schema.Array(
@@ -411,16 +446,6 @@ const packageFixtureError = (
     message: cause instanceof Error ? cause.message : String(cause)
   })
 
-const expectPromiseRejects = async (promise: Promise<unknown>): Promise<void> => {
-  let rejected = false
-  try {
-    await promise
-  } catch {
-    rejected = true
-  }
-  expect(rejected).toBe(true)
-}
-
 test("doctor report renders selected layer providers", () => {
   const output = formatDoctorReport({
     passed: true,
@@ -453,48 +478,13 @@ test("doctor report renders selected layer providers", () => {
   expect(output).toContain("layer failures    0")
 })
 
-test("desktop --help exits zero with root usage on stdout", async () => {
-  const stdout: string[] = []
-  const stderr: string[] = []
-  const exitCode = await Effect.runPromise(
-    runCli({
-      argv: ["--help"],
-      cwd: process.cwd(),
-      writeStdout: (text) => {
-        stdout.push(text)
-      },
-      writeStderr: (text) => {
-        stderr.push(text)
-      }
-    })
-  )
-
-  expect(exitCode).toBe(0)
-  expect(stdout.join("")).toContain("Usage: desktop <command>")
-  expect(stderr.join("")).toBe("")
-})
-
-test("desktop does not expose unimplemented deferred commands", async () => {
-  const commands = [
-    "init",
-    "dev",
-    "typecheck",
-    "lint",
-    "test",
-    "info",
-    "generate-types",
-    "migrate",
-    "clean",
-    "inspect",
-    "replay"
-  ] as const
-
-  for (const command of commands) {
-    const stdout: string[] = []
-    const stderr: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: [command],
+test("desktop --help exits zero with root usage on stdout", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const stdout: string[] = []
+      const stderr: string[] = []
+      const exitCode = yield* runCli({
+        argv: ["--help"],
         cwd: process.cwd(),
         writeStdout: (text) => {
           stdout.push(text)
@@ -503,1341 +493,1556 @@ test("desktop does not expose unimplemented deferred commands", async () => {
           stderr.push(text)
         }
       })
-    )
 
-    expect(exitCode).toBe(1)
-    expect(stdout.join("")).toContain("USAGE")
-    expect(stdout.join("")).toContain("desktop <subcommand>")
-    expect(stdout.join("")).not.toContain(`  ${command}`)
-    expect(stderr.join("")).toContain(`Unknown subcommand "${command}" for "desktop"`)
-  }
-})
-
-test("desktop release --help exits zero with workflow usage", async () => {
-  const stdout: string[] = []
-  const exitCode = await Effect.runPromise(
-    runCli({
-      argv: ["release", "--help"],
-      cwd: process.cwd(),
-      packageCommandRunner: () => Effect.die("release should not run for help"),
-      signCommandRunner: () => Effect.die("release should not run for help"),
-      notarizeCommandRunner: () => Effect.die("release should not run for help"),
-      writeStdout: (text) => {
-        stdout.push(text)
-      },
-      writeStderr: () => {}
+      expect(exitCode).toBe(0)
+      expect(stdout.join("")).toContain("Usage: desktop <command>")
+      expect(stderr.join("")).toBe("")
     })
-  )
+  ))
 
-  expect(exitCode).toBe(0)
-  expect(stdout.join("")).toContain("desktop release")
-  expect(stdout.join("")).toContain("--version")
-})
+test("desktop does not expose unimplemented deferred commands", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const commands = [
+        "init",
+        "dev",
+        "typecheck",
+        "lint",
+        "test",
+        "info",
+        "generate-types",
+        "migrate",
+        "clean",
+        "inspect",
+        "replay"
+      ] as const
 
-test("release workflow runs package sign notarize publish activities in order", async () => {
-  const calls: string[] = []
-  const services = fakeReleaseServices(calls, "macos-arm64")
+      for (const command of commands) {
+        const stdout: string[] = []
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: [command],
+          cwd: process.cwd(),
+          writeStdout: (text) => {
+            stdout.push(text)
+          },
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
 
-  const report = await Effect.runPromise(
-    runReleaseWorkflow(
-      new ReleaseConfig({
-        configPath: "desktop.config.ts",
-        platform: "macos-arm64",
-        version: "1.2.3"
-      }),
-      services
-    ).pipe(Effect.provide(WorkflowEngine.layerMemory))
-  )
-
-  expect(calls).toEqual(["package", "sign", "notarize", "publish"])
-  expect(report).toMatchObject({
-    appId: "dev.effect-desktop.test",
-    appVersion: "1.2.3",
-    target: "macos-arm64",
-    manifestPath: "/release/update-manifest.json"
-  })
-  expect(report.phases.map((phase) => phase.phase)).toEqual([
-    "package",
-    "sign",
-    "notarize",
-    "publish"
-  ])
-})
-
-test("release workflow skips notarization for non-macOS targets", async () => {
-  const calls: string[] = []
-  const services = fakeReleaseServices(calls, "linux-x64")
-
-  const report = await Effect.runPromise(
-    runReleaseWorkflow(
-      new ReleaseConfig({
-        configPath: "desktop.config.ts",
-        platform: "linux-x64"
-      }),
-      services
-    ).pipe(Effect.provide(WorkflowEngine.layerMemory))
-  )
-
-  expect(calls).toEqual(["package", "sign", "publish"])
-  expect(report.phases).toContainEqual({
-    phase: "notarize",
-    skipped: true,
-    artifacts: 0
-  })
-})
-
-test("desktop value-flag usage errors honor --json", async () => {
-  const stdout: string[] = []
-  const stderr: string[] = []
-  const exitCode = await Effect.runPromise(
-    runCli({
-      argv: ["build", "--config", "--json"],
-      cwd: process.cwd(),
-      writeStdout: (text) => {
-        stdout.push(text)
-      },
-      writeStderr: (text) => {
-        stderr.push(text)
+        expect(exitCode).toBe(1)
+        expect(stdout.join("")).toContain("USAGE")
+        expect(stdout.join("")).toContain("desktop <subcommand>")
+        expect(stdout.join("")).not.toContain(`  ${command}`)
+        expect(stderr.join("")).toContain(`Unknown subcommand "${command}" for "desktop"`)
       }
     })
-  )
+  ))
 
-  const payload = decodeCliJsonError(stderr.join(""))
-  expect(exitCode).toBe(1)
-  expect(stdout.join("")).toBe("")
-  expect(payload).toEqual({
-    tag: "CliUsageError",
-    message: "--config requires a value"
-  })
-})
-
-test("desktop check --production exits non-zero for unacknowledged CSP weakening", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-"))
-  try {
-    await writeFile(
-      join(directory, "desktop.config.ts"),
-      [
-        "export default {",
-        "  app: {",
-        "    id: 'dev.effect-desktop.production-check',",
-        "    name: 'Production Check',",
-        "    version: '1.0.0'",
-        "  },",
-        "  security: {",
-        "    csp: { policy: \"script-src 'self' 'unsafe-inline'\" }",
-        "  }",
-        "}"
-      ].join("\n")
-    )
-
-    const stderr: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--production", "--config", "desktop.config.ts"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    expect(exitCode).toBe(1)
-    expect(stderr.join("")).toContain("weakened-csp")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --production --json writes failed reports to stderr", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-"))
-  try {
-    await writeFile(
-      join(directory, "desktop.config.ts"),
-      [
-        "export default {",
-        "  app: {",
-        "    id: 'dev.effect-desktop.production-check',",
-        "    name: 'Production Check',",
-        "    version: '1.0.0'",
-        "  },",
-        "  security: {",
-        "    csp: { policy: \"script-src 'self' 'unsafe-inline'\" }",
-        "  }",
-        "}"
-      ].join("\n")
-    )
-
-    const stdout: string[] = []
-    const stderr: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--production", "--config", "desktop.config.ts", "--json"],
-        cwd: directory,
-        writeStdout: (text) => {
-          stdout.push(text)
-        },
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const report = decodeProductionCheckJsonReport(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(stdout.join("")).toBe("")
-    expect(report.passed).toBe(false)
-    expect(report.failures.map((failure) => failure.rule)).toContain("weakened-csp")
-    expect(report.acknowledgements).toEqual([])
-    expect(stderr.join("")).not.toContain("FAIL weakened-csp")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --production --json emits structured config-loading failures", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-"))
-  try {
-    const stderr: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--production", "--config", "missing.config.ts", "--json"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const payload = decodeCliJsonConfigError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(stderr.join("")).toContain("BuildConfigError")
-    expect(payload.tag).toBe("BuildConfigError")
-    expect(payload.message).toContain("missing.config.ts")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --production rejects duplicate config flags before loading config", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-"))
-  try {
-    const stdout: string[] = []
-    const stderr: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: [
-          "check",
-          "--production",
-          "--config",
-          "first.config.ts",
-          "--config",
-          "second.config.ts"
-        ],
-        cwd: directory,
-        writeStdout: (text) => {
-          stdout.push(text)
-        },
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const payload = decodeCliJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(stdout.join("")).toBe("")
-    expect(payload.tag).toBe("CliUsageError")
-    expect(payload.message).toContain("--config")
-    expect(payload.message).toContain("at most once")
-    expect(stderr.join("")).not.toContain("missing.config")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --production rejects missing app metadata before security checks", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-"))
-  try {
-    await writeFile(
-      join(directory, "desktop.config.ts"),
-      [
-        "export default {",
-        "  app: {",
-        "    id: 'dev.effect-desktop.production-check',",
-        "    name: 'Production Check'",
-        "  },",
-        "  security: {",
-        "    csp: { policy: \"script-src 'self' 'unsafe-inline'\" }",
-        "  }",
-        "}"
-      ].join("\n")
-    )
-
-    const stdout: string[] = []
-    const stderr: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--production", "--config", "desktop.config.ts", "--json"],
-        cwd: directory,
-        writeStdout: (text) => {
-          stdout.push(text)
-        },
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const payload = decodeCliJsonConfigError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(stdout.join("")).toBe("")
-    expect(payload).toEqual({
-      tag: "BuildConfigError",
-      message: "app.version is required",
-      field: "app.version"
-    })
-    expect(stderr.join("")).not.toContain("weakened-csp")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --production --json emits structured renderer-loading failures", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-"))
-  try {
-    await writeFile(
-      join(directory, "desktop.config.ts"),
-      [
-        "export default {",
-        "  app: {",
-        "    id: 'dev.effect-desktop.production-check',",
-        "    name: 'Production Check',",
-        "    version: '1.0.0'",
-        "  }",
-        "}"
-      ].join("\n")
-    )
-    const stderr: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: [
-          "check",
-          "--production",
-          "--renderer",
-          "missing.ts",
-          "--config",
-          "desktop.config.ts",
-          "--json"
-        ],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const payload = decodeCliJsonConfigError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(payload.message).toContain("missing.ts")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --production exits zero and reports acknowledged weakenings", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-"))
-  try {
-    await writeFile(
-      join(directory, "desktop.config.ts"),
-      [
-        "export default {",
-        "  app: {",
-        "    id: 'dev.effect-desktop.production-check',",
-        "    name: 'Production Check',",
-        "    version: '1.0.0'",
-        "  },",
-        "  security: {",
-        "    csp: {",
-        "      policy: \"script-src 'self' 'unsafe-inline'\",",
-        "      acknowledgeWeakening: true,",
-        "      justification: 'inline bootstrap script exception'",
-        "    }",
-        "  }",
-        "}"
-      ].join("\n")
-    )
-
-    const stdout: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--production", "--config", "desktop.config.ts"],
-        cwd: directory,
-        writeStdout: (text) => {
-          stdout.push(text)
-        },
-        writeStderr: () => {}
-      })
-    )
-
-    expect(exitCode).toBe(0)
-    expect(stdout.join("")).toContain("ACK weakened-csp")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --production --json writes passed reports to stdout", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-"))
-  try {
-    await writeFile(
-      join(directory, "desktop.config.ts"),
-      [
-        "export default {",
-        "  app: {",
-        "    id: 'dev.effect-desktop.production-check',",
-        "    name: 'Production Check',",
-        "    version: '1.0.0'",
-        "  }",
-        "}"
-      ].join("\n")
-    )
-
-    const stdout: string[] = []
-    const stderr: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--production", "--config", "desktop.config.ts", "--json"],
-        cwd: directory,
-        writeStdout: (text) => {
-          stdout.push(text)
-        },
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const report = decodeProductionCheckJsonReport(stdout.join(""))
-    expect(exitCode).toBe(0)
-    expect(stderr.join("")).toBe("")
-    expect(report).toEqual({
-      passed: true,
-      failures: [],
-      acknowledgements: []
-    })
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --production fails when an explicit renderer scan file is unreadable", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-"))
-  try {
-    await writeFile(
-      join(directory, "desktop.config.ts"),
-      [
-        "export default {",
-        "  app: {",
-        "    id: 'dev.effect-desktop.production-check',",
-        "    name: 'Production Check',",
-        "    version: '1.0.0'",
-        "  }",
-        "}"
-      ].join("\n")
-    )
-
-    const stderr: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--production", "--renderer", "missing.ts"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    expect(exitCode).toBe(1)
-    expect(stderr.join("")).toContain("missing.ts")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --production reports bridge protocol barrel imports in renderer files", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-"))
-  try {
-    await writeFile(
-      join(directory, "desktop.config.ts"),
-      [
-        "export default {",
-        "  app: {",
-        "    id: 'dev.effect-desktop.production-check',",
-        "    name: 'Production Check',",
-        "    version: '1.0.0'",
-        "  }",
-        "}"
-      ].join("\n")
-    )
-    await mkdir(join(directory, "src", "renderer"), { recursive: true })
-    await writeFile(
-      join(directory, "src", "renderer", "main.ts"),
-      "import { HostProtocolRequestEnvelope } from '@effect-desktop/bridge'\n"
-    )
-
-    const stderr: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: [
-          "check",
-          "--production",
-          "--renderer",
-          "src/renderer/main.ts",
-          "--config",
-          "desktop.config.ts"
-        ],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    expect(exitCode).toBe(1)
-    expect(stderr.join("")).toContain("renderer-native-host-protocol")
-    expect(stderr.join("")).toContain("src/renderer/main.ts:1")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --production treats missing renderer path as a usage error", async () => {
-  const stderr: string[] = []
-  const exitCode = await Effect.runPromise(
-    runCli({
-      argv: ["check", "--production", "--renderer", "--config", "desktop.config.ts"],
-      cwd: process.cwd(),
-      writeStdout: () => {},
-      writeStderr: (text) => {
-        stderr.push(text)
-      }
-    })
-  )
-
-  expect(exitCode).toBe(1)
-  expect(stderr.join("").length).toBeGreaterThan(0)
-})
-
-test("desktop check rejects mixed mode flags before dispatch", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-check-modes-"))
-  try {
-    await writeReleaseFixture(directory)
-    await writeFile(
-      join(directory, "desktop.config.ts"),
-      [
-        "export default {",
-        "  app: {",
-        "    id: 'dev.effect-desktop.mixed-check',",
-        "    name: 'Mixed Check',",
-        "    version: '0.0.0'",
-        "  },",
-        "  runtime: { engine: 'bun', entry: 'src/main.ts' },",
-        "  renderer: { framework: 'react', entry: 'src/App.tsx', dist: 'dist/renderer' },",
-        "  security: { csp: { policy: \"script-src 'self' 'unsafe-inline'\" } }",
-        "}"
-      ].join("\n")
-    )
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--release", "--production", "--config", "desktop.config.ts", "--json"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const payload = decodeCliJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(payload.tag).toBe("CliUsageError")
-    expect(payload.message).toContain("mutually exclusive")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop commands reject unknown flags before execution", async () => {
-  const cases: readonly (readonly string[])[] = [
-    ["package", "--platfrom", "linux-x64", "--help"],
-    ["build", "--help", "--jsno"],
-    ["doctor", "--definitely-unknown"]
-  ]
-  for (const argv of cases) {
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv,
+test("desktop release --help exits zero with workflow usage", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const stdout: string[] = []
+      const exitCode = yield* runCli({
+        argv: ["release", "--help"],
         cwd: process.cwd(),
-        doctorCommandRunner: doctorRunner({
-          cargo: true,
-          rustc: true,
-          "xcode-select": true,
-          hdiutil: true
-        }),
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const payload = decodeCliJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(payload.tag).toBe("CliUsageError")
-    expect(payload.message).toContain("unknown flag")
-  }
-})
-
-test("desktop doctor reports typed missing Rust toolchain failures", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-"))
-  try {
-    await writePlaygroundFixture(directory)
-    await writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
-    await writeFile(join(directory, "bun.lock"), "")
-    const runner = doctorRunner({
-      cargo: false,
-      rustc: true,
-      "pkg-config": true,
-      "dpkg-deb": true
-    })
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["doctor", "--config", "apps/inspector/desktop.config.ts", "--json"],
-        cwd: directory,
-        platform: "linux",
-        arch: "x64",
-        bunVersion: "1.3.13",
-        doctorCommandRunner: runner,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const report = decodeDoctorJsonReport(stderr.join(""))
-    const rustProbe = report.probes.find((probe) => probe.name === "rust-toolchain")
-    expect(exitCode).toBe(1)
-    expect(report.passed).toBe(false)
-    expect(rustProbe?.status).toBe("missing")
-    expect(rustProbe?.installCommand).toBe("install cargo")
-    expect(rustProbe?.installHint).toBeUndefined()
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop doctor exits zero with warnings for optional signing and host cache probes", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-"))
-  try {
-    await writePlaygroundFixture(directory)
-    await writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
-    await writeFile(join(directory, "bun.lock"), "")
-    const runner = doctorRunner({
-      cargo: true,
-      rustc: true,
-      "xcode-select": true,
-      hdiutil: true
-    })
-    const stdout: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["doctor", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        platform: "darwin",
-        arch: "arm64",
-        bunVersion: "1.3.13",
-        doctorCommandRunner: runner,
+        packageCommandRunner: () => Effect.die("release should not run for help"),
+        signCommandRunner: () => Effect.die("release should not run for help"),
+        notarizeCommandRunner: () => Effect.die("release should not run for help"),
         writeStdout: (text) => {
           stdout.push(text)
         },
         writeStderr: () => {}
       })
-    )
 
-    const output = stdout.join("")
-    expect(exitCode).toBe(0)
-    expect(output).toContain("WARN")
-    expect(output).toContain("signing credentials are not configured")
-    expect(output).toContain("native host build cache is empty")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
+      expect(exitCode).toBe(0)
+      expect(stdout.join("")).toContain("desktop release")
+      expect(stdout.join("")).toContain("--version")
+    })
+  ))
 
-test("desktop doctor reports native capability truth from the generated parity matrix", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-capabilities-"))
-  try {
-    await writePlaygroundFixture(directory)
-    await writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
-    await writeFile(join(directory, "bun.lock"), "")
-    const stdout: string[] = []
-    const matrix = JSON.parse(
-      await readFile(join(REPO_ROOT, "packages/cli/src/native-parity-matrix.json"), "utf8")
-    ) as {
-      readonly summary: {
-        readonly total: number
-        readonly routed: number
-        readonly missing: number
+test("release workflow runs package sign notarize publish activities in order", () =>
+  WorkflowMemoryRuntime.runPromise(
+    Effect.gen(function* () {
+      const calls: string[] = []
+      const services = fakeReleaseServices(calls, "macos-arm64")
+
+      const report = yield* runReleaseWorkflow(
+        new ReleaseConfig({
+          configPath: "desktop.config.ts",
+          platform: "macos-arm64",
+          version: "1.2.3"
+        }),
+        services
+      )
+
+      expect(calls).toEqual(["package", "sign", "notarize", "publish"])
+      expect(report).toMatchObject({
+        appId: "dev.effect-desktop.test",
+        appVersion: "1.2.3",
+        target: "macos-arm64",
+        manifestPath: "/release/update-manifest.json"
+      })
+      expect(report.phases.map((phase) => phase.phase)).toEqual([
+        "package",
+        "sign",
+        "notarize",
+        "publish"
+      ])
+    })
+  ))
+
+test("release workflow skips notarization for non-macOS targets", () =>
+  WorkflowMemoryRuntime.runPromise(
+    Effect.gen(function* () {
+      const calls: string[] = []
+      const services = fakeReleaseServices(calls, "linux-x64")
+
+      const report = yield* runReleaseWorkflow(
+        new ReleaseConfig({
+          configPath: "desktop.config.ts",
+          platform: "linux-x64"
+        }),
+        services
+      )
+
+      expect(calls).toEqual(["package", "sign", "publish"])
+      expect(report.phases).toContainEqual({
+        phase: "notarize",
+        skipped: true,
+        artifacts: 0
+      })
+    })
+  ))
+
+test("desktop value-flag usage errors honor --json", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const stdout: string[] = []
+      const stderr: string[] = []
+      const exitCode = yield* runCli({
+        argv: ["build", "--config", "--json"],
+        cwd: process.cwd(),
+        writeStdout: (text) => {
+          stdout.push(text)
+        },
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+
+      const payload = decodeCliJsonError(stderr.join(""))
+      expect(exitCode).toBe(1)
+      expect(stdout.join("")).toBe("")
+      expect(payload).toEqual({
+        tag: "CliUsageError",
+        message: "--config requires a value"
+      })
+    })
+  ))
+
+test("desktop check --production exits non-zero for unacknowledged CSP weakening", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() => mkdtemp(join(tmpdir(), "effect-desktop-cli-")))
+      try {
+        yield* Effect.promise(() =>
+          writeFile(
+            join(directory, "desktop.config.ts"),
+            [
+              "export default {",
+              "  app: {",
+              "    id: 'dev.effect-desktop.production-check',",
+              "    name: 'Production Check',",
+              "    version: '1.0.0'",
+              "  },",
+              "  security: {",
+              "    csp: { policy: \"script-src 'self' 'unsafe-inline'\" }",
+              "  }",
+              "}"
+            ].join("\n")
+          )
+        )
+
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["check", "--production", "--config", "desktop.config.ts"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("weakened-csp")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
-    }
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["doctor", "--config", "apps/inspector/desktop.config.ts", "--json"],
-        cwd: directory,
-        platform: "linux",
-        arch: "x64",
-        bunVersion: "1.3.13",
-        doctorCommandRunner: doctorRunner({
-          cargo: true,
-          rustc: true,
-          "pkg-config": true,
-          "dpkg-deb": true
-        }),
-        writeStdout: (text) => {
-          stdout.push(text)
-        },
-        writeStderr: () => {}
-      })
-    )
-
-    const report = decodeDoctorJsonReport(stdout.join(""))
-    const capabilityProbe = report.probes.find((probe) => probe.name === "native-capabilities")
-    expect(exitCode).toBe(0)
-    expect(capabilityProbe).toMatchObject({
-      status: matrix.summary.missing === 0 ? "ok" : "warning",
-      message: `native capability matrix reports ${matrix.summary.total} methods, ${matrix.summary.routed} host-routed, ${matrix.summary.missing} missing host routes`
     })
-    expect(capabilityProbe?.evidence).toEqual([
-      { key: "source", value: "packages/cli/src/native-parity-matrix.json" },
-      { key: "total", value: String(matrix.summary.total) },
-      { key: "routed", value: String(matrix.summary.routed) },
-      { key: "missing", value: String(matrix.summary.missing) }
-    ])
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
+  ))
 
-test("desktop doctor fails when native capability truth is malformed", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-capabilities-"))
-  try {
-    await writePlaygroundFixture(directory)
-    await writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
-    await writeFile(join(directory, "bun.lock"), "")
-    const matrixPath = join(directory, "native-parity-matrix.json")
-    await writeFile(matrixPath, '{"rows":[],"summary":{"total":"bad"}}\n')
+test("desktop check --production --json writes failed reports to stderr", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() => mkdtemp(join(tmpdir(), "effect-desktop-cli-")))
+      try {
+        yield* Effect.promise(() =>
+          writeFile(
+            join(directory, "desktop.config.ts"),
+            [
+              "export default {",
+              "  app: {",
+              "    id: 'dev.effect-desktop.production-check',",
+              "    name: 'Production Check',",
+              "    version: '1.0.0'",
+              "  },",
+              "  security: {",
+              "    csp: { policy: \"script-src 'self' 'unsafe-inline'\" }",
+              "  }",
+              "}"
+            ].join("\n")
+          )
+        )
 
-    const error = await Effect.runPromise(
-      runDesktopDoctor({
-        cwd: directory,
-        configPath: "apps/inspector/desktop.config.ts",
-        ci: false,
-        platform: "linux",
-        arch: "x64",
-        bunVersion: "1.3.13",
-        nativeParityMatrixPath: matrixPath,
-        commandRunner: doctorRunner({
-          cargo: true,
+        const stdout: string[] = []
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["check", "--production", "--config", "desktop.config.ts", "--json"],
+          cwd: directory,
+          writeStdout: (text) => {
+            stdout.push(text)
+          },
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const report = decodeProductionCheckJsonReport(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(stdout.join("")).toBe("")
+        expect(report.passed).toBe(false)
+        expect(report.failures.map((failure) => failure.rule)).toContain("weakened-csp")
+        expect(report.acknowledgements).toEqual([])
+        expect(stderr.join("")).not.toContain("FAIL weakened-csp")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --production --json emits structured config-loading failures", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() => mkdtemp(join(tmpdir(), "effect-desktop-cli-")))
+      try {
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["check", "--production", "--config", "missing.config.ts", "--json"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonConfigError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("BuildConfigError")
+        expect(payload.tag).toBe("BuildConfigError")
+        expect(payload.message).toContain("missing.config.ts")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --production rejects duplicate config flags before loading config", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() => mkdtemp(join(tmpdir(), "effect-desktop-cli-")))
+      try {
+        const stdout: string[] = []
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: [
+            "check",
+            "--production",
+            "--config",
+            "first.config.ts",
+            "--config",
+            "second.config.ts"
+          ],
+          cwd: directory,
+          writeStdout: (text) => {
+            stdout.push(text)
+          },
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(stdout.join("")).toBe("")
+        expect(payload.tag).toBe("CliUsageError")
+        expect(payload.message).toContain("--config")
+        expect(payload.message).toContain("at most once")
+        expect(stderr.join("")).not.toContain("missing.config")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --production rejects missing app metadata before security checks", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() => mkdtemp(join(tmpdir(), "effect-desktop-cli-")))
+      try {
+        yield* Effect.promise(() =>
+          writeFile(
+            join(directory, "desktop.config.ts"),
+            [
+              "export default {",
+              "  app: {",
+              "    id: 'dev.effect-desktop.production-check',",
+              "    name: 'Production Check'",
+              "  },",
+              "  security: {",
+              "    csp: { policy: \"script-src 'self' 'unsafe-inline'\" }",
+              "  }",
+              "}"
+            ].join("\n")
+          )
+        )
+
+        const stdout: string[] = []
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["check", "--production", "--config", "desktop.config.ts", "--json"],
+          cwd: directory,
+          writeStdout: (text) => {
+            stdout.push(text)
+          },
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonConfigError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(stdout.join("")).toBe("")
+        expect(payload).toEqual({
+          tag: "BuildConfigError",
+          message: "app.version is required",
+          field: "app.version"
+        })
+        expect(stderr.join("")).not.toContain("weakened-csp")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --production --json emits structured renderer-loading failures", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() => mkdtemp(join(tmpdir(), "effect-desktop-cli-")))
+      try {
+        yield* Effect.promise(() =>
+          writeFile(
+            join(directory, "desktop.config.ts"),
+            [
+              "export default {",
+              "  app: {",
+              "    id: 'dev.effect-desktop.production-check',",
+              "    name: 'Production Check',",
+              "    version: '1.0.0'",
+              "  }",
+              "}"
+            ].join("\n")
+          )
+        )
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: [
+            "check",
+            "--production",
+            "--renderer",
+            "missing.ts",
+            "--config",
+            "desktop.config.ts",
+            "--json"
+          ],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonConfigError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.message).toContain("missing.ts")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --production exits zero and reports acknowledged weakenings", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() => mkdtemp(join(tmpdir(), "effect-desktop-cli-")))
+      try {
+        yield* Effect.promise(() =>
+          writeFile(
+            join(directory, "desktop.config.ts"),
+            [
+              "export default {",
+              "  app: {",
+              "    id: 'dev.effect-desktop.production-check',",
+              "    name: 'Production Check',",
+              "    version: '1.0.0'",
+              "  },",
+              "  security: {",
+              "    csp: {",
+              "      policy: \"script-src 'self' 'unsafe-inline'\",",
+              "      acknowledgeWeakening: true,",
+              "      justification: 'inline bootstrap script exception'",
+              "    }",
+              "  }",
+              "}"
+            ].join("\n")
+          )
+        )
+
+        const stdout: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["check", "--production", "--config", "desktop.config.ts"],
+          cwd: directory,
+          writeStdout: (text) => {
+            stdout.push(text)
+          },
+          writeStderr: () => {}
+        })
+
+        expect(exitCode).toBe(0)
+        expect(stdout.join("")).toContain("ACK weakened-csp")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --production --json writes passed reports to stdout", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() => mkdtemp(join(tmpdir(), "effect-desktop-cli-")))
+      try {
+        yield* Effect.promise(() =>
+          writeFile(
+            join(directory, "desktop.config.ts"),
+            [
+              "export default {",
+              "  app: {",
+              "    id: 'dev.effect-desktop.production-check',",
+              "    name: 'Production Check',",
+              "    version: '1.0.0'",
+              "  }",
+              "}"
+            ].join("\n")
+          )
+        )
+
+        const stdout: string[] = []
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["check", "--production", "--config", "desktop.config.ts", "--json"],
+          cwd: directory,
+          writeStdout: (text) => {
+            stdout.push(text)
+          },
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const report = decodeProductionCheckJsonReport(stdout.join(""))
+        expect(exitCode).toBe(0)
+        expect(stderr.join("")).toBe("")
+        expect(report).toEqual({
+          passed: true,
+          failures: [],
+          acknowledgements: []
+        })
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --production fails when an explicit renderer scan file is unreadable", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() => mkdtemp(join(tmpdir(), "effect-desktop-cli-")))
+      try {
+        yield* Effect.promise(() =>
+          writeFile(
+            join(directory, "desktop.config.ts"),
+            [
+              "export default {",
+              "  app: {",
+              "    id: 'dev.effect-desktop.production-check',",
+              "    name: 'Production Check',",
+              "    version: '1.0.0'",
+              "  }",
+              "}"
+            ].join("\n")
+          )
+        )
+
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["check", "--production", "--renderer", "missing.ts"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("missing.ts")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --production reports bridge protocol barrel imports in renderer files", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() => mkdtemp(join(tmpdir(), "effect-desktop-cli-")))
+      try {
+        yield* Effect.promise(() =>
+          writeFile(
+            join(directory, "desktop.config.ts"),
+            [
+              "export default {",
+              "  app: {",
+              "    id: 'dev.effect-desktop.production-check',",
+              "    name: 'Production Check',",
+              "    version: '1.0.0'",
+              "  }",
+              "}"
+            ].join("\n")
+          )
+        )
+        yield* Effect.promise(() => mkdir(join(directory, "src", "renderer"), { recursive: true }))
+        yield* Effect.promise(() =>
+          writeFile(
+            join(directory, "src", "renderer", "main.ts"),
+            "import { HostProtocolRequestEnvelope } from '@effect-desktop/bridge'\n"
+          )
+        )
+
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: [
+            "check",
+            "--production",
+            "--renderer",
+            "src/renderer/main.ts",
+            "--config",
+            "desktop.config.ts"
+          ],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("renderer-native-host-protocol")
+        expect(stderr.join("")).toContain("src/renderer/main.ts:1")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --production treats missing renderer path as a usage error", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const stderr: string[] = []
+      const exitCode = yield* runCli({
+        argv: ["check", "--production", "--renderer", "--config", "desktop.config.ts"],
+        cwd: process.cwd(),
+        writeStdout: () => {},
+        writeStderr: (text) => {
+          stderr.push(text)
+        }
+      })
+
+      expect(exitCode).toBe(1)
+      expect(stderr.join("").length).toBeGreaterThan(0)
+    })
+  ))
+
+test("desktop check rejects mixed mode flags before dispatch", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-check-modes-"))
+      )
+      try {
+        yield* writeReleaseFixture(directory)
+        yield* Effect.promise(() =>
+          writeFile(
+            join(directory, "desktop.config.ts"),
+            [
+              "export default {",
+              "  app: {",
+              "    id: 'dev.effect-desktop.mixed-check',",
+              "    name: 'Mixed Check',",
+              "    version: '0.0.0'",
+              "  },",
+              "  runtime: { engine: 'bun', entry: 'src/main.ts' },",
+              "  renderer: { framework: 'react', entry: 'src/App.tsx', dist: 'dist/renderer' },",
+              "  security: { csp: { policy: \"script-src 'self' 'unsafe-inline'\" } }",
+              "}"
+            ].join("\n")
+          )
+        )
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--release", "--production", "--config", "desktop.config.ts", "--json"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.tag).toBe("CliUsageError")
+        expect(payload.message).toContain("mutually exclusive")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop commands reject unknown flags before execution", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const cases: readonly (readonly string[])[] = [
+        ["package", "--platfrom", "linux-x64", "--help"],
+        ["build", "--help", "--jsno"],
+        ["doctor", "--definitely-unknown"]
+      ]
+      for (const argv of cases) {
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv,
+          cwd: process.cwd(),
+          doctorCommandRunner: doctorRunner({
+            cargo: true,
+            rustc: true,
+            "xcode-select": true,
+            hdiutil: true
+          }),
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.tag).toBe("CliUsageError")
+        expect(payload.message).toContain("unknown flag")
+      }
+    })
+  ))
+
+test("desktop doctor reports typed missing Rust toolchain failures", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        yield* Effect.promise(() =>
+          writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
+        )
+        yield* Effect.promise(() => writeFile(join(directory, "bun.lock"), ""))
+        const runner = doctorRunner({
+          cargo: false,
           rustc: true,
           "pkg-config": true,
           "dpkg-deb": true
         })
-      }).pipe(Effect.flip)
-    )
+        const stderr: string[] = []
 
-    expect(error).toMatchObject({
-      _tag: "DoctorCapabilityTruthUnavailable",
-      reason: "invalid",
-      path: matrixPath,
-      message: `native capability parity matrix is invalid at ${matrixPath}`
-    })
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
+        const exitCode = yield* runCli({
+          argv: ["doctor", "--config", "apps/inspector/desktop.config.ts", "--json"],
+          cwd: directory,
+          platform: "linux",
+          arch: "x64",
+          bunVersion: "1.3.13",
+          doctorCommandRunner: runner,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
 
-test("desktop doctor suppresses signing warning when signing config is present", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-"))
-  try {
-    await writePlaygroundFixture(directory, {
-      signing: {
-        macos: {
-          identity: "Developer ID Application: Example",
-          teamId: "ABCD1234",
-          notarytoolProfile: "release-profile"
-        }
+        const report = decodeDoctorJsonReport(stderr.join(""))
+        const rustProbe = report.probes.find((probe) => probe.name === "rust-toolchain")
+        expect(exitCode).toBe(1)
+        expect(report.passed).toBe(false)
+        expect(rustProbe?.status).toBe("missing")
+        expect(rustProbe?.installCommand).toBe("install cargo")
+        expect(rustProbe?.installHint).toBeUndefined()
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
     })
-    await writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
-    await writeFile(join(directory, "bun.lock"), "")
-    const runner = doctorRunner({
-      cargo: true,
-      rustc: true,
-      "xcode-select": true,
-      hdiutil: true
-    })
-    const stdout: string[] = []
+  ))
 
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["doctor", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        platform: "darwin",
-        arch: "arm64",
-        bunVersion: "1.3.13",
-        doctorCommandRunner: runner,
-        writeStdout: (text) => {
-          stdout.push(text)
-        },
-        writeStderr: () => {}
-      })
-    )
+test("desktop doctor exits zero with warnings for optional signing and host cache probes", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        yield* Effect.promise(() =>
+          writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
+        )
+        yield* Effect.promise(() => writeFile(join(directory, "bun.lock"), ""))
+        const runner = doctorRunner({
+          cargo: true,
+          rustc: true,
+          "xcode-select": true,
+          hdiutil: true
+        })
+        const stdout: string[] = []
 
-    const output = stdout.join("")
-    expect(exitCode).toBe(0)
-    expect(output).toContain("WARN")
-    expect(output).not.toContain("signing credentials are not configured")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
+        const exitCode = yield* runCli({
+          argv: ["doctor", "--config", "apps/inspector/desktop.config.ts"],
+          cwd: directory,
+          platform: "darwin",
+          arch: "arm64",
+          bunVersion: "1.3.13",
+          doctorCommandRunner: runner,
+          writeStdout: (text) => {
+            stdout.push(text)
+          },
+          writeStderr: () => {}
+        })
 
-test("desktop doctor reads signing credentials from injected environment", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-env-"))
-  try {
-    await writePlaygroundFixture(directory, {
-      signing: {
-        macos: {
-          identity: "Developer ID Application: Example"
-        }
+        const output = stdout.join("")
+        expect(exitCode).toBe(0)
+        expect(output).toContain("WARN")
+        expect(output).toContain("signing credentials are not configured")
+        expect(output).toContain("native host build cache is empty")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
     })
-    await writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
-    await writeFile(join(directory, "bun.lock"), "")
-    const stdout: string[] = []
+  ))
 
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["doctor", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        platform: "darwin",
-        arch: "arm64",
-        bunVersion: "1.3.13",
-        doctorCommandRunner: doctorRunner({
-          cargo: true,
-          rustc: true,
-          "xcode-select": true,
-          hdiutil: true
-        }),
-        env: {
-          APPLE_TEAM_ID: "ABCD1234",
-          APPLE_ID: "release@example.invalid",
-          APPLE_APP_SPECIFIC_PASSWORD: "secret"
-        },
-        writeStdout: (text) => {
-          stdout.push(text)
-        },
-        writeStderr: () => {}
-      })
-    )
-
-    expect(exitCode).toBe(0)
-    expect(stdout.join("")).not.toContain("signing credentials are not configured")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop doctor reports config import failures with the import cause", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-config-import-"))
-  try {
-    await writePlaygroundFixture(directory)
-    await writeFile(
-      join(directory, "apps", "inspector", "desktop.config.ts"),
-      'throw new Error("config exploded")\nexport default {}\n'
-    )
-    await writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
-    await writeFile(join(directory, "bun.lock"), "")
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["doctor", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        platform: "darwin",
-        arch: "arm64",
-        bunVersion: "1.3.13",
-        doctorCommandRunner: doctorRunner({
-          cargo: true,
-          rustc: true,
-          "xcode-select": true,
-          hdiutil: true
-        }),
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
+test("desktop doctor reports native capability truth from the generated parity matrix", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-capabilities-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        yield* Effect.promise(() =>
+          writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
+        )
+        yield* Effect.promise(() => writeFile(join(directory, "bun.lock"), ""))
+        const stdout: string[] = []
+        const matrix = parseJsonObject(
+          yield* Effect.promise(() =>
+            readFile(join(REPO_ROOT, "packages/cli/src/native-parity-matrix.json"), "utf8")
+          )
+        ) as unknown as {
+          readonly summary: {
+            readonly total: number
+            readonly routed: number
+            readonly missing: number
+          }
         }
-      })
-    )
 
-    const output = stderr.join("")
-    expect(exitCode).toBe(1)
-    expect(output).toContain("MISSING  config")
-    expect(output).toContain("desktop config import failed")
-    expect(output).toContain("Cannot access")
-    expect(output).not.toContain("desktop config must export a default object")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop doctor rejects empty app metadata strings", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-empty-metadata-"))
-  try {
-    await writePlaygroundFixture(directory, {
-      app: {
-        id: "",
-        name: "",
-        version: ""
-      }
-    })
-    await writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
-    await writeFile(join(directory, "bun.lock"), "")
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["doctor", "--config", "apps/inspector/desktop.config.ts", "--json"],
-        cwd: directory,
-        platform: "darwin",
-        arch: "arm64",
-        bunVersion: "1.3.13",
-        doctorCommandRunner: doctorRunner({
-          cargo: true,
-          rustc: true,
-          "xcode-select": true,
-          hdiutil: true
-        }),
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const report = decodeDoctorJsonReport(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(report.passed).toBe(false)
-    expect(report.probes.find((probe) => probe.name === "config")?.status).toBe("missing")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop doctor rejects config paths outside the workspace", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-contained-"))
-  const outsideDirectory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-outside-"))
-  try {
-    await writePlaygroundFixture(directory)
-    await writePlaygroundFixture(outsideDirectory)
-    await writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
-    await writeFile(join(directory, "bun.lock"), "")
-    const outsideConfig = join(outsideDirectory, "apps", "inspector", "desktop.config.ts")
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["doctor", "--config", relative(directory, outsideConfig), "--json"],
-        cwd: directory,
-        platform: "darwin",
-        arch: "arm64",
-        bunVersion: "1.3.13",
-        doctorCommandRunner: doctorRunner({
-          cargo: true,
-          rustc: true,
-          "xcode-select": true,
-          hdiutil: true
-        }),
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const report = decodeDoctorJsonReport(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(report.passed).toBe(false)
-    expect(report.probes.find((probe) => probe.name === "config")?.status).toBe("missing")
-    expect(stderr.join("")).toContain("inside the workspace")
-    expect(stderr.join("")).not.toContain(
-      "desktop doctor --config apps/inspector/desktop.config.ts"
-    )
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-    await rm(outsideDirectory, { recursive: true, force: true })
-  }
-})
-
-test("desktop doctor rejects invalid security config", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-"))
-  try {
-    await writePlaygroundFixture(directory, {
-      security: { externalNavigation: "teleport", devtoolsInProd: "sometimes" }
-    })
-    await writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
-    await writeFile(join(directory, "bun.lock"), "")
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["doctor", "--config", "apps/inspector/desktop.config.ts", "--json"],
-        cwd: directory,
-        platform: "darwin",
-        arch: "arm64",
-        bunVersion: "1.3.13",
-        doctorCommandRunner: doctorRunner({
-          cargo: true,
-          rustc: true,
-          "xcode-select": true,
-          hdiutil: true
-        }),
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const report = decodeDoctorJsonReport(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(report.passed).toBe(false)
-    expect(report.probes.find((probe) => probe.name === "config")?.status).toBe("missing")
-    expect(stderr.join("")).toContain("security.externalNavigation")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop doctor rejects protocol limits above caps", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-"))
-  try {
-    await writePlaygroundFixture(directory, {
-      protocol: {
-        limits: {
-          maxFrameBytes: 999_999_999,
-          maxConcurrentRequestsPerWindow: 999_999,
-          maxConcurrentStreamsPerWindow: 999_999
-        }
-      }
-    })
-    await writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
-    await writeFile(join(directory, "bun.lock"), "")
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["doctor", "--config", "apps/inspector/desktop.config.ts", "--json"],
-        cwd: directory,
-        platform: "darwin",
-        arch: "arm64",
-        bunVersion: "1.3.13",
-        doctorCommandRunner: doctorRunner({
-          cargo: true,
-          rustc: true,
-          "xcode-select": true,
-          hdiutil: true
-        }),
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    expect(exitCode).toBe(1)
-    expect(stderr.join("")).toContain("protocol.limits.maxFrameBytes")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop doctor fails when package manager state is not Bun-pinned", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-"))
-  try {
-    await writePlaygroundFixture(directory)
-    await writeFile(join(directory, "package.json"), '{"packageManager":"npm@10.0.0"}\n')
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["doctor", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        platform: "darwin",
-        arch: "arm64",
-        bunVersion: "1.3.13",
-        doctorCommandRunner: doctorRunner({
-          cargo: true,
-          rustc: true,
-          "xcode-select": true,
-          hdiutil: true
-        }),
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    expect(exitCode).toBe(1)
-    expect(stderr.join("")).toContain("package.json#packageManager must be pinned to bun")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --repro exits zero for byte-identical staged and packaged outputs", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
-  try {
-    await writePlaygroundFixture(directory)
-    const commandRunner = deterministicBuildRunner()
-    const packageRunner = deterministicPackageRunner(() => "deb")
-    const stdout: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: [
-          "check",
-          "--repro",
-          "--config",
-          "apps/inspector/desktop.config.ts",
-          "--platform",
-          "linux-x64",
-          "--artifact",
-          "deb"
-        ],
-        cwd: directory,
-        hostTarget: "linux-x64",
-        commandRunner,
-        packageCommandRunner: packageRunner,
-        writeStdout: (text) => {
-          stdout.push(text)
-        },
-        writeStderr: () => {}
-      })
-    )
-
-    expect(exitCode).toBe(0)
-    expect(stdout.join("")).toContain("byte-identical")
-    expect(stdout.join("")).toContain("target            linux-x64")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --repro reports the differing file and byte offset", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
-  try {
-    await writePlaygroundFixture(directory)
-    const commandRunner = deterministicBuildRunner()
-    let packagePass = 0
-    const packageRunner = deterministicPackageRunner(() => {
-      packagePass += 1
-      return packagePass === 1 ? "deb-a" : "deb-b"
-    })
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: [
-          "check",
-          "--repro",
-          "--config",
-          "apps/inspector/desktop.config.ts",
-          "--platform",
-          "linux-x64",
-          "--artifact",
-          "deb"
-        ],
-        cwd: directory,
-        hostTarget: "linux-x64",
-        commandRunner,
-        packageCommandRunner: packageRunner,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const output = stderr.join("")
-    expect(exitCode).toBe(1)
-    expect(output).toContain("package-output")
-    expect(output).toContain(".deb")
-    expect(output).toContain("offset          4")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --repro --json returns structured diff reports", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
-  try {
-    await writePlaygroundFixture(directory)
-    const commandRunner = deterministicBuildRunner()
-    let packagePass = 0
-    const packageRunner = deterministicPackageRunner(() => {
-      packagePass += 1
-      return packagePass === 1 ? "deb-a" : "deb-b"
-    })
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: [
-          "check",
-          "--repro",
-          "--config",
-          "apps/inspector/desktop.config.ts",
-          "--platform",
-          "linux-x64",
-          "--artifact",
-          "deb",
-          "--json"
-        ],
-        cwd: directory,
-        hostTarget: "linux-x64",
-        commandRunner,
-        packageCommandRunner: packageRunner,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const report = decodeReproDiffJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(report.tag).toBe("ReproDiffError")
-    expect(report.report.differences[0]?.firstDifferenceOffset).toBe(4)
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --repro rejects target drift between passes", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-target-"))
-  try {
-    const buildRoot = join(directory, "build")
-    const packageRoot = join(directory, "package")
-    await mkdir(buildRoot, { recursive: true })
-    await mkdir(packageRoot, { recursive: true })
-    await writeFile(join(buildRoot, "app.txt"), "identical\n")
-    await writeFile(join(packageRoot, "app.deb"), "identical\n")
-    let pass = 0
-
-    const exit = await Effect.runPromiseExit(
-      runDesktopReproCheck({
-        buildRunner: () =>
-          Effect.sync(() => {
-            pass += 1
-            return {
-              target: pass === 1 ? "linux-x64" : "macos-arm64",
-              layoutPath: buildRoot
-            }
+        const exitCode = yield* runCli({
+          argv: ["doctor", "--config", "apps/inspector/desktop.config.ts", "--json"],
+          cwd: directory,
+          platform: "linux",
+          arch: "x64",
+          bunVersion: "1.3.13",
+          doctorCommandRunner: doctorRunner({
+            cargo: true,
+            rustc: true,
+            "pkg-config": true,
+            "dpkg-deb": true
           }),
-        packageRunner: () =>
-          Effect.gen(function* () {
-            yield* Effect.tryPromise({
-              try: () => mkdir(packageRoot, { recursive: true }),
-              catch: (cause) => cause
-            })
-            yield* Effect.tryPromise({
-              try: () => writeFile(join(packageRoot, "app.deb"), "identical\n"),
-              catch: (cause) => cause
-            })
-            return {
-              outputPath: packageRoot
-            }
-          })
-      })
-    )
+          writeStdout: (text) => {
+            stdout.push(text)
+          },
+          writeStderr: () => {}
+        })
 
-    expect(Exit.isFailure(exit)).toBe(true)
-    if (Exit.isFailure(exit)) {
-      const failReason = exit.cause.reasons.find((reason) => reason._tag === "Fail")
-      const error = failReason?.error as
-        | {
-            readonly _tag?: string
-            readonly report?: {
-              readonly passed: boolean
-              readonly differences: readonly [
-                {
-                  readonly kind: string
-                  readonly firstTarget?: string
-                  readonly secondTarget?: string
-                }
-              ]
+        const report = decodeDoctorJsonReport(stdout.join(""))
+        const capabilityProbe = report.probes.find((probe) => probe.name === "native-capabilities")
+        expect(exitCode).toBe(0)
+        expect(capabilityProbe).toMatchObject({
+          status: matrix.summary.missing === 0 ? "ok" : "warning",
+          message: `native capability matrix reports ${matrix.summary.total} methods, ${matrix.summary.routed} host-routed, ${matrix.summary.missing} missing host routes`
+        })
+        expect(capabilityProbe?.evidence).toEqual([
+          { key: "source", value: "packages/cli/src/native-parity-matrix.json" },
+          { key: "total", value: String(matrix.summary.total) },
+          { key: "routed", value: String(matrix.summary.routed) },
+          { key: "missing", value: String(matrix.summary.missing) }
+        ])
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop doctor fails when native capability truth is malformed", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-capabilities-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        yield* Effect.promise(() =>
+          writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
+        )
+        yield* Effect.promise(() => writeFile(join(directory, "bun.lock"), ""))
+        const matrixPath = join(directory, "native-parity-matrix.json")
+        yield* Effect.promise(() =>
+          writeFile(matrixPath, '{"rows":[],"summary":{"total":"bad"}}\n')
+        )
+
+        const error = yield* runDesktopDoctor({
+          cwd: directory,
+          configPath: "apps/inspector/desktop.config.ts",
+          ci: false,
+          platform: "linux",
+          arch: "x64",
+          bunVersion: "1.3.13",
+          nativeParityMatrixPath: matrixPath,
+          commandRunner: doctorRunner({
+            cargo: true,
+            rustc: true,
+            "pkg-config": true,
+            "dpkg-deb": true
+          })
+        }).pipe(Effect.flip)
+
+        expect(error).toMatchObject({
+          _tag: "DoctorCapabilityTruthUnavailable",
+          reason: "invalid",
+          path: matrixPath,
+          message: `native capability parity matrix is invalid at ${matrixPath}`
+        })
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop doctor suppresses signing warning when signing config is present", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, {
+          signing: {
+            macos: {
+              identity: "Developer ID Application: Example",
+              teamId: "ABCD1234",
+              notarytoolProfile: "release-profile"
             }
           }
-        | undefined
-      expect(error).toBeDefined()
-      if (error === undefined) {
-        throw new Error("expected repro diff error")
+        })
+        yield* Effect.promise(() =>
+          writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
+        )
+        yield* Effect.promise(() => writeFile(join(directory, "bun.lock"), ""))
+        const runner = doctorRunner({
+          cargo: true,
+          rustc: true,
+          "xcode-select": true,
+          hdiutil: true
+        })
+        const stdout: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["doctor", "--config", "apps/inspector/desktop.config.ts"],
+          cwd: directory,
+          platform: "darwin",
+          arch: "arm64",
+          bunVersion: "1.3.13",
+          doctorCommandRunner: runner,
+          writeStdout: (text) => {
+            stdout.push(text)
+          },
+          writeStderr: () => {}
+        })
+
+        const output = stdout.join("")
+        expect(exitCode).toBe(0)
+        expect(output).toContain("WARN")
+        expect(output).not.toContain("signing credentials are not configured")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
-      expect(error._tag).toBe("ReproDiffError")
-      expect(error.report?.passed).toBe(false)
-      expect(error.report?.differences[0]?.kind).toBe("target")
-      expect(error.report?.differences[0]?.firstTarget).toBe("linux-x64")
-      expect(error.report?.differences[0]?.secondTarget).toBe("macos-arm64")
-    }
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
+    })
+  ))
+
+test("desktop doctor reads signing credentials from injected environment", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-env-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, {
+          signing: {
+            macos: {
+              identity: "Developer ID Application: Example"
+            }
+          }
+        })
+        yield* Effect.promise(() =>
+          writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
+        )
+        yield* Effect.promise(() => writeFile(join(directory, "bun.lock"), ""))
+        const stdout: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["doctor", "--config", "apps/inspector/desktop.config.ts"],
+          cwd: directory,
+          platform: "darwin",
+          arch: "arm64",
+          bunVersion: "1.3.13",
+          doctorCommandRunner: doctorRunner({
+            cargo: true,
+            rustc: true,
+            "xcode-select": true,
+            hdiutil: true
+          }),
+          env: {
+            APPLE_TEAM_ID: "ABCD1234",
+            APPLE_ID: "release@example.invalid",
+            APPLE_APP_SPECIFIC_PASSWORD: "secret"
+          },
+          writeStdout: (text) => {
+            stdout.push(text)
+          },
+          writeStderr: () => {}
+        })
+
+        expect(exitCode).toBe(0)
+        expect(stdout.join("")).not.toContain("signing credentials are not configured")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop doctor reports config import failures with the import cause", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-config-import-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        yield* Effect.promise(() =>
+          writeFile(
+            join(directory, "apps", "inspector", "desktop.config.ts"),
+            'throw new Error("config exploded")\nexport default {}\n'
+          )
+        )
+        yield* Effect.promise(() =>
+          writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
+        )
+        yield* Effect.promise(() => writeFile(join(directory, "bun.lock"), ""))
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["doctor", "--config", "apps/inspector/desktop.config.ts"],
+          cwd: directory,
+          platform: "darwin",
+          arch: "arm64",
+          bunVersion: "1.3.13",
+          doctorCommandRunner: doctorRunner({
+            cargo: true,
+            rustc: true,
+            "xcode-select": true,
+            hdiutil: true
+          }),
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const output = stderr.join("")
+        expect(exitCode).toBe(1)
+        expect(output).toContain("MISSING  config")
+        expect(output).toContain("desktop config import failed")
+        expect(output).toContain("Cannot access")
+        expect(output).not.toContain("desktop config must export a default object")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop doctor rejects empty app metadata strings", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-empty-metadata-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, {
+          app: {
+            id: "",
+            name: "",
+            version: ""
+          }
+        })
+        yield* Effect.promise(() =>
+          writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
+        )
+        yield* Effect.promise(() => writeFile(join(directory, "bun.lock"), ""))
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["doctor", "--config", "apps/inspector/desktop.config.ts", "--json"],
+          cwd: directory,
+          platform: "darwin",
+          arch: "arm64",
+          bunVersion: "1.3.13",
+          doctorCommandRunner: doctorRunner({
+            cargo: true,
+            rustc: true,
+            "xcode-select": true,
+            hdiutil: true
+          }),
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const report = decodeDoctorJsonReport(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(report.passed).toBe(false)
+        expect(report.probes.find((probe) => probe.name === "config")?.status).toBe("missing")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop doctor rejects config paths outside the workspace", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-contained-"))
+      )
+      const outsideDirectory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-outside-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        yield* writePlaygroundFixture(outsideDirectory)
+        yield* Effect.promise(() =>
+          writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
+        )
+        yield* Effect.promise(() => writeFile(join(directory, "bun.lock"), ""))
+        const outsideConfig = join(outsideDirectory, "apps", "inspector", "desktop.config.ts")
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["doctor", "--config", relative(directory, outsideConfig), "--json"],
+          cwd: directory,
+          platform: "darwin",
+          arch: "arm64",
+          bunVersion: "1.3.13",
+          doctorCommandRunner: doctorRunner({
+            cargo: true,
+            rustc: true,
+            "xcode-select": true,
+            hdiutil: true
+          }),
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const report = decodeDoctorJsonReport(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(report.passed).toBe(false)
+        expect(report.probes.find((probe) => probe.name === "config")?.status).toBe("missing")
+        expect(stderr.join("")).toContain("inside the workspace")
+        expect(stderr.join("")).not.toContain(
+          "desktop doctor --config apps/inspector/desktop.config.ts"
+        )
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+        yield* Effect.promise(() => rm(outsideDirectory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop doctor rejects invalid security config", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, {
+          security: { externalNavigation: "teleport", devtoolsInProd: "sometimes" }
+        })
+        yield* Effect.promise(() =>
+          writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
+        )
+        yield* Effect.promise(() => writeFile(join(directory, "bun.lock"), ""))
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["doctor", "--config", "apps/inspector/desktop.config.ts", "--json"],
+          cwd: directory,
+          platform: "darwin",
+          arch: "arm64",
+          bunVersion: "1.3.13",
+          doctorCommandRunner: doctorRunner({
+            cargo: true,
+            rustc: true,
+            "xcode-select": true,
+            hdiutil: true
+          }),
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const report = decodeDoctorJsonReport(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(report.passed).toBe(false)
+        expect(report.probes.find((probe) => probe.name === "config")?.status).toBe("missing")
+        expect(stderr.join("")).toContain("security.externalNavigation")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop doctor rejects protocol limits above caps", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, {
+          protocol: {
+            limits: {
+              maxFrameBytes: 999_999_999,
+              maxConcurrentRequestsPerWindow: 999_999,
+              maxConcurrentStreamsPerWindow: 999_999
+            }
+          }
+        })
+        yield* Effect.promise(() =>
+          writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
+        )
+        yield* Effect.promise(() => writeFile(join(directory, "bun.lock"), ""))
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["doctor", "--config", "apps/inspector/desktop.config.ts", "--json"],
+          cwd: directory,
+          platform: "darwin",
+          arch: "arm64",
+          bunVersion: "1.3.13",
+          doctorCommandRunner: doctorRunner({
+            cargo: true,
+            rustc: true,
+            "xcode-select": true,
+            hdiutil: true
+          }),
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("protocol.limits.maxFrameBytes")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop doctor fails when package manager state is not Bun-pinned", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        yield* Effect.promise(() =>
+          writeFile(join(directory, "package.json"), '{"packageManager":"npm@10.0.0"}\n')
+        )
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["doctor", "--config", "apps/inspector/desktop.config.ts"],
+          cwd: directory,
+          platform: "darwin",
+          arch: "arm64",
+          bunVersion: "1.3.13",
+          doctorCommandRunner: doctorRunner({
+            cargo: true,
+            rustc: true,
+            "xcode-select": true,
+            hdiutil: true
+          }),
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("package.json#packageManager must be pinned to bun")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --repro exits zero for byte-identical staged and packaged outputs", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        const commandRunner = deterministicBuildRunner()
+        const packageRunner = deterministicPackageRunner(() => "deb")
+        const stdout: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: [
+            "check",
+            "--repro",
+            "--config",
+            "apps/inspector/desktop.config.ts",
+            "--platform",
+            "linux-x64",
+            "--artifact",
+            "deb"
+          ],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          commandRunner,
+          packageCommandRunner: packageRunner,
+          writeStdout: (text) => {
+            stdout.push(text)
+          },
+          writeStderr: () => {}
+        })
+
+        expect(exitCode).toBe(0)
+        expect(stdout.join("")).toContain("byte-identical")
+        expect(stdout.join("")).toContain("target            linux-x64")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --repro reports the differing file and byte offset", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        const commandRunner = deterministicBuildRunner()
+        let packagePass = 0
+        const packageRunner = deterministicPackageRunner(() => {
+          packagePass += 1
+          return packagePass === 1 ? "deb-a" : "deb-b"
+        })
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: [
+            "check",
+            "--repro",
+            "--config",
+            "apps/inspector/desktop.config.ts",
+            "--platform",
+            "linux-x64",
+            "--artifact",
+            "deb"
+          ],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          commandRunner,
+          packageCommandRunner: packageRunner,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const output = stderr.join("")
+        expect(exitCode).toBe(1)
+        expect(output).toContain("package-output")
+        expect(output).toContain(".deb")
+        expect(output).toContain("offset          4")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --repro --json returns structured diff reports", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        const commandRunner = deterministicBuildRunner()
+        let packagePass = 0
+        const packageRunner = deterministicPackageRunner(() => {
+          packagePass += 1
+          return packagePass === 1 ? "deb-a" : "deb-b"
+        })
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: [
+            "check",
+            "--repro",
+            "--config",
+            "apps/inspector/desktop.config.ts",
+            "--platform",
+            "linux-x64",
+            "--artifact",
+            "deb",
+            "--json"
+          ],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          commandRunner,
+          packageCommandRunner: packageRunner,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const report = decodeReproDiffJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(report.tag).toBe("ReproDiffError")
+        expect(report.report.differences[0]?.firstDifferenceOffset).toBe(4)
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --repro rejects target drift between passes", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-target-"))
+      )
+      try {
+        const buildRoot = join(directory, "build")
+        const packageRoot = join(directory, "package")
+        yield* Effect.promise(() => mkdir(buildRoot, { recursive: true }))
+        yield* Effect.promise(() => mkdir(packageRoot, { recursive: true }))
+        yield* Effect.promise(() => writeFile(join(buildRoot, "app.txt"), "identical\n"))
+        yield* Effect.promise(() => writeFile(join(packageRoot, "app.deb"), "identical\n"))
+        let pass = 0
+
+        const exit = yield* Effect.exit(
+          runDesktopReproCheck({
+            buildRunner: () =>
+              Effect.sync(() => {
+                pass += 1
+                return {
+                  target: pass === 1 ? "linux-x64" : "macos-arm64",
+                  layoutPath: buildRoot
+                }
+              }),
+            packageRunner: () =>
+              Effect.gen(function* () {
+                yield* Effect.tryPromise({
+                  try: () => mkdir(packageRoot, { recursive: true }),
+                  catch: toTryPromiseError
+                })
+                yield* Effect.tryPromise({
+                  try: () => writeFile(join(packageRoot, "app.deb"), "identical\n"),
+                  catch: toTryPromiseError
+                })
+                return {
+                  outputPath: packageRoot
+                }
+              })
+          })
+        )
+
+        expect(Exit.isFailure(exit)).toBe(true)
+        if (Exit.isFailure(exit)) {
+          const failReason = exit.cause.reasons.find((reason) => reason._tag === "Fail")
+          const error = failReason?.error as
+            | {
+                readonly _tag?: string
+                readonly report?: {
+                  readonly passed: boolean
+                  readonly differences: readonly [
+                    {
+                      readonly kind: string
+                      readonly firstTarget?: string
+                      readonly secondTarget?: string
+                    }
+                  ]
+                }
+              }
+            | undefined
+          expect(error).toBeDefined()
+          if (error === undefined) {
+            throw new Error("expected repro diff error")
+          }
+          expect(error._tag).toBe("ReproDiffError")
+          expect(error.report?.passed).toBe(false)
+          expect(error.report?.differences[0]?.kind).toBe("target")
+          expect(error.report?.differences[0]?.firstTarget).toBe("linux-x64")
+          expect(error.report?.differences[0]?.secondTarget).toBe("macos-arm64")
+        }
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
 
 const reproSymlinkTest = process.platform === "win32" ? test.skip : test
 
 reproSymlinkTest(
   "desktop check --repro reports entry-type drift between symlink and regular file",
-  async () => {
-    const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
-    try {
-      await writePlaygroundFixture(directory)
-      const commandRunner = deterministicBuildRunner()
-      let pass = 0
-      const packageRunner = symlinkDriftPackageRunner(() => {
-        pass += 1
-        return pass === 1 ? "symlink" : "regular"
-      })
-      const stderr: string[] = []
+  () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const directory = yield* Effect.promise(() =>
+          mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
+        )
+        try {
+          yield* writePlaygroundFixture(directory)
+          const commandRunner = deterministicBuildRunner()
+          let pass = 0
+          const packageRunner = symlinkDriftPackageRunner(() => {
+            pass += 1
+            return pass === 1 ? "symlink" : "regular"
+          })
+          const stderr: string[] = []
 
-      const exitCode = await Effect.runPromise(
-        runCli({
+          const exitCode = yield* runCli({
+            argv: [
+              "check",
+              "--repro",
+              "--config",
+              "apps/inspector/desktop.config.ts",
+              "--platform",
+              "linux-x64",
+              "--artifact",
+              "deb",
+              "--json"
+            ],
+            cwd: directory,
+            hostTarget: "linux-x64",
+            commandRunner,
+            packageCommandRunner: packageRunner,
+            writeStdout: () => {},
+            writeStderr: (text) => {
+              stderr.push(text)
+            }
+          })
+
+          const report = decodeReproDiffJsonError(stderr.join(""))
+          expect(exitCode).toBe(1)
+          expect(report.tag).toBe("ReproDiffError")
+          const drift = report.report.differences.find((difference) =>
+            difference.relativePath.endsWith("app-link")
+          )
+          expect(drift?.kind).toBe("entry-type")
+          expect(drift?.firstEntryKind).toBe("symlink")
+          expect(drift?.secondEntryKind).toBe("file")
+        } finally {
+          yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+        }
+      })
+    )
+)
+
+reproSymlinkTest("desktop check --repro reports symlink-target drift between two symlinks", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        const commandRunner = deterministicBuildRunner()
+        let pass = 0
+        const packageRunner = symlinkDriftPackageRunner(() => {
+          pass += 1
+          return pass === 1 ? "symlink-a" : "symlink-b"
+        })
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
           argv: [
             "check",
             "--repro",
@@ -1858,88 +2063,36 @@ reproSymlinkTest(
             stderr.push(text)
           }
         })
-      )
 
-      const report = decodeReproDiffJsonError(stderr.join(""))
-      expect(exitCode).toBe(1)
-      expect(report.tag).toBe("ReproDiffError")
-      const drift = report.report.differences.find((difference) =>
-        difference.relativePath.endsWith("app-link")
-      )
-      expect(drift?.kind).toBe("entry-type")
-      expect(drift?.firstEntryKind).toBe("symlink")
-      expect(drift?.secondEntryKind).toBe("file")
-    } finally {
-      await rm(directory, { recursive: true, force: true })
-    }
-  }
+        const report = decodeReproDiffJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(report.tag).toBe("ReproDiffError")
+        const drift = report.report.differences.find((difference) =>
+          difference.relativePath.endsWith("app-link")
+        )
+        expect(drift?.kind).toBe("symlink-target")
+        expect(drift?.firstSymlinkTarget).toBe("target-a.txt")
+        expect(drift?.secondSymlinkTarget).toBe("target-b.txt")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  )
 )
 
-reproSymlinkTest(
-  "desktop check --repro reports symlink-target drift between two symlinks",
-  async () => {
-    const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
-    try {
-      await writePlaygroundFixture(directory)
-      const commandRunner = deterministicBuildRunner()
-      let pass = 0
-      const packageRunner = symlinkDriftPackageRunner(() => {
-        pass += 1
-        return pass === 1 ? "symlink-a" : "symlink-b"
-      })
-      const stderr: string[] = []
-
-      const exitCode = await Effect.runPromise(
-        runCli({
-          argv: [
-            "check",
-            "--repro",
-            "--config",
-            "apps/inspector/desktop.config.ts",
-            "--platform",
-            "linux-x64",
-            "--artifact",
-            "deb",
-            "--json"
-          ],
-          cwd: directory,
-          hostTarget: "linux-x64",
-          commandRunner,
-          packageCommandRunner: packageRunner,
-          writeStdout: () => {},
-          writeStderr: (text) => {
-            stderr.push(text)
-          }
-        })
+reproSymlinkTest("desktop check --repro passes when both passes emit identical symlinks", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
       )
+      try {
+        yield* writePlaygroundFixture(directory)
+        const commandRunner = deterministicBuildRunner()
+        const packageRunner = symlinkDriftPackageRunner(() => "symlink")
+        const stdout: string[] = []
 
-      const report = decodeReproDiffJsonError(stderr.join(""))
-      expect(exitCode).toBe(1)
-      expect(report.tag).toBe("ReproDiffError")
-      const drift = report.report.differences.find((difference) =>
-        difference.relativePath.endsWith("app-link")
-      )
-      expect(drift?.kind).toBe("symlink-target")
-      expect(drift?.firstSymlinkTarget).toBe("target-a.txt")
-      expect(drift?.secondSymlinkTarget).toBe("target-b.txt")
-    } finally {
-      await rm(directory, { recursive: true, force: true })
-    }
-  }
-)
-
-reproSymlinkTest(
-  "desktop check --repro passes when both passes emit identical symlinks",
-  async () => {
-    const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
-    try {
-      await writePlaygroundFixture(directory)
-      const commandRunner = deterministicBuildRunner()
-      const packageRunner = symlinkDriftPackageRunner(() => "symlink")
-      const stdout: string[] = []
-
-      const exitCode = await Effect.runPromise(
-        runCli({
+        const exitCode = yield* runCli({
           argv: [
             "check",
             "--repro",
@@ -1959,85 +2112,36 @@ reproSymlinkTest(
           },
           writeStderr: () => {}
         })
-      )
 
-      expect(exitCode).toBe(0)
-      expect(stdout.join("")).toContain("byte-identical")
-    } finally {
-      await rm(directory, { recursive: true, force: true })
-    }
-  }
+        expect(exitCode).toBe(0)
+        expect(stdout.join("")).toContain("byte-identical")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  )
 )
 
 const reproModeTest = process.platform === "win32" ? test.skip : test
 const packageModeTest = process.platform === "win32" ? test.skip : test
 
-reproModeTest("desktop check --repro reports mode drift between byte-identical files", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
-  try {
-    await writePlaygroundFixture(directory)
-    const commandRunner = deterministicBuildRunner()
-    let pass = 0
-    const packageRunner = modeDriftPackageRunner(() => {
-      pass += 1
-      return pass === 1 ? 0o755 : 0o644
-    })
-    const stderr: string[] = []
+reproModeTest("desktop check --repro reports mode drift between byte-identical files", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        const commandRunner = deterministicBuildRunner()
+        let pass = 0
+        const packageRunner = modeDriftPackageRunner(() => {
+          pass += 1
+          return pass === 1 ? 0o755 : 0o644
+        })
+        const stderr: string[] = []
 
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: [
-          "check",
-          "--repro",
-          "--config",
-          "apps/inspector/desktop.config.ts",
-          "--platform",
-          "linux-x64",
-          "--artifact",
-          "deb",
-          "--json"
-        ],
-        cwd: directory,
-        hostTarget: "linux-x64",
-        commandRunner,
-        packageCommandRunner: packageRunner,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const report = decodeReproDiffJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(report.tag).toBe("ReproDiffError")
-    const drift = report.report.differences.find((difference) =>
-      difference.relativePath.endsWith("host")
-    )
-    expect(drift?.kind).toBe("mode")
-    expect((drift?.firstMode ?? 0) & 0o111).toBe(0o111)
-    expect((drift?.secondMode ?? 0) & 0o111).toBe(0)
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-reproModeTest(
-  "desktop check --repro reports mode drift when only read/write bits differ",
-  async () => {
-    const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
-    try {
-      await writePlaygroundFixture(directory)
-      const commandRunner = deterministicBuildRunner()
-      let pass = 0
-      const packageRunner = modeDriftPackageRunner(() => {
-        pass += 1
-        return pass === 1 ? 0o644 : 0o444
-      })
-      const stderr: string[] = []
-
-      const exitCode = await Effect.runPromise(
-        runCli({
+        const exitCode = yield* runCli({
           argv: [
             "check",
             "--repro",
@@ -2058,35 +2162,90 @@ reproModeTest(
             stderr.push(text)
           }
         })
-      )
 
-      const report = decodeReproDiffJsonError(stderr.join(""))
-      expect(exitCode).toBe(1)
-      expect(report.tag).toBe("ReproDiffError")
-      const drift = report.report.differences.find((difference) =>
-        difference.relativePath.endsWith("host")
-      )
-      expect(drift?.kind).toBe("mode")
-      expect((drift?.firstMode ?? 0) & 0o777).toBe(0o644)
-      expect((drift?.secondMode ?? 0) & 0o777).toBe(0o444)
-    } finally {
-      await rm(directory, { recursive: true, force: true })
-    }
-  }
+        const report = decodeReproDiffJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(report.tag).toBe("ReproDiffError")
+        const drift = report.report.differences.find((difference) =>
+          difference.relativePath.endsWith("host")
+        )
+        expect(drift?.kind).toBe("mode")
+        expect((drift?.firstMode ?? 0) & 0o111).toBe(0o111)
+        expect((drift?.secondMode ?? 0) & 0o111).toBe(0)
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  )
 )
 
-reproModeTest(
-  "desktop check --repro passes when both passes set the same executable bits",
-  async () => {
-    const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
-    try {
-      await writePlaygroundFixture(directory)
-      const commandRunner = deterministicBuildRunner()
-      const packageRunner = modeDriftPackageRunner(() => 0o755)
-      const stdout: string[] = []
+reproModeTest("desktop check --repro reports mode drift when only read/write bits differ", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        const commandRunner = deterministicBuildRunner()
+        let pass = 0
+        const packageRunner = modeDriftPackageRunner(() => {
+          pass += 1
+          return pass === 1 ? 0o644 : 0o444
+        })
+        const stderr: string[] = []
 
-      const exitCode = await Effect.runPromise(
-        runCli({
+        const exitCode = yield* runCli({
+          argv: [
+            "check",
+            "--repro",
+            "--config",
+            "apps/inspector/desktop.config.ts",
+            "--platform",
+            "linux-x64",
+            "--artifact",
+            "deb",
+            "--json"
+          ],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          commandRunner,
+          packageCommandRunner: packageRunner,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const report = decodeReproDiffJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(report.tag).toBe("ReproDiffError")
+        const drift = report.report.differences.find((difference) =>
+          difference.relativePath.endsWith("host")
+        )
+        expect(drift?.kind).toBe("mode")
+        expect((drift?.firstMode ?? 0) & 0o777).toBe(0o644)
+        expect((drift?.secondMode ?? 0) & 0o777).toBe(0o444)
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  )
+)
+
+reproModeTest("desktop check --repro passes when both passes set the same executable bits", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        const commandRunner = deterministicBuildRunner()
+        const packageRunner = modeDriftPackageRunner(() => 0o755)
+        const stdout: string[] = []
+
+        const exitCode = yield* runCli({
           argv: [
             "check",
             "--repro",
@@ -2106,2504 +2265,2727 @@ reproModeTest(
           },
           writeStderr: () => {}
         })
-      )
 
-      expect(exitCode).toBe(0)
-      expect(stdout.join("")).toContain("byte-identical")
-    } finally {
-      await rm(directory, { recursive: true, force: true })
-    }
-  }
+        expect(exitCode).toBe(0)
+        expect(stdout.join("")).toContain("byte-identical")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  )
 )
 
-test("desktop check --api writes and verifies public API snapshots", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-api-"))
-  try {
-    await writeApiFixturePackage(directory, "export interface Widget { readonly id: string }\n")
-    const writeStdout: string[] = []
-
-    const writeExitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--api", "--write"],
-        cwd: directory,
-        writeStdout: (text) => {
-          writeStdout.push(text)
-        },
-        writeStderr: () => {}
-      })
-    )
-
-    expect(writeExitCode).toBe(0)
-    expect(writeStdout.join("")).toContain("mode              write")
-
-    const checkStdout: string[] = []
-    const checkExitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--api"],
-        cwd: directory,
-        writeStdout: (text) => {
-          checkStdout.push(text)
-        },
-        writeStderr: () => {}
-      })
-    )
-
-    expect(checkExitCode).toBe(0)
-    expect(checkStdout.join("")).toContain("@effect-desktop/fixture")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --api rejects snapshots for the wrong package", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-api-"))
-  try {
-    await writeApiFixturePackage(directory, "export interface Widget { readonly id: string }\n")
-    await Effect.runPromise(
-      runCli({
-        argv: ["check", "--api", "--write"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: () => {}
-      })
-    )
-    const snapshotPath = join(
-      directory,
-      "api",
-      "snapshots",
-      "@effect-desktop__fixture.snapshot.json"
-    )
-    const snapshot = decodeJsonObject(await readFile(snapshotPath, "utf8"))
-    await writeFile(
-      snapshotPath,
-      `${JSON.stringify({ ...snapshot, packageName: "@effect-desktop/other" }, null, 2)}\n`
-    )
-
-    const stderr: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--api", "--json"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const payload = decodeCliJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(payload.tag).toBe("PublicApiFileError")
-    expect(payload.message).toContain("packageName")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --api ignores non-package directories", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-api-"))
-  try {
-    await writeApiFixturePackage(directory, "export interface Widget { readonly id: string }\n")
-    await mkdir(join(directory, "packages", ".cache"), { recursive: true })
-    const stdout: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--api", "--write"],
-        cwd: directory,
-        writeStdout: (text) => {
-          stdout.push(text)
-        },
-        writeStderr: () => {}
-      })
-    )
-
-    expect(exitCode).toBe(0)
-    expect(stdout.join("")).toContain("@effect-desktop/fixture")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --api rejects invalid package names", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-api-"))
-  try {
-    await writeApiFixturePackage(directory, "export interface Widget { readonly id: string }\n")
-    await writeFile(
-      join(directory, "packages", "fixture", "package.json"),
-      JSON.stringify(
-        {
-          name: "../../escape",
-          type: "module",
-          exports: {
-            ".": {
-              types: "./src/index.ts",
-              default: "./src/index.ts"
-            }
-          }
-        },
-        null,
-        2
+test("desktop check --api writes and verifies public API snapshots", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-api-"))
       )
-    )
-    const stderr: string[] = []
+      try {
+        yield* writeApiFixturePackage(
+          directory,
+          "export interface Widget { readonly id: string }\n"
+        )
+        const writeStdout: string[] = []
 
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--api", "--write", "--json"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const payload = decodeCliJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(payload.tag).toBe("PublicApiPackageError")
-    expect(payload.message).toContain("invalid package name")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --api fails when the public API changes without a snapshot update", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-api-"))
-  try {
-    await writeApiFixturePackage(directory, "export interface Widget { readonly id: string }\n")
-    await Effect.runPromise(
-      runCli({
-        argv: ["check", "--api", "--write"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: () => {}
-      })
-    )
-    await writeFile(
-      join(directory, "packages/fixture/src/index.ts"),
-      "export interface Widget { readonly id: string }\nexport const added = 1\n"
-    )
-
-    const stderr: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--api"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    expect(exitCode).toBe(1)
-    expect(stderr.join("")).toContain("ADD @effect-desktop/fixture added")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --api fails when a public signature changes without a snapshot update", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-api-"))
-  try {
-    await writeApiFixturePackage(directory, "export interface Widget { readonly id: string }\n")
-    await Effect.runPromise(
-      runCli({
-        argv: ["check", "--api", "--write"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: () => {}
-      })
-    )
-    await writeFile(
-      join(directory, "packages/fixture/src/index.ts"),
-      "export interface Widget { readonly id: number }\n"
-    )
-
-    const stderr: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--api"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    expect(exitCode).toBe(1)
-    expect(stderr.join("")).toContain("SIGNATURE-CHANGED @effect-desktop/fixture Widget")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --api --json reports missing snapshots as typed values", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-api-"))
-  try {
-    await writeApiFixturePackage(directory, "export const present = true\n")
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--api", "--json"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const payload = decodeCliJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(payload.tag).toBe("PublicApiFileError")
-    expect(payload.message).toContain("snapshot")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --docs verifies manifest pages and runnable examples", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
-  try {
-    await writeDocsFixture(directory, {
-      "docs/installation.md": [
-        "# Installation",
-        "",
-        "```ts run",
-        "const value: string = 'docs'",
-        "if (value.length === 0) throw new Error('empty')",
-        "```"
-      ].join("\n")
-    })
-    const stdout: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--docs"],
-        cwd: directory,
-        writeStdout: (text) => {
-          stdout.push(text)
-        },
-        writeStderr: () => {}
-      })
-    )
-
-    expect(exitCode).toBe(0)
-    expect(stdout.join("")).toContain("pages             1")
-    expect(stdout.join("")).toContain("examples          1")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --docs reports missing pages as typed values", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
-  try {
-    await writeDocsManifest(directory, [
-      { id: "installation", title: "Installation", path: "docs/missing.md" }
-    ])
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--docs", "--json"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const payload = decodeCliJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(payload.tag).toBe("DocsGateMissingPageError")
-    expect(payload.message).toContain("missing.md")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --docs rejects non-string page paths as typed manifest errors", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
-  try {
-    await writeDocsManifest(directory, [{ id: "installation", title: "Installation", path: 42 }])
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--docs", "--json"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const payload = decodeCliJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(payload.tag).toBe("DocsGateManifestError")
-    expect(payload.message).toContain("page path")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --docs rejects an incomplete spec manifest even with the required row count", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
-  try {
-    await mkdir(join(directory, "docs"), { recursive: true })
-    await writeFile(
-      join(directory, "docs", "docs-manifest.json"),
-      JSON.stringify(
-        {
-          schemaVersion: 1,
-          source: "engineering/SPEC.md §25.3",
-          pages: Array.from({ length: 23 }, (_, index) => ({
-            id: `page-${index}`,
-            title: `Page ${index}`,
-            path: `docs/page-${index}.md`
-          }))
-        },
-        null,
-        2
-      )
-    )
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--docs"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    expect(exitCode).toBe(1)
-    expect(stderr.join("")).toContain("DocsGateManifestError")
-    expect(stderr.join("")).toContain("installation")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --docs reports failing runnable examples", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
-  try {
-    await writeDocsFixture(directory, {
-      "docs/installation.md": [
-        "# Installation",
-        "",
-        "```ts run",
-        "throw new Error('broken docs example')",
-        "```"
-      ].join("\n")
-    })
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--docs"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    expect(exitCode).toBe(1)
-    expect(stderr.join("")).toContain("DocsGateExampleFailedError")
-    expect(stderr.join("")).toContain("installation.md#1")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --docs rejects placeholder examples on required pages", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
-  try {
-    const sourceManifest = decodeDocsManifestPagesJson(
-      await readFile(join(REPO_ROOT, "docs", "docs-manifest.json"), "utf8")
-    )
-    await writeDocsManifest(directory, sourceManifest.pages, "engineering/SPEC.md §25.3")
-    const coverageTokens = [
-      "runCli",
-      "ReactDesktop",
-      "Desktop",
-      "defineDesktopConfig",
-      "WindowRpcs",
-      "RpcGroup",
-      "HostProtocolEnvelope",
-      "ClipboardRpcs",
-      "ResourceRegistry",
-      "Process",
-      "PTY",
-      "MemoryFilesystem",
-      "Settings",
-      "PermissionRegistry",
-      "CommandRegistry",
-      "DevtoolsShell",
-      "runHeadless",
-      "runDesktopPackage",
-      "runDesktopSign",
-      "runDesktopPublish",
-      "DoctorMissing",
-      "runSemverGuard",
-      "runDocsReleaseGate"
-    ].join(" ")
-    for (const page of sourceManifest.pages) {
-      const body =
-        page.id === "filesystem"
-          ? [
-              "# Filesystem",
-              "",
-              "```ts run",
-              "import { CliUsageError } from '../packages/cli/src/index.js'",
-              "new CliUsageError('docs')",
-              "```"
-            ].join("\n")
-          : [
-              "# Page",
-              "",
-              "```ts run",
-              `const coverage = ${JSON.stringify(coverageTokens)}`,
-              "void coverage",
-              "```"
-            ].join("\n")
-      await mkdir(dirname(join(directory, page.path)), { recursive: true })
-      await writeFile(join(directory, page.path), body)
-    }
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--docs", "--json"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const payload = decodeCliJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(payload.tag).toBe("DocsGateCoverageError")
-    expect(payload.message).toContain("docs/filesystem.md")
-    expect(payload.message).toContain("MemoryFilesystem")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --docs times out hanging runnable examples", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
-  try {
-    await writeDocsFixture(directory, {
-      "docs/installation.md": [
-        "# Installation",
-        "",
-        "```ts run",
-        "await new Promise(() => {})",
-        "```"
-      ].join("\n")
-    })
-    const hangingRunner: DocsExampleRunner = () => Effect.never
-
-    const result = await Effect.runPromise(
-      Effect.exit(
-        runDocsReleaseGate({
+        const writeExitCode = yield* runCli({
+          argv: ["check", "--api", "--write"],
           cwd: directory,
-          commandRunner: hangingRunner,
-          exampleTimeoutMillis: 10
-        })
-      ).pipe(Effect.timeoutOption("50 millis"))
-    )
-
-    expect(Option.isSome(result)).toBe(true)
-    if (Option.isNone(result)) {
-      throw new Error("docs release gate did not complete before the outer timeout")
-    }
-    expect(Exit.isFailure(result.value)).toBe(true)
-    if (Exit.isFailure(result.value)) {
-      const failReason = result.value.cause.reasons.find((reason) => reason._tag === "Fail")
-      expect(failReason?.error._tag).toBe("DocsGateExampleFailedError")
-      expect(failReason?.error.message).toContain("timed out")
-      expect(failReason?.error.message).toContain("installation.md#1")
-    }
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --docs rejects manifest paths outside the repo", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
-  try {
-    await writeDocsManifest(directory, [{ id: "escape", title: "Escape", path: "../outside.md" }])
-
-    const stderr: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--docs", "--json"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-    expect(exitCode).toBe(1)
-    const payload = decodeCliJsonError(stderr.join(""))
-    expect(payload.tag).toBe("DocsGateManifestError")
-    expect(payload.message).toContain("escapes the repo")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --docs rejects absolute manifest paths", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
-  try {
-    await writeDocsManifest(directory, [{ id: "absolute", title: "Absolute", path: "/etc/passwd" }])
-
-    const stderr: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--docs", "--json"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-    expect(exitCode).toBe(1)
-    const payload = decodeCliJsonError(stderr.join(""))
-    expect(payload.tag).toBe("DocsGateManifestError")
-    expect(payload.message).toContain("escapes the repo")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --release verifies the release supply-chain posture", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
-  try {
-    await writeReleaseFixture(directory)
-    const stdout: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--release"],
-        cwd: directory,
-        writeStdout: (text) => {
-          stdout.push(text)
-        },
-        writeStderr: () => {}
-      })
-    )
-
-    expect(exitCode).toBe(0)
-    expect(stdout.join("")).toContain("gates             8")
-    expect(stdout.join("")).toContain("spdx-sbom")
-    expect(stdout.join("")).toContain("branch-protection")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --release rejects incomplete spec gate identities", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
-  try {
-    await writeReleaseFixture(directory, {
-      checklist: {
-        schemaVersion: 1,
-        source: "engineering/SPEC.md §25.4",
-        subjects: [
-          {
-            id: "inspector",
-            configPath: "apps/inspector/desktop.config.ts",
-            distDir: "apps/inspector/dist",
-            requiredCommands: [
-              "bun packages/cli/src/bin.ts build --config apps/inspector/desktop.config.ts"
-            ]
-          }
-        ],
-        gates: Array.from({ length: 8 }, (_, index) => ({
-          id: `gate-${index}`,
-          title: `Gate ${index}`,
-          kind: "workflow-step",
-          evidence: [".github/workflows/release.yml#Gate"]
-        }))
-      }
-    })
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--release", "--json"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const payload = decodeCliJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(payload.tag).toBe("ReleaseGateManifestError")
-    expect(payload.message).toContain("unknown")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --release rejects malformed checklist shape", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
-  try {
-    await writeReleaseFixture(directory, {
-      checklist: {
-        schemaVersion: 1,
-        source: "engineering/SPEC.md §25.4"
-      }
-    })
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--release", "--json"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const payload = decodeCliJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(payload.tag).toBe("ReleaseGateManifestError")
-    expect(payload.message).toContain("gates")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --release verifies configured non-inspector subjects", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
-  try {
-    const checklist = releaseChecklistFixture()
-    if (!isReleaseChecklistFixture(checklist)) {
-      throw new Error("invalid release checklist fixture")
-    }
-    await writeReleaseFixture(directory, {
-      checklist: {
-        ...checklist,
-        subjects: [
-          ...checklist.subjects,
-          {
-            id: "basic-template",
-            configPath: "apps/fixture-a11y/desktop.config.ts",
-            distDir: "apps/fixture-a11y/dist",
-            requiredCommands: [
-              "bun packages/cli/src/bin.ts build --config apps/fixture-a11y/desktop.config.ts",
-              "bun packages/cli/src/bin.ts package --config apps/fixture-a11y/desktop.config.ts",
-              "bun packages/cli/src/bin.ts check --repro --config apps/fixture-a11y/desktop.config.ts"
-            ]
-          }
-        ]
-      },
-      releaseWorkflow: [
-        releaseWorkflowFixture(),
-        "      - name: Build basic template",
-        "        run: bun packages/cli/src/bin.ts build --config apps/fixture-a11y/desktop.config.ts",
-        "      - name: Package basic template",
-        "        run: bun packages/cli/src/bin.ts package --config apps/fixture-a11y/desktop.config.ts",
-        "      - name: Repro basic template",
-        "        run: bun packages/cli/src/bin.ts check --repro --config apps/fixture-a11y/desktop.config.ts"
-      ].join("\n")
-    })
-    const stdout: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--release"],
-        cwd: directory,
-        writeStdout: (text) => {
-          stdout.push(text)
-        },
-        writeStderr: () => {}
-      })
-    )
-
-    expect(exitCode).toBe(0)
-    expect(stdout.join("")).toContain("gates             8")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --release rejects runner-local release signing policy", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
-  try {
-    await writeReleaseFixture(directory, {
-      keyManagement: "# Release Key Management\n\nHSM-backed release signing uses rotation.\n"
-    })
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--release"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    expect(exitCode).toBe(1)
-    expect(stderr.join("")).toContain("ReleaseGateEvidenceError")
-    expect(stderr.join("")).toContain("runner-local keys are forbidden")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --release rejects unknown evidence sources", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
-  try {
-    const checklist = releaseChecklistFixture()
-    if (!isReleaseChecklistFixture(checklist)) {
-      throw new Error("invalid release checklist fixture")
-    }
-    await writeReleaseFixture(directory, {
-      checklist: {
-        ...checklist,
-        gates: checklist.gates.map((gate) =>
-          gate.id === "spdx-sbom"
-            ? { ...gate, evidence: ["engineering/security/unknown.md#Imaginary Evidence"] }
-            : gate
-        )
-      }
-    })
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--release", "--json"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const payload = decodeCliJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(payload.tag).toBe("ReleaseGateEvidenceError")
-    expect(payload.message).toContain("unsupported evidence")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --release rejects empty evidence anchors", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
-  try {
-    const checklist = releaseChecklistFixture()
-    if (!isReleaseChecklistFixture(checklist)) {
-      throw new Error("invalid release checklist fixture")
-    }
-    await writeReleaseFixture(directory, {
-      checklist: {
-        ...checklist,
-        gates: checklist.gates.map((gate) =>
-          gate.id === "spdx-sbom" ? { ...gate, evidence: [".github/workflows/release.yml#"] } : gate
-        )
-      }
-    })
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--release", "--json"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const payload = decodeCliJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(payload.tag).toBe("ReleaseGateEvidenceError")
-    expect(payload.message).toContain("empty evidence anchor")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --release rejects evidence from another gate", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
-  try {
-    const checklist = releaseChecklistFixture()
-    if (!isReleaseChecklistFixture(checklist)) {
-      throw new Error("invalid release checklist fixture")
-    }
-    await writeReleaseFixture(directory, {
-      checklist: {
-        ...checklist,
-        gates: checklist.gates.map((gate) =>
-          gate.id === "secret-scanning"
-            ? {
-                ...gate,
-                evidence: ["engineering/security/release-settings.md#GitHub-hosted runners"]
-              }
-            : gate
-        )
-      }
-    })
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--release", "--json"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const payload = decodeCliJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(payload.tag).toBe("ReleaseGateEvidenceError")
-    expect(payload.message).toContain("does not accept evidence")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --release rejects stale workflow evidence in the checklist", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
-  try {
-    const checklist = releaseChecklistFixture()
-    if (!isReleaseChecklistFixture(checklist)) {
-      throw new Error("invalid release checklist fixture")
-    }
-    await writeReleaseFixture(directory, {
-      checklist: {
-        ...checklist,
-        gates: checklist.gates.map((gate) =>
-          gate.id === "spdx-sbom"
-            ? { ...gate, evidence: [".github/workflows/release.yml#Missing SBOM Step"] }
-            : gate
-        )
-      }
-    })
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--release"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    expect(exitCode).toBe(1)
-    expect(stderr.join("")).toContain("ReleaseGateEvidenceError")
-    expect(stderr.join("")).toContain("Missing SBOM Step")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --release rejects unpinned release workflow actions", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
-  try {
-    await writeReleaseFixture(directory, {
-      releaseWorkflow: releaseWorkflowFixture().replace(
-        "actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0",
-        "actions/attest@v4"
-      )
-    })
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--release"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    expect(exitCode).toBe(1)
-    expect(stderr.join("")).toContain("ReleaseGateEvidenceError")
-    expect(stderr.join("")).toContain("unpinned or uncommented action reference")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --release ignores uses text inside run scripts", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
-  try {
-    await writeReleaseFixture(directory, {
-      releaseWorkflow: [
-        releaseWorkflowFixture(),
-        "      - name: Document action syntax",
-        "        run: |",
-        "          # uses: actions/checkout@v6",
-        "          echo done"
-      ].join("\n")
-    })
-    const stdout: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--release"],
-        cwd: directory,
-        writeStdout: (text) => {
-          stdout.push(text)
-        },
-        writeStderr: () => {}
-      })
-    )
-
-    expect(exitCode).toBe(0)
-    expect(stdout.join("")).toContain("gates             8")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --release rejects subject package before build", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
-  try {
-    await writeReleaseFixture(directory, {
-      releaseWorkflow: releaseWorkflowFixture().replace(
-        [
-          "      - name: Build desktop app",
-          "        run: bun packages/cli/src/bin.ts build --config apps/inspector/desktop.config.ts",
-          "      - name: Package release artifact",
-          "        run: bun packages/cli/src/bin.ts package --config apps/inspector/desktop.config.ts"
-        ].join("\n"),
-        [
-          "      - name: Package release artifact",
-          "        run: bun packages/cli/src/bin.ts package --config apps/inspector/desktop.config.ts",
-          "      - name: Build desktop app",
-          "        run: bun packages/cli/src/bin.ts build --config apps/inspector/desktop.config.ts"
-        ].join("\n")
-      )
-    })
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--release", "--json"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const payload = decodeCliJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(payload.tag).toBe("ReleaseGateEvidenceError")
-    expect(payload.message).toContain("release subject inspector")
-    expect(payload.message).toContain("build --config apps/inspector/desktop.config.ts")
-    expect(payload.message).toContain("before")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --release reports missing subject workflow command", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
-  try {
-    const checklist = releaseChecklistFixture()
-    if (!isReleaseChecklistFixture(checklist)) {
-      throw new Error("invalid release checklist fixture")
-    }
-    await writeReleaseFixture(directory, {
-      checklist: {
-        ...checklist,
-        subjects: [
-          {
-            id: "basic-template",
-            configPath: "apps/fixture-a11y/desktop.config.ts",
-            distDir: "apps/fixture-a11y/dist",
-            requiredCommands: [
-              "bun packages/cli/src/bin.ts build --config apps/fixture-a11y/desktop.config.ts"
-            ]
-          }
-        ]
-      }
-    })
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--release", "--json"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const payload = decodeCliJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(payload.tag).toBe("ReleaseGateEvidenceError")
-    expect(payload.message).toContain("release subject basic-template")
-    expect(payload.message).toContain(
-      "bun packages/cli/src/bin.ts build --config apps/fixture-a11y/desktop.config.ts"
-    )
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --release rejects empty CVSS exemption sections", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
-  try {
-    await writeReleaseFixture(directory)
-    await mkdir(join(directory, "engineering", "security", "exemptions"), { recursive: true })
-    await writeFile(
-      join(directory, "engineering", "security", "exemptions", "empty.md"),
-      ["# Empty exemption", "", "## Justification", "", "## Re-review", ""].join("\n")
-    )
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--release", "--json"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const payload = decodeCliJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(payload.tag).toBe("ReleaseGateEvidenceError")
-    expect(payload.message).toContain("non-empty Justification")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --a11y verifies template accessibility evidence", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
-  try {
-    await writeAccessibilityFixture(directory)
-    const stdout: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--a11y"],
-        cwd: directory,
-        writeStdout: (text) => {
-          stdout.push(text)
-        },
-        writeStderr: () => {}
-      })
-    )
-
-    expect(exitCode).toBe(0)
-    expect(stdout.join("")).toContain("templates         1")
-    expect(stdout.join("")).toContain("fixture-a11y")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --a11y rejects hardcoded template English outside i18n files", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
-  try {
-    await writeAccessibilityFixture(directory, {
-      appSource: [
-        "import { templateMessages } from './messages'",
-        "export function App() {",
-        "  return <button>Open window</button>",
-        "}"
-      ].join("\n")
-    })
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--a11y"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    expect(exitCode).toBe(1)
-    expect(stderr.join("")).toContain("AccessibilityGateEvidenceError")
-    expect(stderr.join("")).toContain("hardcoded user-visible English")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --a11y rejects single-word hardcoded template labels", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
-  try {
-    await writeAccessibilityFixture(directory, {
-      appSource: [
-        "import { templateMessages } from './messages'",
-        "export function App() {",
-        "  return <button>Settings</button>",
-        "}"
-      ].join("\n")
-    })
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--a11y"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    expect(exitCode).toBe(1)
-    expect(stderr.join("")).toContain("AccessibilityGateEvidenceError")
-    expect(stderr.join("")).toContain("Settings")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --a11y rejects zero-pass axe reports", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
-  try {
-    await writeAccessibilityFixture(directory, {
-      axePasses: []
-    })
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--a11y", "--json"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const payload = decodeCliJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(payload.tag).toBe("AccessibilityGateEvidenceError")
-    expect(payload.message).toContain("no axe pass evidence")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --a11y rejects comment-only required tokens", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
-  try {
-    await writeAccessibilityFixture(directory, {
-      styles: [
-        "/* prefers-color-scheme */",
-        "/* prefers-reduced-motion */",
-        ":root { color-scheme: light; }"
-      ].join("\n")
-    })
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--a11y", "--json"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const payload = decodeCliJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(payload.tag).toBe("AccessibilityGateEvidenceError")
-    expect(payload.message).toContain("prefers-reduced-motion")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --a11y binds RTL audit modes to Arabic rendered state", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
-  try {
-    await writeAccessibilityFixture(directory, {
-      axeUrlForMode: (mode) =>
-        mode.endsWith("rtl")
-          ? `fixture:${mode}?dir=rtl&color-scheme=${mode.startsWith("dark") ? "dark" : "light"}`
-          : defaultAxeUrlForMode(mode)
-    })
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--a11y", "--json"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const payload = decodeCliJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(payload.tag).toBe("AccessibilityGateEvidenceError")
-    expect(payload.message).toContain("rtl")
-    expect(payload.message).toContain("rendered template state")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --a11y rejects missing manifest template arrays", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
-  try {
-    await writeAccessibilityFixture(directory, {
-      manifest: {
-        schemaVersion: 1,
-        source: "engineering/SPEC.md §25.5",
-        release: "v1.0.0"
-      }
-    })
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--a11y", "--json"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const payload = decodeCliJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(payload.tag).toBe("AccessibilityGateManifestError")
-    expect(payload.message).toContain("templates")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --a11y binds audit mode IDs to semantics", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
-  try {
-    const manifest = accessibilityManifestFixture()
-    if (!isAccessibilityManifestFixture(manifest)) {
-      throw new Error("invalid accessibility manifest fixture")
-    }
-    await writeAccessibilityFixture(directory, {
-      manifest: {
-        ...manifest,
-        templates: manifest.templates.map((template) => ({
-          ...template,
-          auditModes: template.auditModes.map((mode) =>
-            mode.id === "light-ltr" ? { ...mode, direction: "rtl" } : mode
-          )
-        }))
-      }
-    })
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--a11y", "--json"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const payload = decodeCliJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(payload.tag).toBe("AccessibilityGateEvidenceError")
-    expect(payload.message).toContain("light-ltr direction")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --a11y binds Pa11y audit files to modes", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
-  try {
-    await writeAccessibilityFixture(directory, {
-      pa11yUrlForMode: () => defaultAxeUrlForMode("light-ltr")
-    })
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--a11y", "--json"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const payload = decodeCliJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(payload.tag).toBe("AccessibilityGateEvidenceError")
-    expect(payload.message).toContain("pa11y.dark-ltr.json")
-    expect(payload.message).toContain("rendered template state")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --a11y rejects contrast below the WCAG floor", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
-  try {
-    const manifest = accessibilityManifestFixture()
-    if (!isAccessibilityManifestFixture(manifest)) {
-      throw new Error("invalid accessibility manifest fixture")
-    }
-    await writeAccessibilityFixture(directory, {
-      manifest: {
-        ...manifest,
-        templates: manifest.templates.map((template) => ({
-          ...template,
-          contrastPairs: [
-            {
-              id: "bad-body",
-              foreground: "#777777",
-              background: "#888888",
-              minimumRatio: 4.5
-            }
-          ]
-        }))
-      }
-    })
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--a11y"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    expect(exitCode).toBe(1)
-    expect(stderr.join("")).toContain("AccessibilityGateEvidenceError")
-    expect(stderr.join("")).toContain("contrast ratio")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --a11y rejects invalid contrast colors", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
-  try {
-    const manifest = accessibilityManifestFixture()
-    if (!isAccessibilityManifestFixture(manifest)) {
-      throw new Error("invalid accessibility manifest fixture")
-    }
-    await writeAccessibilityFixture(directory, {
-      manifest: {
-        ...manifest,
-        templates: manifest.templates.map((template) => ({
-          ...template,
-          contrastPairs: [
-            {
-              id: "bad-color",
-              foreground: "not-a-color",
-              background: "#ffffff",
-              minimumRatio: 4.5
-            }
-          ]
-        }))
-      }
-    })
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--a11y", "--json"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const payload = decodeCliJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(payload.tag).toBe("AccessibilityGateEvidenceError")
-    expect(payload.message).toContain("foreground")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --a11y rejects invalid contrast minimums", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
-  try {
-    const manifest = accessibilityManifestFixture()
-    if (!isAccessibilityManifestFixture(manifest)) {
-      throw new Error("invalid accessibility manifest fixture")
-    }
-    await writeAccessibilityFixture(directory, {
-      manifest: {
-        ...manifest,
-        templates: manifest.templates.map((template) => ({
-          ...template,
-          contrastPairs: [
-            {
-              id: "bad-minimum",
-              foreground: "#020617",
-              background: "#f8fafc",
-              minimumRatio: -1
-            }
-          ]
-        }))
-      }
-    })
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--a11y", "--json"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const payload = decodeCliJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(payload.tag).toBe("AccessibilityGateEvidenceError")
-    expect(payload.message).toContain("minimumRatio")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --a11y rejects paths outside the workspace", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
-  try {
-    const manifest = accessibilityManifestFixture()
-    if (!isAccessibilityManifestFixture(manifest)) {
-      throw new Error("invalid accessibility manifest fixture")
-    }
-    await writeAccessibilityFixture(directory, {
-      manifest: {
-        ...manifest,
-        templates: manifest.templates.map((template) => ({
-          ...template,
-          requiredTokens: [{ file: "../outside-token.txt", token: "resolveTemplateLocale" }]
-        }))
-      }
-    })
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--a11y", "--json"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const payload = decodeCliJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(payload.tag).toBe("AccessibilityGateEvidenceError")
-    expect(payload.message).toContain("must stay inside")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --a11y rejects screencast directories", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
-  try {
-    await writeAccessibilityFixture(directory)
-    const screencastPath = join(
-      directory,
-      "engineering",
-      "audits",
-      "v1.0.0",
-      "fixture-a11y",
-      "keyboard-walkthrough.webm"
-    )
-    await rm(screencastPath)
-    await mkdir(screencastPath)
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--a11y", "--json"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const payload = decodeCliJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(payload.tag).toBe("AccessibilityGateEvidenceError")
-    expect(payload.message).toContain("screencast file")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("semver guard verifies additive release posture", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
-  try {
-    await writeSemverFixture(directory, { packageVersion: "1.1.0" })
-    const report = await Effect.runPromise(
-      runSemverGuard({
-        cwd: directory,
-        publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
-      })
-    )
-
-    expect(report.passed).toBe(true)
-    expect(report.appendixCRows).toHaveLength(4)
-    expect(report.packageVersions.map((pkg) => pkg.version)).toEqual(["1.1.0"])
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("semver guard rejects package version drift from the release manifest", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
-  try {
-    await writeSemverFixture(directory, { packageVersion: "0.0.0" })
-    const error = await Effect.runPromise(
-      runSemverGuard({
-        cwd: directory,
-        publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
-      }).pipe(Effect.flip)
-    )
-
-    expect((error as { readonly _tag: string })._tag).toBe("SemverGuardManifestError")
-    expect((error as { readonly message: string }).message).toContain("@effect-desktop/core@0.0.0")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("semver guard rejects manifest with missing bridgeEnvelopePolicy", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
-  try {
-    const manifest = semverManifestFixture()
-    if (!isSemverManifestFixture(manifest)) {
-      throw new Error("invalid semver manifest fixture")
-    }
-    await writeSemverFixture(directory, {
-      packageVersion: "1.1.0",
-      manifest: { ...manifest, bridgeEnvelopePolicy: undefined }
-    })
-    const error = await Effect.runPromise(
-      runSemverGuard({
-        cwd: directory,
-        publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
-      }).pipe(Effect.flip)
-    )
-
-    expect((error as { readonly _tag: string })._tag).toBe("SemverGuardManifestError")
-    expect((error as { readonly message: string }).message).toContain("bridgeEnvelopePolicy")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("semver guard passes manifest publicApiSnapshots to the API checker", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
-  try {
-    const manifest = semverManifestFixture()
-    if (!isSemverManifestFixture(manifest)) {
-      throw new Error("invalid semver manifest fixture")
-    }
-    await writeSemverFixture(directory, {
-      packageVersion: "1.1.0",
-      manifest: { ...manifest, publicApiSnapshots: "api/custom-snapshots" }
-    })
-    let observedSnapshotRoot = ""
-
-    await Effect.runPromise(
-      runSemverGuard({
-        cwd: directory,
-        publicApiCheck: (_cwd, snapshotRoot) => {
-          observedSnapshotRoot = snapshotRoot
-          return Effect.succeed(publicApiReportFixture("added"))
-        }
-      })
-    )
-
-    expect(observedSnapshotRoot).toBe("api/custom-snapshots")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("semver guard rejects escaping publicApiSnapshots roots", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
-  try {
-    const manifest = semverManifestFixture()
-    if (!isSemverManifestFixture(manifest)) {
-      throw new Error("invalid semver manifest fixture")
-    }
-    await writeSemverFixture(directory, {
-      packageVersion: "1.1.0",
-      manifest: { ...manifest, publicApiSnapshots: "../api/snapshots" }
-    })
-
-    const error = await Effect.runPromise(
-      runSemverGuard({
-        cwd: directory,
-        publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
-      }).pipe(Effect.flip)
-    )
-
-    expect((error as { readonly _tag: string })._tag).toBe("SemverGuardManifestError")
-    expect((error as { readonly message: string }).message).toContain("publicApiSnapshots")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("semver guard rejects empty public API snapshot paths", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
-  try {
-    const manifest = semverManifestFixture()
-    if (!isSemverManifestFixture(manifest)) {
-      throw new Error("invalid semver manifest fixture")
-    }
-    await writeSemverFixture(directory, {
-      packageVersion: "1.1.0",
-      manifest: { ...manifest, publicApiSnapshots: "" }
-    })
-
-    const error = await Effect.runPromise(
-      runSemverGuard({
-        cwd: directory,
-        publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
-      }).pipe(Effect.flip)
-    )
-
-    expect((error as { readonly _tag: string })._tag).toBe("SemverGuardManifestError")
-    expect((error as { readonly message: string }).message).toContain("publicApiSnapshots")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("semver guard rejects verification matrices outside the repo", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
-  const outsideDirectory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-outside-"))
-  try {
-    const manifest = semverManifestFixture()
-    if (!isSemverManifestFixture(manifest)) {
-      throw new Error("invalid semver manifest fixture")
-    }
-    const outsideMatrix = join(outsideDirectory, "verification-matrix.json")
-    await writeFile(outsideMatrix, JSON.stringify(semverMatrixFixture(), null, 2))
-    await writeSemverFixture(directory, {
-      packageVersion: "1.1.0",
-      manifest: {
-        ...manifest,
-        verificationMatrix: relative(directory, outsideMatrix)
-      }
-    })
-
-    const error = await Effect.runPromise(
-      runSemverGuard({
-        cwd: directory,
-        publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
-      }).pipe(Effect.flip)
-    )
-
-    expect((error as { readonly _tag: string })._tag).toBe("SemverGuardManifestError")
-    expect((error as { readonly message: string }).message).toContain("verificationMatrix")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-    await rm(outsideDirectory, { recursive: true, force: true })
-  }
-})
-
-test("semver guard rejects missing Appendix C rows", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
-  try {
-    const manifest = semverManifestFixture()
-    if (!isSemverManifestFixture(manifest)) {
-      throw new Error("invalid semver manifest fixture")
-    }
-    await writeSemverFixture(directory, {
-      packageVersion: "1.1.0",
-      manifest: { ...manifest, appendixCRows: ["C.54", "C.404"] }
-    })
-    const exit = await Effect.runPromiseExit(
-      runSemverGuard({
-        cwd: directory,
-        publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
-      })
-    )
-
-    expect(exit._tag).toBe("Failure")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("semver guard rejects malformed Appendix C matrix coverage", async () => {
-  const cases: ReadonlyArray<{
-    readonly label: string
-    readonly manifestPatch?: Record<string, unknown>
-    readonly matrix: unknown
-  }> = [
-    { label: "empty rows", manifestPatch: { appendixCRows: [] }, matrix: semverMatrixFixture() },
-    { label: "missing rows", matrix: { ...semverMatrixFixture(), rows: undefined } },
-    { label: "array rows", matrix: { ...semverMatrixFixture(), rows: [] } },
-    { label: "string rows", matrix: { ...semverMatrixFixture(), rows: "not rows" } }
-  ]
-
-  for (const testCase of cases) {
-    const directory = await mkdtemp(join(tmpdir(), `effect-desktop-cli-semver-${testCase.label}-`))
-    try {
-      const manifest = semverManifestFixture()
-      if (!isSemverManifestFixture(manifest)) {
-        throw new Error("invalid semver manifest fixture")
-      }
-      await writeSemverFixture(directory, {
-        packageVersion: "1.1.0",
-        manifest: { ...manifest, ...testCase.manifestPatch },
-        matrix: testCase.matrix
-      })
-
-      const error = await Effect.runPromise(
-        runSemverGuard({
-          cwd: directory,
-          publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
-        }).pipe(Effect.flip)
-      )
-
-      expect((error as { readonly _tag: string })._tag).toBe("SemverGuardManifestError")
-    } finally {
-      await rm(directory, { recursive: true, force: true })
-    }
-  }
-})
-
-test("semver guard rejects weakened semver policy fields", async () => {
-  const cases: ReadonlyArray<{
-    readonly label: string
-    readonly manifestPatch: Record<string, unknown>
-  }> = [
-    {
-      label: "deprecated-jsdoc-disabled",
-      manifestPatch: {
-        deprecationPolicy: {
-          minimumMinorReleases: 3,
-          requiresJSDocDeprecated: false
-        }
-      }
-    },
-    {
-      label: "empty-bridge-allowed-change",
-      manifestPatch: {
-        bridgeEnvelopePolicy: {
-          source: "engineering/SPEC.md §9.3",
-          frozenBetweenMajors: true,
-          allowedChange: ""
-        }
-      }
-    },
-    {
-      label: "permissive-bridge-allowed-change",
-      manifestPatch: {
-        bridgeEnvelopePolicy: {
-          source: "engineering/SPEC.md §9.3",
-          frozenBetweenMajors: true,
-          allowedChange: "anything may change between minor releases"
-        }
-      }
-    }
-  ]
-
-  for (const testCase of cases) {
-    const directory = await mkdtemp(join(tmpdir(), `effect-desktop-cli-semver-${testCase.label}-`))
-    try {
-      const manifest = semverManifestFixture()
-      if (!isSemverManifestFixture(manifest)) {
-        throw new Error("invalid semver manifest fixture")
-      }
-      await writeSemverFixture(directory, {
-        packageVersion: "1.1.0",
-        manifest: { ...manifest, ...testCase.manifestPatch }
-      })
-
-      const error = await Effect.runPromise(
-        runSemverGuard({
-          cwd: directory,
-          publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
-        }).pipe(Effect.flip)
-      )
-
-      expect((error as { readonly _tag: string })._tag).toBe("SemverGuardManifestError")
-    } finally {
-      await rm(directory, { recursive: true, force: true })
-    }
-  }
-})
-
-test("semver guard allows additive public API changes and blocks removals", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
-  try {
-    await writeSemverFixture(directory, { packageVersion: "1.1.0" })
-    const additive = await Effect.runPromise(
-      runSemverGuard({
-        cwd: directory,
-        publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
-      })
-    )
-    expect(additive.passed).toBe(true)
-
-    const removalExit = await Effect.runPromiseExit(
-      runSemverGuard({
-        cwd: directory,
-        publicApiCheck: () => Effect.succeed(publicApiReportFixture("removed"))
-      })
-    )
-    expect(removalExit._tag).toBe("Failure")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("semver guard rejects additive public API changes in patch releases", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
-  try {
-    const manifest = semverManifestFixture()
-    if (!isSemverManifestFixture(manifest)) {
-      throw new Error("invalid semver manifest fixture")
-    }
-    await writeSemverFixture(directory, {
-      packageVersion: "1.1.1",
-      manifest: { ...manifest, release: "1.1.1", releaseKind: "patch" }
-    })
-
-    const exit = await Effect.runPromiseExit(
-      runSemverGuard({
-        cwd: directory,
-        publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
-      })
-    )
-
-    expect(exit._tag).toBe("Failure")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("semver guard rejects release kind drift from the semantic version", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
-  try {
-    const manifest = semverManifestFixture()
-    if (!isSemverManifestFixture(manifest)) {
-      throw new Error("invalid semver manifest fixture")
-    }
-    await writeSemverFixture(directory, {
-      packageVersion: "1.1.1",
-      manifest: { ...manifest, release: "1.1.1", releaseKind: "minor" }
-    })
-
-    const exit = await Effect.runPromiseExit(
-      runSemverGuard({
-        cwd: directory,
-        publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
-      })
-    )
-
-    expect(exit._tag).toBe("Failure")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("semver guard rejects padded release versions", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
-  try {
-    const manifest = semverManifestFixture()
-    if (!isSemverManifestFixture(manifest)) {
-      throw new Error("invalid semver manifest fixture")
-    }
-    await writeSemverFixture(directory, {
-      packageVersion: "01.02.03",
-      manifest: { ...manifest, release: "01.02.03", releaseKind: "patch" }
-    })
-
-    const exit = await Effect.runPromiseExit(
-      runSemverGuard({
-        cwd: directory,
-        publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
-      })
-    )
-
-    expect(exit._tag).toBe("Failure")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("semver guard rejects wrong-typed manifest fields", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
-  try {
-    const manifest = semverManifestFixture()
-    if (!isSemverManifestFixture(manifest)) {
-      throw new Error("invalid semver manifest fixture")
-    }
-    await writeSemverFixture(directory, {
-      manifest: {
-        ...manifest,
-        deprecationPolicy: {
-          ...manifest.deprecationPolicy,
-          minimumMinorReleases: "3"
-        }
-      }
-    })
-
-    const exit = await Effect.runPromiseExit(
-      runSemverGuard({
-        cwd: directory,
-        publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
-      })
-    )
-
-    expect(exit._tag).toBe("Failure")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop sign signs macOS app bundle with hardened runtime entitlements", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-"))
-  try {
-    await writePlaygroundFixture(directory, {
-      signing: {
-        macos: { identity: "Developer ID Application: Example Inc.", teamId: "ABCD1234" }
-      },
-      permissions: ["device.camera", "network.client"]
-    })
-    await writePackagedArtifactFixture(directory, "macos-arm64", "app")
-    const calls: string[] = []
-    const runner: SignCommandRunner = (invocation) => {
-      calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
-      return Effect.void
-    }
-
-    const stdout: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["sign", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        hostTarget: "macos-arm64",
-        now: fixedClock([100, 125, 200, 230, 300, 330, 400, 430]),
-        signCommandRunner: runner,
-        writeStdout: (text) => {
-          stdout.push(text)
-        },
-        writeStderr: () => {}
-      })
-    )
-
-    const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "macos")
-    const artifactRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.app")
-    const entitlements = await readFile(
-      join(artifactRoot, "effect-desktop-entitlements.plist"),
-      "utf8"
-    )
-    const report = decodeSignReportJson(
-      await readFile(join(outputRoot, "sign-report.json"), "utf8")
-    )
-
-    expect(exitCode).toBe(0)
-    expect(stdout.join("")).toContain("Effect Desktop sign")
-    expect(entitlements).toContain("<key>com.apple.security.cs.allow-jit</key>")
-    expect(entitlements).toContain("<key>com.apple.security.device.camera</key>\n  <true/>")
-    expect(entitlements).toContain("<key>com.apple.security.device.microphone</key>\n  <false/>")
-    expect(entitlements).toContain("<key>com.apple.security.network.client</key>\n  <true/>")
-    expect(calls.at(-1)).toContain("codesign --force --sign Developer ID Application: Example Inc.")
-    expect(calls.at(-1)).toContain("--options runtime --entitlements")
-    expect(report.artifacts[0]?.signedPaths).toHaveLength(4)
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop sign rejects malformed permission entries before macOS codesign", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-"))
-  try {
-    await writePlaygroundFixture(directory, {
-      signing: {
-        macos: { identity: "Developer ID Application: Example Inc.", teamId: "ABCD1234" }
-      },
-      permissions: [42]
-    })
-    await writePackagedArtifactFixture(directory, "macos-arm64", "app")
-    const stderr: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["sign", "--config", "apps/inspector/desktop.config.ts", "--json"],
-        cwd: directory,
-        hostTarget: "macos-arm64",
-        signCommandRunner: () => Effect.die("codesign must not run with malformed permissions"),
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const error = decodeCliJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(error.tag).toBe("SignConfigError")
-    expect(error.message).toContain("permissions[0]")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop sign fails macOS signing without a Developer ID identity", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-"))
-  try {
-    await writePlaygroundFixture(directory)
-    await writePackagedArtifactFixture(directory, "macos-arm64", "app")
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["sign", "--config", "apps/inspector/desktop.config.ts", "--json"],
-        cwd: directory,
-        hostTarget: "macos-arm64",
-        signCommandRunner: () => Effect.die("sign runner should not run without identity"),
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const error = decodeCliJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(error.tag).toBe("SignConfigError")
-    expect(error.message).toContain("signing.macos.identity")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop sign Authenticode-signs Windows MSI with RFC 3161 timestamp", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-"))
-  try {
-    await writePlaygroundFixture(directory, {
-      signing: {
-        windows: {
-          thumbprint: "A1B2C3D4E5F60718293A4B5C6D7E8F9012345678",
-          timestampUrl: "http://timestamp.digicert.com"
-        }
-      }
-    })
-    await writePackagedArtifactFixture(directory, "windows-x64", "msi")
-    const calls: string[] = []
-    const runner: SignCommandRunner = (invocation) => {
-      calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
-      return Effect.void
-    }
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["sign", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        hostTarget: "windows-x64",
-        signCommandRunner: runner,
-        writeStdout: () => {},
-        writeStderr: () => {}
-      })
-    )
-
-    expect(exitCode).toBe(0)
-    expect(calls[0]).toContain("windows-unblock:powershell")
-    expect(calls[0]).toContain("Unblock-File")
-    expect(calls[1]).toContain("windows-authenticode:signtool sign /fd SHA256")
-    expect(calls[1]).toContain(
-      "/tr http://timestamp.digicert.com /td SHA256 /sha1 A1B2C3D4E5F60718293A4B5C6D7E8F9012345678"
-    )
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop sign rejects invalid Windows timestamp URLs before signtool", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-"))
-  try {
-    await writePlaygroundFixture(directory, {
-      signing: {
-        windows: {
-          thumbprint: "A1B2C3D4E5F60718293A4B5C6D7E8F9012345678",
-          timestampUrl: "not a url"
-        }
-      }
-    })
-    await writePackagedArtifactFixture(directory, "windows-x64", "msi")
-    const calls: string[] = []
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["sign", "--config", "apps/inspector/desktop.config.ts", "--json"],
-        cwd: directory,
-        hostTarget: "windows-x64",
-        signCommandRunner: (invocation) =>
-          Effect.sync(() => {
-            calls.push(invocation.step)
-          }),
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const error = decodeCliJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(calls).toEqual([])
-    expect(error.tag).toBe("SignConfigError")
-    expect(error.message).toContain("signing.windows.timestampUrl")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop sign rejects malformed Windows certificate thumbprints", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-"))
-  try {
-    await writePlaygroundFixture(directory, {
-      signing: {
-        windows: { thumbprint: "not-a-sha1", timestampUrl: "http://timestamp.digicert.com" }
-      }
-    })
-    await writePackagedArtifactFixture(directory, "windows-x64", "msi")
-    const calls: string[] = []
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["sign", "--config", "apps/inspector/desktop.config.ts", "--json"],
-        cwd: directory,
-        hostTarget: "windows-x64",
-        signCommandRunner: (invocation) =>
-          Effect.sync(() => {
-            calls.push(invocation.step)
-          }),
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const error = decodeCliJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(calls).toEqual([])
-    expect(error.tag).toBe("SignConfigError")
-    expect(error.message).toContain("signing.windows.thumbprint")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop sign resolves Windows PFX password env without recording the secret", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-"))
-  const previousPassword = process.env["EFFECT_DESKTOP_TEST_PFX_PASSWORD"]
-  try {
-    process.env["EFFECT_DESKTOP_TEST_PFX_PASSWORD"] = "secret-password"
-    await writePlaygroundFixture(directory, {
-      signing: {
-        windows: {
-          pfx: { path: "certs/release.pfx", passwordEnv: "EFFECT_DESKTOP_TEST_PFX_PASSWORD" }
-        }
-      }
-    })
-    await writePackagedArtifactFixture(directory, "windows-x64", "msi")
-    let signArgs: readonly string[] = []
-    const runner: SignCommandRunner = (invocation) => {
-      if (invocation.step === "windows-authenticode") {
-        signArgs = invocation.args
-      }
-      return Effect.void
-    }
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["sign", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        hostTarget: "windows-x64",
-        signCommandRunner: runner,
-        writeStdout: () => {},
-        writeStderr: () => {}
-      })
-    )
-
-    const report = await readFile(
-      join(directory, "apps", "inspector", "dist", "desktop", "windows", "sign-report.json"),
-      "utf8"
-    )
-
-    expect(exitCode).toBe(0)
-    expect(signArgs).toContain("secret-password")
-    expect(report).toContain("<redacted:WindowsPfxPassword>")
-    expect(report).not.toContain("secret-password")
-  } finally {
-    if (previousPassword === undefined) {
-      delete process.env["EFFECT_DESKTOP_TEST_PFX_PASSWORD"]
-    } else {
-      process.env["EFFECT_DESKTOP_TEST_PFX_PASSWORD"] = previousPassword
-    }
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop sign GPG-signs Linux AppImage and writes Linux metadata", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-"))
-  try {
-    await writePlaygroundFixture(directory, { signing: { linux: { gpgKey: "ABCD1234" } } })
-    const artifactPath = await writePackagedArtifactFixture(directory, "linux-x64", "appimage")
-    const calls: string[] = []
-    const runner: SignCommandRunner = (invocation) =>
-      Effect.gen(function* () {
-        calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
-        const outputPath = invocation.args[invocation.args.indexOf("--output") + 1]
-        if (typeof outputPath === "string") {
-          yield* runSignFixtureIo(invocation, () => writeFile(outputPath, "signature"))
-        }
-      })
-
-    const stdout: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["sign", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        hostTarget: "linux-x64",
-        signCommandRunner: runner,
-        writeStdout: (text) => {
-          stdout.push(text)
-        },
-        writeStderr: () => {}
-      })
-    )
-
-    const artifactRoot = dirname(artifactPath)
-    const metainfo = await readFile(
-      join(artifactRoot, "share", "metainfo", "dev.effect-desktop.inspector.metainfo.xml"),
-      "utf8"
-    )
-    const desktop = await readFile(
-      join(artifactRoot, "share", "applications", "dev.effect-desktop.inspector.desktop"),
-      "utf8"
-    )
-
-    expect(exitCode).toBe(0)
-    expect(stdout.join("")).toContain("appimage")
-    expect(calls[0]).toContain("linux-gpg:gpg --batch --yes --armor --detach-sign")
-    expect(calls[0]).toContain("--local-user ABCD1234")
-    expect(await readFile(`${artifactPath}.asc`, "utf8")).toBe("signature")
-    expect(metainfo).toContain("<id>dev.effect-desktop.inspector</id>")
-    expect(metainfo).toContain(
-      '<launchable type="desktop-id">dev.effect-desktop.inspector.desktop</launchable>'
-    )
-    expect(desktop).toContain("Name=Effect Desktop Playground")
-    expect(desktop).toContain("Exec=dev.effect-desktop.inspector")
-    expect(desktop).toContain("Icon=dev.effect-desktop.inspector")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop sign rejects tampered package artifacts before signing", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-tampered-"))
-  try {
-    await writePlaygroundFixture(directory, { signing: { linux: { gpgKey: "ABCD1234" } } })
-    const artifactPath = await writePackagedArtifactFixture(directory, "linux-x64", "appimage")
-    await writeFile(artifactPath, "tampered")
-    const calls: string[] = []
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["sign", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        hostTarget: "linux-x64",
-        signCommandRunner: (invocation) =>
-          Effect.sync(() => {
-            calls.push(invocation.step)
-          }),
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    expect(exitCode).toBe(1)
-    expect(calls).toEqual([])
-    expect(stderr.join("")).toContain("SignFileError")
-    expect(stderr.join("")).toContain("does not match package artifact metadata")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop sign rejects Linux signable artifacts without linuxIntegration metadata", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-no-linux-int-"))
-  try {
-    await writePlaygroundFixture(directory, { signing: { linux: { gpgKey: "ABCD1234" } } })
-    const artifactPath = await writePackagedArtifactFixture(directory, "linux-x64", "appimage")
-    const artifactRoot = dirname(artifactPath)
-    const artifactJsonPath = join(artifactRoot, "artifact.json")
-    const artifactJson = { ...decodeJsonObject(await readFile(artifactJsonPath, "utf8")) }
-    delete artifactJson["linuxIntegration"]
-    await writeFile(artifactJsonPath, `${JSON.stringify(artifactJson, null, 2)}\n`)
-    const calls: string[] = []
-    const runner: SignCommandRunner = (invocation) => {
-      calls.push(invocation.step)
-      return Effect.die("signing commands must not run when linuxIntegration is missing")
-    }
-    const stderr: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["sign", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        hostTarget: "linux-x64",
-        signCommandRunner: runner,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-    expect(exitCode).toBe(1)
-    expect(calls).toEqual([])
-    expect(stderr.join("")).toContain("SignConfigError")
-    expect(stderr.join("")).toContain("linuxIntegration")
-    await expectPromiseRejects(stat(`${artifactPath}.asc`))
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop sign rejects artifact fileName that escapes the metadata directory", async () => {
-  const invalidFileNames = [
-    "../outside.AppImage",
-    "/tmp/outside.AppImage",
-    ".",
-    "..",
-    "nested/artifact.AppImage",
-    "nested\\artifact.AppImage"
-  ] as const
-
-  for (const fileName of invalidFileNames) {
-    const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-traversal-"))
-    try {
-      await writePlaygroundFixture(directory, { signing: { linux: { gpgKey: "ABCD1234" } } })
-      const artifactPath = await writePackagedArtifactFixture(directory, "linux-x64", "appimage")
-      const artifactRoot = dirname(artifactPath)
-      const linuxDir = dirname(artifactRoot)
-      const outsideName = "outside.AppImage"
-      const outsidePath = join(linuxDir, outsideName)
-      await writeFile(outsidePath, "outside artifact bytes")
-      await writeFile(
-        join(artifactRoot, "artifact.json"),
-        `${JSON.stringify(
-          {
-            appId: "dev.effect-desktop.inspector",
-            appName: "Effect Desktop Playground",
-            appVersion: "0.0.0",
-            kind: "appimage",
-            target: "linux-x64",
-            fileName,
-            sizeBytes: 0,
-            sha256: "0".repeat(64)
+          writeStdout: (text) => {
+            writeStdout.push(text)
           },
-          null,
-          2
-        )}\n`
+          writeStderr: () => {}
+        })
+
+        expect(writeExitCode).toBe(0)
+        expect(writeStdout.join("")).toContain("mode              write")
+
+        const checkStdout: string[] = []
+        const checkExitCode = yield* runCli({
+          argv: ["check", "--api"],
+          cwd: directory,
+          writeStdout: (text) => {
+            checkStdout.push(text)
+          },
+          writeStderr: () => {}
+        })
+
+        expect(checkExitCode).toBe(0)
+        expect(checkStdout.join("")).toContain("@effect-desktop/fixture")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --api rejects snapshots for the wrong package", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-api-"))
       )
-      const calls: string[] = []
-      const runner: SignCommandRunner = (invocation) =>
-        Effect.gen(function* () {
-          calls.push(invocation.step)
-          const outputPath = invocation.args[invocation.args.indexOf("--output") + 1]
-          if (typeof outputPath === "string") {
-            yield* runSignFixtureIo(invocation, () => writeFile(outputPath, "signature"))
+      try {
+        yield* writeApiFixturePackage(
+          directory,
+          "export interface Widget { readonly id: string }\n"
+        )
+        yield* runCli({
+          argv: ["check", "--api", "--write"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: () => {}
+        })
+
+        const snapshotPath = join(
+          directory,
+          "api",
+          "snapshots",
+          "@effect-desktop__fixture.snapshot.json"
+        )
+        const snapshot = decodeJsonObject(
+          yield* Effect.promise(() => readFile(snapshotPath, "utf8"))
+        )
+        yield* Effect.promise(() =>
+          writeFile(
+            snapshotPath,
+            `${stringifyJson({ ...snapshot, packageName: "@effect-desktop/other" }, 2)}\n`
+          )
+        )
+
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["check", "--api", "--json"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
           }
         })
-      const stderr: string[] = []
-      const exitCode = await Effect.runPromise(
-        runCli({
+
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.tag).toBe("PublicApiFileError")
+        expect(payload.message).toContain("packageName")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --api ignores non-package directories", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-api-"))
+      )
+      try {
+        yield* writeApiFixturePackage(
+          directory,
+          "export interface Widget { readonly id: string }\n"
+        )
+        yield* Effect.promise(() =>
+          mkdir(join(directory, "packages", ".cache"), { recursive: true })
+        )
+        const stdout: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--api", "--write"],
+          cwd: directory,
+          writeStdout: (text) => {
+            stdout.push(text)
+          },
+          writeStderr: () => {}
+        })
+
+        expect(exitCode).toBe(0)
+        expect(stdout.join("")).toContain("@effect-desktop/fixture")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --api rejects invalid package names", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-api-"))
+      )
+      try {
+        yield* writeApiFixturePackage(
+          directory,
+          "export interface Widget { readonly id: string }\n"
+        )
+        yield* Effect.promise(() =>
+          writeFile(
+            join(directory, "packages", "fixture", "package.json"),
+            stringifyJson(
+              {
+                name: "../../escape",
+                type: "module",
+                exports: {
+                  ".": {
+                    types: "./src/index.ts",
+                    default: "./src/index.ts"
+                  }
+                }
+              },
+              2
+            )
+          )
+        )
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--api", "--write", "--json"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.tag).toBe("PublicApiPackageError")
+        expect(payload.message).toContain("invalid package name")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --api fails when the public API changes without a snapshot update", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-api-"))
+      )
+      try {
+        yield* writeApiFixturePackage(
+          directory,
+          "export interface Widget { readonly id: string }\n"
+        )
+        yield* runCli({
+          argv: ["check", "--api", "--write"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: () => {}
+        })
+
+        yield* Effect.promise(() =>
+          writeFile(
+            join(directory, "packages/fixture/src/index.ts"),
+            "export interface Widget { readonly id: string }\nexport const added = 1\n"
+          )
+        )
+
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["check", "--api"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("ADD @effect-desktop/fixture added")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --api fails when a public signature changes without a snapshot update", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-api-"))
+      )
+      try {
+        yield* writeApiFixturePackage(
+          directory,
+          "export interface Widget { readonly id: string }\n"
+        )
+        yield* runCli({
+          argv: ["check", "--api", "--write"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: () => {}
+        })
+
+        yield* Effect.promise(() =>
+          writeFile(
+            join(directory, "packages/fixture/src/index.ts"),
+            "export interface Widget { readonly id: number }\n"
+          )
+        )
+
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["check", "--api"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("SIGNATURE-CHANGED @effect-desktop/fixture Widget")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --api --json reports missing snapshots as typed values", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-api-"))
+      )
+      try {
+        yield* writeApiFixturePackage(directory, "export const present = true\n")
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--api", "--json"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.tag).toBe("PublicApiFileError")
+        expect(payload.message).toContain("snapshot")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --docs verifies manifest pages and runnable examples", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
+      )
+      try {
+        yield* writeDocsFixture(directory, {
+          "docs/installation.md": [
+            "# Installation",
+            "",
+            "```ts run",
+            "const value: string = 'docs'",
+            "if (value.length === 0) throw new Error('empty')",
+            "```"
+          ].join("\n")
+        })
+        const stdout: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--docs"],
+          cwd: directory,
+          writeStdout: (text) => {
+            stdout.push(text)
+          },
+          writeStderr: () => {}
+        })
+
+        expect(exitCode).toBe(0)
+        expect(stdout.join("")).toContain("pages             1")
+        expect(stdout.join("")).toContain("examples          1")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --docs reports missing pages as typed values", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
+      )
+      try {
+        yield* writeDocsManifest(directory, [
+          { id: "installation", title: "Installation", path: "docs/missing.md" }
+        ])
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--docs", "--json"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.tag).toBe("DocsGateMissingPageError")
+        expect(payload.message).toContain("missing.md")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --docs rejects non-string page paths as typed manifest errors", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
+      )
+      try {
+        yield* writeDocsManifest(directory, [
+          { id: "installation", title: "Installation", path: 42 }
+        ])
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--docs", "--json"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.tag).toBe("DocsGateManifestError")
+        expect(payload.message).toContain("page path")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --docs rejects an incomplete spec manifest even with the required row count", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
+      )
+      try {
+        yield* Effect.promise(() => mkdir(join(directory, "docs"), { recursive: true }))
+        yield* Effect.promise(() =>
+          writeFile(
+            join(directory, "docs", "docs-manifest.json"),
+            stringifyJson(
+              {
+                schemaVersion: 1,
+                source: "engineering/SPEC.md §25.3",
+                pages: Array.from({ length: 23 }, (_, index) => ({
+                  id: `page-${index}`,
+                  title: `Page ${index}`,
+                  path: `docs/page-${index}.md`
+                }))
+              },
+              2
+            )
+          )
+        )
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--docs"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("DocsGateManifestError")
+        expect(stderr.join("")).toContain("installation")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --docs reports failing runnable examples", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
+      )
+      try {
+        yield* writeDocsFixture(directory, {
+          "docs/installation.md": [
+            "# Installation",
+            "",
+            "```ts run",
+            "throw new Error('broken docs example')",
+            "```"
+          ].join("\n")
+        })
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--docs"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("DocsGateExampleFailedError")
+        expect(stderr.join("")).toContain("installation.md#1")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --docs rejects placeholder examples on required pages", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
+      )
+      try {
+        const sourceManifest = decodeDocsManifestPagesJson(
+          yield* Effect.promise(() =>
+            readFile(join(REPO_ROOT, "docs", "docs-manifest.json"), "utf8")
+          )
+        )
+        yield* writeDocsManifest(directory, sourceManifest.pages, "engineering/SPEC.md §25.3")
+        const coverageTokens = [
+          "runCli",
+          "ReactDesktop",
+          "Desktop",
+          "defineDesktopConfig",
+          "WindowRpcs",
+          "RpcGroup",
+          "HostProtocolEnvelope",
+          "ClipboardRpcs",
+          "ResourceRegistry",
+          "Process",
+          "PTY",
+          "MemoryFilesystem",
+          "Settings",
+          "PermissionRegistry",
+          "CommandRegistry",
+          "DevtoolsShell",
+          "runHeadless",
+          "runDesktopPackage",
+          "runDesktopSign",
+          "runDesktopPublish",
+          "DoctorMissing",
+          "runSemverGuard",
+          "runDocsReleaseGate"
+        ].join(" ")
+        for (const page of sourceManifest.pages) {
+          const body =
+            page.id === "filesystem"
+              ? [
+                  "# Filesystem",
+                  "",
+                  "```ts run",
+                  "import { CliUsageError } from '../packages/cli/src/index.js'",
+                  "new CliUsageError('docs')",
+                  "```"
+                ].join("\n")
+              : [
+                  "# Page",
+                  "",
+                  "```ts run",
+                  `const coverage = ${stringifyJson(coverageTokens)}`,
+                  "void coverage",
+                  "```"
+                ].join("\n")
+          yield* Effect.promise(() =>
+            mkdir(dirname(join(directory, page.path)), { recursive: true })
+          )
+          yield* Effect.promise(() => writeFile(join(directory, page.path), body))
+        }
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--docs", "--json"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.tag).toBe("DocsGateCoverageError")
+        expect(payload.message).toContain("docs/filesystem.md")
+        expect(payload.message).toContain("MemoryFilesystem")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --docs times out hanging runnable examples", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
+      )
+      try {
+        yield* writeDocsFixture(directory, {
+          "docs/installation.md": [
+            "# Installation",
+            "",
+            "```ts run",
+            "await new Promise(() => {})",
+            "```"
+          ].join("\n")
+        })
+        const hangingRunner: DocsExampleRunner = () => Effect.never
+
+        const result = yield* Effect.exit(
+          runDocsReleaseGate({
+            cwd: directory,
+            commandRunner: hangingRunner,
+            exampleTimeoutMillis: 10
+          })
+        ).pipe(Effect.timeoutOption("50 millis"))
+
+        expect(Option.isSome(result)).toBe(true)
+        if (Option.isNone(result)) {
+          throw new Error("docs release gate did not complete before the outer timeout")
+        }
+        expect(Exit.isFailure(result.value)).toBe(true)
+        if (Exit.isFailure(result.value)) {
+          const failReason = result.value.cause.reasons.find((reason) => reason._tag === "Fail")
+          expect(failReason?.error._tag).toBe("DocsGateExampleFailedError")
+          expect(failReason?.error.message).toContain("timed out")
+          expect(failReason?.error.message).toContain("installation.md#1")
+        }
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --docs rejects manifest paths outside the repo", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
+      )
+      try {
+        yield* writeDocsManifest(directory, [
+          { id: "escape", title: "Escape", path: "../outside.md" }
+        ])
+
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["check", "--docs", "--json"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(payload.tag).toBe("DocsGateManifestError")
+        expect(payload.message).toContain("escapes the repo")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --docs rejects absolute manifest paths", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
+      )
+      try {
+        yield* writeDocsManifest(directory, [
+          { id: "absolute", title: "Absolute", path: "/etc/passwd" }
+        ])
+
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["check", "--docs", "--json"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(payload.tag).toBe("DocsGateManifestError")
+        expect(payload.message).toContain("escapes the repo")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --release verifies the release supply-chain posture", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
+      )
+      try {
+        yield* writeReleaseFixture(directory)
+        const stdout: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--release"],
+          cwd: directory,
+          writeStdout: (text) => {
+            stdout.push(text)
+          },
+          writeStderr: () => {}
+        })
+
+        expect(exitCode).toBe(0)
+        expect(stdout.join("")).toContain("gates             8")
+        expect(stdout.join("")).toContain("spdx-sbom")
+        expect(stdout.join("")).toContain("branch-protection")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --release rejects incomplete spec gate identities", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
+      )
+      try {
+        yield* writeReleaseFixture(directory, {
+          checklist: {
+            schemaVersion: 1,
+            source: "engineering/SPEC.md §25.4",
+            subjects: [
+              {
+                id: "inspector",
+                configPath: "apps/inspector/desktop.config.ts",
+                distDir: "apps/inspector/dist",
+                requiredCommands: [
+                  "bun packages/cli/src/bin.ts build --config apps/inspector/desktop.config.ts"
+                ]
+              }
+            ],
+            gates: Array.from({ length: 8 }, (_, index) => ({
+              id: `gate-${index}`,
+              title: `Gate ${index}`,
+              kind: "workflow-step",
+              evidence: [".github/workflows/release.yml#Gate"]
+            }))
+          }
+        })
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--release", "--json"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.tag).toBe("ReleaseGateManifestError")
+        expect(payload.message).toContain("unknown")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --release rejects malformed checklist shape", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
+      )
+      try {
+        yield* writeReleaseFixture(directory, {
+          checklist: {
+            schemaVersion: 1,
+            source: "engineering/SPEC.md §25.4"
+          }
+        })
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--release", "--json"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.tag).toBe("ReleaseGateManifestError")
+        expect(payload.message).toContain("gates")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --release verifies configured non-inspector subjects", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
+      )
+      try {
+        const checklist = releaseChecklistFixture()
+        if (!isReleaseChecklistFixture(checklist)) {
+          throw new Error("invalid release checklist fixture")
+        }
+        yield* writeReleaseFixture(directory, {
+          checklist: {
+            ...checklist,
+            subjects: [
+              ...checklist.subjects,
+              {
+                id: "basic-template",
+                configPath: "apps/fixture-a11y/desktop.config.ts",
+                distDir: "apps/fixture-a11y/dist",
+                requiredCommands: [
+                  "bun packages/cli/src/bin.ts build --config apps/fixture-a11y/desktop.config.ts",
+                  "bun packages/cli/src/bin.ts package --config apps/fixture-a11y/desktop.config.ts",
+                  "bun packages/cli/src/bin.ts check --repro --config apps/fixture-a11y/desktop.config.ts"
+                ]
+              }
+            ]
+          },
+          releaseWorkflow: [
+            releaseWorkflowFixture(),
+            "      - name: Build basic template",
+            "        run: bun packages/cli/src/bin.ts build --config apps/fixture-a11y/desktop.config.ts",
+            "      - name: Package basic template",
+            "        run: bun packages/cli/src/bin.ts package --config apps/fixture-a11y/desktop.config.ts",
+            "      - name: Repro basic template",
+            "        run: bun packages/cli/src/bin.ts check --repro --config apps/fixture-a11y/desktop.config.ts"
+          ].join("\n")
+        })
+        const stdout: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--release"],
+          cwd: directory,
+          writeStdout: (text) => {
+            stdout.push(text)
+          },
+          writeStderr: () => {}
+        })
+
+        expect(exitCode).toBe(0)
+        expect(stdout.join("")).toContain("gates             8")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --release rejects runner-local release signing policy", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
+      )
+      try {
+        yield* writeReleaseFixture(directory, {
+          keyManagement: "# Release Key Management\n\nHSM-backed release signing uses rotation.\n"
+        })
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--release"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("ReleaseGateEvidenceError")
+        expect(stderr.join("")).toContain("runner-local keys are forbidden")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --release rejects unknown evidence sources", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
+      )
+      try {
+        const checklist = releaseChecklistFixture()
+        if (!isReleaseChecklistFixture(checklist)) {
+          throw new Error("invalid release checklist fixture")
+        }
+        yield* writeReleaseFixture(directory, {
+          checklist: {
+            ...checklist,
+            gates: checklist.gates.map((gate) =>
+              gate.id === "spdx-sbom"
+                ? { ...gate, evidence: ["engineering/security/unknown.md#Imaginary Evidence"] }
+                : gate
+            )
+          }
+        })
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--release", "--json"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.tag).toBe("ReleaseGateEvidenceError")
+        expect(payload.message).toContain("unsupported evidence")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --release rejects empty evidence anchors", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
+      )
+      try {
+        const checklist = releaseChecklistFixture()
+        if (!isReleaseChecklistFixture(checklist)) {
+          throw new Error("invalid release checklist fixture")
+        }
+        yield* writeReleaseFixture(directory, {
+          checklist: {
+            ...checklist,
+            gates: checklist.gates.map((gate) =>
+              gate.id === "spdx-sbom"
+                ? { ...gate, evidence: [".github/workflows/release.yml#"] }
+                : gate
+            )
+          }
+        })
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--release", "--json"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.tag).toBe("ReleaseGateEvidenceError")
+        expect(payload.message).toContain("empty evidence anchor")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --release rejects evidence from another gate", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
+      )
+      try {
+        const checklist = releaseChecklistFixture()
+        if (!isReleaseChecklistFixture(checklist)) {
+          throw new Error("invalid release checklist fixture")
+        }
+        yield* writeReleaseFixture(directory, {
+          checklist: {
+            ...checklist,
+            gates: checklist.gates.map((gate) =>
+              gate.id === "secret-scanning"
+                ? {
+                    ...gate,
+                    evidence: ["engineering/security/release-settings.md#GitHub-hosted runners"]
+                  }
+                : gate
+            )
+          }
+        })
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--release", "--json"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.tag).toBe("ReleaseGateEvidenceError")
+        expect(payload.message).toContain("does not accept evidence")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --release rejects stale workflow evidence in the checklist", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
+      )
+      try {
+        const checklist = releaseChecklistFixture()
+        if (!isReleaseChecklistFixture(checklist)) {
+          throw new Error("invalid release checklist fixture")
+        }
+        yield* writeReleaseFixture(directory, {
+          checklist: {
+            ...checklist,
+            gates: checklist.gates.map((gate) =>
+              gate.id === "spdx-sbom"
+                ? { ...gate, evidence: [".github/workflows/release.yml#Missing SBOM Step"] }
+                : gate
+            )
+          }
+        })
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--release"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("ReleaseGateEvidenceError")
+        expect(stderr.join("")).toContain("Missing SBOM Step")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --release rejects unpinned release workflow actions", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
+      )
+      try {
+        yield* writeReleaseFixture(directory, {
+          releaseWorkflow: releaseWorkflowFixture().replace(
+            "actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0",
+            "actions/attest@v4"
+          )
+        })
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--release"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("ReleaseGateEvidenceError")
+        expect(stderr.join("")).toContain("unpinned or uncommented action reference")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --release ignores uses text inside run scripts", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
+      )
+      try {
+        yield* writeReleaseFixture(directory, {
+          releaseWorkflow: [
+            releaseWorkflowFixture(),
+            "      - name: Document action syntax",
+            "        run: |",
+            "          # uses: actions/checkout@v6",
+            "          echo done"
+          ].join("\n")
+        })
+        const stdout: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--release"],
+          cwd: directory,
+          writeStdout: (text) => {
+            stdout.push(text)
+          },
+          writeStderr: () => {}
+        })
+
+        expect(exitCode).toBe(0)
+        expect(stdout.join("")).toContain("gates             8")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --release rejects subject package before build", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
+      )
+      try {
+        yield* writeReleaseFixture(directory, {
+          releaseWorkflow: releaseWorkflowFixture().replace(
+            [
+              "      - name: Build desktop app",
+              "        run: bun packages/cli/src/bin.ts build --config apps/inspector/desktop.config.ts",
+              "      - name: Package release artifact",
+              "        run: bun packages/cli/src/bin.ts package --config apps/inspector/desktop.config.ts"
+            ].join("\n"),
+            [
+              "      - name: Package release artifact",
+              "        run: bun packages/cli/src/bin.ts package --config apps/inspector/desktop.config.ts",
+              "      - name: Build desktop app",
+              "        run: bun packages/cli/src/bin.ts build --config apps/inspector/desktop.config.ts"
+            ].join("\n")
+          )
+        })
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--release", "--json"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.tag).toBe("ReleaseGateEvidenceError")
+        expect(payload.message).toContain("release subject inspector")
+        expect(payload.message).toContain("build --config apps/inspector/desktop.config.ts")
+        expect(payload.message).toContain("before")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --release reports missing subject workflow command", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
+      )
+      try {
+        const checklist = releaseChecklistFixture()
+        if (!isReleaseChecklistFixture(checklist)) {
+          throw new Error("invalid release checklist fixture")
+        }
+        yield* writeReleaseFixture(directory, {
+          checklist: {
+            ...checklist,
+            subjects: [
+              {
+                id: "basic-template",
+                configPath: "apps/fixture-a11y/desktop.config.ts",
+                distDir: "apps/fixture-a11y/dist",
+                requiredCommands: [
+                  "bun packages/cli/src/bin.ts build --config apps/fixture-a11y/desktop.config.ts"
+                ]
+              }
+            ]
+          }
+        })
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--release", "--json"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.tag).toBe("ReleaseGateEvidenceError")
+        expect(payload.message).toContain("release subject basic-template")
+        expect(payload.message).toContain(
+          "bun packages/cli/src/bin.ts build --config apps/fixture-a11y/desktop.config.ts"
+        )
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --release rejects empty CVSS exemption sections", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
+      )
+      try {
+        yield* writeReleaseFixture(directory)
+        yield* Effect.promise(() =>
+          mkdir(join(directory, "engineering", "security", "exemptions"), { recursive: true })
+        )
+        yield* Effect.promise(() =>
+          writeFile(
+            join(directory, "engineering", "security", "exemptions", "empty.md"),
+            ["# Empty exemption", "", "## Justification", "", "## Re-review", ""].join("\n")
+          )
+        )
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--release", "--json"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.tag).toBe("ReleaseGateEvidenceError")
+        expect(payload.message).toContain("non-empty Justification")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --a11y verifies template accessibility evidence", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
+      )
+      try {
+        yield* writeAccessibilityFixture(directory)
+        const stdout: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--a11y"],
+          cwd: directory,
+          writeStdout: (text) => {
+            stdout.push(text)
+          },
+          writeStderr: () => {}
+        })
+
+        expect(exitCode).toBe(0)
+        expect(stdout.join("")).toContain("templates         1")
+        expect(stdout.join("")).toContain("fixture-a11y")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --a11y rejects hardcoded template English outside i18n files", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
+      )
+      try {
+        yield* writeAccessibilityFixture(directory, {
+          appSource: [
+            "import { templateMessages } from './messages'",
+            "export function App() {",
+            "  return <button>Open window</button>",
+            "}"
+          ].join("\n")
+        })
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--a11y"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("AccessibilityGateEvidenceError")
+        expect(stderr.join("")).toContain("hardcoded user-visible English")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --a11y rejects single-word hardcoded template labels", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
+      )
+      try {
+        yield* writeAccessibilityFixture(directory, {
+          appSource: [
+            "import { templateMessages } from './messages'",
+            "export function App() {",
+            "  return <button>Settings</button>",
+            "}"
+          ].join("\n")
+        })
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--a11y"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("AccessibilityGateEvidenceError")
+        expect(stderr.join("")).toContain("Settings")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --a11y rejects zero-pass axe reports", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
+      )
+      try {
+        yield* writeAccessibilityFixture(directory, {
+          axePasses: []
+        })
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--a11y", "--json"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.tag).toBe("AccessibilityGateEvidenceError")
+        expect(payload.message).toContain("no axe pass evidence")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --a11y rejects comment-only required tokens", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
+      )
+      try {
+        yield* writeAccessibilityFixture(directory, {
+          styles: [
+            "/* prefers-color-scheme */",
+            "/* prefers-reduced-motion */",
+            ":root { color-scheme: light; }"
+          ].join("\n")
+        })
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--a11y", "--json"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.tag).toBe("AccessibilityGateEvidenceError")
+        expect(payload.message).toContain("prefers-reduced-motion")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --a11y binds RTL audit modes to Arabic rendered state", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
+      )
+      try {
+        yield* writeAccessibilityFixture(directory, {
+          axeUrlForMode: (mode) =>
+            mode.endsWith("rtl")
+              ? `fixture:${mode}?dir=rtl&color-scheme=${mode.startsWith("dark") ? "dark" : "light"}`
+              : defaultAxeUrlForMode(mode)
+        })
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--a11y", "--json"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.tag).toBe("AccessibilityGateEvidenceError")
+        expect(payload.message).toContain("rtl")
+        expect(payload.message).toContain("rendered template state")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --a11y rejects missing manifest template arrays", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
+      )
+      try {
+        yield* writeAccessibilityFixture(directory, {
+          manifest: {
+            schemaVersion: 1,
+            source: "engineering/SPEC.md §25.5",
+            release: "v1.0.0"
+          }
+        })
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--a11y", "--json"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.tag).toBe("AccessibilityGateManifestError")
+        expect(payload.message).toContain("templates")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --a11y binds audit mode IDs to semantics", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
+      )
+      try {
+        const manifest = accessibilityManifestFixture()
+        if (!isAccessibilityManifestFixture(manifest)) {
+          throw new Error("invalid accessibility manifest fixture")
+        }
+        yield* writeAccessibilityFixture(directory, {
+          manifest: {
+            ...manifest,
+            templates: manifest.templates.map((template) => ({
+              ...template,
+              auditModes: template.auditModes.map((mode) =>
+                mode.id === "light-ltr" ? { ...mode, direction: "rtl" } : mode
+              )
+            }))
+          }
+        })
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--a11y", "--json"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.tag).toBe("AccessibilityGateEvidenceError")
+        expect(payload.message).toContain("light-ltr direction")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --a11y binds Pa11y audit files to modes", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
+      )
+      try {
+        yield* writeAccessibilityFixture(directory, {
+          pa11yUrlForMode: () => defaultAxeUrlForMode("light-ltr")
+        })
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--a11y", "--json"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.tag).toBe("AccessibilityGateEvidenceError")
+        expect(payload.message).toContain("pa11y.dark-ltr.json")
+        expect(payload.message).toContain("rendered template state")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --a11y rejects contrast below the WCAG floor", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
+      )
+      try {
+        const manifest = accessibilityManifestFixture()
+        if (!isAccessibilityManifestFixture(manifest)) {
+          throw new Error("invalid accessibility manifest fixture")
+        }
+        yield* writeAccessibilityFixture(directory, {
+          manifest: {
+            ...manifest,
+            templates: manifest.templates.map((template) => ({
+              ...template,
+              contrastPairs: [
+                {
+                  id: "bad-body",
+                  foreground: "#777777",
+                  background: "#888888",
+                  minimumRatio: 4.5
+                }
+              ]
+            }))
+          }
+        })
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--a11y"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("AccessibilityGateEvidenceError")
+        expect(stderr.join("")).toContain("contrast ratio")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --a11y rejects invalid contrast colors", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
+      )
+      try {
+        const manifest = accessibilityManifestFixture()
+        if (!isAccessibilityManifestFixture(manifest)) {
+          throw new Error("invalid accessibility manifest fixture")
+        }
+        yield* writeAccessibilityFixture(directory, {
+          manifest: {
+            ...manifest,
+            templates: manifest.templates.map((template) => ({
+              ...template,
+              contrastPairs: [
+                {
+                  id: "bad-color",
+                  foreground: "not-a-color",
+                  background: "#ffffff",
+                  minimumRatio: 4.5
+                }
+              ]
+            }))
+          }
+        })
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--a11y", "--json"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.tag).toBe("AccessibilityGateEvidenceError")
+        expect(payload.message).toContain("foreground")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --a11y rejects invalid contrast minimums", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
+      )
+      try {
+        const manifest = accessibilityManifestFixture()
+        if (!isAccessibilityManifestFixture(manifest)) {
+          throw new Error("invalid accessibility manifest fixture")
+        }
+        yield* writeAccessibilityFixture(directory, {
+          manifest: {
+            ...manifest,
+            templates: manifest.templates.map((template) => ({
+              ...template,
+              contrastPairs: [
+                {
+                  id: "bad-minimum",
+                  foreground: "#020617",
+                  background: "#f8fafc",
+                  minimumRatio: -1
+                }
+              ]
+            }))
+          }
+        })
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--a11y", "--json"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.tag).toBe("AccessibilityGateEvidenceError")
+        expect(payload.message).toContain("minimumRatio")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --a11y rejects paths outside the workspace", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
+      )
+      try {
+        const manifest = accessibilityManifestFixture()
+        if (!isAccessibilityManifestFixture(manifest)) {
+          throw new Error("invalid accessibility manifest fixture")
+        }
+        yield* writeAccessibilityFixture(directory, {
+          manifest: {
+            ...manifest,
+            templates: manifest.templates.map((template) => ({
+              ...template,
+              requiredTokens: [{ file: "../outside-token.txt", token: "resolveTemplateLocale" }]
+            }))
+          }
+        })
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--a11y", "--json"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.tag).toBe("AccessibilityGateEvidenceError")
+        expect(payload.message).toContain("must stay inside")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --a11y rejects screencast directories", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
+      )
+      try {
+        yield* writeAccessibilityFixture(directory)
+        const screencastPath = join(
+          directory,
+          "engineering",
+          "audits",
+          "v1.0.0",
+          "fixture-a11y",
+          "keyboard-walkthrough.webm"
+        )
+        yield* Effect.promise(() => rm(screencastPath))
+        yield* Effect.promise(() => mkdir(screencastPath))
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--a11y", "--json"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.tag).toBe("AccessibilityGateEvidenceError")
+        expect(payload.message).toContain("screencast file")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("semver guard verifies additive release posture", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
+      )
+      try {
+        yield* writeSemverFixture(directory, { packageVersion: "1.1.0" })
+        const report = yield* runSemverGuard({
+          cwd: directory,
+          publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
+        })
+
+        expect(report.passed).toBe(true)
+        expect(report.appendixCRows).toHaveLength(4)
+        expect(report.packageVersions.map((pkg) => pkg.version)).toEqual(["1.1.0"])
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("semver guard rejects package version drift from the release manifest", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
+      )
+      try {
+        yield* writeSemverFixture(directory, { packageVersion: "0.0.0" })
+        const error = yield* runSemverGuard({
+          cwd: directory,
+          publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
+        }).pipe(Effect.flip)
+
+        expect((error as { readonly _tag: string })._tag).toBe("SemverGuardManifestError")
+        expect((error as { readonly message: string }).message).toContain(
+          "@effect-desktop/core@0.0.0"
+        )
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("semver guard rejects manifest with missing bridgeEnvelopePolicy", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
+      )
+      try {
+        const manifest = semverManifestFixture()
+        if (!isSemverManifestFixture(manifest)) {
+          throw new Error("invalid semver manifest fixture")
+        }
+        yield* writeSemverFixture(directory, {
+          packageVersion: "1.1.0",
+          manifest: { ...manifest, bridgeEnvelopePolicy: undefined }
+        })
+        const error = yield* runSemverGuard({
+          cwd: directory,
+          publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
+        }).pipe(Effect.flip)
+
+        expect((error as { readonly _tag: string })._tag).toBe("SemverGuardManifestError")
+        expect((error as { readonly message: string }).message).toContain("bridgeEnvelopePolicy")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("semver guard passes manifest publicApiSnapshots to the API checker", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
+      )
+      try {
+        const manifest = semverManifestFixture()
+        if (!isSemverManifestFixture(manifest)) {
+          throw new Error("invalid semver manifest fixture")
+        }
+        yield* writeSemverFixture(directory, {
+          packageVersion: "1.1.0",
+          manifest: { ...manifest, publicApiSnapshots: "api/custom-snapshots" }
+        })
+        let observedSnapshotRoot = ""
+
+        yield* runSemverGuard({
+          cwd: directory,
+          publicApiCheck: (_cwd, snapshotRoot) => {
+            observedSnapshotRoot = snapshotRoot
+            return Effect.succeed(publicApiReportFixture("added"))
+          }
+        })
+
+        expect(observedSnapshotRoot).toBe("api/custom-snapshots")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("semver guard rejects escaping publicApiSnapshots roots", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
+      )
+      try {
+        const manifest = semverManifestFixture()
+        if (!isSemverManifestFixture(manifest)) {
+          throw new Error("invalid semver manifest fixture")
+        }
+        yield* writeSemverFixture(directory, {
+          packageVersion: "1.1.0",
+          manifest: { ...manifest, publicApiSnapshots: "../api/snapshots" }
+        })
+
+        const error = yield* runSemverGuard({
+          cwd: directory,
+          publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
+        }).pipe(Effect.flip)
+
+        expect((error as { readonly _tag: string })._tag).toBe("SemverGuardManifestError")
+        expect((error as { readonly message: string }).message).toContain("publicApiSnapshots")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("semver guard rejects empty public API snapshot paths", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
+      )
+      try {
+        const manifest = semverManifestFixture()
+        if (!isSemverManifestFixture(manifest)) {
+          throw new Error("invalid semver manifest fixture")
+        }
+        yield* writeSemverFixture(directory, {
+          packageVersion: "1.1.0",
+          manifest: { ...manifest, publicApiSnapshots: "" }
+        })
+
+        const error = yield* runSemverGuard({
+          cwd: directory,
+          publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
+        }).pipe(Effect.flip)
+
+        expect((error as { readonly _tag: string })._tag).toBe("SemverGuardManifestError")
+        expect((error as { readonly message: string }).message).toContain("publicApiSnapshots")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("semver guard rejects verification matrices outside the repo", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
+      )
+      const outsideDirectory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-outside-"))
+      )
+      try {
+        const manifest = semverManifestFixture()
+        if (!isSemverManifestFixture(manifest)) {
+          throw new Error("invalid semver manifest fixture")
+        }
+        const outsideMatrix = join(outsideDirectory, "verification-matrix.json")
+        yield* Effect.promise(() =>
+          writeFile(outsideMatrix, stringifyJson(semverMatrixFixture(), 2))
+        )
+        yield* writeSemverFixture(directory, {
+          packageVersion: "1.1.0",
+          manifest: {
+            ...manifest,
+            verificationMatrix: relative(directory, outsideMatrix)
+          }
+        })
+
+        const error = yield* runSemverGuard({
+          cwd: directory,
+          publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
+        }).pipe(Effect.flip)
+
+        expect((error as { readonly _tag: string })._tag).toBe("SemverGuardManifestError")
+        expect((error as { readonly message: string }).message).toContain("verificationMatrix")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+        yield* Effect.promise(() => rm(outsideDirectory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("semver guard rejects missing Appendix C rows", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
+      )
+      try {
+        const manifest = semverManifestFixture()
+        if (!isSemverManifestFixture(manifest)) {
+          throw new Error("invalid semver manifest fixture")
+        }
+        yield* writeSemverFixture(directory, {
+          packageVersion: "1.1.0",
+          manifest: { ...manifest, appendixCRows: ["C.54", "C.404"] }
+        })
+        const exit = yield* Effect.exit(
+          runSemverGuard({
+            cwd: directory,
+            publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
+          })
+        )
+
+        expect(exit._tag).toBe("Failure")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("semver guard rejects malformed Appendix C matrix coverage", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const cases: ReadonlyArray<{
+        readonly label: string
+        readonly manifestPatch?: Record<string, unknown>
+        readonly matrix: unknown
+      }> = [
+        {
+          label: "empty rows",
+          manifestPatch: { appendixCRows: [] },
+          matrix: semverMatrixFixture()
+        },
+        { label: "missing rows", matrix: { ...semverMatrixFixture(), rows: undefined } },
+        { label: "array rows", matrix: { ...semverMatrixFixture(), rows: [] } },
+        { label: "string rows", matrix: { ...semverMatrixFixture(), rows: "not rows" } }
+      ]
+
+      for (const testCase of cases) {
+        const directory = yield* Effect.promise(() =>
+          mkdtemp(join(tmpdir(), `effect-desktop-cli-semver-${testCase.label}-`))
+        )
+        try {
+          const manifest = semverManifestFixture()
+          if (!isSemverManifestFixture(manifest)) {
+            throw new Error("invalid semver manifest fixture")
+          }
+          yield* writeSemverFixture(directory, {
+            packageVersion: "1.1.0",
+            manifest: { ...manifest, ...testCase.manifestPatch },
+            matrix: testCase.matrix
+          })
+
+          const error = yield* runSemverGuard({
+            cwd: directory,
+            publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
+          }).pipe(Effect.flip)
+
+          expect((error as { readonly _tag: string })._tag).toBe("SemverGuardManifestError")
+        } finally {
+          yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+        }
+      }
+    })
+  ))
+
+test("semver guard rejects weakened semver policy fields", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const cases: ReadonlyArray<{
+        readonly label: string
+        readonly manifestPatch: Record<string, unknown>
+      }> = [
+        {
+          label: "deprecated-jsdoc-disabled",
+          manifestPatch: {
+            deprecationPolicy: {
+              minimumMinorReleases: 3,
+              requiresJSDocDeprecated: false
+            }
+          }
+        },
+        {
+          label: "empty-bridge-allowed-change",
+          manifestPatch: {
+            bridgeEnvelopePolicy: {
+              source: "engineering/SPEC.md §9.3",
+              frozenBetweenMajors: true,
+              allowedChange: ""
+            }
+          }
+        },
+        {
+          label: "permissive-bridge-allowed-change",
+          manifestPatch: {
+            bridgeEnvelopePolicy: {
+              source: "engineering/SPEC.md §9.3",
+              frozenBetweenMajors: true,
+              allowedChange: "anything may change between minor releases"
+            }
+          }
+        }
+      ]
+
+      for (const testCase of cases) {
+        const directory = yield* Effect.promise(() =>
+          mkdtemp(join(tmpdir(), `effect-desktop-cli-semver-${testCase.label}-`))
+        )
+        try {
+          const manifest = semverManifestFixture()
+          if (!isSemverManifestFixture(manifest)) {
+            throw new Error("invalid semver manifest fixture")
+          }
+          yield* writeSemverFixture(directory, {
+            packageVersion: "1.1.0",
+            manifest: { ...manifest, ...testCase.manifestPatch }
+          })
+
+          const error = yield* runSemverGuard({
+            cwd: directory,
+            publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
+          }).pipe(Effect.flip)
+
+          expect((error as { readonly _tag: string })._tag).toBe("SemverGuardManifestError")
+        } finally {
+          yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+        }
+      }
+    })
+  ))
+
+test("semver guard allows additive public API changes and blocks removals", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
+      )
+      try {
+        yield* writeSemverFixture(directory, { packageVersion: "1.1.0" })
+        const additive = yield* runSemverGuard({
+          cwd: directory,
+          publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
+        })
+
+        expect(additive.passed).toBe(true)
+
+        const removalExit = yield* Effect.exit(
+          runSemverGuard({
+            cwd: directory,
+            publicApiCheck: () => Effect.succeed(publicApiReportFixture("removed"))
+          })
+        )
+        expect(removalExit._tag).toBe("Failure")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("semver guard rejects additive public API changes in patch releases", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
+      )
+      try {
+        const manifest = semverManifestFixture()
+        if (!isSemverManifestFixture(manifest)) {
+          throw new Error("invalid semver manifest fixture")
+        }
+        yield* writeSemverFixture(directory, {
+          packageVersion: "1.1.1",
+          manifest: { ...manifest, release: "1.1.1", releaseKind: "patch" }
+        })
+
+        const exit = yield* Effect.exit(
+          runSemverGuard({
+            cwd: directory,
+            publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
+          })
+        )
+
+        expect(exit._tag).toBe("Failure")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("semver guard rejects release kind drift from the semantic version", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
+      )
+      try {
+        const manifest = semverManifestFixture()
+        if (!isSemverManifestFixture(manifest)) {
+          throw new Error("invalid semver manifest fixture")
+        }
+        yield* writeSemverFixture(directory, {
+          packageVersion: "1.1.1",
+          manifest: { ...manifest, release: "1.1.1", releaseKind: "minor" }
+        })
+
+        const exit = yield* Effect.exit(
+          runSemverGuard({
+            cwd: directory,
+            publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
+          })
+        )
+
+        expect(exit._tag).toBe("Failure")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("semver guard rejects padded release versions", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
+      )
+      try {
+        const manifest = semverManifestFixture()
+        if (!isSemverManifestFixture(manifest)) {
+          throw new Error("invalid semver manifest fixture")
+        }
+        yield* writeSemverFixture(directory, {
+          packageVersion: "01.02.03",
+          manifest: { ...manifest, release: "01.02.03", releaseKind: "patch" }
+        })
+
+        const exit = yield* Effect.exit(
+          runSemverGuard({
+            cwd: directory,
+            publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
+          })
+        )
+
+        expect(exit._tag).toBe("Failure")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("semver guard rejects wrong-typed manifest fields", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
+      )
+      try {
+        const manifest = semverManifestFixture()
+        if (!isSemverManifestFixture(manifest)) {
+          throw new Error("invalid semver manifest fixture")
+        }
+        yield* writeSemverFixture(directory, {
+          manifest: {
+            ...manifest,
+            deprecationPolicy: {
+              ...manifest.deprecationPolicy,
+              minimumMinorReleases: "3"
+            }
+          }
+        })
+
+        const exit = yield* Effect.exit(
+          runSemverGuard({
+            cwd: directory,
+            publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
+          })
+        )
+
+        expect(exit._tag).toBe("Failure")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop sign signs macOS app bundle with hardened runtime entitlements", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, {
+          signing: {
+            macos: { identity: "Developer ID Application: Example Inc.", teamId: "ABCD1234" }
+          },
+          permissions: ["device.camera", "network.client"]
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "app")
+        const calls: string[] = []
+        const runner: SignCommandRunner = (invocation) => {
+          calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
+          return Effect.void
+        }
+
+        const stdout: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["sign", "--config", "apps/inspector/desktop.config.ts"],
+          cwd: directory,
+          hostTarget: "macos-arm64",
+          now: fixedClock([100, 125, 200, 230, 300, 330, 400, 430]),
+          signCommandRunner: runner,
+          writeStdout: (text) => {
+            stdout.push(text)
+          },
+          writeStderr: () => {}
+        })
+
+        const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "macos")
+        const artifactRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.app")
+        const entitlements = yield* Effect.promise(() =>
+          readFile(join(artifactRoot, "effect-desktop-entitlements.plist"), "utf8")
+        )
+        const report = decodeSignReportJson(
+          yield* Effect.promise(() => readFile(join(outputRoot, "sign-report.json"), "utf8"))
+        )
+
+        expect(exitCode).toBe(0)
+        expect(stdout.join("")).toContain("Effect Desktop sign")
+        expect(entitlements).toContain("<key>com.apple.security.cs.allow-jit</key>")
+        expect(entitlements).toContain("<key>com.apple.security.device.camera</key>\n  <true/>")
+        expect(entitlements).toContain(
+          "<key>com.apple.security.device.microphone</key>\n  <false/>"
+        )
+        expect(entitlements).toContain("<key>com.apple.security.network.client</key>\n  <true/>")
+        expect(calls.at(-1)).toContain(
+          "codesign --force --sign Developer ID Application: Example Inc."
+        )
+        expect(calls.at(-1)).toContain("--options runtime --entitlements")
+        expect(report.artifacts[0]?.signedPaths).toHaveLength(4)
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop sign rejects malformed permission entries before macOS codesign", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, {
+          signing: {
+            macos: { identity: "Developer ID Application: Example Inc.", teamId: "ABCD1234" }
+          },
+          permissions: [42]
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "app")
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["sign", "--config", "apps/inspector/desktop.config.ts", "--json"],
+          cwd: directory,
+          hostTarget: "macos-arm64",
+          signCommandRunner: () => Effect.die("codesign must not run with malformed permissions"),
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const error = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(error.tag).toBe("SignConfigError")
+        expect(error.message).toContain("permissions[0]")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop sign fails macOS signing without a Developer ID identity", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "app")
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["sign", "--config", "apps/inspector/desktop.config.ts", "--json"],
+          cwd: directory,
+          hostTarget: "macos-arm64",
+          signCommandRunner: () => Effect.die("sign runner should not run without identity"),
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const error = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(error.tag).toBe("SignConfigError")
+        expect(error.message).toContain("signing.macos.identity")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop sign Authenticode-signs Windows MSI with RFC 3161 timestamp", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, {
+          signing: {
+            windows: {
+              thumbprint: "A1B2C3D4E5F60718293A4B5C6D7E8F9012345678",
+              timestampUrl: "http://timestamp.digicert.com"
+            }
+          }
+        })
+        yield* writePackagedArtifactFixture(directory, "windows-x64", "msi")
+        const calls: string[] = []
+        const runner: SignCommandRunner = (invocation) => {
+          calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
+          return Effect.void
+        }
+
+        const exitCode = yield* runCli({
+          argv: ["sign", "--config", "apps/inspector/desktop.config.ts"],
+          cwd: directory,
+          hostTarget: "windows-x64",
+          signCommandRunner: runner,
+          writeStdout: () => {},
+          writeStderr: () => {}
+        })
+
+        expect(exitCode).toBe(0)
+        expect(calls[0]).toContain("windows-unblock:powershell")
+        expect(calls[0]).toContain("Unblock-File")
+        expect(calls[1]).toContain("windows-authenticode:signtool sign /fd SHA256")
+        expect(calls[1]).toContain(
+          "/tr http://timestamp.digicert.com /td SHA256 /sha1 A1B2C3D4E5F60718293A4B5C6D7E8F9012345678"
+        )
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop sign rejects invalid Windows timestamp URLs before signtool", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, {
+          signing: {
+            windows: {
+              thumbprint: "A1B2C3D4E5F60718293A4B5C6D7E8F9012345678",
+              timestampUrl: "not a url"
+            }
+          }
+        })
+        yield* writePackagedArtifactFixture(directory, "windows-x64", "msi")
+        const calls: string[] = []
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["sign", "--config", "apps/inspector/desktop.config.ts", "--json"],
+          cwd: directory,
+          hostTarget: "windows-x64",
+          signCommandRunner: (invocation) =>
+            Effect.sync(() => {
+              calls.push(invocation.step)
+            }),
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const error = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(calls).toEqual([])
+        expect(error.tag).toBe("SignConfigError")
+        expect(error.message).toContain("signing.windows.timestampUrl")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop sign rejects malformed Windows certificate thumbprints", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, {
+          signing: {
+            windows: { thumbprint: "not-a-sha1", timestampUrl: "http://timestamp.digicert.com" }
+          }
+        })
+        yield* writePackagedArtifactFixture(directory, "windows-x64", "msi")
+        const calls: string[] = []
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["sign", "--config", "apps/inspector/desktop.config.ts", "--json"],
+          cwd: directory,
+          hostTarget: "windows-x64",
+          signCommandRunner: (invocation) =>
+            Effect.sync(() => {
+              calls.push(invocation.step)
+            }),
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const error = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(calls).toEqual([])
+        expect(error.tag).toBe("SignConfigError")
+        expect(error.message).toContain("signing.windows.thumbprint")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop sign resolves Windows PFX password env without recording the secret", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-"))
+      )
+      const previousPassword = yield* Effect.sync(() =>
+        readTestEnv("EFFECT_DESKTOP_TEST_PFX_PASSWORD")
+      )
+      try {
+        yield* Effect.sync(() =>
+          writeTestEnv("EFFECT_DESKTOP_TEST_PFX_PASSWORD", "secret-password")
+        )
+        yield* writePlaygroundFixture(directory, {
+          signing: {
+            windows: {
+              pfx: { path: "certs/release.pfx", passwordEnv: "EFFECT_DESKTOP_TEST_PFX_PASSWORD" }
+            }
+          }
+        })
+        yield* writePackagedArtifactFixture(directory, "windows-x64", "msi")
+        let signArgs: readonly string[] = []
+        const runner: SignCommandRunner = (invocation) => {
+          if (invocation.step === "windows-authenticode") {
+            signArgs = invocation.args
+          }
+          return Effect.void
+        }
+
+        const exitCode = yield* runCli({
+          argv: ["sign", "--config", "apps/inspector/desktop.config.ts"],
+          cwd: directory,
+          hostTarget: "windows-x64",
+          signCommandRunner: runner,
+          writeStdout: () => {},
+          writeStderr: () => {}
+        })
+
+        const report = yield* Effect.promise(() =>
+          readFile(
+            join(directory, "apps", "inspector", "dist", "desktop", "windows", "sign-report.json"),
+            "utf8"
+          )
+        )
+
+        expect(exitCode).toBe(0)
+        expect(signArgs).toContain("secret-password")
+        expect(report).toContain("<redacted:WindowsPfxPassword>")
+        expect(report).not.toContain("secret-password")
+      } finally {
+        if (previousPassword === undefined) {
+          yield* Effect.sync(() => writeTestEnv("EFFECT_DESKTOP_TEST_PFX_PASSWORD", undefined))
+        } else {
+          yield* Effect.sync(() =>
+            writeTestEnv("EFFECT_DESKTOP_TEST_PFX_PASSWORD", previousPassword)
+          )
+        }
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop sign GPG-signs Linux AppImage and writes Linux metadata", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, { signing: { linux: { gpgKey: "ABCD1234" } } })
+        const artifactPath = yield* writePackagedArtifactFixture(directory, "linux-x64", "appimage")
+        const calls: string[] = []
+        const runner: SignCommandRunner = (invocation) =>
+          Effect.gen(function* () {
+            calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
+            const outputPath = invocation.args[invocation.args.indexOf("--output") + 1]
+            if (typeof outputPath === "string") {
+              yield* runSignFixtureIo(invocation, () => writeFile(outputPath, "signature"))
+            }
+          })
+
+        const stdout: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["sign", "--config", "apps/inspector/desktop.config.ts"],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          signCommandRunner: runner,
+          writeStdout: (text) => {
+            stdout.push(text)
+          },
+          writeStderr: () => {}
+        })
+
+        const artifactRoot = dirname(artifactPath)
+        const metainfo = yield* Effect.promise(() =>
+          readFile(
+            join(artifactRoot, "share", "metainfo", "dev.effect-desktop.inspector.metainfo.xml"),
+            "utf8"
+          )
+        )
+        const desktop = yield* Effect.promise(() =>
+          readFile(
+            join(artifactRoot, "share", "applications", "dev.effect-desktop.inspector.desktop"),
+            "utf8"
+          )
+        )
+
+        expect(exitCode).toBe(0)
+        expect(stdout.join("")).toContain("appimage")
+        expect(calls[0]).toContain("linux-gpg:gpg --batch --yes --armor --detach-sign")
+        expect(calls[0]).toContain("--local-user ABCD1234")
+        expect(yield* Effect.promise(() => readFile(`${artifactPath}.asc`, "utf8"))).toBe(
+          "signature"
+        )
+        expect(metainfo).toContain("<id>dev.effect-desktop.inspector</id>")
+        expect(metainfo).toContain(
+          '<launchable type="desktop-id">dev.effect-desktop.inspector.desktop</launchable>'
+        )
+        expect(desktop).toContain("Name=Effect Desktop Playground")
+        expect(desktop).toContain("Exec=dev.effect-desktop.inspector")
+        expect(desktop).toContain("Icon=dev.effect-desktop.inspector")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop sign rejects tampered package artifacts before signing", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-tampered-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, { signing: { linux: { gpgKey: "ABCD1234" } } })
+        const artifactPath = yield* writePackagedArtifactFixture(directory, "linux-x64", "appimage")
+        yield* Effect.promise(() => writeFile(artifactPath, "tampered"))
+        const calls: string[] = []
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["sign", "--config", "apps/inspector/desktop.config.ts"],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          signCommandRunner: (invocation) =>
+            Effect.sync(() => {
+              calls.push(invocation.step)
+            }),
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        expect(calls).toEqual([])
+        expect(stderr.join("")).toContain("SignFileError")
+        expect(stderr.join("")).toContain("does not match package artifact metadata")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop sign rejects Linux signable artifacts without linuxIntegration metadata", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-no-linux-int-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, { signing: { linux: { gpgKey: "ABCD1234" } } })
+        const artifactPath = yield* writePackagedArtifactFixture(directory, "linux-x64", "appimage")
+        const artifactRoot = dirname(artifactPath)
+        const artifactJsonPath = join(artifactRoot, "artifact.json")
+        const artifactJson = {
+          ...decodeJsonObject(yield* Effect.promise(() => readFile(artifactJsonPath, "utf8")))
+        }
+        delete artifactJson["linuxIntegration"]
+        yield* Effect.promise(() =>
+          writeFile(artifactJsonPath, `${stringifyJson(artifactJson, 2)}\n`)
+        )
+        const calls: string[] = []
+        const runner: SignCommandRunner = (invocation) => {
+          calls.push(invocation.step)
+          return Effect.die("signing commands must not run when linuxIntegration is missing")
+        }
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
           argv: ["sign", "--config", "apps/inspector/desktop.config.ts"],
           cwd: directory,
           hostTarget: "linux-x64",
@@ -4613,429 +4995,804 @@ test("desktop sign rejects artifact fileName that escapes the metadata directory
             stderr.push(text)
           }
         })
+
+        expect(exitCode).toBe(1)
+        expect(calls).toEqual([])
+        expect(stderr.join("")).toContain("SignConfigError")
+        expect(stderr.join("")).toContain("linuxIntegration")
+        yield* expectEffectPromiseRejects(stat(`${artifactPath}.asc`))
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop sign rejects artifact fileName that escapes the metadata directory", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const invalidFileNames = [
+        "../outside.AppImage",
+        "/tmp/outside.AppImage",
+        ".",
+        "..",
+        "nested/artifact.AppImage",
+        "nested\\artifact.AppImage"
+      ] as const
+
+      for (const fileName of invalidFileNames) {
+        const directory = yield* Effect.promise(() =>
+          mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-traversal-"))
+        )
+        try {
+          yield* writePlaygroundFixture(directory, { signing: { linux: { gpgKey: "ABCD1234" } } })
+          const artifactPath = yield* writePackagedArtifactFixture(
+            directory,
+            "linux-x64",
+            "appimage"
+          )
+          const artifactRoot = dirname(artifactPath)
+          const linuxDir = dirname(artifactRoot)
+          const outsideName = "outside.AppImage"
+          const outsidePath = join(linuxDir, outsideName)
+          yield* Effect.promise(() => writeFile(outsidePath, "outside artifact bytes"))
+          yield* Effect.promise(() =>
+            writeFile(
+              join(artifactRoot, "artifact.json"),
+              `${stringifyJson(
+                {
+                  appId: "dev.effect-desktop.inspector",
+                  appName: "Effect Desktop Playground",
+                  appVersion: "0.0.0",
+                  kind: "appimage",
+                  target: "linux-x64",
+                  fileName,
+                  sizeBytes: 0,
+                  sha256: "0".repeat(64)
+                },
+                2
+              )}\n`
+            )
+          )
+          const calls: string[] = []
+          const runner: SignCommandRunner = (invocation) =>
+            Effect.gen(function* () {
+              calls.push(invocation.step)
+              const outputPath = invocation.args[invocation.args.indexOf("--output") + 1]
+              if (typeof outputPath === "string") {
+                yield* runSignFixtureIo(invocation, () => writeFile(outputPath, "signature"))
+              }
+            })
+          const stderr: string[] = []
+          const exitCode = yield* runCli({
+            argv: ["sign", "--config", "apps/inspector/desktop.config.ts"],
+            cwd: directory,
+            hostTarget: "linux-x64",
+            signCommandRunner: runner,
+            writeStdout: () => {},
+            writeStderr: (text) => {
+              stderr.push(text)
+            }
+          })
+
+          expect(exitCode).toBe(1)
+          expect(stderr.join("")).toContain("SignConfigError")
+          expect(stderr.join("")).toContain("#fileName")
+          expect(calls).toEqual([])
+          yield* expectEffectPromiseRejects(stat(`${outsidePath}.asc`))
+        } finally {
+          yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+        }
+      }
+    })
+  ))
+
+test("desktop sign rejects path-shaped app.id before writing Linux sidecars", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-id-"))
       )
-      expect(exitCode).toBe(1)
-      expect(stderr.join("")).toContain("SignConfigError")
-      expect(stderr.join("")).toContain("#fileName")
-      expect(calls).toEqual([])
-      await expectPromiseRejects(stat(`${outsidePath}.asc`))
-    } finally {
-      await rm(directory, { recursive: true, force: true })
-    }
-  }
-})
-
-test("desktop sign rejects path-shaped app.id before writing Linux sidecars", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-id-"))
-  try {
-    await writePlaygroundFixture(directory, {
-      app: {
-        id: "../../../../escaped",
-        name: "Effect Desktop Playground",
-        version: "0.0.0"
-      }
-    })
-    const artifactPath = await writePackagedArtifactFixture(directory, "linux-x64", "appimage")
-    const artifactRoot = dirname(artifactPath)
-    const calls: string[] = []
-    const runner: SignCommandRunner = (invocation) => {
-      calls.push(invocation.step)
-      return Effect.succeed(undefined)
-    }
-    const stderr: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["sign", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        hostTarget: "linux-x64",
-        signCommandRunner: runner,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const escapedDesktop = join(dirname(artifactRoot), "escaped.desktop")
-    const escapedMetainfo = join(dirname(artifactRoot), "escaped.metainfo.xml")
-
-    expect(exitCode).toBe(1)
-    expect(calls).toEqual([])
-    expect(stderr.join("")).toContain("SignConfigError")
-    expect(stderr.join("")).toContain("app.id must be a reverse-DNS ASCII identifier")
-    await expectPromiseRejects(stat(escapedDesktop))
-    await expectPromiseRejects(stat(escapedMetainfo))
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop sign skips artifacts whose metadata target does not match the requested target", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-target-mismatch-"))
-  try {
-    await writePlaygroundFixture(directory, {
-      signing: { macos: { identity: "Developer ID Application: Example Inc.", teamId: "ABCD1234" } }
-    })
-    const artifactPath = await writePackagedArtifactFixture(directory, "macos-arm64", "app")
-    const artifactJsonPath = join(dirname(artifactPath), "artifact.json")
-    const artifactJson = { ...decodeJsonObject(await readFile(artifactJsonPath, "utf8")) }
-    artifactJson["target"] = "linux-x64"
-    await writeFile(artifactJsonPath, `${JSON.stringify(artifactJson, null, 2)}\n`)
-
-    const calls: string[] = []
-    const runner: SignCommandRunner = (invocation) => {
-      calls.push(invocation.step)
-      return Effect.void
-    }
-
-    const stderr: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["sign", "--config", "apps/inspector/desktop.config.ts", "--json"],
-        cwd: directory,
-        hostTarget: "macos-arm64",
-        signCommandRunner: runner,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const error = decodeCliJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(calls).toEqual([])
-    expect(error.tag).toBe("SignFileError")
-    expect(error.message).toContain("no macos packaged artifacts found")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop sign rejects stale artifacts from a different app identity", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-identity-"))
-  try {
-    await writePlaygroundFixture(directory, {
-      app: { id: "dev.effect-desktop.other", name: "Other App", version: "0.0.0" },
-      signing: { linux: { gpgKey: "ABCD1234" } }
-    })
-    await writePackagedArtifactFixture(directory, "linux-x64", "appimage")
-    const calls: string[] = []
-    const runner: SignCommandRunner = (invocation) => {
-      calls.push(invocation.step)
-      return Effect.void
-    }
-    const stderr: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["sign", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        hostTarget: "linux-x64",
-        signCommandRunner: runner,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    expect(exitCode).toBe(1)
-    expect(calls).toEqual([])
-    expect(stderr.join("")).toContain("SignConfigError")
-    expect(stderr.join("")).toContain("artifact.json#appId")
-    expect(stderr.join("")).toContain("dev.effect-desktop.inspector")
-    expect(stderr.join("")).toContain("active app.id dev.effect-desktop.other")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop notarize skips artifacts whose metadata target does not match the requested target", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-target-mismatch-"))
-  try {
-    await writePlaygroundFixture(directory, {
-      signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
-    })
-    const artifactPath = await writePackagedArtifactFixture(directory, "macos-arm64", "app")
-    const artifactJsonPath = join(dirname(artifactPath), "artifact.json")
-    const artifactJson = { ...decodeJsonObject(await readFile(artifactJsonPath, "utf8")) }
-    artifactJson["target"] = "macos-x64"
-    await writeFile(artifactJsonPath, `${JSON.stringify(artifactJson, null, 2)}\n`)
-
-    const calls: string[] = []
-    const runner: NotarizeCommandRunner = (invocation) => {
-      calls.push(invocation.step)
-      return Effect.succeed({ stdout: "", stderr: "", exitCode: 0 })
-    }
-
-    const stderr: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["notarize", "--config", "apps/inspector/desktop.config.ts", "--json"],
-        cwd: directory,
-        hostTarget: "macos-arm64",
-        notarizeCommandRunner: runner,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const error = decodeCliJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(calls).toEqual([])
-    expect(error.tag).toBe("NotarizeFileError")
-    expect(error.message).toContain("no directly notarizable macOS artifacts found")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop notarize rejects stale artifacts from a different app identity", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-identity-"))
-  try {
-    await writePlaygroundFixture(directory, {
-      app: { id: "dev.effect-desktop.other", name: "Other App", version: "0.0.0" },
-      signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
-    })
-    await writePackagedArtifactFixture(directory, "macos-arm64", "app")
-    const calls: string[] = []
-    const runner: NotarizeCommandRunner = (invocation) => {
-      calls.push(invocation.step)
-      return Effect.succeed({ stdout: `${invocation.step} ok`, stderr: "", exitCode: 0 })
-    }
-    const stderr: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["notarize", "--config", "apps/inspector/desktop.config.ts", "--json"],
-        cwd: directory,
-        hostTarget: "macos-arm64",
-        notarizeCommandRunner: runner,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-    const error = decodeCliJsonError(stderr.join(""))
-
-    expect(exitCode).toBe(1)
-    expect(calls).toEqual([])
-    expect(error.tag).toBe("NotarizeConfigError")
-    expect(error.message).toContain("artifact.json#appId")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop notarize submits staples and assesses unstapled macOS artifacts", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-"))
-  try {
-    await writePlaygroundFixture(directory, {
-      signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
-    })
-    const appPath = await writePackagedArtifactFixture(directory, "macos-arm64", "app")
-    const calls: string[] = []
-    const runner: NotarizeCommandRunner = (invocation) => {
-      calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
-      if (invocation.step === "stapler-validate") {
-        return Effect.succeed({ stdout: "", stderr: "ticket not found", exitCode: 65 })
-      }
-      if (invocation.step === "notarytool-submit") {
-        return Effect.succeed({
-          stdout: JSON.stringify({ id: "submission-1", status: "Accepted" }),
-          stderr: "",
-          exitCode: 0
+      try {
+        yield* writePlaygroundFixture(directory, {
+          app: {
+            id: "../../../../escaped",
+            name: "Effect Desktop Playground",
+            version: "0.0.0"
+          }
         })
-      }
-      return Effect.succeed({ stdout: `${invocation.step} ok`, stderr: "", exitCode: 0 })
-    }
-
-    const stdout: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["notarize", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        hostTarget: "macos-arm64",
-        now: fixedClock([100, 110, 200, 220, 300, 330, 400, 440]),
-        notarizeCommandRunner: runner,
-        writeStdout: (text) => {
-          stdout.push(text)
-        },
-        writeStderr: () => {}
-      })
-    )
-
-    const report = decodeNotarizeArtifactsReportJson(
-      await readFile(
-        join(directory, "apps", "inspector", "dist", "desktop", "macos", "notarize-report.json"),
-        "utf8"
-      )
-    )
-
-    expect(exitCode).toBe(0)
-    expect(stdout.join("")).toContain("Effect Desktop notarize")
-    expect(calls).toEqual([
-      `stapler-validate:xcrun stapler validate ${appPath}`,
-      `notarytool-submit:xcrun notarytool submit ${appPath} --wait --output-format json --keychain-profile release-profile`,
-      `stapler-staple:xcrun stapler staple ${appPath}`,
-      `spctl-assess:spctl --assess --type execute --verbose=4 ${appPath}`
-    ])
-    expect(report.artifacts[0]?.submissionId).toBe("submission-1")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop notarize rejects tampered package artifacts before submission", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-tampered-"))
-  try {
-    await writePlaygroundFixture(directory, {
-      signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
-    })
-    const appPath = await writePackagedArtifactFixture(directory, "macos-arm64", "app")
-    await writeFile(join(appPath, "Contents", "MacOS", "Effect-Desktop-Playground"), "tampered")
-    const calls: string[] = []
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["notarize", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        hostTarget: "macos-arm64",
-        notarizeCommandRunner: (invocation) =>
-          Effect.sync(() => {
-            calls.push(invocation.step)
-            return { stdout: "", stderr: "", exitCode: 0 }
-          }),
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
+        const artifactPath = yield* writePackagedArtifactFixture(directory, "linux-x64", "appimage")
+        const artifactRoot = dirname(artifactPath)
+        const calls: string[] = []
+        const runner: SignCommandRunner = (invocation) => {
+          calls.push(invocation.step)
+          return Effect.void
         }
-      })
-    )
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["sign", "--config", "apps/inspector/desktop.config.ts"],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          signCommandRunner: runner,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
 
-    expect(exitCode).toBe(1)
-    expect(calls).toEqual([])
-    expect(stderr.join("")).toContain("NotarizeFileError")
-    expect(stderr.join("")).toContain("does not match package artifact metadata")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
+        const escapedDesktop = join(dirname(artifactRoot), "escaped.desktop")
+        const escapedMetainfo = join(dirname(artifactRoot), "escaped.metainfo.xml")
 
-test("desktop notarize is a no-op submit when staple validation already passes", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-"))
-  try {
-    await writePlaygroundFixture(directory, {
-      signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
-    })
-    await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
-    const calls: string[] = []
-    const runner: NotarizeCommandRunner = (invocation) => {
-      calls.push(invocation.step)
-      return Effect.succeed({ stdout: `${invocation.step} ok`, stderr: "", exitCode: 0 })
-    }
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["notarize", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        hostTarget: "macos-arm64",
-        notarizeCommandRunner: runner,
-        writeStdout: () => {},
-        writeStderr: () => {}
-      })
-    )
-
-    expect(exitCode).toBe(0)
-    expect(calls).toEqual(["stapler-validate", "spctl-assess"])
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop notarize assesses DMG artifacts as disk images", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-dmg-spctl-"))
-  try {
-    await writePlaygroundFixture(directory, {
-      signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
-    })
-    const dmgPath = await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
-    const calls: string[] = []
-    const runner: NotarizeCommandRunner = (invocation) => {
-      calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
-      return Effect.succeed({ stdout: `${invocation.step} ok`, stderr: "", exitCode: 0 })
-    }
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["notarize", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        hostTarget: "macos-arm64",
-        notarizeCommandRunner: runner,
-        writeStdout: () => {},
-        writeStderr: () => {}
-      })
-    )
-
-    expect(exitCode).toBe(0)
-    expect(calls).toContain(
-      `spctl-assess:spctl --assess --type open --context context:primary-signature --verbose=4 ${dmgPath}`
-    )
-    expect(calls.some((call) => call.includes("--type execute"))).toBe(false)
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop notarize rejects artifact file names outside the metadata directory", async () => {
-  const invalidFileNames = [
-    "../outside.dmg",
-    "/tmp/outside.dmg",
-    ".",
-    "..",
-    "nested/artifact.dmg",
-    "nested\\artifact.dmg",
-    "file:artifact.dmg",
-    "artifact\u0000.dmg"
-  ] as const
-
-  for (const fileName of invalidFileNames) {
-    const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-containment-"))
-    try {
-      await writePlaygroundFixture(directory, {
-        signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
-      })
-      const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "macos")
-      const artifactRoot = join(outputRoot, "artifact-root")
-      await mkdir(artifactRoot, { recursive: true })
-      await writeFile(join(outputRoot, "outside.dmg"), "outside artifact bytes")
-      await writeFile(
-        join(artifactRoot, "artifact.json"),
-        `${JSON.stringify(
-          {
-            appId: "dev.effect-desktop.inspector",
-            appName: "Effect Desktop Playground",
-            appVersion: "0.0.0",
-            kind: "dmg",
-            target: "macos-arm64",
-            fileName
-          },
-          null,
-          2
-        )}\n`
-      )
-      const calls: string[] = []
-      const stderr: string[] = []
-      const runner: NotarizeCommandRunner = (invocation) => {
-        calls.push(invocation.step)
-        return Effect.die("notarization commands should not run for invalid artifact metadata")
+        expect(exitCode).toBe(1)
+        expect(calls).toEqual([])
+        expect(stderr.join("")).toContain("SignConfigError")
+        expect(stderr.join("")).toContain("app.id must be a reverse-DNS ASCII identifier")
+        yield* expectEffectPromiseRejects(stat(escapedDesktop))
+        yield* expectEffectPromiseRejects(stat(escapedMetainfo))
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
+    })
+  ))
 
-      const exitCode = await Effect.runPromise(
-        runCli({
+test("desktop sign skips artifacts whose metadata target does not match the requested target", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-target-mismatch-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, {
+          signing: {
+            macos: { identity: "Developer ID Application: Example Inc.", teamId: "ABCD1234" }
+          }
+        })
+        const artifactPath = yield* writePackagedArtifactFixture(directory, "macos-arm64", "app")
+        const artifactJsonPath = join(dirname(artifactPath), "artifact.json")
+        const artifactJson = {
+          ...decodeJsonObject(yield* Effect.promise(() => readFile(artifactJsonPath, "utf8")))
+        }
+        artifactJson["target"] = "linux-x64"
+        yield* Effect.promise(() =>
+          writeFile(artifactJsonPath, `${stringifyJson(artifactJson, 2)}\n`)
+        )
+
+        const calls: string[] = []
+        const runner: SignCommandRunner = (invocation) => {
+          calls.push(invocation.step)
+          return Effect.void
+        }
+
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["sign", "--config", "apps/inspector/desktop.config.ts", "--json"],
+          cwd: directory,
+          hostTarget: "macos-arm64",
+          signCommandRunner: runner,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const error = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(calls).toEqual([])
+        expect(error.tag).toBe("SignFileError")
+        expect(error.message).toContain("no macos packaged artifacts found")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop sign rejects stale artifacts from a different app identity", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-identity-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, {
+          app: { id: "dev.effect-desktop.other", name: "Other App", version: "0.0.0" },
+          signing: { linux: { gpgKey: "ABCD1234" } }
+        })
+        yield* writePackagedArtifactFixture(directory, "linux-x64", "appimage")
+        const calls: string[] = []
+        const runner: SignCommandRunner = (invocation) => {
+          calls.push(invocation.step)
+          return Effect.void
+        }
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["sign", "--config", "apps/inspector/desktop.config.ts"],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          signCommandRunner: runner,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        expect(calls).toEqual([])
+        expect(stderr.join("")).toContain("SignConfigError")
+        expect(stderr.join("")).toContain("artifact.json#appId")
+        expect(stderr.join("")).toContain("dev.effect-desktop.inspector")
+        expect(stderr.join("")).toContain("active app.id dev.effect-desktop.other")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop notarize skips artifacts whose metadata target does not match the requested target", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-target-mismatch-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, {
+          signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
+        })
+        const artifactPath = yield* writePackagedArtifactFixture(directory, "macos-arm64", "app")
+        const artifactJsonPath = join(dirname(artifactPath), "artifact.json")
+        const artifactJson = {
+          ...decodeJsonObject(yield* Effect.promise(() => readFile(artifactJsonPath, "utf8")))
+        }
+        artifactJson["target"] = "macos-x64"
+        yield* Effect.promise(() =>
+          writeFile(artifactJsonPath, `${stringifyJson(artifactJson, 2)}\n`)
+        )
+
+        const calls: string[] = []
+        const runner: NotarizeCommandRunner = (invocation) => {
+          calls.push(invocation.step)
+          return Effect.succeed({ stdout: "", stderr: "", exitCode: 0 })
+        }
+
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["notarize", "--config", "apps/inspector/desktop.config.ts", "--json"],
+          cwd: directory,
+          hostTarget: "macos-arm64",
+          notarizeCommandRunner: runner,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const error = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(calls).toEqual([])
+        expect(error.tag).toBe("NotarizeFileError")
+        expect(error.message).toContain("no directly notarizable macOS artifacts found")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop notarize rejects stale artifacts from a different app identity", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-identity-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, {
+          app: { id: "dev.effect-desktop.other", name: "Other App", version: "0.0.0" },
+          signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "app")
+        const calls: string[] = []
+        const runner: NotarizeCommandRunner = (invocation) => {
+          calls.push(invocation.step)
+          return Effect.succeed({ stdout: `${invocation.step} ok`, stderr: "", exitCode: 0 })
+        }
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["notarize", "--config", "apps/inspector/desktop.config.ts", "--json"],
+          cwd: directory,
+          hostTarget: "macos-arm64",
+          notarizeCommandRunner: runner,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const error = decodeCliJsonError(stderr.join(""))
+
+        expect(exitCode).toBe(1)
+        expect(calls).toEqual([])
+        expect(error.tag).toBe("NotarizeConfigError")
+        expect(error.message).toContain("artifact.json#appId")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop notarize submits staples and assesses unstapled macOS artifacts", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, {
+          signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
+        })
+        const appPath = yield* writePackagedArtifactFixture(directory, "macos-arm64", "app")
+        const calls: string[] = []
+        const runner: NotarizeCommandRunner = (invocation) => {
+          calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
+          if (invocation.step === "stapler-validate") {
+            return Effect.succeed({ stdout: "", stderr: "ticket not found", exitCode: 65 })
+          }
+          if (invocation.step === "notarytool-submit") {
+            return Effect.succeed({
+              stdout: stringifyJson({ id: "submission-1", status: "Accepted" }),
+              stderr: "",
+              exitCode: 0
+            })
+          }
+          return Effect.succeed({ stdout: `${invocation.step} ok`, stderr: "", exitCode: 0 })
+        }
+
+        const stdout: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["notarize", "--config", "apps/inspector/desktop.config.ts"],
+          cwd: directory,
+          hostTarget: "macos-arm64",
+          now: fixedClock([100, 110, 200, 220, 300, 330, 400, 440]),
+          notarizeCommandRunner: runner,
+          writeStdout: (text) => {
+            stdout.push(text)
+          },
+          writeStderr: () => {}
+        })
+
+        const report = decodeNotarizeArtifactsReportJson(
+          yield* Effect.promise(() =>
+            readFile(
+              join(
+                directory,
+                "apps",
+                "inspector",
+                "dist",
+                "desktop",
+                "macos",
+                "notarize-report.json"
+              ),
+              "utf8"
+            )
+          )
+        )
+
+        expect(exitCode).toBe(0)
+        expect(stdout.join("")).toContain("Effect Desktop notarize")
+        expect(calls).toEqual([
+          `stapler-validate:xcrun stapler validate ${appPath}`,
+          `notarytool-submit:xcrun notarytool submit ${appPath} --wait --output-format json --keychain-profile release-profile`,
+          `stapler-staple:xcrun stapler staple ${appPath}`,
+          `spctl-assess:spctl --assess --type execute --verbose=4 ${appPath}`
+        ])
+        expect(report.artifacts[0]?.submissionId).toBe("submission-1")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop notarize rejects tampered package artifacts before submission", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-tampered-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, {
+          signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
+        })
+        const appPath = yield* writePackagedArtifactFixture(directory, "macos-arm64", "app")
+        yield* Effect.promise(() =>
+          writeFile(join(appPath, "Contents", "MacOS", "Effect-Desktop-Playground"), "tampered")
+        )
+        const calls: string[] = []
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["notarize", "--config", "apps/inspector/desktop.config.ts"],
+          cwd: directory,
+          hostTarget: "macos-arm64",
+          notarizeCommandRunner: (invocation) =>
+            Effect.sync(() => {
+              calls.push(invocation.step)
+              return { stdout: "", stderr: "", exitCode: 0 }
+            }),
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        expect(calls).toEqual([])
+        expect(stderr.join("")).toContain("NotarizeFileError")
+        expect(stderr.join("")).toContain("does not match package artifact metadata")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop notarize is a no-op submit when staple validation already passes", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, {
+          signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+        const calls: string[] = []
+        const runner: NotarizeCommandRunner = (invocation) => {
+          calls.push(invocation.step)
+          return Effect.succeed({ stdout: `${invocation.step} ok`, stderr: "", exitCode: 0 })
+        }
+
+        const exitCode = yield* runCli({
+          argv: ["notarize", "--config", "apps/inspector/desktop.config.ts"],
+          cwd: directory,
+          hostTarget: "macos-arm64",
+          notarizeCommandRunner: runner,
+          writeStdout: () => {},
+          writeStderr: () => {}
+        })
+
+        expect(exitCode).toBe(0)
+        expect(calls).toEqual(["stapler-validate", "spctl-assess"])
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop notarize assesses DMG artifacts as disk images", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-dmg-spctl-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, {
+          signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
+        })
+        const dmgPath = yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+        const calls: string[] = []
+        const runner: NotarizeCommandRunner = (invocation) => {
+          calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
+          return Effect.succeed({ stdout: `${invocation.step} ok`, stderr: "", exitCode: 0 })
+        }
+
+        const exitCode = yield* runCli({
+          argv: ["notarize", "--config", "apps/inspector/desktop.config.ts"],
+          cwd: directory,
+          hostTarget: "macos-arm64",
+          notarizeCommandRunner: runner,
+          writeStdout: () => {},
+          writeStderr: () => {}
+        })
+
+        expect(exitCode).toBe(0)
+        expect(calls).toContain(
+          `spctl-assess:spctl --assess --type open --context context:primary-signature --verbose=4 ${dmgPath}`
+        )
+        expect(calls.some((call) => call.includes("--type execute"))).toBe(false)
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop notarize rejects artifact file names outside the metadata directory", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const invalidFileNames = [
+        "../outside.dmg",
+        "/tmp/outside.dmg",
+        ".",
+        "..",
+        "nested/artifact.dmg",
+        "nested\\artifact.dmg",
+        "file:artifact.dmg",
+        "artifact\u0000.dmg"
+      ] as const
+
+      for (const fileName of invalidFileNames) {
+        const directory = yield* Effect.promise(() =>
+          mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-containment-"))
+        )
+        try {
+          yield* writePlaygroundFixture(directory, {
+            signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
+          })
+          const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "macos")
+          const artifactRoot = join(outputRoot, "artifact-root")
+          yield* Effect.promise(() => mkdir(artifactRoot, { recursive: true }))
+          yield* Effect.promise(() =>
+            writeFile(join(outputRoot, "outside.dmg"), "outside artifact bytes")
+          )
+          yield* Effect.promise(() =>
+            writeFile(
+              join(artifactRoot, "artifact.json"),
+              `${stringifyJson(
+                {
+                  appId: "dev.effect-desktop.inspector",
+                  appName: "Effect Desktop Playground",
+                  appVersion: "0.0.0",
+                  kind: "dmg",
+                  target: "macos-arm64",
+                  fileName
+                },
+                2
+              )}\n`
+            )
+          )
+          const calls: string[] = []
+          const stderr: string[] = []
+          const runner: NotarizeCommandRunner = (invocation) => {
+            calls.push(invocation.step)
+            return Effect.die("notarization commands should not run for invalid artifact metadata")
+          }
+
+          const exitCode = yield* runCli({
+            argv: ["notarize", "--config", "apps/inspector/desktop.config.ts"],
+            cwd: directory,
+            hostTarget: "macos-arm64",
+            notarizeCommandRunner: runner,
+            writeStdout: () => {},
+            writeStderr: (text) => {
+              stderr.push(text)
+            }
+          })
+
+          expect(exitCode).toBe(1)
+          expect(calls).toEqual([])
+          expect(stderr.join("")).toContain("NotarizeConfigError")
+          expect(stderr.join("")).toContain("artifact-root")
+          expect(stderr.join("")).toContain("artifact.json#fileName")
+        } finally {
+          yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+        }
+      }
+    })
+  ))
+
+test("desktop notarize accepts contained artifact file names with consecutive dots", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-dotted-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, {
+          signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
+        })
+        const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "macos")
+        const artifactRoot = join(outputRoot, "artifact-root")
+        const fileName = "Effect..Desktop-0.0.0-macos-arm64.dmg"
+        const artifactPath = join(artifactRoot, fileName)
+        yield* Effect.promise(() => mkdir(artifactRoot, { recursive: true }))
+        yield* Effect.promise(() => writeFile(artifactPath, "dmg"))
+        const digest = yield* digestArtifactFixture(artifactPath)
+        yield* Effect.promise(() =>
+          writeFile(
+            join(artifactRoot, "artifact.json"),
+            `${stringifyJson(
+              {
+                appId: "dev.effect-desktop.inspector",
+                appName: "Effect Desktop Playground",
+                appVersion: "0.0.0",
+                kind: "dmg",
+                target: "macos-arm64",
+                fileName,
+                ...digest
+              },
+              2
+            )}\n`
+          )
+        )
+        const calls: string[] = []
+        const runner: NotarizeCommandRunner = (invocation) => {
+          calls.push(invocation.step)
+          return Effect.succeed({ stdout: `${invocation.step} ok`, stderr: "", exitCode: 0 })
+        }
+
+        const exitCode = yield* runCli({
+          argv: ["notarize", "--config", "apps/inspector/desktop.config.ts"],
+          cwd: directory,
+          hostTarget: "macos-arm64",
+          notarizeCommandRunner: runner,
+          writeStdout: () => {},
+          writeStderr: () => {}
+        })
+
+        expect(exitCode).toBe(0)
+        expect(calls).toEqual(["stapler-validate", "spctl-assess"])
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop notarize ignores zip sidecars that stapler cannot staple", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, {
+          signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "zip")
+        const calls: string[] = []
+        const runner: NotarizeCommandRunner = (invocation) => {
+          calls.push(invocation.step)
+          return Effect.succeed({ stdout: `${invocation.step} ok`, stderr: "", exitCode: 0 })
+        }
+
+        const exitCode = yield* runCli({
+          argv: ["notarize", "--config", "apps/inspector/desktop.config.ts"],
+          cwd: directory,
+          hostTarget: "macos-arm64",
+          notarizeCommandRunner: runner,
+          writeStdout: () => {},
+          writeStderr: () => {}
+        })
+
+        const report = decodeNotarizeArtifactsReportJson(
+          yield* Effect.promise(() =>
+            readFile(
+              join(
+                directory,
+                "apps",
+                "inspector",
+                "dist",
+                "desktop",
+                "macos",
+                "notarize-report.json"
+              ),
+              "utf8"
+            )
+          )
+        )
+
+        expect(exitCode).toBe(0)
+        expect(calls).toEqual(["stapler-validate", "spctl-assess"])
+        expect(report.artifacts).toHaveLength(1)
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop notarize redacts Apple ID password credentials in the persisted report", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-"))
+      )
+      const passwordEnv = "EFFECT_DESKTOP_TEST_NOTARY_PASSWORD"
+      const previousPassword = yield* Effect.sync(() => readTestEnv(passwordEnv))
+      yield* Effect.sync(() => writeTestEnv(passwordEnv, "real-app-specific-password"))
+      try {
+        yield* writePlaygroundFixture(directory, {
+          signing: {
+            macos: {
+              teamId: "ABCD1234",
+              appleId: "release@example.com",
+              passwordEnv
+            }
+          }
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "app")
+        const calls: string[] = []
+        const runner: NotarizeCommandRunner = (invocation) => {
+          calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
+          if (invocation.step === "stapler-validate") {
+            return Effect.succeed({ stdout: "", stderr: "ticket not found", exitCode: 65 })
+          }
+          if (invocation.step === "notarytool-submit") {
+            return Effect.succeed({
+              stdout: stringifyJson({ id: "submission-1", status: "Accepted" }),
+              stderr: "",
+              exitCode: 0
+            })
+          }
+          return Effect.succeed({ stdout: `${invocation.step} ok`, stderr: "", exitCode: 0 })
+        }
+
+        const exitCode = yield* runCli({
+          argv: ["notarize", "--config", "apps/inspector/desktop.config.ts"],
+          cwd: directory,
+          hostTarget: "macos-arm64",
+          notarizeCommandRunner: runner,
+          writeStdout: () => {},
+          writeStderr: () => {}
+        })
+
+        const report = decodeNotarizeStepsReportJson(
+          yield* Effect.promise(() =>
+            readFile(
+              join(
+                directory,
+                "apps",
+                "inspector",
+                "dist",
+                "desktop",
+                "macos",
+                "notarize-report.json"
+              ),
+              "utf8"
+            )
+          )
+        )
+        const submitStep = report.steps.find(
+          (step) => step.command?.includes("notarytool") === true
+        )
+
+        expect(exitCode).toBe(0)
+        expect(calls.join("\n")).toContain("--password real-app-specific-password")
+        expect(submitStep?.command).toContain("--password")
+        expect(submitStep?.command).toContain("<redacted:AppleNotaryPassword>")
+        expect(submitStep?.command).not.toContain("real-app-specific-password")
+      } finally {
+        if (previousPassword === undefined) {
+          yield* Effect.sync(() => writeTestEnv(passwordEnv, undefined))
+        } else {
+          yield* Effect.sync(() => writeTestEnv(passwordEnv, previousPassword))
+        }
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop notarize surfaces rejected notarytool output", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, {
+          signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "app")
+        const stderr: string[] = []
+        const runner: NotarizeCommandRunner = (invocation) => {
+          if (invocation.step === "stapler-validate") {
+            return Effect.succeed({ stdout: "", stderr: "ticket not found", exitCode: 65 })
+          }
+          if (invocation.step === "notarytool-submit") {
+            return Effect.succeed({
+              stdout: stringifyJson({ id: "submission-1", status: "Rejected" }),
+              stderr: "LogFileURL: https://example.invalid/notary-log.json",
+              exitCode: 0
+            })
+          }
+          return Effect.die("staple and assess should not run after rejection")
+        }
+
+        const exitCode = yield* runCli({
           argv: ["notarize", "--config", "apps/inspector/desktop.config.ts"],
           cwd: directory,
           hostTarget: "macos-arm64",
@@ -5045,396 +5802,202 @@ test("desktop notarize rejects artifact file names outside the metadata director
             stderr.push(text)
           }
         })
-      )
 
-      expect(exitCode).toBe(1)
-      expect(calls).toEqual([])
-      expect(stderr.join("")).toContain("NotarizeConfigError")
-      expect(stderr.join("")).toContain("artifact-root")
-      expect(stderr.join("")).toContain("artifact.json#fileName")
-    } finally {
-      await rm(directory, { recursive: true, force: true })
-    }
-  }
-})
-
-test("desktop notarize accepts contained artifact file names with consecutive dots", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-dotted-"))
-  try {
-    await writePlaygroundFixture(directory, {
-      signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
-    })
-    const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "macos")
-    const artifactRoot = join(outputRoot, "artifact-root")
-    const fileName = "Effect..Desktop-0.0.0-macos-arm64.dmg"
-    const artifactPath = join(artifactRoot, fileName)
-    await mkdir(artifactRoot, { recursive: true })
-    await writeFile(artifactPath, "dmg")
-    const digest = await digestArtifactFixture(artifactPath)
-    await writeFile(
-      join(artifactRoot, "artifact.json"),
-      `${JSON.stringify(
-        {
-          appId: "dev.effect-desktop.inspector",
-          appName: "Effect Desktop Playground",
-          appVersion: "0.0.0",
-          kind: "dmg",
-          target: "macos-arm64",
-          fileName,
-          ...digest
-        },
-        null,
-        2
-      )}\n`
-    )
-    const calls: string[] = []
-    const runner: NotarizeCommandRunner = (invocation) => {
-      calls.push(invocation.step)
-      return Effect.succeed({ stdout: `${invocation.step} ok`, stderr: "", exitCode: 0 })
-    }
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["notarize", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        hostTarget: "macos-arm64",
-        notarizeCommandRunner: runner,
-        writeStdout: () => {},
-        writeStderr: () => {}
-      })
-    )
-
-    expect(exitCode).toBe(0)
-    expect(calls).toEqual(["stapler-validate", "spctl-assess"])
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop notarize ignores zip sidecars that stapler cannot staple", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-"))
-  try {
-    await writePlaygroundFixture(directory, {
-      signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
-    })
-    await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
-    await writePackagedArtifactFixture(directory, "macos-arm64", "zip")
-    const calls: string[] = []
-    const runner: NotarizeCommandRunner = (invocation) => {
-      calls.push(invocation.step)
-      return Effect.succeed({ stdout: `${invocation.step} ok`, stderr: "", exitCode: 0 })
-    }
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["notarize", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        hostTarget: "macos-arm64",
-        notarizeCommandRunner: runner,
-        writeStdout: () => {},
-        writeStderr: () => {}
-      })
-    )
-
-    const report = decodeNotarizeArtifactsReportJson(
-      await readFile(
-        join(directory, "apps", "inspector", "dist", "desktop", "macos", "notarize-report.json"),
-        "utf8"
-      )
-    )
-
-    expect(exitCode).toBe(0)
-    expect(calls).toEqual(["stapler-validate", "spctl-assess"])
-    expect(report.artifacts).toHaveLength(1)
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop notarize redacts Apple ID password credentials in the persisted report", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-"))
-  const passwordEnv = "EFFECT_DESKTOP_TEST_NOTARY_PASSWORD"
-  const previousPassword = process.env[passwordEnv]
-  process.env[passwordEnv] = "real-app-specific-password"
-  try {
-    await writePlaygroundFixture(directory, {
-      signing: {
-        macos: {
-          teamId: "ABCD1234",
-          appleId: "release@example.com",
-          passwordEnv
-        }
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("notarytool returned Rejected")
+        expect(stderr.join("")).toContain("https://example.invalid/notary-log.json")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
     })
-    await writePackagedArtifactFixture(directory, "macos-arm64", "app")
-    const calls: string[] = []
-    const runner: NotarizeCommandRunner = (invocation) => {
-      calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
-      if (invocation.step === "stapler-validate") {
-        return Effect.succeed({ stdout: "", stderr: "ticket not found", exitCode: 65 })
-      }
-      if (invocation.step === "notarytool-submit") {
-        return Effect.succeed({
-          stdout: JSON.stringify({ id: "submission-1", status: "Accepted" }),
-          stderr: "",
-          exitCode: 0
+  ))
+
+test("desktop notarize returns malformed notarytool JSON as a typed failure", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, {
+          signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
         })
-      }
-      return Effect.succeed({ stdout: `${invocation.step} ok`, stderr: "", exitCode: 0 })
-    }
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["notarize", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        hostTarget: "macos-arm64",
-        notarizeCommandRunner: runner,
-        writeStdout: () => {},
-        writeStderr: () => {}
-      })
-    )
-
-    const report = decodeNotarizeStepsReportJson(
-      await readFile(
-        join(directory, "apps", "inspector", "dist", "desktop", "macos", "notarize-report.json"),
-        "utf8"
-      )
-    )
-    const submitStep = report.steps.find((step) => step.command?.includes("notarytool") === true)
-
-    expect(exitCode).toBe(0)
-    expect(calls.join("\n")).toContain("--password real-app-specific-password")
-    expect(submitStep?.command).toContain("--password")
-    expect(submitStep?.command).toContain("<redacted:AppleNotaryPassword>")
-    expect(submitStep?.command).not.toContain("real-app-specific-password")
-  } finally {
-    if (previousPassword === undefined) {
-      delete process.env[passwordEnv]
-    } else {
-      process.env[passwordEnv] = previousPassword
-    }
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop notarize surfaces rejected notarytool output", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-"))
-  try {
-    await writePlaygroundFixture(directory, {
-      signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
-    })
-    await writePackagedArtifactFixture(directory, "macos-arm64", "app")
-    const stderr: string[] = []
-    const runner: NotarizeCommandRunner = (invocation) => {
-      if (invocation.step === "stapler-validate") {
-        return Effect.succeed({ stdout: "", stderr: "ticket not found", exitCode: 65 })
-      }
-      if (invocation.step === "notarytool-submit") {
-        return Effect.succeed({
-          stdout: JSON.stringify({ id: "submission-1", status: "Rejected" }),
-          stderr: "LogFileURL: https://example.invalid/notary-log.json",
-          exitCode: 0
-        })
-      }
-      return Effect.die("staple and assess should not run after rejection")
-    }
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["notarize", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        hostTarget: "macos-arm64",
-        notarizeCommandRunner: runner,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "app")
+        const stderr: string[] = []
+        const runner: NotarizeCommandRunner = (invocation) => {
+          if (invocation.step === "stapler-validate") {
+            return Effect.succeed({ stdout: "", stderr: "ticket not found", exitCode: 65 })
+          }
+          if (invocation.step === "notarytool-submit") {
+            return Effect.succeed({ stdout: "not json", stderr: "", exitCode: 0 })
+          }
+          return Effect.die("staple and assess should not run after malformed notarytool JSON")
         }
-      })
-    )
 
-    expect(exitCode).toBe(1)
-    expect(stderr.join("")).toContain("notarytool returned Rejected")
-    expect(stderr.join("")).toContain("https://example.invalid/notary-log.json")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop notarize returns malformed notarytool JSON as a typed failure", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-"))
-  try {
-    await writePlaygroundFixture(directory, {
-      signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
-    })
-    await writePackagedArtifactFixture(directory, "macos-arm64", "app")
-    const stderr: string[] = []
-    const runner: NotarizeCommandRunner = (invocation) => {
-      if (invocation.step === "stapler-validate") {
-        return Effect.succeed({ stdout: "", stderr: "ticket not found", exitCode: 65 })
-      }
-      if (invocation.step === "notarytool-submit") {
-        return Effect.succeed({ stdout: "not json", stderr: "", exitCode: 0 })
-      }
-      return Effect.die("staple and assess should not run after malformed notarytool JSON")
-    }
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["notarize", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        hostTarget: "macos-arm64",
-        notarizeCommandRunner: runner,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    expect(exitCode).toBe(1)
-    expect(stderr.join("")).toContain("failed to parse notarytool JSON output")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop publish writes a byte-stable Ed25519-signed update manifest", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-"))
-  const key = testEd25519Key()
-  const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
-  const previousPrivateKey = process.env[privateKeyEnv]
-  process.env[privateKeyEnv] = key.privateKeyPem
-  try {
-    await writePlaygroundFixture(directory, {
-      update: {
-        channel: "stable",
-        feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
-        publicKey: key.publicKey,
-        privateKeyEnv,
-        keyVersion: 5,
-        minVersion: "0.0.0"
-      }
-    })
-    await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
-
-    const stdout: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
-        cwd: directory,
-        now: () => 1_772_923_200_000,
-        writeStdout: (text) => {
-          stdout.push(text)
-        },
-        writeStderr: () => {}
-      })
-    )
-
-    const manifestPath = join(
-      directory,
-      "apps",
-      "inspector",
-      "dist",
-      "desktop",
-      "update-manifest.json"
-    )
-    const manifest = decodeUpdateManifestJson(await readFile(manifestPath, "utf8"))
-    const report = decodePublishReportJson(stdout.join(""))
-
-    expect(exitCode).toBe(0)
-    expect(report.manifestPath).toBe(manifestPath)
-    expect(verifyUpdateManifest(manifest, key.publicKey)).toBe(true)
-    expect(manifest).toMatchObject({
-      schemaVersion: 1,
-      appId: "dev.effect-desktop.inspector",
-      version: "0.0.0",
-      channel: "stable",
-      keyVersion: 5,
-      publishedAt: "2026-03-07T22:40:00.000Z",
-      minVersion: "0.0.0"
-    })
-    expect(manifest.artifacts).toHaveLength(1)
-    expect(manifest.artifacts[0]).toMatchObject({
-      platform: "macos-arm64",
-      kind: "dmg",
-      url: "https://updates.example.invalid/macos-arm64/Effect-Desktop-Playground-0.0.0-macos-arm64.dmg",
-      signature: expect.stringContaining("ed25519:")
-    })
-  } finally {
-    if (previousPrivateKey === undefined) {
-      delete process.env[privateKeyEnv]
-    } else {
-      process.env[privateKeyEnv] = previousPrivateKey
-    }
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop publish rejects invalid publish timestamps before writing manifests", async () => {
-  const invalidTimestamps = [
-    Number.NaN,
-    Number.POSITIVE_INFINITY,
-    Number.NEGATIVE_INFINITY,
-    8.64e15 + 1
-  ] as const
-
-  for (const timestamp of invalidTimestamps) {
-    const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-clock-"))
-    const key = testEd25519Key()
-    const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
-    const previousPrivateKey = process.env[privateKeyEnv]
-    process.env[privateKeyEnv] = key.privateKeyPem
-    try {
-      await writePlaygroundFixture(directory, {
-        update: {
-          channel: "stable",
-          feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
-          publicKey: key.publicKey,
-          privateKeyEnv,
-          keyVersion: 5,
-          minVersion: "0.0.0"
-        }
-      })
-      await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
-      const manifestPath = join(
-        directory,
-        "apps",
-        "inspector",
-        "dist",
-        "desktop",
-        "update-manifest.json"
-      )
-      const stderr: string[] = []
-
-      const exitCode = await Effect.runPromise(
-        runCli({
-          argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
+        const exitCode = yield* runCli({
+          argv: ["notarize", "--config", "apps/inspector/desktop.config.ts"],
           cwd: directory,
-          now: () => timestamp,
+          hostTarget: "macos-arm64",
+          notarizeCommandRunner: runner,
           writeStdout: () => {},
           writeStderr: (text) => {
             stderr.push(text)
           }
         })
-      )
 
-      const payload = decodeCliJsonError(stderr.join(""))
-      expect(exitCode).toBe(1)
-      expect(payload.tag).toBe("PublishConfigError")
-      expect(payload.message).toContain("publish timestamp")
-      await expectPromiseRejects(readFile(manifestPath, "utf8"))
-    } finally {
-      if (previousPrivateKey === undefined) {
-        delete process.env[privateKeyEnv]
-      } else {
-        process.env[privateKeyEnv] = previousPrivateKey
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("failed to parse notarytool JSON output")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
-      await rm(directory, { recursive: true, force: true })
-    }
-  }
-})
+    })
+  ))
 
-test("desktop publish canonical bytes ignore object insertion order", async () => {
+test("desktop publish writes a byte-stable Ed25519-signed update manifest", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-"))
+      )
+      const key = testEd25519Key()
+      const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
+      try {
+        yield* writePlaygroundFixture(directory, {
+          update: {
+            channel: "stable",
+            feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+            publicKey: key.publicKey,
+            privateKeyEnv,
+            keyVersion: 5,
+            minVersion: "0.0.0"
+          }
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+
+        const stdout: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
+          cwd: directory,
+          now: () => 1_772_923_200_000,
+          writeStdout: (text) => {
+            stdout.push(text)
+          },
+          writeStderr: () => {}
+        })
+
+        const manifestPath = join(
+          directory,
+          "apps",
+          "inspector",
+          "dist",
+          "desktop",
+          "update-manifest.json"
+        )
+        const manifest = decodeUpdateManifestJson(
+          yield* Effect.promise(() => readFile(manifestPath, "utf8"))
+        )
+        const report = decodePublishReportJson(stdout.join(""))
+
+        expect(exitCode).toBe(0)
+        expect(report.manifestPath).toBe(manifestPath)
+        expect(verifyUpdateManifest(manifest, key.publicKey)).toBe(true)
+        expect(manifest).toMatchObject({
+          schemaVersion: 1,
+          appId: "dev.effect-desktop.inspector",
+          version: "0.0.0",
+          channel: "stable",
+          keyVersion: 5,
+          publishedAt: "2026-03-07T22:40:00.000Z",
+          minVersion: "0.0.0"
+        })
+        expect(manifest.artifacts).toHaveLength(1)
+        expect(manifest.artifacts[0]).toMatchObject({
+          platform: "macos-arm64",
+          kind: "dmg",
+          url: "https://updates.example.invalid/macos-arm64/Effect-Desktop-Playground-0.0.0-macos-arm64.dmg",
+          signature: expect.stringContaining("ed25519:")
+        })
+      } finally {
+        if (previousPrivateKey === undefined) {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
+        } else {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
+        }
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop publish rejects invalid publish timestamps before writing manifests", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const invalidTimestamps = [
+        Number.NaN,
+        Number.POSITIVE_INFINITY,
+        Number.NEGATIVE_INFINITY,
+        8.64e15 + 1
+      ] as const
+
+      for (const timestamp of invalidTimestamps) {
+        const directory = yield* Effect.promise(() =>
+          mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-clock-"))
+        )
+        const key = testEd25519Key()
+        const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+        const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+        yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
+        try {
+          yield* writePlaygroundFixture(directory, {
+            update: {
+              channel: "stable",
+              feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+              publicKey: key.publicKey,
+              privateKeyEnv,
+              keyVersion: 5,
+              minVersion: "0.0.0"
+            }
+          })
+          yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+          const manifestPath = join(
+            directory,
+            "apps",
+            "inspector",
+            "dist",
+            "desktop",
+            "update-manifest.json"
+          )
+          const stderr: string[] = []
+
+          const exitCode = yield* runCli({
+            argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
+            cwd: directory,
+            now: () => timestamp,
+            writeStdout: () => {},
+            writeStderr: (text) => {
+              stderr.push(text)
+            }
+          })
+
+          const payload = decodeCliJsonError(stderr.join(""))
+          expect(exitCode).toBe(1)
+          expect(payload.tag).toBe("PublishConfigError")
+          expect(payload.message).toContain("publish timestamp")
+          yield* expectEffectPromiseRejects(readFile(manifestPath, "utf8"))
+        } finally {
+          if (previousPrivateKey === undefined) {
+            yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
+          } else {
+            yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
+          }
+          yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+        }
+      }
+    })
+  ))
+
+test("desktop publish canonical bytes ignore object insertion order", () => {
   const manifest = {
     signature: "ed25519:signature",
     version: "1.0.0",
@@ -5468,1426 +6031,2005 @@ test("desktop publish canonical bytes ignore object insertion order", async () =
   expect(canonicalUpdateManifestBytes(manifest)).toBe(canonicalUpdateManifestBytes(reordered))
 })
 
-test("desktop publish encodes artifact URLs for query-string feed URLs", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-query-feed-url-"))
-  const key = testEd25519Key()
-  const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
-  const previousPrivateKey = process.env[privateKeyEnv]
-  process.env[privateKeyEnv] = key.privateKeyPem
-  try {
-    await writePlaygroundFixture(directory, {
-      update: {
-        channel: "stable",
-        feedUrl: "https://updates.example.invalid?platform={platform}&channel={channel}",
-        publicKey: key.publicKey,
-        privateKeyEnv,
-        keyVersion: 5,
-        minVersion: "0.0.0"
-      }
-    })
-    await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
-        cwd: directory,
-        now: () => 1_772_923_200_000,
-        writeStdout: () => {},
-        writeStderr: () => {}
-      })
-    )
-
-    const manifest = decodeUpdateManifestJson(
-      await readFile(
-        join(directory, "apps", "inspector", "dist", "desktop", "update-manifest.json"),
-        "utf8"
+test("desktop publish encodes artifact URLs for query-string feed URLs", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-query-feed-url-"))
       )
-    )
+      const key = testEd25519Key()
+      const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
+      try {
+        yield* writePlaygroundFixture(directory, {
+          update: {
+            channel: "stable",
+            feedUrl: "https://updates.example.invalid?platform={platform}&channel={channel}",
+            publicKey: key.publicKey,
+            privateKeyEnv,
+            keyVersion: 5,
+            minVersion: "0.0.0"
+          }
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+        const exitCode = yield* runCli({
+          argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
+          cwd: directory,
+          now: () => 1_772_923_200_000,
+          writeStdout: () => {},
+          writeStderr: () => {}
+        })
 
-    expect(exitCode).toBe(0)
-    expect(manifest.artifacts[0]).toMatchObject({
-      url: "https://updates.example.invalid/Effect-Desktop-Playground-0.0.0-macos-arm64.dmg?platform=macos-arm64&channel=stable"
-    })
-  } finally {
-    if (previousPrivateKey === undefined) {
-      delete process.env[privateKeyEnv]
-    } else {
-      process.env[privateKeyEnv] = previousPrivateKey
-    }
-    await rm(directory, { recursive: true, force: true })
-  }
-})
+        const manifest = decodeUpdateManifestJson(
+          yield* Effect.promise(() =>
+            readFile(
+              join(directory, "apps", "inspector", "dist", "desktop", "update-manifest.json"),
+              "utf8"
+            )
+          )
+        )
 
-test("desktop publish rejects tampered manifest signatures through canonical bytes", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-"))
-  const key = testEd25519Key()
-  const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
-  const previousPrivateKey = process.env[privateKeyEnv]
-  process.env[privateKeyEnv] = key.privateKeyPem
-  try {
-    await writePlaygroundFixture(directory, {
-      update: {
-        channel: "stable",
-        feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
-        publicKey: key.publicKey,
-        privateKeyEnv,
-        keyVersion: 5
+        expect(exitCode).toBe(0)
+        expect(manifest.artifacts[0]).toMatchObject({
+          url: "https://updates.example.invalid/Effect-Desktop-Playground-0.0.0-macos-arm64.dmg?platform=macos-arm64&channel=stable"
+        })
+      } finally {
+        if (previousPrivateKey === undefined) {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
+        } else {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
+        }
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
     })
-    await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+  ))
 
-    await Effect.runPromise(
-      runCli({
-        argv: ["publish", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        now: () => 1_772_923_200_000,
-        writeStdout: () => {},
-        writeStderr: () => {}
-      })
-    )
-
-    const manifest = decodeUpdateManifestJson(
-      await readFile(
-        join(directory, "apps", "inspector", "dist", "desktop", "update-manifest.json"),
-        "utf8"
+test("desktop publish rejects tampered manifest signatures through canonical bytes", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-"))
       )
-    )
-    const tampered: UpdateManifest = {
-      schemaVersion: manifest.schemaVersion,
-      appId: manifest.appId,
-      version: "9.9.9",
-      channel: manifest.channel,
-      keyVersion: manifest.keyVersion,
-      publishedAt: manifest.publishedAt,
-      ...(manifest.rollback === undefined ? {} : { rollback: manifest.rollback }),
-      ...(manifest.minVersion === undefined ? {} : { minVersion: manifest.minVersion }),
-      ...(manifest.maxVersion === undefined ? {} : { maxVersion: manifest.maxVersion }),
-      artifacts: manifest.artifacts,
-      signature: manifest.signature
-    }
+      const key = testEd25519Key()
+      const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
+      try {
+        yield* writePlaygroundFixture(directory, {
+          update: {
+            channel: "stable",
+            feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+            publicKey: key.publicKey,
+            privateKeyEnv,
+            keyVersion: 5
+          }
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
 
-    expect(verifyUpdateManifest(manifest, key.publicKey)).toBe(true)
-    expect(verifyUpdateManifest(tampered, key.publicKey)).toBe(false)
-  } finally {
-    if (previousPrivateKey === undefined) {
-      delete process.env[privateKeyEnv]
-    } else {
-      process.env[privateKeyEnv] = previousPrivateKey
-    }
-    await rm(directory, { recursive: true, force: true })
-  }
-})
+        yield* runCli({
+          argv: ["publish", "--config", "apps/inspector/desktop.config.ts"],
+          cwd: directory,
+          now: () => 1_772_923_200_000,
+          writeStdout: () => {},
+          writeStderr: () => {}
+        })
 
-test("desktop publish rejects stale package metadata before signing the manifest", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-"))
-  const key = testEd25519Key()
-  const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
-  const previousPrivateKey = process.env[privateKeyEnv]
-  process.env[privateKeyEnv] = key.privateKeyPem
-  try {
-    await writePlaygroundFixture(directory, {
-      update: {
-        channel: "stable",
-        feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
-        publicKey: key.publicKey,
-        privateKeyEnv,
-        keyVersion: 5
-      }
-    })
-    const artifactPath = await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
-    await writeFile(
-      join(dirname(artifactPath), "artifact.json"),
-      `${JSON.stringify(
-        {
-          appId: "dev.effect-desktop.inspector",
-          appName: "Effect Desktop Playground",
-          appVersion: "0.0.0",
-          kind: "dmg",
-          target: "macos-arm64",
-          fileName: "Effect-Desktop-Playground-0.0.0-macos-arm64.dmg",
-          sizeBytes: 1,
-          sha256: "0".repeat(64)
-        },
-        null,
-        2
-      )}\n`
-    )
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
-        cwd: directory,
-        now: () => 1_772_923_200_000,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
+        const manifest = decodeUpdateManifestJson(
+          yield* Effect.promise(() =>
+            readFile(
+              join(directory, "apps", "inspector", "dist", "desktop", "update-manifest.json"),
+              "utf8"
+            )
+          )
+        )
+        const tampered: UpdateManifest = {
+          schemaVersion: manifest.schemaVersion,
+          appId: manifest.appId,
+          version: "9.9.9",
+          channel: manifest.channel,
+          keyVersion: manifest.keyVersion,
+          publishedAt: manifest.publishedAt,
+          ...(manifest.rollback === undefined ? {} : { rollback: manifest.rollback }),
+          ...(manifest.minVersion === undefined ? {} : { minVersion: manifest.minVersion }),
+          ...(manifest.maxVersion === undefined ? {} : { maxVersion: manifest.maxVersion }),
+          artifacts: manifest.artifacts,
+          signature: manifest.signature
         }
-      })
-    )
 
-    expect(exitCode).toBe(1)
-    expect(stderr.join("")).toContain("PublishConfigError")
-    expect(stderr.join("")).toContain("package artifact metadata does not match artifact bytes")
-  } finally {
-    if (previousPrivateKey === undefined) {
-      delete process.env[privateKeyEnv]
-    } else {
-      process.env[privateKeyEnv] = previousPrivateKey
-    }
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop publish rejects invalid app ids before writing manifests", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-invalid-appid-"))
-  try {
-    await writePlaygroundFixture(directory, {
-      app: {
-        id: "not a reverse dns id",
-        name: "Effect Desktop Playground",
-        version: "0.0.0"
-      }
-    })
-    const manifestPath = join(
-      directory,
-      "apps",
-      "inspector",
-      "dist",
-      "desktop",
-      "update-manifest.json"
-    )
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
+        expect(verifyUpdateManifest(manifest, key.publicKey)).toBe(true)
+        expect(verifyUpdateManifest(tampered, key.publicKey)).toBe(false)
+      } finally {
+        if (previousPrivateKey === undefined) {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
+        } else {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
         }
-      })
-    )
-
-    const error = decodeCliJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(error.tag).toBe("PublishConfigError")
-    expect(error.message).toContain("app.id must be a reverse-DNS ASCII identifier")
-    await expectPromiseRejects(stat(manifestPath))
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop publish rejects non-SemVer app versions before writing manifests", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-invalid-version-"))
-  const key = testEd25519Key()
-  const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
-  const previousPrivateKey = process.env[privateKeyEnv]
-  process.env[privateKeyEnv] = key.privateKeyPem
-  try {
-    await writePlaygroundFixture(directory, {
-      app: {
-        id: "dev.effect-desktop.inspector",
-        name: "Effect Desktop Playground",
-        version: "not-semver"
-      },
-      update: {
-        channel: "stable",
-        feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
-        publicKey: key.publicKey,
-        privateKeyEnv,
-        keyVersion: 5
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
     })
-    const manifestPath = join(
-      directory,
-      "apps",
-      "inspector",
-      "dist",
-      "desktop",
-      "update-manifest.json"
-    )
-    const stderr: string[] = []
+  ))
 
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
-        cwd: directory,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const error = decodeCliJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(error.tag).toBe("PublishConfigError")
-    expect(error.message).toContain("app.version must be a SemVer X.Y.Z string")
-    await expectPromiseRejects(stat(manifestPath))
-  } finally {
-    if (previousPrivateKey === undefined) {
-      delete process.env[privateKeyEnv]
-    } else {
-      process.env[privateKeyEnv] = previousPrivateKey
-    }
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop publish rejects invalid feedUrl", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-invalid-feed-url-"))
-  const key = testEd25519Key()
-  const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
-  const previousPrivateKey = process.env[privateKeyEnv]
-  process.env[privateKeyEnv] = key.privateKeyPem
-  try {
-    await writePlaygroundFixture(directory, {
-      update: {
-        channel: "stable",
-        feedUrl: "not-a-url-{platform}-{channel}",
-        publicKey: key.publicKey,
-        privateKeyEnv,
-        keyVersion: 5
-      }
-    })
-    await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
-    const stderr: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
-        cwd: directory,
-        now: () => 1_772_923_200_000,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-    expect(exitCode).toBe(1)
-    expect(stderr.join("")).toContain("update.feedUrl")
-    expect(stderr.join("")).toContain("valid http(s) URL template")
-  } finally {
-    if (previousPrivateKey === undefined) {
-      delete process.env[privateKeyEnv]
-    } else {
-      process.env[privateKeyEnv] = previousPrivateKey
-    }
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop publish rejects feedUrl missing the {platform} placeholder", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-feed-no-platform-"))
-  const key = testEd25519Key()
-  const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
-  const previousPrivateKey = process.env[privateKeyEnv]
-  process.env[privateKeyEnv] = key.privateKeyPem
-  try {
-    await writePlaygroundFixture(directory, {
-      update: {
-        channel: "stable",
-        feedUrl: "https://updates.example.invalid/{channel}.json",
-        publicKey: key.publicKey,
-        privateKeyEnv,
-        keyVersion: 5
-      }
-    })
-    await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
-    const stderr: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
-        cwd: directory,
-        now: () => 1_772_923_200_000,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-    expect(exitCode).toBe(1)
-    expect(stderr.join("")).toContain("update.feedUrl")
-    expect(stderr.join("")).toContain("{platform}")
-  } finally {
-    if (previousPrivateKey === undefined) {
-      delete process.env[privateKeyEnv]
-    } else {
-      process.env[privateKeyEnv] = previousPrivateKey
-    }
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop publish rejects feedUrl missing the {channel} placeholder", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-feed-no-channel-"))
-  const key = testEd25519Key()
-  const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
-  const previousPrivateKey = process.env[privateKeyEnv]
-  process.env[privateKeyEnv] = key.privateKeyPem
-  try {
-    await writePlaygroundFixture(directory, {
-      update: {
-        channel: "stable",
-        feedUrl: "https://updates.example.invalid/{platform}/stable.json",
-        publicKey: key.publicKey,
-        privateKeyEnv,
-        keyVersion: 5
-      }
-    })
-    await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
-    const stderr: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
-        cwd: directory,
-        now: () => 1_772_923_200_000,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-    expect(exitCode).toBe(1)
-    expect(stderr.join("")).toContain("update.feedUrl")
-    expect(stderr.join("")).toContain("{channel}")
-  } finally {
-    if (previousPrivateKey === undefined) {
-      delete process.env[privateKeyEnv]
-    } else {
-      process.env[privateKeyEnv] = previousPrivateKey
-    }
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop publish rejects stale artifacts from a different app identity", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-identity-"))
-  const key = testEd25519Key()
-  const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
-  const previousPrivateKey = process.env[privateKeyEnv]
-  process.env[privateKeyEnv] = key.privateKeyPem
-  try {
-    await writePlaygroundFixture(directory, {
-      app: { id: "dev.effect-desktop.other", name: "Other App", version: "0.0.0" },
-      update: {
-        channel: "stable",
-        feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
-        publicKey: key.publicKey,
-        privateKeyEnv,
-        keyVersion: 5
-      }
-    })
-    await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
-
-    const manifestPath = join(
-      directory,
-      "apps",
-      "inspector",
-      "dist",
-      "desktop",
-      "update-manifest.json"
-    )
-    const stderr: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
-        cwd: directory,
-        now: () => 1_772_923_200_000,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-    const error = decodeCliJsonError(stderr.join(""))
-
-    expect(exitCode).toBe(1)
-    expect(error.tag).toBe("PublishConfigError")
-    expect(error.message).toContain("artifact.json#appId")
-    expect(error.message).toContain("dev.effect-desktop.other")
-    await expectPromiseRejects(stat(manifestPath))
-  } finally {
-    if (previousPrivateKey === undefined) {
-      delete process.env[privateKeyEnv]
-    } else {
-      process.env[privateKeyEnv] = previousPrivateKey
-    }
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop publish rejects artifact target mismatching platform directory", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-target-mismatch-"))
-  const key = testEd25519Key()
-  const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
-  const previousPrivateKey = process.env[privateKeyEnv]
-  process.env[privateKeyEnv] = key.privateKeyPem
-  try {
-    await writePlaygroundFixture(directory, {
-      update: {
-        channel: "stable",
-        feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
-        publicKey: key.publicKey,
-        privateKeyEnv,
-        keyVersion: 5
-      }
-    })
-    const artifactPath = await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
-    const artifactJsonPath = join(dirname(artifactPath), "artifact.json")
-    const artifactJson = { ...decodeJsonObject(await readFile(artifactJsonPath, "utf8")) }
-    artifactJson["target"] = "linux-x64"
-    await writeFile(artifactJsonPath, `${JSON.stringify(artifactJson, null, 2)}\n`)
-
-    const stderr: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
-        cwd: directory,
-        now: () => 1_772_923_200_000,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-    expect(exitCode).toBe(1)
-    expect(stderr.join("")).toContain("does not match platform directory")
-  } finally {
-    if (previousPrivateKey === undefined) {
-      delete process.env[privateKeyEnv]
-    } else {
-      process.env[privateKeyEnv] = previousPrivateKey
-    }
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop publish rejects artifact fileName that escapes the metadata directory", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-traversal-"))
-  const key = testEd25519Key()
-  const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
-  const previousPrivateKey = process.env[privateKeyEnv]
-  process.env[privateKeyEnv] = key.privateKeyPem
-  try {
-    await writePlaygroundFixture(directory, {
-      update: {
-        channel: "stable",
-        feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
-        publicKey: key.publicKey,
-        privateKeyEnv,
-        keyVersion: 5
-      }
-    })
-    const artifactPath = await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
-    const artifactRoot = dirname(artifactPath)
-    const macosDir = dirname(artifactRoot)
-    const outsideName = "outside.dmg"
-    const outsidePath = join(macosDir, outsideName)
-    const outsideBytes = Buffer.from("outside artifact bytes")
-    await writeFile(outsidePath, outsideBytes)
-    await writeFile(
-      join(artifactRoot, "artifact.json"),
-      `${JSON.stringify(
-        {
-          appId: "dev.effect-desktop.inspector",
-          appName: "Effect Desktop Playground",
-          appVersion: "0.0.0",
-          kind: "dmg",
-          target: "macos-arm64",
-          fileName: `../${outsideName}`,
-          sizeBytes: outsideBytes.byteLength,
-          sha256: createHash("sha256").update(outsideBytes).digest("hex")
-        },
-        null,
-        2
-      )}\n`
-    )
-    const manifestPath = join(
-      directory,
-      "apps",
-      "inspector",
-      "dist",
-      "desktop",
-      "update-manifest.json"
-    )
-    const stderr: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
-        cwd: directory,
-        now: () => 1_772_923_200_000,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-    expect(exitCode).toBe(1)
-    expect(stderr.join("")).toContain("PublishConfigError")
-    expect(stderr.join("")).toContain("#fileName")
-    await expectPromiseRejects(stat(manifestPath))
-  } finally {
-    if (previousPrivateKey === undefined) {
-      delete process.env[privateKeyEnv]
-    } else {
-      process.env[privateKeyEnv] = previousPrivateKey
-    }
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop publish rejects update.minVersion greater than app.version", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-min-version-"))
-  const key = testEd25519Key()
-  const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
-  const previousPrivateKey = process.env[privateKeyEnv]
-  process.env[privateKeyEnv] = key.privateKeyPem
-  try {
-    await writePlaygroundFixture(directory, {
-      app: {
-        id: "dev.effect-desktop.inspector",
-        name: "Effect Desktop Playground",
-        version: "1.2.3"
-      },
-      update: {
-        channel: "stable",
-        feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
-        publicKey: key.publicKey,
-        privateKeyEnv,
-        keyVersion: 5,
-        minVersion: "9.0.0"
-      }
-    })
-    await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
-    const manifestPath = join(
-      directory,
-      "apps",
-      "inspector",
-      "dist",
-      "desktop",
-      "update-manifest.json"
-    )
-    const stderr: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
-        cwd: directory,
-        now: () => 1_772_923_200_000,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-    expect(exitCode).toBe(1)
-    expect(stderr.join("")).toContain("update.minVersion")
-    expect(stderr.join("")).toContain("must not exceed app.version")
-    await expectPromiseRejects(stat(manifestPath))
-  } finally {
-    if (previousPrivateKey === undefined) {
-      delete process.env[privateKeyEnv]
-    } else {
-      process.env[privateKeyEnv] = previousPrivateKey
-    }
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop publish rejects rollback manifests without maxVersion", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-rollback-"))
-  const key = testEd25519Key()
-  const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
-  const previousPrivateKey = process.env[privateKeyEnv]
-  process.env[privateKeyEnv] = key.privateKeyPem
-  try {
-    await writePlaygroundFixture(directory, {
-      app: {
-        id: "dev.effect-desktop.inspector",
-        name: "Effect Desktop Playground",
-        version: "1.2.3"
-      },
-      update: {
-        channel: "stable",
-        feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
-        publicKey: key.publicKey,
-        privateKeyEnv,
-        keyVersion: 5,
-        rollback: true
-      }
-    })
-    await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
-    const manifestPath = join(
-      directory,
-      "apps",
-      "inspector",
-      "dist",
-      "desktop",
-      "update-manifest.json"
-    )
-    const stderr: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
-        cwd: directory,
-        now: () => 1_772_923_200_000,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-    expect(exitCode).toBe(1)
-    expect(stderr.join("")).toContain("update.maxVersion")
-    expect(stderr.join("")).toContain("update.rollback is true")
-    await expectPromiseRejects(stat(manifestPath))
-  } finally {
-    if (previousPrivateKey === undefined) {
-      delete process.env[privateKeyEnv]
-    } else {
-      process.env[privateKeyEnv] = previousPrivateKey
-    }
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop publish accepts rollback manifests with maxVersion", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-rollback-ok-"))
-  const key = testEd25519Key()
-  const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
-  const previousPrivateKey = process.env[privateKeyEnv]
-  process.env[privateKeyEnv] = key.privateKeyPem
-  try {
-    await writePlaygroundFixture(directory, {
-      app: {
-        id: "dev.effect-desktop.inspector",
-        name: "Effect Desktop Playground",
-        version: "1.2.3"
-      },
-      update: {
-        channel: "stable",
-        feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
-        publicKey: key.publicKey,
-        privateKeyEnv,
-        keyVersion: 5,
-        rollback: true,
-        maxVersion: "2.0.0"
-      }
-    })
-    const artifactPath = await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
-    const artifactJsonPath = join(dirname(artifactPath), "artifact.json")
-    const artifactJson = { ...decodeJsonObject(await readFile(artifactJsonPath, "utf8")) }
-    artifactJson["appVersion"] = "1.2.3"
-    await writeFile(artifactJsonPath, `${JSON.stringify(artifactJson, null, 2)}\n`)
-    const manifestPath = join(
-      directory,
-      "apps",
-      "inspector",
-      "dist",
-      "desktop",
-      "update-manifest.json"
-    )
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
-        cwd: directory,
-        now: () => 1_772_923_200_000,
-        writeStdout: () => {},
-        writeStderr: () => {}
-      })
-    )
-    expect(exitCode).toBe(0)
-    const manifest = decodeUpdateManifestJson(await readFile(manifestPath, "utf8"))
-    expect(manifest).toMatchObject({ rollback: true, maxVersion: "2.0.0" })
-  } finally {
-    if (previousPrivateKey === undefined) {
-      delete process.env[privateKeyEnv]
-    } else {
-      process.env[privateKeyEnv] = previousPrivateKey
-    }
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop publish rejects update.publicKey with non-canonical base64", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-key-base64-"))
-  const key = testEd25519Key()
-  const garbledKey = `${key.publicKey.slice(0, "ed25519:".length + 8)}!!${key.publicKey.slice("ed25519:".length + 10)}`
-  const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
-  const previousPrivateKey = process.env[privateKeyEnv]
-  process.env[privateKeyEnv] = key.privateKeyPem
-  try {
-    await writePlaygroundFixture(directory, {
-      update: {
-        channel: "stable",
-        feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
-        publicKey: garbledKey,
-        privateKeyEnv,
-        keyVersion: 5
-      }
-    })
-    await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
-    const stderr: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
-        cwd: directory,
-        now: () => 1_772_923_200_000,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-    expect(exitCode).toBe(1)
-    expect(stderr.join("")).toContain("PublishConfigError")
-    expect(stderr.join("")).toContain("Ed25519 public key")
-    expect(stderr.join("")).toContain("canonical base64")
-  } finally {
-    if (previousPrivateKey === undefined) {
-      delete process.env[privateKeyEnv]
-    } else {
-      process.env[privateKeyEnv] = previousPrivateKey
-    }
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop publish accepts update.minVersion equal to app.version", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-min-version-equal-"))
-  const key = testEd25519Key()
-  const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
-  const previousPrivateKey = process.env[privateKeyEnv]
-  process.env[privateKeyEnv] = key.privateKeyPem
-  try {
-    await writePlaygroundFixture(directory, {
-      app: {
-        id: "dev.effect-desktop.inspector",
-        name: "Effect Desktop Playground",
-        version: "1.2.3"
-      },
-      update: {
-        channel: "stable",
-        feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
-        publicKey: key.publicKey,
-        privateKeyEnv,
-        keyVersion: 5,
-        minVersion: "1.2.3"
-      }
-    })
-    const artifactPath = await writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
-    const artifactJsonPath = join(dirname(artifactPath), "artifact.json")
-    const artifactJson = { ...decodeJsonObject(await readFile(artifactJsonPath, "utf8")) }
-    artifactJson["appVersion"] = "1.2.3"
-    await writeFile(artifactJsonPath, `${JSON.stringify(artifactJson, null, 2)}\n`)
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
-        cwd: directory,
-        now: () => 1_772_923_200_000,
-        writeStdout: () => {},
-        writeStderr: () => {}
-      })
-    )
-    expect(exitCode).toBe(0)
-  } finally {
-    if (previousPrivateKey === undefined) {
-      delete process.env[privateKeyEnv]
-    } else {
-      process.env[privateKeyEnv] = previousPrivateKey
-    }
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop publish signs macOS app directory artifacts with deterministic directory digests", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-"))
-  const key = testEd25519Key()
-  const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
-  const previousPrivateKey = process.env[privateKeyEnv]
-  process.env[privateKeyEnv] = key.privateKeyPem
-  try {
-    await writePlaygroundFixture(directory, {
-      update: {
-        channel: "stable",
-        feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
-        publicKey: key.publicKey,
-        privateKeyEnv,
-        keyVersion: 5
-      }
-    })
-    await writePackagedArtifactFixture(directory, "macos-arm64", "app")
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: [
-          "publish",
-          "--config",
-          "apps/inspector/desktop.config.ts",
-          "--platform",
-          "macos-arm64"
-        ],
-        cwd: directory,
-        now: () => 1_772_923_200_000,
-        writeStdout: () => {},
-        writeStderr: () => {}
-      })
-    )
-
-    const manifest = decodeUpdateManifestJson(
-      await readFile(
-        join(directory, "apps", "inspector", "dist", "desktop", "update-manifest.json"),
-        "utf8"
+test("desktop publish rejects stale package metadata before signing the manifest", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-"))
       )
-    )
+      const key = testEd25519Key()
+      const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
+      try {
+        yield* writePlaygroundFixture(directory, {
+          update: {
+            channel: "stable",
+            feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+            publicKey: key.publicKey,
+            privateKeyEnv,
+            keyVersion: 5
+          }
+        })
+        const artifactPath = yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+        yield* Effect.promise(() =>
+          writeFile(
+            join(dirname(artifactPath), "artifact.json"),
+            `${stringifyJson(
+              {
+                appId: "dev.effect-desktop.inspector",
+                appName: "Effect Desktop Playground",
+                appVersion: "0.0.0",
+                kind: "dmg",
+                target: "macos-arm64",
+                fileName: "Effect-Desktop-Playground-0.0.0-macos-arm64.dmg",
+                sizeBytes: 1,
+                sha256: "0".repeat(64)
+              },
+              2
+            )}\n`
+          )
+        )
+        const stderr: string[] = []
 
-    expect(exitCode).toBe(0)
-    expect(manifest.artifacts).toHaveLength(1)
-    expect(verifyUpdateManifest(manifest, key.publicKey)).toBe(true)
-    expect(manifest.artifacts[0]).toMatchObject({
-      platform: "macos-arm64",
-      kind: "app",
-      signature: expect.stringContaining("ed25519:")
-    })
-  } finally {
-    if (previousPrivateKey === undefined) {
-      delete process.env[privateKeyEnv]
-    } else {
-      process.env[privateKeyEnv] = previousPrivateKey
-    }
-    await rm(directory, { recursive: true, force: true })
-  }
-})
+        const exitCode = yield* runCli({
+          argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
+          cwd: directory,
+          now: () => 1_772_923_200_000,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
 
-test("desktop publish rejects symbolic links inside directory artifacts", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-artifact-link-"))
-  const key = testEd25519Key()
-  const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
-  const previousPrivateKey = process.env[privateKeyEnv]
-  process.env[privateKeyEnv] = key.privateKeyPem
-  try {
-    await writePlaygroundFixture(directory, {
-      update: {
-        channel: "stable",
-        feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
-        publicKey: key.publicKey,
-        privateKeyEnv,
-        keyVersion: 5
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("PublishConfigError")
+        expect(stderr.join("")).toContain("package artifact metadata does not match artifact bytes")
+      } finally {
+        if (previousPrivateKey === undefined) {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
+        } else {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
+        }
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
     })
-    const artifactPath = await writePackagedArtifactFixture(directory, "macos-arm64", "app")
-    const artifactRoot = dirname(artifactPath)
-    const externalPayload = join(directory, "external-payload.txt")
-    await writeFile(externalPayload, "outside artifact bytes")
-    await symlink(
-      externalPayload,
-      join(artifactPath, "Contents", "Resources", "effect-desktop", "runtime", "outside.txt")
-    )
-    const digest = await digestArtifactFixture(artifactPath)
-    const artifactJsonPath = join(artifactRoot, "artifact.json")
-    const artifactJson = { ...decodeJsonObject(await readFile(artifactJsonPath, "utf8")) }
-    artifactJson["sizeBytes"] = digest.sizeBytes
-    artifactJson["sha256"] = digest.sha256
-    await writeFile(artifactJsonPath, `${JSON.stringify(artifactJson, null, 2)}\n`)
+  ))
 
-    const manifestPath = join(
-      directory,
-      "apps",
-      "inspector",
-      "dist",
-      "desktop",
-      "update-manifest.json"
-    )
-    const stderr: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: [
-          "publish",
-          "--config",
-          "apps/inspector/desktop.config.ts",
-          "--platform",
-          "macos-arm64"
-        ],
-        cwd: directory,
-        now: () => 1_772_923_200_000,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
+test("desktop publish rejects invalid app ids before writing manifests", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-invalid-appid-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, {
+          app: {
+            id: "not a reverse dns id",
+            name: "Effect Desktop Playground",
+            version: "0.0.0"
+          }
+        })
+        const manifestPath = join(
+          directory,
+          "apps",
+          "inspector",
+          "dist",
+          "desktop",
+          "update-manifest.json"
+        )
+        const stderr: string[] = []
 
-    expect(exitCode).toBe(1)
-    expect(stderr.join("")).toContain("PublishFileError")
-    expect(stderr.join("")).toContain("symbolic links")
-    await expectPromiseRejects(stat(manifestPath))
-  } finally {
-    if (previousPrivateKey === undefined) {
-      delete process.env[privateKeyEnv]
-    } else {
-      process.env[privateKeyEnv] = previousPrivateKey
-    }
-    await rm(directory, { recursive: true, force: true })
-  }
-})
+        const exitCode = yield* runCli({
+          argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
 
-test("desktop build stages renderer runtime host bridge manifests and report", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-"))
-  try {
-    await writePlaygroundFixture(directory)
-    const calls: string[] = []
-    const nativeHostEmbedEnv: Array<string | undefined> = []
-    const runner: CommandRunner = (invocation) =>
-      Effect.gen(function* () {
-        calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
-        if (invocation.step === "native-host") {
-          nativeHostEmbedEnv.push(invocation.env?.["EFFECT_DESKTOP_EMBED_DIST"])
-        }
-        yield* writeBuildFixtureOutput(invocation)
-      })
-
-    const stdout: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        hostTarget: "linux-x64",
-        now: fixedClock([100, 125, 200, 260, 300, 305]),
-        commandRunner: runner,
-        writeStdout: (text) => {
-          stdout.push(text)
-        },
-        writeStderr: () => {}
-      })
-    )
-
-    const layout = join(directory, "apps", "inspector", "build", "effect-desktop", "linux-x64")
-    const report = decodeJsonObject(await readFile(join(layout, "build-report.json"), "utf8"))
-    const appManifest = decodeJsonObject(await readFile(join(layout, "app-manifest.json"), "utf8"))
-    const bridgeManifest = decodeJsonObject(
-      await readFile(join(layout, "bridge", "bridge-manifest.json"), "utf8")
-    )
-
-    expect(exitCode).toBe(0)
-    expect(stdout.join("")).toContain("Effect Desktop build")
-    expect(calls).toEqual([
-      "renderer:bun run build",
-      `runtime:bun build ${join(directory, "apps", "inspector", "runtime.ts")} --target=bun --outdir ${join(layout, "runtime")}`,
-      "native-host:cargo build -p host --release"
-    ])
-    expect(nativeHostEmbedEnv).toEqual([undefined])
-    expect(await readFile(join(layout, "renderer", "index.html"), "utf8")).toBe("<h1>ok</h1>")
-    expect(await readFile(join(layout, "runtime", "runtime.js"), "utf8")).toContain("ok")
-    expect(appManifest).toMatchObject({
-      hostManifest: {
-        webEngine: "system"
-      },
-      runtimeManifest: {
-        engine: "bun",
-        entry: "runtime/runtime.js",
-        executable: "bun",
-        args: ["runtime/runtime.js"],
-        env: {}
+        const error = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(error.tag).toBe("PublishConfigError")
+        expect(error.message).toContain("app.id must be a reverse-DNS ASCII identifier")
+        yield* expectEffectPromiseRejects(stat(manifestPath))
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
     })
-    const rendererManifest = appManifest["rendererManifest"] as {
-      readonly csp: {
-        readonly directives: readonly {
-          readonly name: string
-          readonly values: readonly string[]
-        }[]
-      }
-    }
-    expect(rendererManifest.csp.directives.slice(0, 2)).toEqual([
-      { name: "default-src", values: ["'self'"] },
-      { name: "script-src", values: ["'self'", "'nonce-{N}'"] }
-    ])
-    expect(await readFile(join(layout, "native", "host"), "utf8")).toBe("host")
-    expect(appManifest).toMatchObject({
-      id: "dev.effect-desktop.inspector",
-      name: "Effect Desktop Playground",
-      target: "linux-x64"
-    })
-    expect(bridgeManifest).toMatchObject({
-      rpcGroups: []
-    })
-    expect(report).toMatchObject({
-      appId: "dev.effect-desktop.inspector",
-      target: "linux-x64",
-      layoutPath: layout,
-      providers: {
-        runtime: "bun",
-        runtimePackaging: "source",
-        webEngine: "system"
-      },
-      providerBudgets: [
-        {
-          id: "bun",
-          kind: "runtime",
-          package: "@effect/platform-bun",
-          importPath: "@effect-desktop/core/providers/bun",
-          startupBudgetMs: 25,
-          bundleBudgetKb: 64
-        }
-      ],
-      providerMeasurements: [
-        {
-          runtimePackaging: "source",
-          webEngine: "system",
-          target: "linux-x64",
-          runtimePayloadBytes: 18,
-          runtimeBuildMs: 60,
-          startup: {
-            runtimeBootMs: null,
-            firstWindowVisibleMs: null,
-            bridgeReadyMs: null
+  ))
+
+test("desktop publish rejects non-SemVer app versions before writing manifests", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-invalid-version-"))
+      )
+      const key = testEd25519Key()
+      const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
+      try {
+        yield* writePlaygroundFixture(directory, {
+          app: {
+            id: "dev.effect-desktop.inspector",
+            name: "Effect Desktop Playground",
+            version: "not-semver"
           },
-          checks: [
+          update: {
+            channel: "stable",
+            feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+            publicKey: key.publicKey,
+            privateKeyEnv,
+            keyVersion: 5
+          }
+        })
+        const manifestPath = join(
+          directory,
+          "apps",
+          "inspector",
+          "dist",
+          "desktop",
+          "update-manifest.json"
+        )
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const error = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(error.tag).toBe("PublishConfigError")
+        expect(error.message).toContain("app.version must be a SemVer X.Y.Z string")
+        yield* expectEffectPromiseRejects(stat(manifestPath))
+      } finally {
+        if (previousPrivateKey === undefined) {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
+        } else {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
+        }
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop publish rejects invalid feedUrl", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-invalid-feed-url-"))
+      )
+      const key = testEd25519Key()
+      const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
+      try {
+        yield* writePlaygroundFixture(directory, {
+          update: {
+            channel: "stable",
+            feedUrl: "not-a-url-{platform}-{channel}",
+            publicKey: key.publicKey,
+            privateKeyEnv,
+            keyVersion: 5
+          }
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
+          cwd: directory,
+          now: () => 1_772_923_200_000,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("update.feedUrl")
+        expect(stderr.join("")).toContain("valid http(s) URL template")
+      } finally {
+        if (previousPrivateKey === undefined) {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
+        } else {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
+        }
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop publish rejects feedUrl missing the {platform} placeholder", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-feed-no-platform-"))
+      )
+      const key = testEd25519Key()
+      const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
+      try {
+        yield* writePlaygroundFixture(directory, {
+          update: {
+            channel: "stable",
+            feedUrl: "https://updates.example.invalid/{channel}.json",
+            publicKey: key.publicKey,
+            privateKeyEnv,
+            keyVersion: 5
+          }
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
+          cwd: directory,
+          now: () => 1_772_923_200_000,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("update.feedUrl")
+        expect(stderr.join("")).toContain("{platform}")
+      } finally {
+        if (previousPrivateKey === undefined) {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
+        } else {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
+        }
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop publish rejects feedUrl missing the {channel} placeholder", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-feed-no-channel-"))
+      )
+      const key = testEd25519Key()
+      const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
+      try {
+        yield* writePlaygroundFixture(directory, {
+          update: {
+            channel: "stable",
+            feedUrl: "https://updates.example.invalid/{platform}/stable.json",
+            publicKey: key.publicKey,
+            privateKeyEnv,
+            keyVersion: 5
+          }
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
+          cwd: directory,
+          now: () => 1_772_923_200_000,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("update.feedUrl")
+        expect(stderr.join("")).toContain("{channel}")
+      } finally {
+        if (previousPrivateKey === undefined) {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
+        } else {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
+        }
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop publish rejects stale artifacts from a different app identity", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-identity-"))
+      )
+      const key = testEd25519Key()
+      const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
+      try {
+        yield* writePlaygroundFixture(directory, {
+          app: { id: "dev.effect-desktop.other", name: "Other App", version: "0.0.0" },
+          update: {
+            channel: "stable",
+            feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+            publicKey: key.publicKey,
+            privateKeyEnv,
+            keyVersion: 5
+          }
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+
+        const manifestPath = join(
+          directory,
+          "apps",
+          "inspector",
+          "dist",
+          "desktop",
+          "update-manifest.json"
+        )
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
+          cwd: directory,
+          now: () => 1_772_923_200_000,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const error = decodeCliJsonError(stderr.join(""))
+
+        expect(exitCode).toBe(1)
+        expect(error.tag).toBe("PublishConfigError")
+        expect(error.message).toContain("artifact.json#appId")
+        expect(error.message).toContain("dev.effect-desktop.other")
+        yield* expectEffectPromiseRejects(stat(manifestPath))
+      } finally {
+        if (previousPrivateKey === undefined) {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
+        } else {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
+        }
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop publish rejects artifact target mismatching platform directory", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-target-mismatch-"))
+      )
+      const key = testEd25519Key()
+      const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
+      try {
+        yield* writePlaygroundFixture(directory, {
+          update: {
+            channel: "stable",
+            feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+            publicKey: key.publicKey,
+            privateKeyEnv,
+            keyVersion: 5
+          }
+        })
+        const artifactPath = yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+        const artifactJsonPath = join(dirname(artifactPath), "artifact.json")
+        const artifactJson = {
+          ...decodeJsonObject(yield* Effect.promise(() => readFile(artifactJsonPath, "utf8")))
+        }
+        artifactJson["target"] = "linux-x64"
+        yield* Effect.promise(() =>
+          writeFile(artifactJsonPath, `${stringifyJson(artifactJson, 2)}\n`)
+        )
+
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
+          cwd: directory,
+          now: () => 1_772_923_200_000,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("does not match platform directory")
+      } finally {
+        if (previousPrivateKey === undefined) {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
+        } else {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
+        }
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop publish rejects artifact fileName that escapes the metadata directory", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-traversal-"))
+      )
+      const key = testEd25519Key()
+      const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
+      try {
+        yield* writePlaygroundFixture(directory, {
+          update: {
+            channel: "stable",
+            feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+            publicKey: key.publicKey,
+            privateKeyEnv,
+            keyVersion: 5
+          }
+        })
+        const artifactPath = yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+        const artifactRoot = dirname(artifactPath)
+        const macosDir = dirname(artifactRoot)
+        const outsideName = "outside.dmg"
+        const outsidePath = join(macosDir, outsideName)
+        const outsideBytes = Buffer.from("outside artifact bytes")
+        yield* Effect.promise(() => writeFile(outsidePath, outsideBytes))
+        yield* Effect.promise(() =>
+          writeFile(
+            join(artifactRoot, "artifact.json"),
+            `${stringifyJson(
+              {
+                appId: "dev.effect-desktop.inspector",
+                appName: "Effect Desktop Playground",
+                appVersion: "0.0.0",
+                kind: "dmg",
+                target: "macos-arm64",
+                fileName: `../${outsideName}`,
+                sizeBytes: outsideBytes.byteLength,
+                sha256: createHash("sha256").update(outsideBytes).digest("hex")
+              },
+              2
+            )}\n`
+          )
+        )
+        const manifestPath = join(
+          directory,
+          "apps",
+          "inspector",
+          "dist",
+          "desktop",
+          "update-manifest.json"
+        )
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
+          cwd: directory,
+          now: () => 1_772_923_200_000,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("PublishConfigError")
+        expect(stderr.join("")).toContain("#fileName")
+        yield* expectEffectPromiseRejects(stat(manifestPath))
+      } finally {
+        if (previousPrivateKey === undefined) {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
+        } else {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
+        }
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop publish rejects update.minVersion greater than app.version", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-min-version-"))
+      )
+      const key = testEd25519Key()
+      const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
+      try {
+        yield* writePlaygroundFixture(directory, {
+          app: {
+            id: "dev.effect-desktop.inspector",
+            name: "Effect Desktop Playground",
+            version: "1.2.3"
+          },
+          update: {
+            channel: "stable",
+            feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+            publicKey: key.publicKey,
+            privateKeyEnv,
+            keyVersion: 5,
+            minVersion: "9.0.0"
+          }
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+        const manifestPath = join(
+          directory,
+          "apps",
+          "inspector",
+          "dist",
+          "desktop",
+          "update-manifest.json"
+        )
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
+          cwd: directory,
+          now: () => 1_772_923_200_000,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("update.minVersion")
+        expect(stderr.join("")).toContain("must not exceed app.version")
+        yield* expectEffectPromiseRejects(stat(manifestPath))
+      } finally {
+        if (previousPrivateKey === undefined) {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
+        } else {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
+        }
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop publish rejects rollback manifests without maxVersion", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-rollback-"))
+      )
+      const key = testEd25519Key()
+      const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
+      try {
+        yield* writePlaygroundFixture(directory, {
+          app: {
+            id: "dev.effect-desktop.inspector",
+            name: "Effect Desktop Playground",
+            version: "1.2.3"
+          },
+          update: {
+            channel: "stable",
+            feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+            publicKey: key.publicKey,
+            privateKeyEnv,
+            keyVersion: 5,
+            rollback: true
+          }
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+        const manifestPath = join(
+          directory,
+          "apps",
+          "inspector",
+          "dist",
+          "desktop",
+          "update-manifest.json"
+        )
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
+          cwd: directory,
+          now: () => 1_772_923_200_000,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("update.maxVersion")
+        expect(stderr.join("")).toContain("update.rollback is true")
+        yield* expectEffectPromiseRejects(stat(manifestPath))
+      } finally {
+        if (previousPrivateKey === undefined) {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
+        } else {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
+        }
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop publish accepts rollback manifests with maxVersion", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-rollback-ok-"))
+      )
+      const key = testEd25519Key()
+      const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
+      try {
+        yield* writePlaygroundFixture(directory, {
+          app: {
+            id: "dev.effect-desktop.inspector",
+            name: "Effect Desktop Playground",
+            version: "1.2.3"
+          },
+          update: {
+            channel: "stable",
+            feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+            publicKey: key.publicKey,
+            privateKeyEnv,
+            keyVersion: 5,
+            rollback: true,
+            maxVersion: "2.0.0"
+          }
+        })
+        const artifactPath = yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+        const artifactJsonPath = join(dirname(artifactPath), "artifact.json")
+        const artifactJson = {
+          ...decodeJsonObject(yield* Effect.promise(() => readFile(artifactJsonPath, "utf8")))
+        }
+        artifactJson["appVersion"] = "1.2.3"
+        yield* Effect.promise(() =>
+          writeFile(artifactJsonPath, `${stringifyJson(artifactJson, 2)}\n`)
+        )
+        const manifestPath = join(
+          directory,
+          "apps",
+          "inspector",
+          "dist",
+          "desktop",
+          "update-manifest.json"
+        )
+        const exitCode = yield* runCli({
+          argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
+          cwd: directory,
+          now: () => 1_772_923_200_000,
+          writeStdout: () => {},
+          writeStderr: () => {}
+        })
+
+        expect(exitCode).toBe(0)
+        const manifest = decodeUpdateManifestJson(
+          yield* Effect.promise(() => readFile(manifestPath, "utf8"))
+        )
+        expect(manifest).toMatchObject({ rollback: true, maxVersion: "2.0.0" })
+      } finally {
+        if (previousPrivateKey === undefined) {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
+        } else {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
+        }
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop publish rejects update.publicKey with non-canonical base64", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-key-base64-"))
+      )
+      const key = testEd25519Key()
+      const garbledKey = `${key.publicKey.slice(0, "ed25519:".length + 8)}!!${key.publicKey.slice("ed25519:".length + 10)}`
+      const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
+      try {
+        yield* writePlaygroundFixture(directory, {
+          update: {
+            channel: "stable",
+            feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+            publicKey: garbledKey,
+            privateKeyEnv,
+            keyVersion: 5
+          }
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
+          cwd: directory,
+          now: () => 1_772_923_200_000,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("PublishConfigError")
+        expect(stderr.join("")).toContain("Ed25519 public key")
+        expect(stderr.join("")).toContain("canonical base64")
+      } finally {
+        if (previousPrivateKey === undefined) {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
+        } else {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
+        }
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop publish accepts update.minVersion equal to app.version", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-min-version-equal-"))
+      )
+      const key = testEd25519Key()
+      const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
+      try {
+        yield* writePlaygroundFixture(directory, {
+          app: {
+            id: "dev.effect-desktop.inspector",
+            name: "Effect Desktop Playground",
+            version: "1.2.3"
+          },
+          update: {
+            channel: "stable",
+            feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+            publicKey: key.publicKey,
+            privateKeyEnv,
+            keyVersion: 5,
+            minVersion: "1.2.3"
+          }
+        })
+        const artifactPath = yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+        const artifactJsonPath = join(dirname(artifactPath), "artifact.json")
+        const artifactJson = {
+          ...decodeJsonObject(yield* Effect.promise(() => readFile(artifactJsonPath, "utf8")))
+        }
+        artifactJson["appVersion"] = "1.2.3"
+        yield* Effect.promise(() =>
+          writeFile(artifactJsonPath, `${stringifyJson(artifactJson, 2)}\n`)
+        )
+        const exitCode = yield* runCli({
+          argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
+          cwd: directory,
+          now: () => 1_772_923_200_000,
+          writeStdout: () => {},
+          writeStderr: () => {}
+        })
+
+        expect(exitCode).toBe(0)
+      } finally {
+        if (previousPrivateKey === undefined) {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
+        } else {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
+        }
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop publish signs macOS app directory artifacts with deterministic directory digests", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-"))
+      )
+      const key = testEd25519Key()
+      const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
+      try {
+        yield* writePlaygroundFixture(directory, {
+          update: {
+            channel: "stable",
+            feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+            publicKey: key.publicKey,
+            privateKeyEnv,
+            keyVersion: 5
+          }
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "app")
+
+        const exitCode = yield* runCli({
+          argv: [
+            "publish",
+            "--config",
+            "apps/inspector/desktop.config.ts",
+            "--platform",
+            "macos-arm64"
+          ],
+          cwd: directory,
+          now: () => 1_772_923_200_000,
+          writeStdout: () => {},
+          writeStderr: () => {}
+        })
+
+        const manifest = decodeUpdateManifestJson(
+          yield* Effect.promise(() =>
+            readFile(
+              join(directory, "apps", "inspector", "dist", "desktop", "update-manifest.json"),
+              "utf8"
+            )
+          )
+        )
+
+        expect(exitCode).toBe(0)
+        expect(manifest.artifacts).toHaveLength(1)
+        expect(verifyUpdateManifest(manifest, key.publicKey)).toBe(true)
+        expect(manifest.artifacts[0]).toMatchObject({
+          platform: "macos-arm64",
+          kind: "app",
+          signature: expect.stringContaining("ed25519:")
+        })
+      } finally {
+        if (previousPrivateKey === undefined) {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
+        } else {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
+        }
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop publish rejects symbolic links inside directory artifacts", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-artifact-link-"))
+      )
+      const key = testEd25519Key()
+      const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
+      try {
+        yield* writePlaygroundFixture(directory, {
+          update: {
+            channel: "stable",
+            feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+            publicKey: key.publicKey,
+            privateKeyEnv,
+            keyVersion: 5
+          }
+        })
+        const artifactPath = yield* writePackagedArtifactFixture(directory, "macos-arm64", "app")
+        const artifactRoot = dirname(artifactPath)
+        const externalPayload = join(directory, "external-payload.txt")
+        yield* Effect.promise(() => writeFile(externalPayload, "outside artifact bytes"))
+        yield* Effect.promise(() =>
+          symlink(
+            externalPayload,
+            join(artifactPath, "Contents", "Resources", "effect-desktop", "runtime", "outside.txt")
+          )
+        )
+        const digest = yield* digestArtifactFixture(artifactPath)
+        const artifactJsonPath = join(artifactRoot, "artifact.json")
+        const artifactJson = {
+          ...decodeJsonObject(yield* Effect.promise(() => readFile(artifactJsonPath, "utf8")))
+        }
+        artifactJson["sizeBytes"] = digest.sizeBytes
+        artifactJson["sha256"] = digest.sha256
+        yield* Effect.promise(() =>
+          writeFile(artifactJsonPath, `${stringifyJson(artifactJson, 2)}\n`)
+        )
+
+        const manifestPath = join(
+          directory,
+          "apps",
+          "inspector",
+          "dist",
+          "desktop",
+          "update-manifest.json"
+        )
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: [
+            "publish",
+            "--config",
+            "apps/inspector/desktop.config.ts",
+            "--platform",
+            "macos-arm64"
+          ],
+          cwd: directory,
+          now: () => 1_772_923_200_000,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("PublishFileError")
+        expect(stderr.join("")).toContain("symbolic links")
+        yield* expectEffectPromiseRejects(stat(manifestPath))
+      } finally {
+        if (previousPrivateKey === undefined) {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
+        } else {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
+        }
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop build stages renderer runtime host bridge manifests and report", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-build-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        const calls: string[] = []
+        const nativeHostEmbedEnv: Array<string | undefined> = []
+        const runner: CommandRunner = (invocation) =>
+          Effect.gen(function* () {
+            calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
+            if (invocation.step === "native-host") {
+              nativeHostEmbedEnv.push(invocation.env?.["EFFECT_DESKTOP_EMBED_DIST"])
+            }
+            yield* writeBuildFixtureOutput(invocation)
+          })
+
+        const stdout: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          now: fixedClock([100, 125, 200, 260, 300, 305]),
+          commandRunner: runner,
+          writeStdout: (text) => {
+            stdout.push(text)
+          },
+          writeStderr: () => {}
+        })
+
+        const layout = join(directory, "apps", "inspector", "build", "effect-desktop", "linux-x64")
+        const report = decodeJsonObject(
+          yield* Effect.promise(() => readFile(join(layout, "build-report.json"), "utf8"))
+        )
+        const appManifest = decodeJsonObject(
+          yield* Effect.promise(() => readFile(join(layout, "app-manifest.json"), "utf8"))
+        )
+        const bridgeManifest = decodeJsonObject(
+          yield* Effect.promise(() =>
+            readFile(join(layout, "bridge", "bridge-manifest.json"), "utf8")
+          )
+        )
+
+        expect(exitCode).toBe(0)
+        expect(stdout.join("")).toContain("Effect Desktop build")
+        expect(calls).toEqual([
+          "renderer:bun run build",
+          `runtime:bun build ${join(directory, "apps", "inspector", "runtime.ts")} --target=bun --outdir ${join(layout, "runtime")}`,
+          "native-host:cargo build -p host --release"
+        ])
+        expect(nativeHostEmbedEnv).toEqual([undefined])
+        expect(
+          yield* Effect.promise(() => readFile(join(layout, "renderer", "index.html"), "utf8"))
+        ).toBe("<h1>ok</h1>")
+        expect(
+          yield* Effect.promise(() => readFile(join(layout, "runtime", "runtime.js"), "utf8"))
+        ).toContain("ok")
+        expect(appManifest).toMatchObject({
+          hostManifest: {
+            webEngine: "system"
+          },
+          runtimeManifest: {
+            engine: "bun",
+            entry: "runtime/runtime.js",
+            executable: "bun",
+            args: ["runtime/runtime.js"],
+            env: {}
+          }
+        })
+        const rendererManifest = appManifest["rendererManifest"] as {
+          readonly csp: {
+            readonly directives: readonly {
+              readonly name: string
+              readonly values: readonly string[]
+            }[]
+          }
+        }
+        expect(rendererManifest.csp.directives.slice(0, 2)).toEqual([
+          { name: "default-src", values: ["'self'"] },
+          { name: "script-src", values: ["'self'", "'nonce-{N}'"] }
+        ])
+        expect(yield* Effect.promise(() => readFile(join(layout, "native", "host"), "utf8"))).toBe(
+          "host"
+        )
+        expect(appManifest).toMatchObject({
+          id: "dev.effect-desktop.inspector",
+          name: "Effect Desktop Playground",
+          target: "linux-x64"
+        })
+        expect(bridgeManifest).toMatchObject({
+          rpcGroups: []
+        })
+        expect(report).toMatchObject({
+          appId: "dev.effect-desktop.inspector",
+          target: "linux-x64",
+          layoutPath: layout,
+          providers: {
+            runtime: "bun",
+            runtimePackaging: "source",
+            webEngine: "system"
+          },
+          providerBudgets: [
             {
-              metric: "runtime-payload-bytes",
-              budget: 65_536,
-              actual: 18,
-              status: "pass"
-            },
+              id: "bun",
+              kind: "runtime",
+              package: "@effect/platform-bun",
+              importPath: "@effect-desktop/core/providers/bun",
+              startupBudgetMs: 25,
+              bundleBudgetKb: 64
+            }
+          ],
+          providerMeasurements: [
             {
-              metric: "runtime-boot-ms",
-              budget: 25,
-              actual: null,
-              status: "unmeasured"
+              runtimePackaging: "source",
+              webEngine: "system",
+              target: "linux-x64",
+              runtimePayloadBytes: 18,
+              runtimeBuildMs: 60,
+              startup: {
+                runtimeBootMs: null,
+                firstWindowVisibleMs: null,
+                bridgeReadyMs: null
+              },
+              checks: [
+                {
+                  metric: "runtime-payload-bytes",
+                  budget: 65_536,
+                  actual: 18,
+                  status: "pass"
+                },
+                {
+                  metric: "runtime-boot-ms",
+                  budget: 25,
+                  actual: null,
+                  status: "unmeasured"
+                }
+              ]
             }
           ]
-        }
-      ]
-    })
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop build emits explicit chrome web engine selection in the host manifest", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-web-engine-"))
-  try {
-    await writePlaygroundFixture(directory, { web: { engine: "chrome" } })
-    const chromeRuntime = join(directory, "apps", "inspector", "native", "chrome", "linux-x64")
-    await mkdir(chromeRuntime, { recursive: true })
-    await writeFile(join(chromeRuntime, "cef-runtime.txt"), "pinned test runtime")
-    const runner: CommandRunner = (invocation) => writeBuildFixtureOutput(invocation)
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        hostTarget: "linux-x64",
-        commandRunner: runner,
-        writeStdout: () => {},
-        writeStderr: () => {}
-      }).pipe(
-        Effect.provideService(
-          Clock.Clock,
-          fixedEffectClock([100, 110, 200, 220, 300, 330, 400, 460])
-        )
-      )
-    )
-
-    const manifest = decodeBuildChromeManifestJson(
-      await readFile(
-        join(
-          directory,
-          "apps",
-          "inspector",
-          "build",
-          "effect-desktop",
-          "linux-x64",
-          "app-manifest.json"
-        ),
-        "utf8"
-      )
-    )
-    const report = decodeBuildChromeReportJson(
-      await readFile(
-        join(
-          directory,
-          "apps",
-          "inspector",
-          "build",
-          "effect-desktop",
-          "linux-x64",
-          "build-report.json"
-        ),
-        "utf8"
-      )
-    )
-
-    expect(exitCode).toBe(0)
-    expect(manifest.hostManifest.webEngine).toBe("chrome")
-    expect(manifest.hostManifest.webEngineRuntime).toBe("cef")
-    expect(manifest.hostManifest.webEnginePath).toBe("native/chrome")
-    expect(report.providers.webEngine).toBe("chrome")
-    expect(report.providerMeasurements[0]?.webEngine).toBe("chrome")
-    expect(report.steps.find((step) => step.name === "native-host")?.provider).toBe(
-      "webview:chrome"
-    )
-    expect(report.steps.find((step) => step.name === "webview-runtime")?.provider).toBe(
-      "webview:chrome"
-    )
-    expect(report.steps.find((step) => step.name === "webview-runtime")?.elapsedMs).toBe(60)
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop build rejects chrome web engine when the bundled runtime is absent", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-missing-chrome-"))
-  try {
-    await writePlaygroundFixture(directory, { web: { engine: "chrome" } })
-    const calls: string[] = []
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        hostTarget: "linux-x64",
-        commandRunner: (invocation) =>
-          Effect.sync(() => {
-            calls.push(invocation.step)
-          }),
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    expect(exitCode).toBe(1)
-    expect(calls).toEqual([])
-    expect(stderr.join("")).toContain("BuildConfigError")
-    expect(stderr.join("")).toContain("web.engine chrome requires bundled Chromium/CEF assets")
-    expect(stderr.join("")).toContain("native/chrome/linux-x64")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop build emits node runtime launch manifest for node runtime config", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-node-"))
-  try {
-    await writePlaygroundFixture(directory, { runtime: { engine: "node", entry: "runtime.ts" } })
-    const calls: string[] = []
-    const runner: CommandRunner = (invocation) =>
-      Effect.gen(function* () {
-        calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
-        yield* writeBuildFixtureOutput(invocation)
-      })
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        hostTarget: "linux-x64",
-        commandRunner: runner,
-        writeStdout: () => {},
-        writeStderr: () => {}
-      })
-    )
-
-    const layout = join(directory, "apps", "inspector", "build", "effect-desktop", "linux-x64")
-    const appManifest = decodeJsonObject(await readFile(join(layout, "app-manifest.json"), "utf8"))
-
-    expect(exitCode).toBe(0)
-    expect(calls).toContain(
-      `runtime:bun build ${join(directory, "apps", "inspector", "runtime.ts")} --target=node --outdir ${join(layout, "runtime")}`
-    )
-    expect(appManifest).toMatchObject({
-      runtimeManifest: {
-        engine: "node",
-        entry: "runtime/runtime.js",
-        executable: "node",
-        args: ["runtime/runtime.js"],
-        env: {}
+        })
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
     })
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
+  ))
 
-test("desktop build reuses provider-owned nodes when only runtime source changes", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-provider-cache-"))
-  try {
-    await writePlaygroundFixture(directory)
-    const appRoot = join(directory, "apps", "inspector")
-    const layout = join(appRoot, "build", "effect-desktop", "linux-x64")
-    const calls: string[] = []
-    const runner: CommandRunner = (invocation) =>
-      Effect.gen(function* () {
-        calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
-        yield* writeBuildFixtureOutput(invocation, { runtimeJs: "console.log('runtime')\n" })
-      })
+test("desktop build emits explicit chrome web engine selection in the host manifest", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-build-web-engine-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, { web: { engine: "chrome" } })
+        const chromeRuntime = join(directory, "apps", "inspector", "native", "chrome", "linux-x64")
+        yield* Effect.promise(() => mkdir(chromeRuntime, { recursive: true }))
+        yield* Effect.promise(() =>
+          writeFile(join(chromeRuntime, "cef-runtime.txt"), "pinned test runtime")
+        )
+        const runner: CommandRunner = (invocation) => writeBuildFixtureOutput(invocation)
 
-    const runBuild = () =>
-      Effect.runPromise(
-        runCli({
-          argv: ["build", "--config", "apps/inspector/desktop.config.ts", "--json"],
+        const exitCode = yield* runCli({
+          argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          commandRunner: runner,
+          writeStdout: () => {},
+          writeStderr: () => {}
+        }).pipe(
+          Effect.provideService(
+            Clock.Clock,
+            fixedEffectClock([100, 110, 200, 220, 300, 330, 400, 460])
+          )
+        )
+
+        const manifest = decodeBuildChromeManifestJson(
+          yield* Effect.promise(() =>
+            readFile(
+              join(
+                directory,
+                "apps",
+                "inspector",
+                "build",
+                "effect-desktop",
+                "linux-x64",
+                "app-manifest.json"
+              ),
+              "utf8"
+            )
+          )
+        )
+        const report = decodeBuildChromeReportJson(
+          yield* Effect.promise(() =>
+            readFile(
+              join(
+                directory,
+                "apps",
+                "inspector",
+                "build",
+                "effect-desktop",
+                "linux-x64",
+                "build-report.json"
+              ),
+              "utf8"
+            )
+          )
+        )
+
+        expect(exitCode).toBe(0)
+        expect(manifest.hostManifest.webEngine).toBe("chrome")
+        expect(manifest.hostManifest.webEngineRuntime).toBe("cef")
+        expect(manifest.hostManifest.webEnginePath).toBe("native/chrome")
+        expect(report.providers.webEngine).toBe("chrome")
+        expect(report.providerMeasurements[0]?.webEngine).toBe("chrome")
+        expect(report.steps.find((step) => step.name === "native-host")?.provider).toBe(
+          "webview:chrome"
+        )
+        expect(report.steps.find((step) => step.name === "webview-runtime")?.provider).toBe(
+          "webview:chrome"
+        )
+        expect(report.steps.find((step) => step.name === "webview-runtime")?.elapsedMs).toBe(60)
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop build rejects chrome web engine when the bundled runtime is absent", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-build-missing-chrome-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, { web: { engine: "chrome" } })
+        const calls: string[] = []
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          commandRunner: (invocation) =>
+            Effect.sync(() => {
+              calls.push(invocation.step)
+            }),
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        expect(calls).toEqual([])
+        expect(stderr.join("")).toContain("BuildConfigError")
+        expect(stderr.join("")).toContain("web.engine chrome requires bundled Chromium/CEF assets")
+        expect(stderr.join("")).toContain("native/chrome/linux-x64")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop build emits node runtime launch manifest for node runtime config", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-build-node-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, {
+          runtime: { engine: "node", entry: "runtime.ts" }
+        })
+        const calls: string[] = []
+        const runner: CommandRunner = (invocation) =>
+          Effect.gen(function* () {
+            calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
+            yield* writeBuildFixtureOutput(invocation)
+          })
+
+        const exitCode = yield* runCli({
+          argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
           cwd: directory,
           hostTarget: "linux-x64",
           commandRunner: runner,
           writeStdout: () => {},
           writeStderr: () => {}
         })
-      )
 
-    expect(await runBuild()).toBe(0)
-    calls.length = 0
-    await writeFile(join(appRoot, "runtime.ts"), "console.log('runtime changed')\n")
+        const layout = join(directory, "apps", "inspector", "build", "effect-desktop", "linux-x64")
+        const appManifest = decodeJsonObject(
+          yield* Effect.promise(() => readFile(join(layout, "app-manifest.json"), "utf8"))
+        )
 
-    expect(await runBuild()).toBe(0)
-
-    const report = decodeBuildStepsReportJson(
-      await readFile(join(layout, "build-report.json"), "utf8")
-    )
-    expect(calls).toEqual([
-      `runtime:bun build ${join(appRoot, "runtime.ts")} --target=bun --outdir ${join(layout, "runtime")}`
-    ])
-    expect(report.steps.map((step) => [step.name, step.status, step.provider])).toEqual([
-      ["renderer", "reused", "renderer:react"],
-      ["runtime", "rebuilt", "runtime:bun"],
-      ["native-host", "reused", "webview:system"],
-      ["bridge", "reused", undefined],
-      ["manifest", "rebuilt", undefined]
-    ])
-    expect(report.steps.find((step) => step.name === "runtime")?.reason).toContain("cache key")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop build reuses native host when only renderer source changes", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-renderer-cache-"))
-  try {
-    await writePlaygroundFixture(directory)
-    const appRoot = join(directory, "apps", "inspector")
-    const layout = join(appRoot, "build", "effect-desktop", "linux-x64")
-    const calls: string[] = []
-    const runner: CommandRunner = (invocation) =>
-      Effect.gen(function* () {
-        calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
-        yield* writeBuildFixtureOutput(invocation, {
-          rendererHtml: "<h1>renderer</h1>",
-          runtimeJs: "console.log('runtime')\n"
+        expect(exitCode).toBe(0)
+        expect(calls).toContain(
+          `runtime:bun build ${join(directory, "apps", "inspector", "runtime.ts")} --target=node --outdir ${join(layout, "runtime")}`
+        )
+        expect(appManifest).toMatchObject({
+          runtimeManifest: {
+            engine: "node",
+            entry: "runtime/runtime.js",
+            executable: "node",
+            args: ["runtime/runtime.js"],
+            env: {}
+          }
         })
-      })
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
 
-    const runBuild = () =>
-      Effect.runPromise(
-        runCli({
-          argv: ["build", "--config", "apps/inspector/desktop.config.ts", "--json"],
+test("desktop build reuses provider-owned nodes when only runtime source changes", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-build-provider-cache-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        const appRoot = join(directory, "apps", "inspector")
+        const layout = join(appRoot, "build", "effect-desktop", "linux-x64")
+        const calls: string[] = []
+        const runner: CommandRunner = (invocation) =>
+          Effect.gen(function* () {
+            calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
+            yield* writeBuildFixtureOutput(invocation, { runtimeJs: "console.log('runtime')\n" })
+          })
+
+        const runBuild = () =>
+          runCli({
+            argv: ["build", "--config", "apps/inspector/desktop.config.ts", "--json"],
+            cwd: directory,
+            hostTarget: "linux-x64",
+            commandRunner: runner,
+            writeStdout: () => {},
+            writeStderr: () => {}
+          })
+
+        expect(yield* runBuild()).toBe(0)
+        calls.length = 0
+        yield* Effect.promise(() =>
+          writeFile(join(appRoot, "runtime.ts"), "console.log('runtime changed')\n")
+        )
+
+        expect(yield* runBuild()).toBe(0)
+
+        const report = decodeBuildStepsReportJson(
+          yield* Effect.promise(() => readFile(join(layout, "build-report.json"), "utf8"))
+        )
+        expect(calls).toEqual([
+          `runtime:bun build ${join(appRoot, "runtime.ts")} --target=bun --outdir ${join(layout, "runtime")}`
+        ])
+        expect(report.steps.map((step) => [step.name, step.status, step.provider])).toEqual([
+          ["renderer", "reused", "renderer:react"],
+          ["runtime", "rebuilt", "runtime:bun"],
+          ["native-host", "reused", "webview:system"],
+          ["bridge", "reused", undefined],
+          ["manifest", "rebuilt", undefined]
+        ])
+        expect(report.steps.find((step) => step.name === "runtime")?.reason).toContain("cache key")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop build reuses native host when only renderer source changes", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-build-renderer-cache-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        const appRoot = join(directory, "apps", "inspector")
+        const layout = join(appRoot, "build", "effect-desktop", "linux-x64")
+        const calls: string[] = []
+        const runner: CommandRunner = (invocation) =>
+          Effect.gen(function* () {
+            calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
+            yield* writeBuildFixtureOutput(invocation, {
+              rendererHtml: "<h1>renderer</h1>",
+              runtimeJs: "console.log('runtime')\n"
+            })
+          })
+
+        const runBuild = () =>
+          runCli({
+            argv: ["build", "--config", "apps/inspector/desktop.config.ts", "--json"],
+            cwd: directory,
+            hostTarget: "linux-x64",
+            commandRunner: runner,
+            writeStdout: () => {},
+            writeStderr: () => {}
+          })
+
+        expect(yield* runBuild()).toBe(0)
+        calls.length = 0
+        yield* Effect.promise(() =>
+          writeFile(join(appRoot, "src", "renderer", "main.tsx"), "console.log('changed')\n")
+        )
+
+        expect(yield* runBuild()).toBe(0)
+
+        const report = decodeBuildStepsReportJson(
+          yield* Effect.promise(() => readFile(join(layout, "build-report.json"), "utf8"))
+        )
+        expect(calls).toEqual(["renderer:bun run build"])
+        expect(report.steps.map((step) => [step.name, step.status, step.provider])).toEqual([
+          ["renderer", "rebuilt", "renderer:react"],
+          ["runtime", "reused", "runtime:bun"],
+          ["native-host", "reused", "webview:system"],
+          ["bridge", "reused", undefined],
+          ["manifest", "rebuilt", undefined]
+        ])
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop build ignores malformed build cache and rebuilds nodes", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-build-invalid-cache-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        const appRoot = join(directory, "apps", "inspector")
+        const layout = join(appRoot, "build", "effect-desktop", "linux-x64")
+        const calls: string[] = []
+        const runner: CommandRunner = (invocation) =>
+          Effect.gen(function* () {
+            calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
+            yield* writeBuildFixtureOutput(invocation, {
+              rendererHtml: "<h1>renderer</h1>",
+              runtimeJs: "console.log('runtime')\n"
+            })
+          })
+
+        const runBuild = () =>
+          runCli({
+            argv: ["build", "--config", "apps/inspector/desktop.config.ts", "--json"],
+            cwd: directory,
+            hostTarget: "linux-x64",
+            commandRunner: runner,
+            writeStdout: () => {},
+            writeStderr: () => {}
+          })
+
+        expect(yield* runBuild()).toBe(0)
+        calls.length = 0
+        yield* Effect.promise(() => writeFile(join(layout, ".build-cache.json"), "{bad json"))
+
+        expect(yield* runBuild()).toBe(0)
+
+        const report = decodeBuildStepsReportJson(
+          yield* Effect.promise(() => readFile(join(layout, "build-report.json"), "utf8"))
+        )
+        expect(calls).toEqual([
+          "renderer:bun run build",
+          `runtime:bun build ${join(appRoot, "runtime.ts")} --target=bun --outdir ${join(layout, "runtime")}`,
+          "native-host:cargo build -p host --release"
+        ])
+        expect(report.steps.map((step) => [step.name, step.status])).toEqual([
+          ["renderer", "rebuilt"],
+          ["runtime", "rebuilt"],
+          ["native-host", "rebuilt"],
+          ["bridge", "rebuilt"],
+          ["manifest", "rebuilt"]
+        ])
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop build reports unreadable build cache before running build steps", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-build-unreadable-cache-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        const appRoot = join(directory, "apps", "inspector")
+        const layout = join(appRoot, "build", "effect-desktop", "linux-x64")
+        const calls: string[] = []
+        const stderr: string[] = []
+        const runner: CommandRunner = (invocation) =>
+          Effect.gen(function* () {
+            calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
+            yield* writeBuildFixtureOutput(invocation, {
+              rendererHtml: "<h1>renderer</h1>",
+              runtimeJs: "console.log('runtime')\n"
+            })
+          })
+
+        const runBuild = () =>
+          runCli({
+            argv: ["build", "--config", "apps/inspector/desktop.config.ts", "--json"],
+            cwd: directory,
+            hostTarget: "linux-x64",
+            commandRunner: runner,
+            writeStdout: () => {},
+            writeStderr: (text) => {
+              stderr.push(text)
+            }
+          })
+
+        expect(yield* runBuild()).toBe(0)
+        calls.length = 0
+        stderr.length = 0
+        yield* Effect.promise(() => rm(join(layout, ".build-cache.json"), { force: true }))
+        yield* Effect.promise(() => mkdir(join(layout, ".build-cache.json")))
+
+        expect(yield* runBuild()).toBe(1)
+
+        expect(calls).toEqual([])
+        expect(stderr.join("")).toContain("failed to read")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop build preserves renderer stderr on command failure", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-build-stderr-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        const appRoot = join(directory, "apps", "inspector")
+        yield* Effect.promise(() =>
+          writeFile(
+            join(appRoot, "package.json"),
+            '{"type":"module","scripts":{"build":"bun fail-renderer.ts"}}\n'
+          )
+        )
+        yield* Effect.promise(() =>
+          writeFile(
+            join(appRoot, "fail-renderer.ts"),
+            "console.error('renderer dependency missing: @types/node'); process.exit(1)\n"
+          )
+        )
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
           cwd: directory,
           hostTarget: "linux-x64",
-          commandRunner: runner,
           writeStdout: () => {},
-          writeStderr: () => {}
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
         })
+
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("BuildCommandFailedError")
+        expect(stderr.join("")).toContain("renderer command exited with 1")
+        expect(stderr.join("")).toContain("renderer dependency missing: @types/node")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --repro preserves nested build stderr", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-stderr-"))
       )
+      try {
+        yield* writePlaygroundFixture(directory)
+        const appRoot = join(directory, "apps", "inspector")
+        yield* Effect.promise(() =>
+          writeFile(
+            join(appRoot, "package.json"),
+            '{"type":"module","scripts":{"build":"bun fail-renderer.ts"}}\n'
+          )
+        )
+        yield* Effect.promise(() =>
+          writeFile(
+            join(appRoot, "fail-renderer.ts"),
+            "console.error('renderer dependency missing: @types/node'); process.exit(1)\n"
+          )
+        )
+        const stderr: string[] = []
 
-    expect(await runBuild()).toBe(0)
-    calls.length = 0
-    await writeFile(join(appRoot, "src", "renderer", "main.tsx"), "console.log('changed')\n")
-
-    expect(await runBuild()).toBe(0)
-
-    const report = decodeBuildStepsReportJson(
-      await readFile(join(layout, "build-report.json"), "utf8")
-    )
-    expect(calls).toEqual(["renderer:bun run build"])
-    expect(report.steps.map((step) => [step.name, step.status, step.provider])).toEqual([
-      ["renderer", "rebuilt", "renderer:react"],
-      ["runtime", "reused", "runtime:bun"],
-      ["native-host", "reused", "webview:system"],
-      ["bridge", "reused", undefined],
-      ["manifest", "rebuilt", undefined]
-    ])
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop build ignores malformed build cache and rebuilds nodes", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-invalid-cache-"))
-  try {
-    await writePlaygroundFixture(directory)
-    const appRoot = join(directory, "apps", "inspector")
-    const layout = join(appRoot, "build", "effect-desktop", "linux-x64")
-    const calls: string[] = []
-    const runner: CommandRunner = (invocation) =>
-      Effect.gen(function* () {
-        calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
-        yield* writeBuildFixtureOutput(invocation, {
-          rendererHtml: "<h1>renderer</h1>",
-          runtimeJs: "console.log('runtime')\n"
-        })
-      })
-
-    const runBuild = () =>
-      Effect.runPromise(
-        runCli({
-          argv: ["build", "--config", "apps/inspector/desktop.config.ts", "--json"],
+        const exitCode = yield* runCli({
+          argv: ["check", "--repro", "--config", "apps/inspector/desktop.config.ts", "--json"],
           cwd: directory,
           hostTarget: "linux-x64",
-          commandRunner: runner,
           writeStdout: () => {},
-          writeStderr: () => {}
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
         })
+
+        const payload = decodeCliJsonMessage(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.message).toContain("first build failed")
+        expect(payload.message).toContain("renderer command exited with 1")
+        expect(payload.message).toContain("renderer dependency missing: @types/node")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop build rejects missing runtime.entry", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-build-missing-runtime-entry-"))
       )
-
-    expect(await runBuild()).toBe(0)
-    calls.length = 0
-    await writeFile(join(layout, ".build-cache.json"), "{bad json")
-
-    expect(await runBuild()).toBe(0)
-
-    const report = decodeBuildStepsReportJson(
-      await readFile(join(layout, "build-report.json"), "utf8")
-    )
-    expect(calls).toEqual([
-      "renderer:bun run build",
-      `runtime:bun build ${join(appRoot, "runtime.ts")} --target=bun --outdir ${join(layout, "runtime")}`,
-      "native-host:cargo build -p host --release"
-    ])
-    expect(report.steps.map((step) => [step.name, step.status])).toEqual([
-      ["renderer", "rebuilt"],
-      ["runtime", "rebuilt"],
-      ["native-host", "rebuilt"],
-      ["bridge", "rebuilt"],
-      ["manifest", "rebuilt"]
-    ])
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop build reports unreadable build cache before running build steps", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-unreadable-cache-"))
-  try {
-    await writePlaygroundFixture(directory)
-    const appRoot = join(directory, "apps", "inspector")
-    const layout = join(appRoot, "build", "effect-desktop", "linux-x64")
-    const calls: string[] = []
-    const stderr: string[] = []
-    const runner: CommandRunner = (invocation) =>
-      Effect.gen(function* () {
-        calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
-        yield* writeBuildFixtureOutput(invocation, {
-          rendererHtml: "<h1>renderer</h1>",
-          runtimeJs: "console.log('runtime')\n"
+      try {
+        yield* writePlaygroundFixture(directory, { runtime: {} })
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
         })
-      })
 
-    const runBuild = () =>
-      Effect.runPromise(
-        runCli({
-          argv: ["build", "--config", "apps/inspector/desktop.config.ts", "--json"],
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("runtime.entry is required")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop build rejects runtime.entry directories with a precise config error", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-build-runtime-entry-dir-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, { runtime: { entry: "src" } })
+        const calls: string[] = []
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          commandRunner: (invocation) =>
+            Effect.sync(() => {
+              calls.push(invocation.step)
+            }),
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        expect(calls).toEqual([])
+        expect(stderr.join("")).toContain("BuildConfigError")
+        expect(stderr.join("")).toContain("runtime.entry must be an existing file, not a directory")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop build rejects unsupported runtime.engine before running build steps", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-build-runtime-engine-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, {
+          runtime: { engine: "deno", entry: "runtime.ts" }
+        })
+        const calls: string[] = []
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          commandRunner: (invocation) =>
+            Effect.sync(() => {
+              calls.push(invocation.step)
+            }),
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        expect(calls).toEqual([])
+        expect(stderr.join("")).toContain("BuildConfigError")
+        expect(stderr.join("")).toContain("runtime.engine must be one of bun, node")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop build rejects runtime.entry outside the app root before running build steps", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-build-runtime-entry-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, {
+          runtime: { entry: "../../../outside-runtime.ts" }
+        })
+        yield* Effect.promise(() =>
+          writeFile(join(directory, "outside-runtime.ts"), "console.log('outside')\n")
+        )
+        const calls: string[] = []
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          commandRunner: (invocation) =>
+            Effect.sync(() => {
+              calls.push(invocation.step)
+            }),
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        expect(calls).toEqual([])
+        expect(stderr.join("")).toContain("BuildConfigError")
+        expect(stderr.join("")).toContain("runtime.entry")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop build refuses non-matching platform targets with doctor remediation", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-build-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: [
+            "build",
+            "--config",
+            "apps/inspector/desktop.config.ts",
+            "--platform",
+            "windows-x64"
+          ],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          commandRunner: () => Effect.void,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("BuildUnsupportedTargetError")
+        expect(stderr.join("")).toContain("bun desktop doctor")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop build rejects non-SemVer app.version", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-build-invalid-version-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, {
+          app: {
+            id: "dev.effect-desktop.inspector",
+            name: "Effect Desktop Playground",
+            version: "not-semver"
+          }
+        })
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          commandRunner: () => Effect.void,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("BuildConfigError")
+        expect(stderr.join("")).toContain("app.version must be a SemVer X.Y.Z string")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop build rejects invalid reverse-DNS app.id", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-build-invalid-appid-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, {
+          app: {
+            id: "not a bundle id",
+            name: "Effect Desktop Playground",
+            version: "1.2.3"
+          }
+        })
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          commandRunner: () => Effect.void,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("BuildConfigError")
+        expect(stderr.join("")).toContain("app.id must be a reverse-DNS ASCII identifier")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop build rejects renderer.dist outside the app root before running build steps", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-build-renderer-dist-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, {
+          renderer: {
+            entry: "src/renderer/main.tsx",
+            dist: "../../outside-dist"
+          }
+        })
+        yield* Effect.promise(() => mkdir(join(directory, "outside-dist"), { recursive: true }))
+        yield* Effect.promise(() =>
+          writeFile(join(directory, "outside-dist", "index.html"), "<h1>outside</h1>")
+        )
+        let calls = 0
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          commandRunner: () =>
+            Effect.sync(() => {
+              calls += 1
+            }),
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const stagedRenderer = join(
+          directory,
+          "apps",
+          "inspector",
+          "build",
+          "effect-desktop",
+          "linux-x64",
+          "renderer",
+          "index.html"
+        )
+        expect(exitCode).toBe(1)
+        expect(calls).toBe(0)
+        expect(stderr.join("")).toContain("BuildConfigError")
+        expect(stderr.join("")).toContain("renderer.dist")
+        yield* expectEffectPromiseRejects(stat(stagedRenderer))
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop build refuses renderer dist symlinks that escape dist", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-build-renderer-link-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        const appRoot = join(directory, "apps", "inspector")
+        yield* Effect.promise(() => writeFile(join(appRoot, "secret.txt"), "external"))
+        const runner: CommandRunner = (invocation) =>
+          Effect.gen(function* () {
+            if (invocation.step === "renderer") {
+              yield* runBuildFixtureIo(invocation, () =>
+                mkdir(join(invocation.cwd, "dist"), { recursive: true })
+              )
+              yield* runBuildFixtureIo(invocation, () =>
+                symlink("../secret.txt", join(invocation.cwd, "dist", "secret.txt"))
+              )
+            }
+          })
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
           cwd: directory,
           hostTarget: "linux-x64",
           commandRunner: runner,
@@ -6896,885 +8038,383 @@ test("desktop build reports unreadable build cache before running build steps", 
             stderr.push(text)
           }
         })
-      )
 
-    expect(await runBuild()).toBe(0)
-    calls.length = 0
-    stderr.length = 0
-    await rm(join(layout, ".build-cache.json"), { force: true })
-    await mkdir(join(layout, ".build-cache.json"))
-
-    expect(await runBuild()).toBe(1)
-
-    expect(calls).toEqual([])
-    expect(stderr.join("")).toContain("failed to read")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop build preserves renderer stderr on command failure", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-stderr-"))
-  try {
-    await writePlaygroundFixture(directory)
-    const appRoot = join(directory, "apps", "inspector")
-    await writeFile(
-      join(appRoot, "package.json"),
-      '{"type":"module","scripts":{"build":"bun fail-renderer.ts"}}\n'
-    )
-    await writeFile(
-      join(appRoot, "fail-renderer.ts"),
-      "console.error('renderer dependency missing: @types/node'); process.exit(1)\n"
-    )
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        hostTarget: "linux-x64",
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    expect(exitCode).toBe(1)
-    expect(stderr.join("")).toContain("BuildCommandFailedError")
-    expect(stderr.join("")).toContain("renderer command exited with 1")
-    expect(stderr.join("")).toContain("renderer dependency missing: @types/node")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop check --repro preserves nested build stderr", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-stderr-"))
-  try {
-    await writePlaygroundFixture(directory)
-    const appRoot = join(directory, "apps", "inspector")
-    await writeFile(
-      join(appRoot, "package.json"),
-      '{"type":"module","scripts":{"build":"bun fail-renderer.ts"}}\n'
-    )
-    await writeFile(
-      join(appRoot, "fail-renderer.ts"),
-      "console.error('renderer dependency missing: @types/node'); process.exit(1)\n"
-    )
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["check", "--repro", "--config", "apps/inspector/desktop.config.ts", "--json"],
-        cwd: directory,
-        hostTarget: "linux-x64",
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const payload = decodeCliJsonMessage(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(payload.message).toContain("first build failed")
-    expect(payload.message).toContain("renderer command exited with 1")
-    expect(payload.message).toContain("renderer dependency missing: @types/node")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop build rejects missing runtime.entry", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-missing-runtime-entry-"))
-  try {
-    await writePlaygroundFixture(directory, { runtime: {} })
-    const stderr: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        hostTarget: "linux-x64",
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-    expect(exitCode).toBe(1)
-    expect(stderr.join("")).toContain("runtime.entry is required")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop build rejects runtime.entry directories with a precise config error", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-runtime-entry-dir-"))
-  try {
-    await writePlaygroundFixture(directory, { runtime: { entry: "src" } })
-    const calls: string[] = []
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        hostTarget: "linux-x64",
-        commandRunner: (invocation) =>
-          Effect.sync(() => {
-            calls.push(invocation.step)
-          }),
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    expect(exitCode).toBe(1)
-    expect(calls).toEqual([])
-    expect(stderr.join("")).toContain("BuildConfigError")
-    expect(stderr.join("")).toContain("runtime.entry must be an existing file, not a directory")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop build rejects unsupported runtime.engine before running build steps", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-runtime-engine-"))
-  try {
-    await writePlaygroundFixture(directory, { runtime: { engine: "deno", entry: "runtime.ts" } })
-    const calls: string[] = []
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        hostTarget: "linux-x64",
-        commandRunner: (invocation) =>
-          Effect.sync(() => {
-            calls.push(invocation.step)
-          }),
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    expect(exitCode).toBe(1)
-    expect(calls).toEqual([])
-    expect(stderr.join("")).toContain("BuildConfigError")
-    expect(stderr.join("")).toContain("runtime.engine must be one of bun, node")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop build rejects runtime.entry outside the app root before running build steps", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-runtime-entry-"))
-  try {
-    await writePlaygroundFixture(directory, { runtime: { entry: "../../../outside-runtime.ts" } })
-    await writeFile(join(directory, "outside-runtime.ts"), "console.log('outside')\n")
-    const calls: string[] = []
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        hostTarget: "linux-x64",
-        commandRunner: (invocation) =>
-          Effect.sync(() => {
-            calls.push(invocation.step)
-          }),
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    expect(exitCode).toBe(1)
-    expect(calls).toEqual([])
-    expect(stderr.join("")).toContain("BuildConfigError")
-    expect(stderr.join("")).toContain("runtime.entry")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop build refuses non-matching platform targets with doctor remediation", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-"))
-  try {
-    await writePlaygroundFixture(directory)
-    const stderr: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: [
+        const stagedSecret = join(
+          appRoot,
           "build",
-          "--config",
-          "apps/inspector/desktop.config.ts",
-          "--platform",
-          "windows-x64"
-        ],
-        cwd: directory,
-        hostTarget: "linux-x64",
-        commandRunner: () => Effect.void,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    expect(exitCode).toBe(1)
-    expect(stderr.join("")).toContain("BuildUnsupportedTargetError")
-    expect(stderr.join("")).toContain("bun desktop doctor")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop build rejects non-SemVer app.version", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-invalid-version-"))
-  try {
-    await writePlaygroundFixture(directory, {
-      app: {
-        id: "dev.effect-desktop.inspector",
-        name: "Effect Desktop Playground",
-        version: "not-semver"
+          "effect-desktop",
+          "linux-x64",
+          "renderer",
+          "secret.txt"
+        )
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("BuildFileError")
+        expect(stderr.join("")).toContain("points outside")
+        yield* expectEffectPromiseRejects(stat(stagedSecret))
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
     })
-    const stderr: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        hostTarget: "linux-x64",
-        commandRunner: () => Effect.void,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-    expect(exitCode).toBe(1)
-    expect(stderr.join("")).toContain("BuildConfigError")
-    expect(stderr.join("")).toContain("app.version must be a SemVer X.Y.Z string")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
+  ))
 
-test("desktop build rejects invalid reverse-DNS app.id", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-invalid-appid-"))
-  try {
-    await writePlaygroundFixture(directory, {
-      app: {
-        id: "not a bundle id",
-        name: "Effect Desktop Playground",
-        version: "1.2.3"
+test("desktop build rejects invalid security config before running build steps", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-build-security-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, {
+          security: { externalNavigation: "teleport", devtoolsInProd: "sometimes" }
+        })
+        const stderr: string[] = []
+        const calls: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          commandRunner: (invocation) =>
+            Effect.sync(() => {
+              calls.push(invocation.step)
+            }),
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("BuildConfigError")
+        expect(stderr.join("")).toContain("security.externalNavigation")
+        expect(calls).toEqual([])
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
     })
-    const stderr: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        hostTarget: "linux-x64",
-        commandRunner: () => Effect.void,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-    expect(exitCode).toBe(1)
-    expect(stderr.join("")).toContain("BuildConfigError")
-    expect(stderr.join("")).toContain("app.id must be a reverse-DNS ASCII identifier")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
+  ))
 
-test("desktop build rejects renderer.dist outside the app root before running build steps", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-renderer-dist-"))
-  try {
-    await writePlaygroundFixture(directory, {
-      renderer: {
-        entry: "src/renderer/main.tsx",
-        dist: "../../outside-dist"
-      }
-    })
-    await mkdir(join(directory, "outside-dist"), { recursive: true })
-    await writeFile(join(directory, "outside-dist", "index.html"), "<h1>outside</h1>")
-    let calls = 0
-    const stderr: string[] = []
+test("desktop build emits validated renderer security policy", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-build-security-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, {
+          security: {
+            externalNavigation: "ask",
+            devtoolsInProd: true,
+            csp: {
+              policy: "connect-src 'self'; frame-src 'none'; upgrade-insecure-requests"
+            }
+          }
+        })
+        const runner: CommandRunner = (invocation) =>
+          writeBuildFixtureOutput(invocation, { runtimeJs: "runtime" })
+        const exitCode = yield* runCli({
+          argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          commandRunner: runner,
+          writeStdout: () => {},
+          writeStderr: () => {}
+        })
 
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        hostTarget: "linux-x64",
-        commandRunner: () =>
-          Effect.sync(() => {
-            calls += 1
-          }),
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const stagedRenderer = join(
-      directory,
-      "apps",
-      "inspector",
-      "build",
-      "effect-desktop",
-      "linux-x64",
-      "renderer",
-      "index.html"
-    )
-    expect(exitCode).toBe(1)
-    expect(calls).toBe(0)
-    expect(stderr.join("")).toContain("BuildConfigError")
-    expect(stderr.join("")).toContain("renderer.dist")
-    await expectPromiseRejects(stat(stagedRenderer))
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop build refuses renderer dist symlinks that escape dist", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-renderer-link-"))
-  try {
-    await writePlaygroundFixture(directory)
-    const appRoot = join(directory, "apps", "inspector")
-    await writeFile(join(appRoot, "secret.txt"), "external")
-    const runner: CommandRunner = (invocation) =>
-      Effect.gen(function* () {
-        if (invocation.step === "renderer") {
-          yield* runBuildFixtureIo(invocation, () =>
-            mkdir(join(invocation.cwd, "dist"), { recursive: true })
+        const manifest = decodeRendererSecurityManifestJson(
+          yield* Effect.promise(() =>
+            readFile(
+              join(
+                directory,
+                "apps",
+                "inspector",
+                "build",
+                "effect-desktop",
+                "linux-x64",
+                "app-manifest.json"
+              ),
+              "utf8"
+            )
           )
-          yield* runBuildFixtureIo(invocation, () =>
-            symlink("../secret.txt", join(invocation.cwd, "dist", "secret.txt"))
+        )
+
+        expect(exitCode).toBe(0)
+        expect(manifest.rendererManifest.navigationPolicy).toBe("ask")
+        expect(manifest.rendererManifest.devtoolsInProd).toBe(true)
+        expect(
+          manifest.rendererManifest.csp.directives.find(
+            (directive) => directive.name === "connect-src"
           )
-        }
-      })
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        hostTarget: "linux-x64",
-        commandRunner: runner,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const stagedSecret = join(
-      appRoot,
-      "build",
-      "effect-desktop",
-      "linux-x64",
-      "renderer",
-      "secret.txt"
-    )
-    expect(exitCode).toBe(1)
-    expect(stderr.join("")).toContain("BuildFileError")
-    expect(stderr.join("")).toContain("points outside")
-    await expectPromiseRejects(stat(stagedSecret))
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop build rejects invalid security config before running build steps", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-security-"))
-  try {
-    await writePlaygroundFixture(directory, {
-      security: { externalNavigation: "teleport", devtoolsInProd: "sometimes" }
-    })
-    const stderr: string[] = []
-    const calls: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        hostTarget: "linux-x64",
-        commandRunner: (invocation) =>
-          Effect.sync(() => {
-            calls.push(invocation.step)
-          }),
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    expect(exitCode).toBe(1)
-    expect(stderr.join("")).toContain("BuildConfigError")
-    expect(stderr.join("")).toContain("security.externalNavigation")
-    expect(calls).toEqual([])
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop build emits validated renderer security policy", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-security-"))
-  try {
-    await writePlaygroundFixture(directory, {
-      security: {
-        externalNavigation: "ask",
-        devtoolsInProd: true,
-        csp: {
-          policy: "connect-src 'self'; frame-src 'none'; upgrade-insecure-requests"
-        }
+        ).toEqual({ name: "connect-src", values: ["'self'"] })
+        expect(
+          manifest.rendererManifest.csp.directives.find(
+            (directive) => directive.name === "frame-src"
+          )
+        ).toEqual({ name: "frame-src", values: ["'none'"] })
+        expect(
+          manifest.rendererManifest.csp.directives.find(
+            (directive) => directive.name === "upgrade-insecure-requests"
+          )
+        ).toEqual({ name: "upgrade-insecure-requests", values: [] })
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
     })
-    const runner: CommandRunner = (invocation) =>
-      writeBuildFixtureOutput(invocation, { runtimeJs: "runtime" })
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        hostTarget: "linux-x64",
-        commandRunner: runner,
-        writeStdout: () => {},
-        writeStderr: () => {}
-      })
-    )
+  ))
 
-    const manifest = decodeRendererSecurityManifestJson(
-      await readFile(
-        join(
-          directory,
-          "apps",
-          "inspector",
-          "build",
-          "effect-desktop",
-          "linux-x64",
-          "app-manifest.json"
-        ),
-        "utf8"
+test("desktop build emits disabled renderer CSP policy when explicitly acknowledged", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-build-disabled-csp-"))
       )
-    )
+      try {
+        yield* writePlaygroundFixture(directory, {
+          security: {
+            csp: {
+              disabled: true,
+              acknowledgeWeakening: true,
+              justification: "test fixture verifies disabled CSP serialization"
+            }
+          }
+        })
+        const runner: CommandRunner = (invocation) =>
+          writeBuildFixtureOutput(invocation, { runtimeJs: "runtime" })
+        const exitCode = yield* runCli({
+          argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          commandRunner: runner,
+          writeStdout: () => {},
+          writeStderr: () => {}
+        })
 
-    expect(exitCode).toBe(0)
-    expect(manifest.rendererManifest.navigationPolicy).toBe("ask")
-    expect(manifest.rendererManifest.devtoolsInProd).toBe(true)
-    expect(
-      manifest.rendererManifest.csp.directives.find((directive) => directive.name === "connect-src")
-    ).toEqual({ name: "connect-src", values: ["'self'"] })
-    expect(
-      manifest.rendererManifest.csp.directives.find((directive) => directive.name === "frame-src")
-    ).toEqual({ name: "frame-src", values: ["'none'"] })
-    expect(
-      manifest.rendererManifest.csp.directives.find(
-        (directive) => directive.name === "upgrade-insecure-requests"
-      )
-    ).toEqual({ name: "upgrade-insecure-requests", values: [] })
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
+        const manifest = decodeRendererDisabledCspManifestJson(
+          yield* Effect.promise(() =>
+            readFile(
+              join(
+                directory,
+                "apps",
+                "inspector",
+                "build",
+                "effect-desktop",
+                "linux-x64",
+                "app-manifest.json"
+              ),
+              "utf8"
+            )
+          )
+        )
 
-test("desktop build emits disabled renderer CSP policy when explicitly acknowledged", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-disabled-csp-"))
-  try {
-    await writePlaygroundFixture(directory, {
-      security: {
-        csp: {
-          disabled: true,
-          acknowledgeWeakening: true,
-          justification: "test fixture verifies disabled CSP serialization"
-        }
+        expect(exitCode).toBe(0)
+        expect(manifest.rendererManifest.csp.directives).toEqual([])
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
     })
-    const runner: CommandRunner = (invocation) =>
-      writeBuildFixtureOutput(invocation, { runtimeJs: "runtime" })
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        hostTarget: "linux-x64",
-        commandRunner: runner,
-        writeStdout: () => {},
-        writeStderr: () => {}
-      })
-    )
+  ))
 
-    const manifest = decodeRendererDisabledCspManifestJson(
-      await readFile(
-        join(
-          directory,
-          "apps",
-          "inspector",
-          "build",
-          "effect-desktop",
-          "linux-x64",
-          "app-manifest.json"
-        ),
-        "utf8"
+test("desktop build rejects invalid window config before running build steps", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-build-windows-"))
       )
-    )
+      try {
+        yield* writePlaygroundFixture(directory, {
+          windows: {
+            defaults: {
+              titleBarStyle: "floating-space-station",
+              trafficLights: { x: -10, y: -20 },
+              hasShadow: "yes",
+              backgroundColor: "not-a-color"
+            },
+            main: {
+              route: "/",
+              width: 0,
+              height: -1
+            }
+          }
+        })
+        const stderr: string[] = []
+        const calls: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          commandRunner: (invocation) =>
+            Effect.sync(() => {
+              calls.push(invocation.step)
+            }),
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
 
-    expect(exitCode).toBe(0)
-    expect(manifest.rendererManifest.csp.directives).toEqual([])
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop build rejects invalid window config before running build steps", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-windows-"))
-  try {
-    await writePlaygroundFixture(directory, {
-      windows: {
-        defaults: {
-          titleBarStyle: "floating-space-station",
-          trafficLights: { x: -10, y: -20 },
-          hasShadow: "yes",
-          backgroundColor: "not-a-color"
-        },
-        main: {
-          route: "/",
-          width: 0,
-          height: -1
-        }
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("BuildConfigError")
+        expect(stderr.join("")).toContain("windows.defaults.titleBarStyle")
+        expect(calls).toEqual([])
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
     })
-    const stderr: string[] = []
-    const calls: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        hostTarget: "linux-x64",
-        commandRunner: (invocation) =>
-          Effect.sync(() => {
-            calls.push(invocation.step)
-          }),
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
+  ))
 
-    expect(exitCode).toBe(1)
-    expect(stderr.join("")).toContain("BuildConfigError")
-    expect(stderr.join("")).toContain("windows.defaults.titleBarStyle")
-    expect(calls).toEqual([])
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop build emits validated window config in host manifest", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-build-windows-"))
-  try {
-    const windows = {
-      defaults: {
-        titleBarStyle: "hiddenInset",
-        trafficLights: { x: 12, y: 12 },
-        hasShadow: true,
-        backgroundColor: "#ffffff"
-      },
-      main: {
-        route: "/",
-        width: 1200,
-        height: 800
-      }
-    }
-    await writePlaygroundFixture(directory, { windows })
-    const runner: CommandRunner = (invocation) =>
-      writeBuildFixtureOutput(invocation, { runtimeJs: "runtime" })
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        hostTarget: "linux-x64",
-        commandRunner: runner,
-        writeStdout: () => {},
-        writeStderr: () => {}
-      })
-    )
-
-    const manifest = decodeHostWindowsManifestJson(
-      await readFile(
-        join(
-          directory,
-          "apps",
-          "inspector",
-          "build",
-          "effect-desktop",
-          "linux-x64",
-          "app-manifest.json"
-        ),
-        "utf8"
+test("desktop build emits validated window config in host manifest", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-build-windows-"))
       )
-    )
-
-    expect(exitCode).toBe(0)
-    expect(manifest.hostManifest.windows).toEqual(windows)
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop package --help exits zero with usage", async () => {
-  const stdout: string[] = []
-  const exitCode = await Effect.runPromise(
-    runCli({
-      argv: ["package", "--help"],
-      cwd: process.cwd(),
-      packageCommandRunner: () => Effect.die("package runner should not run for help"),
-      writeStdout: (text) => {
-        stdout.push(text)
-      },
-      writeStderr: () => {}
-    })
-  )
-
-  expect(exitCode).toBe(0)
-  expect(stdout.join("")).toContain("desktop package")
-})
-
-test("desktop package reports missing build output before reading manifests", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-package-missing-build-"))
-  try {
-    await writePlaygroundFixture(directory)
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["package", "--config", "apps/inspector/desktop.config.ts", "--json"],
-        cwd: directory,
-        hostTarget: "macos-arm64",
-        packageCommandRunner: () => Effect.void,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const error = decodePackageMissingBuildArtifactJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(error.tag).toBe("PackageMissingBuildArtifactError")
-    expect(error.message).toContain("app-manifest.json")
-    expect(error.message).toContain("run desktop build first")
-    expect(error.remediation).toContain("bun desktop build")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop package rejects malformed build manifests as typed package errors", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-package-manifest-"))
-  try {
-    await writePlaygroundFixture(directory)
-    await writeBuildLayoutFixture(directory, "macos-arm64")
-    const layout = join(directory, "apps", "inspector", "build", "effect-desktop", "macos-arm64")
-    await writeFile(
-      join(layout, "app-manifest.json"),
-      JSON.stringify(
-        {
-          id: "dev.effect-desktop.inspector",
-          name: "Effect Desktop Playground",
-          version: "0.0.0",
-          target: "macos-arm64"
-        },
-        null,
-        2
-      )
-    )
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: [
-          "package",
-          "--config",
-          "apps/inspector/desktop.config.ts",
-          "--artifact",
-          "app",
-          "--json"
-        ],
-        cwd: directory,
-        hostTarget: "macos-arm64",
-        packageCommandRunner: () => Effect.die("package commands should not run for bad manifest"),
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    const payload = decodeCliJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(payload.tag).toBe("PackageFileError")
-    expect(payload.message).toContain("app-manifest.json")
-    expect(payload.message).toContain("renderer")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop package rejects malformed runtime launch manifests", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-package-runtime-manifest-"))
-  try {
-    await writePlaygroundFixture(directory)
-    await writeBuildLayoutFixture(directory, "macos-arm64")
-    const layout = join(directory, "apps", "inspector", "build", "effect-desktop", "macos-arm64")
-    const hostBinary = hostBinaryName("macos-arm64")
-    await writeFile(
-      join(layout, "app-manifest.json"),
-      JSON.stringify(
-        {
-          id: "dev.effect-desktop.inspector",
-          name: "Effect Desktop Playground",
-          version: "0.0.0",
-          target: "macos-arm64",
-          renderer: { path: "renderer" },
-          runtimeManifest: {
-            engine: "deno",
-            entry: "runtime/main.js",
-            executable: "deno",
-            args: ["runtime/main.js"],
-            env: {}
+      try {
+        const windows = {
+          defaults: {
+            titleBarStyle: "hiddenInset",
+            trafficLights: { x: 12, y: 12 },
+            hasShadow: true,
+            backgroundColor: "#ffffff"
           },
-          nativeHost: { binary: `native/${hostBinary}` }
-        },
-        null,
-        2
-      )
-    )
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: [
-          "package",
-          "--config",
-          "apps/inspector/desktop.config.ts",
-          "--artifact",
-          "app",
-          "--json"
-        ],
-        cwd: directory,
-        hostTarget: "macos-arm64",
-        packageCommandRunner: () => Effect.die("package commands should not run for bad manifest"),
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
+          main: {
+            route: "/",
+            width: 1200,
+            height: 800
+          }
         }
+        yield* writePlaygroundFixture(directory, { windows })
+        const runner: CommandRunner = (invocation) =>
+          writeBuildFixtureOutput(invocation, { runtimeJs: "runtime" })
+
+        const exitCode = yield* runCli({
+          argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          commandRunner: runner,
+          writeStdout: () => {},
+          writeStderr: () => {}
+        })
+
+        const manifest = decodeHostWindowsManifestJson(
+          yield* Effect.promise(() =>
+            readFile(
+              join(
+                directory,
+                "apps",
+                "inspector",
+                "build",
+                "effect-desktop",
+                "linux-x64",
+                "app-manifest.json"
+              ),
+              "utf8"
+            )
+          )
+        )
+
+        expect(exitCode).toBe(0)
+        expect(manifest.hostManifest.windows).toEqual(windows)
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop package --help exits zero with usage", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const stdout: string[] = []
+      const exitCode = yield* runCli({
+        argv: ["package", "--help"],
+        cwd: process.cwd(),
+        packageCommandRunner: () => Effect.die("package runner should not run for help"),
+        writeStdout: (text) => {
+          stdout.push(text)
+        },
+        writeStderr: () => {}
       })
-    )
 
-    const payload = decodeCliJsonError(stderr.join(""))
-    expect(exitCode).toBe(1)
-    expect(payload.tag).toBe("PackageFileError")
-    expect(payload.message).toContain("runtimeManifest.engine")
-    expect(payload.message).toContain("bun, node")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
+      expect(exitCode).toBe(0)
+      expect(stdout.join("")).toContain("desktop package")
+    })
+  ))
 
-test("desktop package rejects runtime launch contract drift and path escapes", async () => {
-  const cases = [
-    {
-      name: "missing-executable",
-      mutate: (manifest: Record<string, unknown>) => {
-        delete (manifest["runtimeManifest"] as Record<string, unknown>)["executable"]
-      },
-      message: "runtimeManifest.executable"
-    },
-    {
-      name: "executable-mismatch",
-      mutate: (manifest: Record<string, unknown>) => {
-        ;(manifest["runtimeManifest"] as Record<string, unknown>)["executable"] = "bun"
-      },
-      message: "runtimeManifest.executable must match runtimeManifest.engine"
-    },
-    {
-      name: "args-mismatch",
-      mutate: (manifest: Record<string, unknown>) => {
-        ;(manifest["runtimeManifest"] as Record<string, unknown>)["args"] = ["runtime/other.js"]
-      },
-      message: "runtimeManifest.args must exactly equal [runtimeManifest.entry]"
-    },
-    {
-      name: "env-key",
-      mutate: (manifest: Record<string, unknown>) => {
-        ;(manifest["runtimeManifest"] as Record<string, unknown>)["env"] = { "BAD=KEY": "value" }
-      },
-      message: "runtimeManifest.env.BAD=KEY"
-    },
-    {
-      name: "runtime-traversal",
-      mutate: (manifest: Record<string, unknown>) => {
-        const runtime = manifest["runtimeManifest"] as Record<string, unknown>
-        runtime["entry"] = "../outside.js"
-        runtime["args"] = ["../outside.js"]
-      },
-      message: "runtimeManifest.entry must be a relative path inside the build layout"
-    },
-    {
-      name: "renderer-traversal",
-      mutate: (manifest: Record<string, unknown>) => {
-        manifest["renderer"] = { path: "../renderer" }
-      },
-      message: "renderer.path must be a relative path inside the build layout"
-    },
-    {
-      name: "native-traversal",
-      mutate: (manifest: Record<string, unknown>) => {
-        manifest["nativeHost"] = { binary: "../host" }
-      },
-      message: "nativeHost.binary must be a relative path inside the build layout"
-    }
-  ] as const
+test("desktop package reports missing build output before reading manifests", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-package-missing-build-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        const stderr: string[] = []
 
-  for (const testCase of cases) {
-    const directory = await mkdtemp(join(tmpdir(), `effect-desktop-cli-package-${testCase.name}-`))
-    try {
-      await writePlaygroundFixture(directory, { runtime: { engine: "node", entry: "runtime.ts" } })
-      await writeBuildLayoutFixture(directory, "linux-x64", "node")
-      const layout = join(directory, "apps", "inspector", "build", "effect-desktop", "linux-x64")
-      const manifestPath = join(layout, "app-manifest.json")
-      const manifest = { ...decodeJsonObject(await readFile(manifestPath, "utf8")) }
-      testCase.mutate(manifest)
-      await writeFile(manifestPath, JSON.stringify(manifest, null, 2))
-      const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["package", "--config", "apps/inspector/desktop.config.ts", "--json"],
+          cwd: directory,
+          hostTarget: "macos-arm64",
+          packageCommandRunner: () => Effect.void,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
 
-      const exitCode = await Effect.runPromise(
-        runCli({
+        const error = decodePackageMissingBuildArtifactJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(error.tag).toBe("PackageMissingBuildArtifactError")
+        expect(error.message).toContain("app-manifest.json")
+        expect(error.message).toContain("run desktop build first")
+        expect(error.remediation).toContain("bun desktop build")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop package rejects malformed build manifests as typed package errors", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-package-manifest-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        yield* writeBuildLayoutFixture(directory, "macos-arm64")
+        const layout = join(
+          directory,
+          "apps",
+          "inspector",
+          "build",
+          "effect-desktop",
+          "macos-arm64"
+        )
+        yield* Effect.promise(() =>
+          writeFile(
+            join(layout, "app-manifest.json"),
+            stringifyJson(
+              {
+                id: "dev.effect-desktop.inspector",
+                name: "Effect Desktop Playground",
+                version: "0.0.0",
+                target: "macos-arm64"
+              },
+              2
+            )
+          )
+        )
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
           argv: [
             "package",
             "--config",
             "apps/inspector/desktop.config.ts",
             "--artifact",
-            "appimage",
+            "app",
             "--json"
           ],
           cwd: directory,
-          hostTarget: "linux-x64",
+          hostTarget: "macos-arm64",
           packageCommandRunner: () =>
             Effect.die("package commands should not run for bad manifest"),
           writeStdout: () => {},
@@ -7782,354 +8422,227 @@ test("desktop package rejects runtime launch contract drift and path escapes", a
             stderr.push(text)
           }
         })
-      )
 
-      const payload = decodeCliJsonError(stderr.join(""))
-      expect(exitCode).toBe(1)
-      expect(payload.tag).toBe("PackageFileError")
-      expect(payload.message).toContain(testCase.message)
-    } finally {
-      await rm(directory, { recursive: true, force: true })
-    }
-  }
-})
-
-test("desktop package accepts node runtime launch manifests", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-package-node-runtime-"))
-  try {
-    await writePlaygroundFixture(directory, { runtime: { engine: "node", entry: "runtime.ts" } })
-    await writeBuildLayoutFixture(directory, "linux-x64", "node")
-    const calls: string[] = []
-    const runner: PackageCommandRunner = (invocation) =>
-      Effect.gen(function* () {
-        calls.push(invocation.step)
-        const output = invocation.args.at(-1)
-        if (output !== undefined) {
-          yield* runPackageFixtureIo(invocation, () => writeFile(output, invocation.step))
-        }
-      })
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["package", "--config", "apps/inspector/desktop.config.ts", "--artifact", "appimage"],
-        cwd: directory,
-        hostTarget: "linux-x64",
-        packageCommandRunner: runner,
-        writeStdout: () => {},
-        writeStderr: () => {}
-      })
-    )
-
-    expect(exitCode).toBe(0)
-    expect(calls).toEqual(["linux-appimage"])
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop package emits macOS app dmg zip artifacts with metadata", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-package-"))
-  try {
-    await writePlaygroundFixture(directory)
-    await writeBuildLayoutFixture(directory, "macos-arm64")
-    const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "macos")
-    const calls: string[] = []
-    const runner: PackageCommandRunner = (invocation) =>
-      Effect.gen(function* () {
-        calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
-        const output = invocation.args.at(-1)
-        if (output !== undefined) {
-          yield* runPackageFixtureIo(invocation, () => writeFile(output, invocation.step))
-        }
-      })
-
-    const stdout: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["package", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        hostTarget: "macos-arm64",
-        now: fixedClock([100, 120, 200, 230, 300, 340]),
-        packageCommandRunner: runner,
-        writeStdout: (text) => {
-          stdout.push(text)
-        },
-        writeStderr: () => {}
-      })
-    )
-
-    const appRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.app")
-    const dmgRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.dmg")
-    const zipRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.zip")
-    const appMetadata = decodePackageAppMetadataJson(
-      await readFile(join(appRoot, "artifact.json"), "utf8")
-    )
-    const packageReport = decodeJsonObject(
-      await readFile(join(outputRoot, "package-report.json"), "utf8")
-    )
-
-    expect(exitCode).toBe(0)
-    expect(stdout.join("")).toContain("Effect Desktop package")
-    expect(calls).toEqual([
-      `macos-dmg:hdiutil create -srcFolder ${join(appRoot, "Effect-Desktop-Playground.app")} -o ${join(dmgRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.dmg")}`,
-      `macos-zip:ditto -c -k --keepParent ${join(appRoot, "Effect-Desktop-Playground.app")} ${join(zipRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.zip")}`
-    ])
-    expect(
-      await readFile(
-        join(appRoot, "Effect-Desktop-Playground.app", "Contents", "Info.plist"),
-        "utf8"
-      )
-    ).toContain("dev.effect-desktop.inspector")
-    expect(appMetadata.kind).toBe("app")
-    expect(appMetadata.sha256).toHaveLength(64)
-    expect(appMetadata.providerBudgetChecks).toEqual([
-      expect.objectContaining({
-        metric: "artifact-bytes",
-        budget: 65_536,
-        status: "pass"
-      })
-    ])
-    expect(packageReport).toMatchObject({
-      providers: {
-        runtime: "bun",
-        runtimePackaging: "source",
-        webEngine: "system"
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.tag).toBe("PackageFileError")
+        expect(payload.message).toContain("app-manifest.json")
+        expect(payload.message).toContain("renderer")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
     })
-    expect(await readFile(join(dmgRoot, "checksums.txt"), "utf8")).toContain(".dmg")
-    expect(await readFile(join(zipRoot, "checksums.txt"), "utf8")).toContain(".zip")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
+  ))
 
-packageModeTest("desktop package metadata digest includes directory file modes", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-package-mode-"))
-  try {
-    await writePlaygroundFixture(directory)
-    await writeBuildLayoutFixture(directory, "macos-arm64")
-    const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "macos")
-    const appRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.app")
-    const runtimeMain = join(
-      directory,
-      "apps",
-      "inspector",
-      "build",
-      "effect-desktop",
-      "macos-arm64",
-      "runtime",
-      "main.js"
-    )
-    const runPackage = async (): Promise<string> => {
-      const exitCode = await Effect.runPromise(
-        runCli({
-          argv: ["package", "--config", "apps/inspector/desktop.config.ts", "--artifact", "app"],
+test("desktop package rejects malformed runtime launch manifests", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-package-runtime-manifest-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        yield* writeBuildLayoutFixture(directory, "macos-arm64")
+        const layout = join(
+          directory,
+          "apps",
+          "inspector",
+          "build",
+          "effect-desktop",
+          "macos-arm64"
+        )
+        const hostBinary = hostBinaryName("macos-arm64")
+        yield* Effect.promise(() =>
+          writeFile(
+            join(layout, "app-manifest.json"),
+            stringifyJson(
+              {
+                id: "dev.effect-desktop.inspector",
+                name: "Effect Desktop Playground",
+                version: "0.0.0",
+                target: "macos-arm64",
+                renderer: { path: "renderer" },
+                runtimeManifest: {
+                  engine: "deno",
+                  entry: "runtime/main.js",
+                  executable: "deno",
+                  args: ["runtime/main.js"],
+                  env: {}
+                },
+                nativeHost: { binary: `native/${hostBinary}` }
+              },
+              2
+            )
+          )
+        )
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: [
+            "package",
+            "--config",
+            "apps/inspector/desktop.config.ts",
+            "--artifact",
+            "app",
+            "--json"
+          ],
           cwd: directory,
           hostTarget: "macos-arm64",
-          now: fixedClock([100, 120, 200]),
-          writeStdout: () => {},
-          writeStderr: () => {}
-        })
-      )
-      expect(exitCode).toBe(0)
-      const appMetadata = decodePackageAppMetadataJson(
-        await readFile(join(appRoot, "artifact.json"), "utf8")
-      )
-      expect(appMetadata.kind).toBe("app")
-      expect(appMetadata.sha256).toHaveLength(64)
-      return appMetadata.sha256
-    }
-
-    await chmod(runtimeMain, 0o644)
-    const firstDigest = await runPackage()
-
-    await chmod(runtimeMain, 0o444)
-    const secondDigest = await runPackage()
-
-    expect(secondDigest).not.toBe(firstDigest)
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop package stages macOS app bundle before explicit dmg artifact", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-package-dmg-"))
-  try {
-    await writePlaygroundFixture(directory)
-    await writeBuildLayoutFixture(directory, "macos-arm64")
-    const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "macos")
-    const appRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.app")
-    const appBundle = join(appRoot, "Effect-Desktop-Playground.app")
-    const dmgRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.dmg")
-    const dmgPath = join(dmgRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.dmg")
-    const calls: string[] = []
-    const runner: PackageCommandRunner = (invocation) =>
-      Effect.gen(function* () {
-        calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
-        yield* runPackageFixtureIo(invocation, () => writeFile(dmgPath, invocation.step))
-      })
-
-    const report = await Effect.runPromise(
-      runDesktopPackage({
-        cwd: directory,
-        configPath: "apps/inspector/desktop.config.ts",
-        platform: undefined,
-        artifact: "dmg",
-        commandRunner: runner,
-        now: fixedClock([100, 120, 200, 230]),
-        hostTarget: "macos-arm64"
-      })
-    )
-
-    expect(report.steps.map((step) => step.name)).toEqual(["macos-app", "macos-dmg", "metadata"])
-    expect(calls).toEqual([`macos-dmg:hdiutil create -srcFolder ${appBundle} -o ${dmgPath}`])
-    expect(await readFile(join(appBundle, "Contents", "Info.plist"), "utf8")).toContain(
-      "dev.effect-desktop.inspector"
-    )
-    expect(report.artifacts.map((artifact) => artifact.kind)).toEqual(["dmg"])
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop package stages macOS app bundle before explicit zip artifact", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-package-zip-"))
-  try {
-    await writePlaygroundFixture(directory)
-    await writeBuildLayoutFixture(directory, "macos-arm64")
-    const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "macos")
-    const appRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.app")
-    const appBundle = join(appRoot, "Effect-Desktop-Playground.app")
-    const zipRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.zip")
-    const zipPath = join(zipRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.zip")
-    const calls: string[] = []
-    const runner: PackageCommandRunner = (invocation) =>
-      Effect.gen(function* () {
-        calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
-        yield* runPackageFixtureIo(invocation, () => writeFile(zipPath, invocation.step))
-      })
-
-    const report = await Effect.runPromise(
-      runDesktopPackage({
-        cwd: directory,
-        configPath: "apps/inspector/desktop.config.ts",
-        platform: undefined,
-        artifact: "zip",
-        commandRunner: runner,
-        now: fixedClock([100, 120, 200, 230]),
-        hostTarget: "macos-arm64"
-      })
-    )
-
-    expect(report.steps.map((step) => step.name)).toEqual(["macos-app", "macos-zip", "metadata"])
-    expect(calls).toEqual([`macos-zip:ditto -c -k --keepParent ${appBundle} ${zipPath}`])
-    expect(await readFile(join(appBundle, "Contents", "Info.plist"), "utf8")).toContain(
-      "dev.effect-desktop.inspector"
-    )
-    expect(report.artifacts.map((artifact) => artifact.kind)).toEqual(["zip"])
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop package preserves sibling artifacts during targeted runs", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-package-siblings-"))
-  try {
-    await writePlaygroundFixture(directory)
-    await writeBuildLayoutFixture(directory, "macos-arm64")
-    const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "macos")
-    const zipRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.zip")
-    const dmgRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.dmg")
-    const zipPath = join(zipRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.zip")
-    const dmgPath = join(dmgRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.dmg")
-    const runner: PackageCommandRunner = (invocation) =>
-      Effect.gen(function* () {
-        const output = invocation.args.at(-1)
-        if (output !== undefined) {
-          yield* runPackageFixtureIo(invocation, () => writeFile(output, invocation.step))
-        }
-      })
-
-    await Effect.runPromise(
-      runDesktopPackage({
-        cwd: directory,
-        configPath: "apps/inspector/desktop.config.ts",
-        platform: undefined,
-        artifact: "zip",
-        commandRunner: runner,
-        now: fixedClock([100, 120, 200, 230]),
-        hostTarget: "macos-arm64"
-      })
-    )
-
-    await Effect.runPromise(
-      runDesktopPackage({
-        cwd: directory,
-        configPath: "apps/inspector/desktop.config.ts",
-        platform: undefined,
-        artifact: "dmg",
-        commandRunner: runner,
-        now: fixedClock([100, 120, 200, 230]),
-        hostTarget: "macos-arm64"
-      })
-    )
-
-    expect(await readFile(zipPath, "utf8")).toBe("macos-zip")
-    expect(await readFile(dmgPath, "utf8")).toBe("macos-dmg")
-    expect(await readFile(join(zipRoot, "checksums.txt"), "utf8")).toContain(".zip")
-    expect(await readFile(join(dmgRoot, "checksums.txt"), "utf8")).toContain(".dmg")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop package rejects app.name that resolves to reserved basenames", async () => {
-  for (const appName of [".", ".."] as const) {
-    const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-package-"))
-    try {
-      await writePlaygroundFixture(directory, {
-        app: { id: "dev.effect-desktop.inspector", name: appName, version: "0.0.0" }
-      })
-      const stderr: string[] = []
-
-      const exitCode = await Effect.runPromise(
-        runCli({
-          argv: ["package", "--config", "apps/inspector/desktop.config.ts"],
-          cwd: directory,
-          hostTarget: "macos-arm64",
+          packageCommandRunner: () =>
+            Effect.die("package commands should not run for bad manifest"),
           writeStdout: () => {},
           writeStderr: (text) => {
             stderr.push(text)
           }
         })
+
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.tag).toBe("PackageFileError")
+        expect(payload.message).toContain("runtimeManifest.engine")
+        expect(payload.message).toContain("bun, node")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop package rejects runtime launch contract drift and path escapes", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const cases = [
+        {
+          name: "missing-executable",
+          mutate: (manifest: Record<string, unknown>) => {
+            delete (manifest["runtimeManifest"] as Record<string, unknown>)["executable"]
+          },
+          message: "runtimeManifest.executable"
+        },
+        {
+          name: "executable-mismatch",
+          mutate: (manifest: Record<string, unknown>) => {
+            ;(manifest["runtimeManifest"] as Record<string, unknown>)["executable"] = "bun"
+          },
+          message: "runtimeManifest.executable must match runtimeManifest.engine"
+        },
+        {
+          name: "args-mismatch",
+          mutate: (manifest: Record<string, unknown>) => {
+            ;(manifest["runtimeManifest"] as Record<string, unknown>)["args"] = ["runtime/other.js"]
+          },
+          message: "runtimeManifest.args must exactly equal [runtimeManifest.entry]"
+        },
+        {
+          name: "env-key",
+          mutate: (manifest: Record<string, unknown>) => {
+            ;(manifest["runtimeManifest"] as Record<string, unknown>)["env"] = {
+              "BAD=KEY": "value"
+            }
+          },
+          message: "runtimeManifest.env.BAD=KEY"
+        },
+        {
+          name: "runtime-traversal",
+          mutate: (manifest: Record<string, unknown>) => {
+            const runtime = manifest["runtimeManifest"] as Record<string, unknown>
+            runtime["entry"] = "../outside.js"
+            runtime["args"] = ["../outside.js"]
+          },
+          message: "runtimeManifest.entry must be a relative path inside the build layout"
+        },
+        {
+          name: "renderer-traversal",
+          mutate: (manifest: Record<string, unknown>) => {
+            manifest["renderer"] = { path: "../renderer" }
+          },
+          message: "renderer.path must be a relative path inside the build layout"
+        },
+        {
+          name: "native-traversal",
+          mutate: (manifest: Record<string, unknown>) => {
+            manifest["nativeHost"] = { binary: "../host" }
+          },
+          message: "nativeHost.binary must be a relative path inside the build layout"
+        }
+      ] as const
+
+      for (const testCase of cases) {
+        const directory = yield* Effect.promise(() =>
+          mkdtemp(join(tmpdir(), `effect-desktop-cli-package-${testCase.name}-`))
+        )
+        try {
+          yield* writePlaygroundFixture(directory, {
+            runtime: { engine: "node", entry: "runtime.ts" }
+          })
+          yield* writeBuildLayoutFixture(directory, "linux-x64", "node")
+          const layout = join(
+            directory,
+            "apps",
+            "inspector",
+            "build",
+            "effect-desktop",
+            "linux-x64"
+          )
+          const manifestPath = join(layout, "app-manifest.json")
+          const manifest = {
+            ...decodeJsonObject(yield* Effect.promise(() => readFile(manifestPath, "utf8")))
+          }
+          testCase.mutate(manifest)
+          yield* Effect.promise(() => writeFile(manifestPath, stringifyJson(manifest, 2)))
+          const stderr: string[] = []
+
+          const exitCode = yield* runCli({
+            argv: [
+              "package",
+              "--config",
+              "apps/inspector/desktop.config.ts",
+              "--artifact",
+              "appimage",
+              "--json"
+            ],
+            cwd: directory,
+            hostTarget: "linux-x64",
+            packageCommandRunner: () =>
+              Effect.die("package commands should not run for bad manifest"),
+            writeStdout: () => {},
+            writeStderr: (text) => {
+              stderr.push(text)
+            }
+          })
+
+          const payload = decodeCliJsonError(stderr.join(""))
+          expect(exitCode).toBe(1)
+          expect(payload.tag).toBe("PackageFileError")
+          expect(payload.message).toContain(testCase.message)
+        } finally {
+          yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+        }
+      }
+    })
+  ))
+
+test("desktop package accepts node runtime launch manifests", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-package-node-runtime-"))
       )
+      try {
+        yield* writePlaygroundFixture(directory, {
+          runtime: { engine: "node", entry: "runtime.ts" }
+        })
+        yield* writeBuildLayoutFixture(directory, "linux-x64", "node")
+        const calls: string[] = []
+        const runner: PackageCommandRunner = (invocation) =>
+          Effect.gen(function* () {
+            calls.push(invocation.step)
+            const output = invocation.args.at(-1)
+            if (output !== undefined) {
+              yield* runPackageFixtureIo(invocation, () => writeFile(output, invocation.step))
+            }
+          })
 
-      const output = stderr.join("")
-      expect(exitCode).toBe(1)
-      expect(output).toContain("PackageConfigError")
-      expect(output).toContain("app.name must not sanitize to . or ..")
-    } finally {
-      await rm(directory, { recursive: true, force: true })
-    }
-  }
-})
-
-test("desktop package rejects control characters in package metadata", async () => {
-  for (const [label, appName] of [
-    ["newline", "Effect Desktop\nInjected=Value"],
-    ["carriage-return", "Effect Desktop\rInjected=Value"],
-    ["nul", `Effect Desktop${String.fromCharCode(0)}Injected=Value`],
-    ["del", `Effect Desktop${String.fromCharCode(127)}Injected=Value`]
-  ] as const) {
-    const directory = await mkdtemp(join(tmpdir(), `effect-desktop-cli-package-${label}-`))
-    try {
-      await writePlaygroundFixture(directory, {
-        app: { id: "dev.effect-desktop.inspector", name: appName, version: "0.0.0" }
-      })
-      const stderr: string[] = []
-
-      const exitCode = await Effect.runPromise(
-        runCli({
+        const exitCode = yield* runCli({
           argv: [
             "package",
             "--config",
@@ -8139,507 +8652,937 @@ test("desktop package rejects control characters in package metadata", async () 
           ],
           cwd: directory,
           hostTarget: "linux-x64",
-          packageCommandRunner: () =>
-            Effect.die("package commands should not run for invalid package metadata"),
+          packageCommandRunner: runner,
+          writeStdout: () => {},
+          writeStderr: () => {}
+        })
+
+        expect(exitCode).toBe(0)
+        expect(calls).toEqual(["linux-appimage"])
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop package emits macOS app dmg zip artifacts with metadata", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-package-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        yield* writeBuildLayoutFixture(directory, "macos-arm64")
+        const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "macos")
+        const calls: string[] = []
+        const runner: PackageCommandRunner = (invocation) =>
+          Effect.gen(function* () {
+            calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
+            const output = invocation.args.at(-1)
+            if (output !== undefined) {
+              yield* runPackageFixtureIo(invocation, () => writeFile(output, invocation.step))
+            }
+          })
+
+        const stdout: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["package", "--config", "apps/inspector/desktop.config.ts"],
+          cwd: directory,
+          hostTarget: "macos-arm64",
+          now: fixedClock([100, 120, 200, 230, 300, 340]),
+          packageCommandRunner: runner,
+          writeStdout: (text) => {
+            stdout.push(text)
+          },
+          writeStderr: () => {}
+        })
+
+        const appRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.app")
+        const dmgRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.dmg")
+        const zipRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.zip")
+        const appMetadata = decodePackageAppMetadataJson(
+          yield* Effect.promise(() => readFile(join(appRoot, "artifact.json"), "utf8"))
+        )
+        const packageReport = decodeJsonObject(
+          yield* Effect.promise(() => readFile(join(outputRoot, "package-report.json"), "utf8"))
+        )
+
+        expect(exitCode).toBe(0)
+        expect(stdout.join("")).toContain("Effect Desktop package")
+        expect(calls).toEqual([
+          `macos-dmg:hdiutil create -srcFolder ${join(appRoot, "Effect-Desktop-Playground.app")} -o ${join(dmgRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.dmg")}`,
+          `macos-zip:ditto -c -k --keepParent ${join(appRoot, "Effect-Desktop-Playground.app")} ${join(zipRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.zip")}`
+        ])
+        expect(
+          yield* Effect.promise(() =>
+            readFile(
+              join(appRoot, "Effect-Desktop-Playground.app", "Contents", "Info.plist"),
+              "utf8"
+            )
+          )
+        ).toContain("dev.effect-desktop.inspector")
+        expect(appMetadata.kind).toBe("app")
+        expect(appMetadata.sha256).toHaveLength(64)
+        expect(appMetadata.providerBudgetChecks).toEqual([
+          expect.objectContaining({
+            metric: "artifact-bytes",
+            budget: 65_536,
+            status: "pass"
+          })
+        ])
+        expect(packageReport).toMatchObject({
+          providers: {
+            runtime: "bun",
+            runtimePackaging: "source",
+            webEngine: "system"
+          }
+        })
+        expect(
+          yield* Effect.promise(() => readFile(join(dmgRoot, "checksums.txt"), "utf8"))
+        ).toContain(".dmg")
+        expect(
+          yield* Effect.promise(() => readFile(join(zipRoot, "checksums.txt"), "utf8"))
+        ).toContain(".zip")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+packageModeTest("desktop package metadata digest includes directory file modes", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-package-mode-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        yield* writeBuildLayoutFixture(directory, "macos-arm64")
+        const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "macos")
+        const appRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.app")
+        const runtimeMain = join(
+          directory,
+          "apps",
+          "inspector",
+          "build",
+          "effect-desktop",
+          "macos-arm64",
+          "runtime",
+          "main.js"
+        )
+        const runPackage = (): Effect.Effect<string> =>
+          Effect.gen(function* () {
+            const exitCode = yield* runCli({
+              argv: [
+                "package",
+                "--config",
+                "apps/inspector/desktop.config.ts",
+                "--artifact",
+                "app"
+              ],
+              cwd: directory,
+              hostTarget: "macos-arm64",
+              now: fixedClock([100, 120, 200]),
+              writeStdout: () => {},
+              writeStderr: () => {}
+            })
+            expect(exitCode).toBe(0)
+            const appMetadata = decodePackageAppMetadataJson(
+              yield* Effect.promise(() => readFile(join(appRoot, "artifact.json"), "utf8"))
+            )
+            expect(appMetadata.kind).toBe("app")
+            expect(appMetadata.sha256).toHaveLength(64)
+            return appMetadata.sha256
+          })
+
+        yield* Effect.promise(() => chmod(runtimeMain, 0o644))
+        const firstDigest = yield* runPackage()
+
+        yield* Effect.promise(() => chmod(runtimeMain, 0o444))
+        const secondDigest = yield* runPackage()
+
+        expect(secondDigest).not.toBe(firstDigest)
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  )
+)
+
+test("desktop package stages macOS app bundle before explicit dmg artifact", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-package-dmg-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        yield* writeBuildLayoutFixture(directory, "macos-arm64")
+        const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "macos")
+        const appRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.app")
+        const appBundle = join(appRoot, "Effect-Desktop-Playground.app")
+        const dmgRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.dmg")
+        const dmgPath = join(dmgRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.dmg")
+        const calls: string[] = []
+        const runner: PackageCommandRunner = (invocation) =>
+          Effect.gen(function* () {
+            calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
+            yield* runPackageFixtureIo(invocation, () => writeFile(dmgPath, invocation.step))
+          })
+
+        const report = yield* runDesktopPackage({
+          cwd: directory,
+          configPath: "apps/inspector/desktop.config.ts",
+          platform: undefined,
+          artifact: "dmg",
+          commandRunner: runner,
+          now: fixedClock([100, 120, 200, 230]),
+          hostTarget: "macos-arm64"
+        })
+
+        expect(report.steps.map((step) => step.name)).toEqual([
+          "macos-app",
+          "macos-dmg",
+          "metadata"
+        ])
+        expect(calls).toEqual([`macos-dmg:hdiutil create -srcFolder ${appBundle} -o ${dmgPath}`])
+        expect(
+          yield* Effect.promise(() => readFile(join(appBundle, "Contents", "Info.plist"), "utf8"))
+        ).toContain("dev.effect-desktop.inspector")
+        expect(report.artifacts.map((artifact) => artifact.kind)).toEqual(["dmg"])
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop package stages macOS app bundle before explicit zip artifact", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-package-zip-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        yield* writeBuildLayoutFixture(directory, "macos-arm64")
+        const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "macos")
+        const appRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.app")
+        const appBundle = join(appRoot, "Effect-Desktop-Playground.app")
+        const zipRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.zip")
+        const zipPath = join(zipRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.zip")
+        const calls: string[] = []
+        const runner: PackageCommandRunner = (invocation) =>
+          Effect.gen(function* () {
+            calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
+            yield* runPackageFixtureIo(invocation, () => writeFile(zipPath, invocation.step))
+          })
+
+        const report = yield* runDesktopPackage({
+          cwd: directory,
+          configPath: "apps/inspector/desktop.config.ts",
+          platform: undefined,
+          artifact: "zip",
+          commandRunner: runner,
+          now: fixedClock([100, 120, 200, 230]),
+          hostTarget: "macos-arm64"
+        })
+
+        expect(report.steps.map((step) => step.name)).toEqual([
+          "macos-app",
+          "macos-zip",
+          "metadata"
+        ])
+        expect(calls).toEqual([`macos-zip:ditto -c -k --keepParent ${appBundle} ${zipPath}`])
+        expect(
+          yield* Effect.promise(() => readFile(join(appBundle, "Contents", "Info.plist"), "utf8"))
+        ).toContain("dev.effect-desktop.inspector")
+        expect(report.artifacts.map((artifact) => artifact.kind)).toEqual(["zip"])
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop package preserves sibling artifacts during targeted runs", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-package-siblings-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        yield* writeBuildLayoutFixture(directory, "macos-arm64")
+        const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "macos")
+        const zipRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.zip")
+        const dmgRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.dmg")
+        const zipPath = join(zipRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.zip")
+        const dmgPath = join(dmgRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.dmg")
+        const runner: PackageCommandRunner = (invocation) =>
+          Effect.gen(function* () {
+            const output = invocation.args.at(-1)
+            if (output !== undefined) {
+              yield* runPackageFixtureIo(invocation, () => writeFile(output, invocation.step))
+            }
+          })
+
+        yield* runDesktopPackage({
+          cwd: directory,
+          configPath: "apps/inspector/desktop.config.ts",
+          platform: undefined,
+          artifact: "zip",
+          commandRunner: runner,
+          now: fixedClock([100, 120, 200, 230]),
+          hostTarget: "macos-arm64"
+        })
+
+        yield* runDesktopPackage({
+          cwd: directory,
+          configPath: "apps/inspector/desktop.config.ts",
+          platform: undefined,
+          artifact: "dmg",
+          commandRunner: runner,
+          now: fixedClock([100, 120, 200, 230]),
+          hostTarget: "macos-arm64"
+        })
+
+        expect(yield* Effect.promise(() => readFile(zipPath, "utf8"))).toBe("macos-zip")
+        expect(yield* Effect.promise(() => readFile(dmgPath, "utf8"))).toBe("macos-dmg")
+        expect(
+          yield* Effect.promise(() => readFile(join(zipRoot, "checksums.txt"), "utf8"))
+        ).toContain(".zip")
+        expect(
+          yield* Effect.promise(() => readFile(join(dmgRoot, "checksums.txt"), "utf8"))
+        ).toContain(".dmg")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop package rejects app.name that resolves to reserved basenames", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      for (const appName of [".", ".."] as const) {
+        const directory = yield* Effect.promise(() =>
+          mkdtemp(join(tmpdir(), "effect-desktop-cli-package-"))
+        )
+        try {
+          yield* writePlaygroundFixture(directory, {
+            app: { id: "dev.effect-desktop.inspector", name: appName, version: "0.0.0" }
+          })
+          const stderr: string[] = []
+
+          const exitCode = yield* runCli({
+            argv: ["package", "--config", "apps/inspector/desktop.config.ts"],
+            cwd: directory,
+            hostTarget: "macos-arm64",
+            writeStdout: () => {},
+            writeStderr: (text) => {
+              stderr.push(text)
+            }
+          })
+
+          const output = stderr.join("")
+          expect(exitCode).toBe(1)
+          expect(output).toContain("PackageConfigError")
+          expect(output).toContain("app.name must not sanitize to . or ..")
+        } finally {
+          yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+        }
+      }
+    })
+  ))
+
+test("desktop package rejects control characters in package metadata", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      for (const [label, appName] of [
+        ["newline", "Effect Desktop\nInjected=Value"],
+        ["carriage-return", "Effect Desktop\rInjected=Value"],
+        ["nul", `Effect Desktop${String.fromCharCode(0)}Injected=Value`],
+        ["del", `Effect Desktop${String.fromCharCode(127)}Injected=Value`]
+      ] as const) {
+        const directory = yield* Effect.promise(() =>
+          mkdtemp(join(tmpdir(), `effect-desktop-cli-package-${label}-`))
+        )
+        try {
+          yield* writePlaygroundFixture(directory, {
+            app: { id: "dev.effect-desktop.inspector", name: appName, version: "0.0.0" }
+          })
+          const stderr: string[] = []
+
+          const exitCode = yield* runCli({
+            argv: [
+              "package",
+              "--config",
+              "apps/inspector/desktop.config.ts",
+              "--artifact",
+              "appimage"
+            ],
+            cwd: directory,
+            hostTarget: "linux-x64",
+            packageCommandRunner: () =>
+              Effect.die("package commands should not run for invalid package metadata"),
+            writeStdout: () => {},
+            writeStderr: (text) => {
+              stderr.push(text)
+            }
+          })
+
+          const output = stderr.join("")
+          expect(exitCode).toBe(1)
+          expect(output).toContain("PackageConfigError")
+          expect(output).toContain("app.name must not contain control characters")
+        } finally {
+          yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+        }
+      }
+    })
+  ))
+
+test("desktop package rejects non-SemVer app.version", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-package-invalid-version-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, {
+          app: {
+            id: "dev.effect-desktop.inspector",
+            name: "Effect Desktop Playground",
+            version: "not-semver"
+          }
+        })
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["package", "--config", "apps/inspector/desktop.config.ts"],
+          cwd: directory,
+          hostTarget: "linux-x64",
           writeStdout: () => {},
           writeStderr: (text) => {
             stderr.push(text)
           }
         })
+
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("PackageConfigError")
+        expect(stderr.join("")).toContain("app.version must be a SemVer X.Y.Z string")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop package rejects path-shaped app.id before staging Linux sidecars", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-package-invalid-appid-"))
       )
+      try {
+        yield* writePlaygroundFixture(directory, {
+          app: {
+            id: "../../../escaped",
+            name: "Effect Desktop Playground",
+            version: "0.0.0"
+          }
+        })
+        yield* writeBuildLayoutFixture(directory, "linux-x64")
+        const calls: string[] = []
+        const stderr: string[] = []
 
-      const output = stderr.join("")
-      expect(exitCode).toBe(1)
-      expect(output).toContain("PackageConfigError")
-      expect(output).toContain("app.name must not contain control characters")
-    } finally {
-      await rm(directory, { recursive: true, force: true })
-    }
-  }
-})
+        const exitCode = yield* runCli({
+          argv: ["package", "--config", "apps/inspector/desktop.config.ts", "--artifact", "deb"],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          packageCommandRunner: (invocation) =>
+            Effect.sync(() => {
+              calls.push(invocation.step)
+            }),
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
 
-test("desktop package rejects non-SemVer app.version", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-package-invalid-version-"))
-  try {
-    await writePlaygroundFixture(directory, {
+        expect(exitCode).toBe(1)
+        expect(calls).toEqual([])
+        expect(stderr.join("")).toContain("PackageConfigError")
+        expect(stderr.join("")).toContain("app.id must be a reverse-DNS ASCII identifier")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop package rejects build manifest app name drift", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-package-name-drift-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        yield* writeBuildLayoutFixture(directory, "macos-arm64")
+        const layout = join(
+          directory,
+          "apps",
+          "inspector",
+          "build",
+          "effect-desktop",
+          "macos-arm64"
+        )
+        const manifestPath = join(layout, "app-manifest.json")
+        const manifest = {
+          ...decodeJsonObject(yield* Effect.promise(() => readFile(manifestPath, "utf8")))
+        }
+        manifest["name"] = "Different App"
+        yield* Effect.promise(() => writeFile(manifestPath, `${stringifyJson(manifest, 2)}\n`))
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["package", "--config", "apps/inspector/desktop.config.ts", "--artifact", "app"],
+          cwd: directory,
+          hostTarget: "macos-arm64",
+          packageCommandRunner: () => Effect.die("package commands should not run for name drift"),
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("PackageFileError")
+        expect(stderr.join("")).toContain("app-manifest.json")
+        expect(stderr.join("")).toContain("Effect Desktop Playground")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop package emits Linux AppImage deb rpm artifacts with metadata", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-package-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        yield* writeBuildLayoutFixture(directory, "linux-x64")
+        const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "linux")
+        const artifactPaths = {
+          appimage: join(
+            outputRoot,
+            "Effect-Desktop-Playground-0.0.0-linux-x64.AppImage",
+            "Effect-Desktop-Playground-0.0.0-linux-x64.AppImage"
+          ),
+          deb: join(
+            outputRoot,
+            "Effect-Desktop-Playground-0.0.0-linux-x64.deb",
+            "Effect-Desktop-Playground-0.0.0-linux-x64.deb"
+          ),
+          rpm: join(
+            outputRoot,
+            "Effect-Desktop-Playground-0.0.0-linux-x64.rpm",
+            "Effect-Desktop-Playground-0.0.0-linux-x64.rpm"
+          )
+        } as const
+        const calls: string[] = []
+        const runner: PackageCommandRunner = (invocation) =>
+          Effect.gen(function* () {
+            calls.push(`${invocation.step}:${invocation.command}`)
+            if (invocation.step === "linux-appimage") {
+              yield* runPackageFixtureIo(invocation, () =>
+                writeFile(artifactPaths.appimage, "appimage")
+              )
+            }
+            if (invocation.step === "linux-deb") {
+              yield* runPackageFixtureIo(invocation, () => writeFile(artifactPaths.deb, "deb"))
+            }
+            if (invocation.step === "linux-rpm") {
+              yield* runPackageFixtureIo(invocation, () => writeFile(artifactPaths.rpm, "rpm"))
+            }
+          })
+
+        const exitCode = yield* runCli({
+          argv: ["package", "--config", "apps/inspector/desktop.config.ts"],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          packageCommandRunner: runner,
+          writeStdout: () => {},
+          writeStderr: () => {}
+        })
+
+        const appImageRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-linux-x64.AppImage")
+        const debMetadata = decodeLinuxPackageArtifactJson(
+          yield* Effect.promise(() =>
+            readFile(
+              join(outputRoot, "Effect-Desktop-Playground-0.0.0-linux-x64.deb", "artifact.json"),
+              "utf8"
+            )
+          )
+        )
+
+        expect(exitCode).toBe(0)
+        expect(calls).toEqual([
+          "linux-appimage:appimagetool",
+          "linux-deb:dpkg-deb",
+          "linux-rpm:rpmbuild"
+        ])
+        expect(debMetadata).toMatchObject({ kind: "deb", sizeBytes: 3 })
+        expect(debMetadata.linuxIntegration).toEqual({
+          desktopFile: "dev.effect-desktop.inspector.desktop",
+          appStreamId: "dev.effect-desktop.inspector.metainfo.xml",
+          flatpakAppId: "dev.effect-desktop.inspector",
+          snapName: "dev.effect-desktop.inspector"
+        })
+        expect(
+          yield* Effect.promise(() =>
+            readFile(
+              join(
+                appImageRoot,
+                "Effect-Desktop-Playground.AppDir",
+                "share",
+                "applications",
+                "dev.effect-desktop.inspector.desktop"
+              ),
+              "utf8"
+            )
+          )
+        ).toContain("X-Flatpak=dev.effect-desktop.inspector")
+        expect(
+          yield* Effect.promise(() =>
+            readFile(
+              join(
+                appImageRoot,
+                "Effect-Desktop-Playground.AppDir",
+                "share",
+                "snap",
+                "snapcraft.yaml"
+              ),
+              "utf8"
+            )
+          )
+        ).toContain("name: dev.effect-desktop.inspector")
+        expect(
+          yield* Effect.promise(() =>
+            readFile(
+              join(outputRoot, "Effect-Desktop-Playground-0.0.0-linux-x64.rpm", "checksums.txt"),
+              "utf8"
+            )
+          )
+        ).toContain(".rpm")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop package rejects build layout symlinks that escape the layout", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-package-link-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        yield* writeBuildLayoutFixture(directory, "linux-x64")
+        const appRoot = join(directory, "apps", "inspector")
+        const layout = join(appRoot, "build", "effect-desktop", "linux-x64")
+        yield* Effect.promise(() => writeFile(join(appRoot, "secret.txt"), "external"))
+        yield* Effect.promise(() =>
+          symlink("../../../../secret.txt", join(layout, "renderer", "secret.txt"))
+        )
+        const calls: string[] = []
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["package", "--config", "apps/inspector/desktop.config.ts", "--artifact", "deb"],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          packageCommandRunner: (invocation) =>
+            Effect.sync(() => {
+              calls.push(invocation.step)
+            }),
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const stagedSecret = join(
+          appRoot,
+          "dist",
+          "desktop",
+          "linux",
+          "Effect-Desktop-Playground-0.0.0-linux-x64.deb",
+          "root",
+          "usr",
+          "lib",
+          "effect-desktop-inspector",
+          "renderer",
+          "secret.txt"
+        )
+        expect(exitCode).toBe(1)
+        expect(calls).toEqual([])
+        expect(stderr.join("")).toContain("PackageFileError")
+        expect(stderr.join("")).toContain("points outside")
+        yield* expectEffectPromiseRejects(stat(stagedSecret))
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop package maps linux arm64 RPM metadata to aarch64", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-package-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        yield* writeBuildLayoutFixture(directory, "linux-arm64")
+        const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "linux")
+        const rpmPath = join(
+          outputRoot,
+          "Effect-Desktop-Playground-0.0.0-linux-arm64.rpm",
+          "Effect-Desktop-Playground-0.0.0-linux-arm64.rpm"
+        )
+        let spec = ""
+        let args: readonly string[] = []
+        const runner: PackageCommandRunner = (invocation) =>
+          Effect.gen(function* () {
+            args = invocation.args
+            const specPath = invocation.args[1]
+            if (typeof specPath === "string") {
+              spec = yield* readPackageFixtureText(invocation, specPath)
+            }
+            yield* runPackageFixtureIo(invocation, () => writeFile(rpmPath, "rpm"))
+          })
+
+        const exitCode = yield* runCli({
+          argv: ["package", "--config", "apps/inspector/desktop.config.ts", "--artifact", "rpm"],
+          cwd: directory,
+          hostTarget: "linux-arm64",
+          packageCommandRunner: runner,
+          writeStdout: () => {},
+          writeStderr: () => {}
+        })
+
+        expect(exitCode).toBe(0)
+        expect(spec).toContain("BuildArch: aarch64")
+        expect(args).toContain("_rpmfilename Effect-Desktop-Playground-0.0.0-linux-arm64.rpm")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop package emits Windows per-user MSI with app-specific UpgradeCode", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-package-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        yield* writeBuildLayoutFixture(directory, "windows-x64")
+        const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "windows")
+        const msiPath = join(
+          outputRoot,
+          "Effect-Desktop-Playground-0.0.0-windows-x64.msi",
+          "Effect-Desktop-Playground-0.0.0-windows-x64.msi"
+        )
+        let wxs = ""
+        const runner: PackageCommandRunner = (invocation) =>
+          Effect.gen(function* () {
+            const wxsPath = invocation.args[1]
+            if (typeof wxsPath === "string") {
+              wxs = yield* readPackageFixtureText(invocation, wxsPath)
+            }
+            yield* runPackageFixtureIo(invocation, () => writeFile(msiPath, "msi"))
+          })
+
+        const exitCode = yield* runCli({
+          argv: ["package", "--config", "apps/inspector/desktop.config.ts"],
+          cwd: directory,
+          hostTarget: "windows-x64",
+          packageCommandRunner: runner,
+          writeStdout: () => {},
+          writeStderr: () => {}
+        })
+
+        expect(exitCode).toBe(0)
+        expect(wxs).toContain('Scope="perUser"')
+        expect(wxs).toContain('<ComponentGroupRef Id="StartMenuShortcuts" />')
+        expect(wxs).toContain('<StandardDirectory Id="ProgramMenuFolder">')
+        expect(wxs).toContain(
+          '<Directory Id="ApplicationProgramsFolder" Name="Effect Desktop Playground" />'
+        )
+        expect(wxs).toContain(
+          '<Shortcut Id="ApplicationStartMenuShortcut" Name="Effect Desktop Playground" Description="Effect Desktop Playground" Target="[INSTALLFOLDER]native\\host.exe" WorkingDirectory="INSTALLFOLDER" />'
+        )
+        expect(wxs).toContain(
+          '<RemoveFolder Id="RemoveApplicationProgramsFolder" Directory="ApplicationProgramsFolder" On="uninstall" />'
+        )
+        expect(wxs).not.toContain("00000000-0000-0000-0000-000000000064")
+        expect(wxs).toMatch(
+          /UpgradeCode="[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"/
+        )
+        expect(wxs).toMatch(
+          /<Component Id="StartMenuShortcut" Guid="[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}">/
+        )
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop package rejects Windows system-mode MSI as deferred scope", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-package-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        yield* writeBuildLayoutFixture(directory, "windows-x64")
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: [
+            "package",
+            "--config",
+            "apps/inspector/desktop.config.ts",
+            "--artifact",
+            "system-msi"
+          ],
+          cwd: directory,
+          hostTarget: "windows-x64",
+          packageCommandRunner: () => Effect.void,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("PackageUnsupportedArtifactError")
+        expect(stderr.join("")).toContain("deferred to v1.1")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+const writePlaygroundFixture = (
+  directory: string,
+  extraConfig: Record<string, unknown> = {}
+): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    const appRoot = join(directory, "apps", "inspector")
+    const config = {
       app: {
         id: "dev.effect-desktop.inspector",
         name: "Effect Desktop Playground",
-        version: "not-semver"
-      }
-    })
-    const stderr: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["package", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        hostTarget: "linux-x64",
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-    expect(exitCode).toBe(1)
-    expect(stderr.join("")).toContain("PackageConfigError")
-    expect(stderr.join("")).toContain("app.version must be a SemVer X.Y.Z string")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop package rejects path-shaped app.id before staging Linux sidecars", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-package-invalid-appid-"))
-  try {
-    await writePlaygroundFixture(directory, {
-      app: {
-        id: "../../../escaped",
-        name: "Effect Desktop Playground",
         version: "0.0.0"
-      }
-    })
-    await writeBuildLayoutFixture(directory, "linux-x64")
-    const calls: string[] = []
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["package", "--config", "apps/inspector/desktop.config.ts", "--artifact", "deb"],
-        cwd: directory,
-        hostTarget: "linux-x64",
-        packageCommandRunner: (invocation) =>
-          Effect.sync(() => {
-            calls.push(invocation.step)
-          }),
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    expect(exitCode).toBe(1)
-    expect(calls).toEqual([])
-    expect(stderr.join("")).toContain("PackageConfigError")
-    expect(stderr.join("")).toContain("app.id must be a reverse-DNS ASCII identifier")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop package rejects build manifest app name drift", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-package-name-drift-"))
-  try {
-    await writePlaygroundFixture(directory)
-    await writeBuildLayoutFixture(directory, "macos-arm64")
-    const layout = join(directory, "apps", "inspector", "build", "effect-desktop", "macos-arm64")
-    const manifestPath = join(layout, "app-manifest.json")
-    const manifest = { ...decodeJsonObject(await readFile(manifestPath, "utf8")) }
-    manifest["name"] = "Different App"
-    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["package", "--config", "apps/inspector/desktop.config.ts", "--artifact", "app"],
-        cwd: directory,
-        hostTarget: "macos-arm64",
-        packageCommandRunner: () => Effect.die("package commands should not run for name drift"),
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    expect(exitCode).toBe(1)
-    expect(stderr.join("")).toContain("PackageFileError")
-    expect(stderr.join("")).toContain("app-manifest.json")
-    expect(stderr.join("")).toContain("Effect Desktop Playground")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop package emits Linux AppImage deb rpm artifacts with metadata", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-package-"))
-  try {
-    await writePlaygroundFixture(directory)
-    await writeBuildLayoutFixture(directory, "linux-x64")
-    const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "linux")
-    const artifactPaths = {
-      appimage: join(
-        outputRoot,
-        "Effect-Desktop-Playground-0.0.0-linux-x64.AppImage",
-        "Effect-Desktop-Playground-0.0.0-linux-x64.AppImage"
-      ),
-      deb: join(
-        outputRoot,
-        "Effect-Desktop-Playground-0.0.0-linux-x64.deb",
-        "Effect-Desktop-Playground-0.0.0-linux-x64.deb"
-      ),
-      rpm: join(
-        outputRoot,
-        "Effect-Desktop-Playground-0.0.0-linux-x64.rpm",
-        "Effect-Desktop-Playground-0.0.0-linux-x64.rpm"
-      )
-    } as const
-    const calls: string[] = []
-    const runner: PackageCommandRunner = (invocation) =>
-      Effect.gen(function* () {
-        calls.push(`${invocation.step}:${invocation.command}`)
-        if (invocation.step === "linux-appimage") {
-          yield* runPackageFixtureIo(invocation, () =>
-            writeFile(artifactPaths.appimage, "appimage")
-          )
-        }
-        if (invocation.step === "linux-deb") {
-          yield* runPackageFixtureIo(invocation, () => writeFile(artifactPaths.deb, "deb"))
-        }
-        if (invocation.step === "linux-rpm") {
-          yield* runPackageFixtureIo(invocation, () => writeFile(artifactPaths.rpm, "rpm"))
-        }
-      })
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["package", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        hostTarget: "linux-x64",
-        packageCommandRunner: runner,
-        writeStdout: () => {},
-        writeStderr: () => {}
-      })
-    )
-
-    const appImageRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-linux-x64.AppImage")
-    const debMetadata = decodeLinuxPackageArtifactJson(
-      await readFile(
-        join(outputRoot, "Effect-Desktop-Playground-0.0.0-linux-x64.deb", "artifact.json"),
-        "utf8"
+      },
+      runtime: { entry: "runtime.ts" },
+      renderer: {
+        entry: "src/renderer/main.tsx",
+        dist: "dist"
+      },
+      ...extraConfig
+    }
+    yield* Effect.promise(() => mkdir(appRoot, { recursive: true }))
+    yield* Effect.promise(() => mkdir(join(appRoot, "src", "renderer"), { recursive: true }))
+    yield* Effect.promise(() =>
+      writeFile(
+        join(appRoot, "desktop.config.ts"),
+        `export default ${stringifyJson(config, 2)} as const\n`
       )
     )
-
-    expect(exitCode).toBe(0)
-    expect(calls).toEqual([
-      "linux-appimage:appimagetool",
-      "linux-deb:dpkg-deb",
-      "linux-rpm:rpmbuild"
-    ])
-    expect(debMetadata).toMatchObject({ kind: "deb", sizeBytes: 3 })
-    expect(debMetadata.linuxIntegration).toEqual({
-      desktopFile: "dev.effect-desktop.inspector.desktop",
-      appStreamId: "dev.effect-desktop.inspector.metainfo.xml",
-      flatpakAppId: "dev.effect-desktop.inspector",
-      snapName: "dev.effect-desktop.inspector"
-    })
-    expect(
-      await readFile(
-        join(
-          appImageRoot,
-          "Effect-Desktop-Playground.AppDir",
-          "share",
-          "applications",
-          "dev.effect-desktop.inspector.desktop"
-        ),
-        "utf8"
-      )
-    ).toContain("X-Flatpak=dev.effect-desktop.inspector")
-    expect(
-      await readFile(
-        join(appImageRoot, "Effect-Desktop-Playground.AppDir", "share", "snap", "snapcraft.yaml"),
-        "utf8"
-      )
-    ).toContain("name: dev.effect-desktop.inspector")
-    expect(
-      await readFile(
-        join(outputRoot, "Effect-Desktop-Playground-0.0.0-linux-x64.rpm", "checksums.txt"),
-        "utf8"
-      )
-    ).toContain(".rpm")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop package rejects build layout symlinks that escape the layout", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-package-link-"))
-  try {
-    await writePlaygroundFixture(directory)
-    await writeBuildLayoutFixture(directory, "linux-x64")
-    const appRoot = join(directory, "apps", "inspector")
-    const layout = join(appRoot, "build", "effect-desktop", "linux-x64")
-    await writeFile(join(appRoot, "secret.txt"), "external")
-    await symlink("../../../../secret.txt", join(layout, "renderer", "secret.txt"))
-    const calls: string[] = []
-    const stderr: string[] = []
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["package", "--config", "apps/inspector/desktop.config.ts", "--artifact", "deb"],
-        cwd: directory,
-        hostTarget: "linux-x64",
-        packageCommandRunner: (invocation) =>
-          Effect.sync(() => {
-            calls.push(invocation.step)
-          }),
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
+    yield* Effect.promise(() => writeFile(join(appRoot, "package.json"), '{"type":"module"}\n'))
+    yield* Effect.promise(() => writeFile(join(appRoot, "runtime.ts"), "console.log('runtime')\n"))
+    yield* Effect.promise(() =>
+      writeFile(join(appRoot, "src/renderer/main.tsx"), "console.log('renderer')\n")
     )
+    yield* Effect.promise(() => mkdir(join(directory, "target", "debug"), { recursive: true }))
+  })
 
-    const stagedSecret = join(
-      appRoot,
-      "dist",
-      "desktop",
-      "linux",
-      "Effect-Desktop-Playground-0.0.0-linux-x64.deb",
-      "root",
-      "usr",
-      "lib",
-      "effect-desktop-inspector",
-      "renderer",
-      "secret.txt"
-    )
-    expect(exitCode).toBe(1)
-    expect(calls).toEqual([])
-    expect(stderr.join("")).toContain("PackageFileError")
-    expect(stderr.join("")).toContain("points outside")
-    await expectPromiseRejects(stat(stagedSecret))
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop package maps linux arm64 RPM metadata to aarch64", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-package-"))
-  try {
-    await writePlaygroundFixture(directory)
-    await writeBuildLayoutFixture(directory, "linux-arm64")
-    const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "linux")
-    const rpmPath = join(
-      outputRoot,
-      "Effect-Desktop-Playground-0.0.0-linux-arm64.rpm",
-      "Effect-Desktop-Playground-0.0.0-linux-arm64.rpm"
-    )
-    let spec = ""
-    let args: readonly string[] = []
-    const runner: PackageCommandRunner = (invocation) =>
-      Effect.gen(function* () {
-        args = invocation.args
-        const specPath = invocation.args[1]
-        if (typeof specPath === "string") {
-          spec = yield* readPackageFixtureText(invocation, specPath)
-        }
-        yield* runPackageFixtureIo(invocation, () => writeFile(rpmPath, "rpm"))
-      })
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["package", "--config", "apps/inspector/desktop.config.ts", "--artifact", "rpm"],
-        cwd: directory,
-        hostTarget: "linux-arm64",
-        packageCommandRunner: runner,
-        writeStdout: () => {},
-        writeStderr: () => {}
-      })
-    )
-
-    expect(exitCode).toBe(0)
-    expect(spec).toContain("BuildArch: aarch64")
-    expect(args).toContain("_rpmfilename Effect-Desktop-Playground-0.0.0-linux-arm64.rpm")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop package emits Windows per-user MSI with app-specific UpgradeCode", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-package-"))
-  try {
-    await writePlaygroundFixture(directory)
-    await writeBuildLayoutFixture(directory, "windows-x64")
-    const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "windows")
-    const msiPath = join(
-      outputRoot,
-      "Effect-Desktop-Playground-0.0.0-windows-x64.msi",
-      "Effect-Desktop-Playground-0.0.0-windows-x64.msi"
-    )
-    let wxs = ""
-    const runner: PackageCommandRunner = (invocation) =>
-      Effect.gen(function* () {
-        const wxsPath = invocation.args[1]
-        if (typeof wxsPath === "string") {
-          wxs = yield* readPackageFixtureText(invocation, wxsPath)
-        }
-        yield* runPackageFixtureIo(invocation, () => writeFile(msiPath, "msi"))
-      })
-
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: ["package", "--config", "apps/inspector/desktop.config.ts"],
-        cwd: directory,
-        hostTarget: "windows-x64",
-        packageCommandRunner: runner,
-        writeStdout: () => {},
-        writeStderr: () => {}
-      })
-    )
-
-    expect(exitCode).toBe(0)
-    expect(wxs).toContain('Scope="perUser"')
-    expect(wxs).toContain('<ComponentGroupRef Id="StartMenuShortcuts" />')
-    expect(wxs).toContain('<StandardDirectory Id="ProgramMenuFolder">')
-    expect(wxs).toContain(
-      '<Directory Id="ApplicationProgramsFolder" Name="Effect Desktop Playground" />'
-    )
-    expect(wxs).toContain(
-      '<Shortcut Id="ApplicationStartMenuShortcut" Name="Effect Desktop Playground" Description="Effect Desktop Playground" Target="[INSTALLFOLDER]native\\host.exe" WorkingDirectory="INSTALLFOLDER" />'
-    )
-    expect(wxs).toContain(
-      '<RemoveFolder Id="RemoveApplicationProgramsFolder" Directory="ApplicationProgramsFolder" On="uninstall" />'
-    )
-    expect(wxs).not.toContain("00000000-0000-0000-0000-000000000064")
-    expect(wxs).toMatch(
-      /UpgradeCode="[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"/
-    )
-    expect(wxs).toMatch(
-      /<Component Id="StartMenuShortcut" Guid="[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}">/
-    )
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-test("desktop package rejects Windows system-mode MSI as deferred scope", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-package-"))
-  try {
-    await writePlaygroundFixture(directory)
-    await writeBuildLayoutFixture(directory, "windows-x64")
-    const stderr: string[] = []
-    const exitCode = await Effect.runPromise(
-      runCli({
-        argv: [
-          "package",
-          "--config",
-          "apps/inspector/desktop.config.ts",
-          "--artifact",
-          "system-msi"
-        ],
-        cwd: directory,
-        hostTarget: "windows-x64",
-        packageCommandRunner: () => Effect.void,
-        writeStdout: () => {},
-        writeStderr: (text) => {
-          stderr.push(text)
-        }
-      })
-    )
-
-    expect(exitCode).toBe(1)
-    expect(stderr.join("")).toContain("PackageUnsupportedArtifactError")
-    expect(stderr.join("")).toContain("deferred to v1.1")
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-})
-
-const writePlaygroundFixture = async (
-  directory: string,
-  extraConfig: Record<string, unknown> = {}
-): Promise<void> => {
-  const appRoot = join(directory, "apps", "inspector")
-  const config = {
-    app: {
-      id: "dev.effect-desktop.inspector",
-      name: "Effect Desktop Playground",
-      version: "0.0.0"
-    },
-    runtime: { entry: "runtime.ts" },
-    renderer: {
-      entry: "src/renderer/main.tsx",
-      dist: "dist"
-    },
-    ...extraConfig
-  }
-  await mkdir(appRoot, { recursive: true })
-  await mkdir(join(appRoot, "src", "renderer"), { recursive: true })
-  await writeFile(
-    join(appRoot, "desktop.config.ts"),
-    `export default ${JSON.stringify(config, null, 2)} as const\n`
-  )
-  await writeFile(join(appRoot, "package.json"), '{"type":"module"}\n')
-  await writeFile(join(appRoot, "runtime.ts"), "console.log('runtime')\n")
-  await writeFile(join(appRoot, "src/renderer/main.tsx"), "console.log('renderer')\n")
-  await mkdir(join(directory, "target", "debug"), { recursive: true })
-}
-
-const writeBuildLayoutFixture = async (
+const writeBuildLayoutFixture = (
   directory: string,
   target: Extract<DesktopTargetId, "linux-arm64" | "linux-x64" | "macos-arm64" | "windows-x64">,
   runtimeEngine: "bun" | "node" = "bun"
-): Promise<void> => {
-  const layout = join(directory, "apps", "inspector", "build", "effect-desktop", target)
-  const hostBinary = hostBinaryName(target)
-  await mkdir(join(layout, "renderer"), { recursive: true })
-  await mkdir(join(layout, "runtime"), { recursive: true })
-  await mkdir(join(layout, "native"), { recursive: true })
-  await writeFile(join(layout, "renderer", "index.html"), "<h1>ok</h1>")
-  await writeFile(join(layout, "runtime", "main.js"), "console.log('runtime')\n")
-  await writeFile(join(layout, "native", hostBinary), "host")
-  await writeFile(
-    join(layout, "app-manifest.json"),
-    `${JSON.stringify(
-      {
-        id: "dev.effect-desktop.inspector",
-        name: "Effect Desktop Playground",
-        version: "0.0.0",
-        target,
-        renderer: { path: "renderer" },
-        runtimeManifest: {
-          engine: runtimeEngine,
-          entry: "runtime/main.js",
-          executable: runtimeEngine,
-          args: ["runtime/main.js"],
-          env: {}
-        },
-        nativeHost: { binary: `native/${hostBinary}` }
-      },
-      null,
-      2
-    )}\n`
-  )
-  await writeFile(
-    join(layout, "build-report.json"),
-    `${JSON.stringify(
-      {
-        appId: "dev.effect-desktop.inspector",
-        appName: "Effect Desktop Playground",
-        appVersion: "0.0.0",
-        target,
-        providers: {
-          runtime: runtimeEngine,
-          runtimePackaging: "source",
-          webEngine: "system"
-        },
-        providerBudgets: [
+): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    const layout = join(directory, "apps", "inspector", "build", "effect-desktop", target)
+    const hostBinary = hostBinaryName(target)
+    yield* Effect.promise(() => mkdir(join(layout, "renderer"), { recursive: true }))
+    yield* Effect.promise(() => mkdir(join(layout, "runtime"), { recursive: true }))
+    yield* Effect.promise(() => mkdir(join(layout, "native"), { recursive: true }))
+    yield* Effect.promise(() => writeFile(join(layout, "renderer", "index.html"), "<h1>ok</h1>"))
+    yield* Effect.promise(() =>
+      writeFile(join(layout, "runtime", "main.js"), "console.log('runtime')\n")
+    )
+    yield* Effect.promise(() => writeFile(join(layout, "native", hostBinary), "host"))
+    yield* Effect.promise(() =>
+      writeFile(
+        join(layout, "app-manifest.json"),
+        `${stringifyJson(
           {
-            id: runtimeEngine,
-            kind: "runtime",
-            package: runtimeEngine === "bun" ? "@effect/platform-bun" : "@effect/platform-node",
-            importPath: `@effect-desktop/core/providers/${runtimeEngine}`,
-            startupBudgetMs: 25,
-            bundleBudgetKb: 64
-          }
-        ],
-        providerMeasurements: []
-      },
-      null,
-      2
-    )}\n`
-  )
-}
+            id: "dev.effect-desktop.inspector",
+            name: "Effect Desktop Playground",
+            version: "0.0.0",
+            target,
+            renderer: { path: "renderer" },
+            runtimeManifest: {
+              engine: runtimeEngine,
+              entry: "runtime/main.js",
+              executable: runtimeEngine,
+              args: ["runtime/main.js"],
+              env: {}
+            },
+            nativeHost: { binary: `native/${hostBinary}` }
+          },
+          2
+        )}\n`
+      )
+    )
+    yield* Effect.promise(() =>
+      writeFile(
+        join(layout, "build-report.json"),
+        `${stringifyJson(
+          {
+            appId: "dev.effect-desktop.inspector",
+            appName: "Effect Desktop Playground",
+            appVersion: "0.0.0",
+            target,
+            providers: {
+              runtime: runtimeEngine,
+              runtimePackaging: "source",
+              webEngine: "system"
+            },
+            providerBudgets: [
+              {
+                id: runtimeEngine,
+                kind: "runtime",
+                package: runtimeEngine === "bun" ? "@effect/platform-bun" : "@effect/platform-node",
+                importPath: `@effect-desktop/core/providers/${runtimeEngine}`,
+                startupBudgetMs: 25,
+                bundleBudgetKb: 64
+              }
+            ],
+            providerMeasurements: []
+          },
+          2
+        )}\n`
+      )
+    )
+  })
 
 const fakeReleaseServices = (calls: string[], target: DesktopTargetId): ReleaseWorkflowApi => ({
   package: () =>
@@ -8725,115 +9668,130 @@ const fakeReleaseServices = (calls: string[], target: DesktopTargetId): ReleaseW
     })
 })
 
-const writePackagedArtifactFixture = async (
+const writePackagedArtifactFixture = (
   directory: string,
   target: Extract<DesktopTargetId, "linux-x64" | "macos-arm64" | "windows-x64">,
   kind: Extract<DesktopArtifactKind, "app" | "appimage" | "dmg" | "msi" | "zip">
-): Promise<string> => {
-  const platform = desktopPlatformDirectory(target)
-  const extension = desktopArtifactExtension(kind)
-  const root = join(
-    directory,
-    "apps",
-    "inspector",
-    "dist",
-    "desktop",
-    platform,
-    `Effect-Desktop-Playground-0.0.0-${target}.${extension}`
-  )
-  const fileName =
-    kind === "app"
-      ? "Effect-Desktop-Playground.app"
-      : `Effect-Desktop-Playground-0.0.0-${target}.${extension}`
-  const artifactPath = join(root, fileName)
-  if (kind === "app") {
-    await mkdir(join(artifactPath, "Contents", "MacOS"), { recursive: true })
-    await mkdir(join(artifactPath, "Contents", "Resources", "effect-desktop", "native"), {
-      recursive: true
-    })
-    await mkdir(join(artifactPath, "Contents", "Resources", "effect-desktop", "runtime"), {
-      recursive: true
-    })
-    await writeFile(join(artifactPath, "Contents", "MacOS", "Effect-Desktop-Playground"), "host")
-    await writeFile(
-      join(artifactPath, "Contents", "Resources", "effect-desktop", "native", "host"),
-      "host"
+): Effect.Effect<string, never, never> =>
+  Effect.gen(function* () {
+    const platform = desktopPlatformDirectory(target)
+    const extension = desktopArtifactExtension(kind)
+    const root = join(
+      directory,
+      "apps",
+      "inspector",
+      "dist",
+      "desktop",
+      platform,
+      `Effect-Desktop-Playground-0.0.0-${target}.${extension}`
     )
-    await writeFile(
-      join(artifactPath, "Contents", "Resources", "effect-desktop", "runtime", "main.js"),
-      "runtime"
-    )
-  } else {
-    await mkdir(root, { recursive: true })
-    await writeFile(artifactPath, kind)
-  }
-  const digest = await digestArtifactFixture(artifactPath)
-  const linuxIntegration =
-    platform === "linux"
-      ? {
-          linuxIntegration: {
-            desktopFile: "dev.effect-desktop.inspector.desktop",
-            appStreamId: "dev.effect-desktop.inspector.metainfo.xml",
-            flatpakAppId: "dev.effect-desktop.inspector",
-            snapName: "dev.effect-desktop.inspector"
+    const fileName =
+      kind === "app"
+        ? "Effect-Desktop-Playground.app"
+        : `Effect-Desktop-Playground-0.0.0-${target}.${extension}`
+    const artifactPath = join(root, fileName)
+    if (kind === "app") {
+      yield* Effect.promise(() =>
+        mkdir(join(artifactPath, "Contents", "MacOS"), { recursive: true })
+      )
+      yield* Effect.promise(() =>
+        mkdir(join(artifactPath, "Contents", "Resources", "effect-desktop", "native"), {
+          recursive: true
+        })
+      )
+      yield* Effect.promise(() =>
+        mkdir(join(artifactPath, "Contents", "Resources", "effect-desktop", "runtime"), {
+          recursive: true
+        })
+      )
+      yield* Effect.promise(() =>
+        writeFile(join(artifactPath, "Contents", "MacOS", "Effect-Desktop-Playground"), "host")
+      )
+      yield* Effect.promise(() =>
+        writeFile(
+          join(artifactPath, "Contents", "Resources", "effect-desktop", "native", "host"),
+          "host"
+        )
+      )
+      yield* Effect.promise(() =>
+        writeFile(
+          join(artifactPath, "Contents", "Resources", "effect-desktop", "runtime", "main.js"),
+          "runtime"
+        )
+      )
+    } else {
+      yield* Effect.promise(() => mkdir(root, { recursive: true }))
+      yield* Effect.promise(() => writeFile(artifactPath, kind))
+    }
+    const digest = yield* digestArtifactFixture(artifactPath)
+    const linuxIntegration =
+      platform === "linux"
+        ? {
+            linuxIntegration: {
+              desktopFile: "dev.effect-desktop.inspector.desktop",
+              appStreamId: "dev.effect-desktop.inspector.metainfo.xml",
+              flatpakAppId: "dev.effect-desktop.inspector",
+              snapName: "dev.effect-desktop.inspector"
+            }
           }
-        }
-      : {}
-  await writeFile(
-    join(root, "artifact.json"),
-    `${JSON.stringify(
-      {
-        appId: "dev.effect-desktop.inspector",
-        appName: "Effect Desktop Playground",
-        appVersion: "0.0.0",
-        kind,
-        target,
-        fileName,
-        ...digest,
-        ...linuxIntegration
-      },
-      null,
-      2
-    )}\n`
-  )
-  return artifactPath
-}
+        : {}
+    yield* Effect.promise(() =>
+      writeFile(
+        join(root, "artifact.json"),
+        `${stringifyJson(
+          {
+            appId: "dev.effect-desktop.inspector",
+            appName: "Effect Desktop Playground",
+            appVersion: "0.0.0",
+            kind,
+            target,
+            fileName,
+            ...digest,
+            ...linuxIntegration
+          },
+          2
+        )}\n`
+      )
+    )
+    return artifactPath
+  })
 
-const digestArtifactFixture = async (
+const digestArtifactFixture = (
   path: string
-): Promise<{ readonly sizeBytes: number; readonly sha256: string }> => {
-  const pathStat = await stat(path)
-  if (!pathStat.isDirectory()) {
-    const bytes = await readFile(path)
-    return {
-      sizeBytes: bytes.byteLength,
-      sha256: createHash("sha256").update(bytes).digest("hex")
+): Effect.Effect<{ readonly sizeBytes: number; readonly sha256: string }, never, never> =>
+  Effect.gen(function* () {
+    const pathStat = yield* Effect.promise(() => stat(path))
+    if (!pathStat.isDirectory()) {
+      const bytes = yield* Effect.promise(() => readFile(path))
+      return {
+        sizeBytes: bytes.byteLength,
+        sha256: createHash("sha256").update(bytes).digest("hex")
+      }
     }
-  }
-  const files = await listFixtureFiles(path)
-  const hash = createHash("sha256")
-  let sizeBytes = 0
-  for (const file of files.toSorted((left, right) =>
-    left.relativePath.localeCompare(right.relativePath)
-  )) {
-    hash.update(file.kind)
-    hash.update("\0")
-    hash.update(file.relativePath)
-    hash.update("\0")
-    hash.update((file.mode & 0o777).toString(8))
-    hash.update("\0")
-    if (file.kind !== "file") {
-      hash.update(file.target)
+    const files = yield* listFixtureFiles(path)
+    const hash = createHash("sha256")
+    let sizeBytes = 0
+    for (const file of files.toSorted((left, right) =>
+      left.relativePath.localeCompare(right.relativePath)
+    )) {
+      hash.update(file.kind)
       hash.update("\0")
-      continue
+      hash.update(file.relativePath)
+      hash.update("\0")
+      hash.update((file.mode & 0o777).toString(8))
+      hash.update("\0")
+      if (file.kind !== "file") {
+        hash.update(file.target)
+        hash.update("\0")
+        continue
+      }
+      const content = yield* Effect.promise(() => readFile(file.absolutePath))
+      sizeBytes += content.byteLength
+      hash.update(content)
+      hash.update("\0")
     }
-    const content = await readFile(file.absolutePath)
-    sizeBytes += content.byteLength
-    hash.update(content)
-    hash.update("\0")
-  }
-  return { sizeBytes, sha256: hash.digest("hex") }
-}
+    return { sizeBytes, sha256: hash.digest("hex") }
+  })
 
 type FixtureDirectoryEntryKind = "directory" | "file" | "symlink"
 
@@ -8845,130 +9803,139 @@ interface FixtureDirectoryEntry {
   readonly target: string
 }
 
-const listFixtureFiles = async (path: string): Promise<readonly FixtureDirectoryEntry[]> =>
-  walkFixtureFiles(path, path)
+const listFixtureFiles = (
+  path: string
+): Effect.Effect<readonly FixtureDirectoryEntry[], never, never> => walkFixtureFiles(path, path)
 
-const walkFixtureFiles = async (
+const walkFixtureFiles = (
   rootPath: string,
   currentPath: string
-): Promise<readonly FixtureDirectoryEntry[]> => {
-  const entries = await readdir(currentPath)
-  const files: FixtureDirectoryEntry[] = []
-  for (const entry of entries.toSorted()) {
-    const child = join(currentPath, entry)
-    const childStat = await lstat(child)
-    const childRelativePath = relative(rootPath, child)
-    if (childStat.isDirectory()) {
-      files.push({
-        absolutePath: child,
-        kind: "directory",
-        relativePath: childRelativePath,
-        mode: Number(childStat.mode),
-        target: ""
-      })
-      files.push(...(await walkFixtureFiles(rootPath, child)))
-    } else if (childStat.isSymbolicLink()) {
-      files.push({
-        absolutePath: child,
-        kind: "symlink",
-        relativePath: childRelativePath,
-        mode: Number(childStat.mode),
-        target: await readlink(child)
-      })
-    } else {
-      files.push({
-        absolutePath: child,
-        kind: "file",
-        relativePath: childRelativePath,
-        mode: Number(childStat.mode),
-        target: ""
-      })
+): Effect.Effect<readonly FixtureDirectoryEntry[], never, never> =>
+  Effect.gen(function* () {
+    const entries = yield* Effect.promise(() => readdir(currentPath))
+    const files: FixtureDirectoryEntry[] = []
+    for (const entry of entries.toSorted()) {
+      const child = join(currentPath, entry)
+      const childStat = yield* Effect.promise(() => lstat(child))
+      const childRelativePath = relative(rootPath, child)
+      if (childStat.isDirectory()) {
+        files.push({
+          absolutePath: child,
+          kind: "directory",
+          relativePath: childRelativePath,
+          mode: Number(childStat.mode),
+          target: ""
+        })
+        files.push(...(yield* walkFixtureFiles(rootPath, child)))
+      } else if (childStat.isSymbolicLink()) {
+        const linkTarget = yield* Effect.promise(() => readlink(child))
+        files.push({
+          absolutePath: child,
+          kind: "symlink",
+          relativePath: childRelativePath,
+          mode: Number(childStat.mode),
+          target: linkTarget
+        })
+      } else {
+        files.push({
+          absolutePath: child,
+          kind: "file",
+          relativePath: childRelativePath,
+          mode: Number(childStat.mode),
+          target: ""
+        })
+      }
     }
-  }
-  return files
-}
+    return files
+  })
 
-const writeApiFixturePackage = async (root: string, source: string): Promise<void> => {
-  const packageRoot = join(root, "packages", "fixture")
-  await mkdir(join(packageRoot, "src"), { recursive: true })
-  await writeFile(
-    join(packageRoot, "package.json"),
-    JSON.stringify(
-      {
-        name: "@effect-desktop/fixture",
-        type: "module",
-        exports: {
-          ".": {
-            types: "./src/index.ts",
-            default: "./src/index.ts"
-          }
-        }
-      },
-      null,
-      2
+const writeApiFixturePackage = (root: string, source: string): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    const packageRoot = join(root, "packages", "fixture")
+    yield* Effect.promise(() => mkdir(join(packageRoot, "src"), { recursive: true }))
+    yield* Effect.promise(() =>
+      writeFile(
+        join(packageRoot, "package.json"),
+        stringifyJson(
+          {
+            name: "@effect-desktop/fixture",
+            type: "module",
+            exports: {
+              ".": {
+                types: "./src/index.ts",
+                default: "./src/index.ts"
+              }
+            }
+          },
+          2
+        )
+      )
     )
-  )
-  await writeFile(
-    join(packageRoot, "tsconfig.json"),
-    JSON.stringify(
-      {
-        compilerOptions: {
-          target: "ESNext",
-          module: "NodeNext",
-          moduleResolution: "NodeNext",
-          strict: true,
-          noEmit: true,
-          skipLibCheck: true,
-          types: []
-        },
-        include: ["src"]
-      },
-      null,
-      2
+    yield* Effect.promise(() =>
+      writeFile(
+        join(packageRoot, "tsconfig.json"),
+        stringifyJson(
+          {
+            compilerOptions: {
+              target: "ESNext",
+              module: "NodeNext",
+              moduleResolution: "NodeNext",
+              strict: true,
+              noEmit: true,
+              skipLibCheck: true,
+              types: []
+            },
+            include: ["src"]
+          },
+          2
+        )
+      )
     )
-  )
-  await writeFile(join(packageRoot, "src", "index.ts"), source)
-}
+    yield* Effect.promise(() => writeFile(join(packageRoot, "src", "index.ts"), source))
+  })
 
-const writeDocsFixture = async (
+const writeDocsFixture = (
   root: string,
   pages: Readonly<Record<string, string>>
-): Promise<void> => {
-  await writeDocsManifest(
-    root,
-    Object.keys(pages).map((path) => ({
-      id: "installation",
-      title: "Installation",
-      path
-    }))
-  )
-  for (const [path, body] of Object.entries(pages)) {
-    await mkdir(dirname(join(root, path)), { recursive: true })
-    await writeFile(join(root, path), body)
-  }
-}
+): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    yield* writeDocsManifest(
+      root,
+      Object.keys(pages).map((path) => ({
+        id: "installation",
+        title: "Installation",
+        path
+      }))
+    )
+    for (const [path, body] of Object.entries(pages)) {
+      yield* Effect.promise(() => mkdir(dirname(join(root, path)), { recursive: true }))
+      yield* Effect.promise(() => writeFile(join(root, path), body))
+    }
+  })
 
-const writeDocsManifest = async (
+const writeDocsManifest = (
   root: string,
   pages: readonly unknown[],
   source = "test"
-): Promise<void> => {
-  await mkdir(join(root, "docs"), { recursive: true })
-  await writeFile(
-    join(root, "docs", "docs-manifest.json"),
-    JSON.stringify(
-      {
-        schemaVersion: 1,
-        source,
-        pages
-      },
-      null,
-      2
+): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    yield* Effect.promise(() => mkdir(join(root, "docs"), { recursive: true }))
+    yield* Effect.promise(() =>
+      writeFile(
+        join(root, "docs", "docs-manifest.json"),
+        stringifyJson(
+          {
+            schemaVersion: 1,
+            source,
+            pages
+          },
+          2
+        )
+      )
     )
-  )
-}
+  })
 
-const writeReleaseFixture = async (
+const writeReleaseFixture = (
   root: string,
   overrides: {
     readonly checklist?: unknown
@@ -8977,33 +9944,44 @@ const writeReleaseFixture = async (
     readonly keyManagement?: string
     readonly releaseSettings?: string
   } = {}
-): Promise<void> => {
-  await mkdir(join(root, "release"), { recursive: true })
-  await mkdir(join(root, ".github", "workflows"), { recursive: true })
-  await mkdir(join(root, "engineering", "security"), { recursive: true })
-  await writeFile(
-    join(root, "release", "checklist.json"),
-    JSON.stringify(overrides.checklist ?? releaseChecklistFixture(), null, 2)
-  )
-  await writeFile(
-    join(root, ".github", "workflows", "ci.yml"),
-    overrides.ciWorkflow ?? ciWorkflowFixture()
-  )
-  await writeFile(
-    join(root, ".github", "workflows", "release.yml"),
-    overrides.releaseWorkflow ?? releaseWorkflowFixture()
-  )
-  await writeFile(
-    join(root, "engineering", "security", "key-management.md"),
-    overrides.keyManagement ?? keyManagementFixture()
-  )
-  await writeFile(
-    join(root, "engineering", "security", "release-settings.md"),
-    overrides.releaseSettings ?? releaseSettingsFixture()
-  )
-}
+): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    yield* Effect.promise(() => mkdir(join(root, "release"), { recursive: true }))
+    yield* Effect.promise(() => mkdir(join(root, ".github", "workflows"), { recursive: true }))
+    yield* Effect.promise(() => mkdir(join(root, "engineering", "security"), { recursive: true }))
+    yield* Effect.promise(() =>
+      writeFile(
+        join(root, "release", "checklist.json"),
+        stringifyJson(overrides.checklist ?? releaseChecklistFixture(), 2)
+      )
+    )
+    yield* Effect.promise(() =>
+      writeFile(
+        join(root, ".github", "workflows", "ci.yml"),
+        overrides.ciWorkflow ?? ciWorkflowFixture()
+      )
+    )
+    yield* Effect.promise(() =>
+      writeFile(
+        join(root, ".github", "workflows", "release.yml"),
+        overrides.releaseWorkflow ?? releaseWorkflowFixture()
+      )
+    )
+    yield* Effect.promise(() =>
+      writeFile(
+        join(root, "engineering", "security", "key-management.md"),
+        overrides.keyManagement ?? keyManagementFixture()
+      )
+    )
+    yield* Effect.promise(() =>
+      writeFile(
+        join(root, "engineering", "security", "release-settings.md"),
+        overrides.releaseSettings ?? releaseSettingsFixture()
+      )
+    )
+  })
 
-const writeAccessibilityFixture = async (
+const writeAccessibilityFixture = (
   root: string,
   overrides: {
     readonly manifest?: unknown
@@ -9015,38 +9993,55 @@ const writeAccessibilityFixture = async (
     readonly axeUrlForMode?: (mode: string) => string
     readonly pa11yUrlForMode?: (mode: string) => string
   } = {}
-): Promise<void> => {
-  const auditRoot = join(root, "engineering", "audits", "v1.0.0", "fixture-a11y")
-  const sourceRoot = join(root, "apps", "fixture-a11y", "src")
-  await mkdir(join(root, "release"), { recursive: true })
-  await mkdir(auditRoot, { recursive: true })
-  await mkdir(sourceRoot, { recursive: true })
-  await writeFile(
-    join(root, "release", "accessibility.json"),
-    JSON.stringify(overrides.manifest ?? accessibilityManifestFixture(), null, 2)
-  )
-  await writeFile(join(sourceRoot, "App.tsx"), overrides.appSource ?? accessibilityAppFixture())
-  await writeFile(join(sourceRoot, "styles.css"), overrides.styles ?? accessibilityStylesFixture())
-  await writeFile(
-    join(sourceRoot, "messages.ts"),
-    overrides.messages ?? accessibilityMessagesFixture()
-  )
-  await writeFile(
-    join(auditRoot, "manual-keyboard.md"),
-    overrides.manualAudit ?? accessibilityManualAuditFixture()
-  )
-  await writeFile(join(auditRoot, "keyboard-walkthrough.webm"), "fixture screencast\n")
-  for (const mode of ["light-ltr", "dark-ltr", "light-rtl", "dark-rtl"]) {
-    await writeFile(
-      join(auditRoot, `axe.${mode}.json`),
-      JSON.stringify(axeAuditFixture(mode, overrides.axePasses, overrides.axeUrlForMode), null, 2)
+): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    const auditRoot = join(root, "engineering", "audits", "v1.0.0", "fixture-a11y")
+    const sourceRoot = join(root, "apps", "fixture-a11y", "src")
+    yield* Effect.promise(() => mkdir(join(root, "release"), { recursive: true }))
+    yield* Effect.promise(() => mkdir(auditRoot, { recursive: true }))
+    yield* Effect.promise(() => mkdir(sourceRoot, { recursive: true }))
+    yield* Effect.promise(() =>
+      writeFile(
+        join(root, "release", "accessibility.json"),
+        stringifyJson(overrides.manifest ?? accessibilityManifestFixture(), 2)
+      )
     )
-    await writeFile(
-      join(auditRoot, `pa11y.${mode}.json`),
-      JSON.stringify(pa11yAuditFixture(mode, overrides.pa11yUrlForMode), null, 2)
+    yield* Effect.promise(() =>
+      writeFile(join(sourceRoot, "App.tsx"), overrides.appSource ?? accessibilityAppFixture())
     )
-  }
-}
+    yield* Effect.promise(() =>
+      writeFile(join(sourceRoot, "styles.css"), overrides.styles ?? accessibilityStylesFixture())
+    )
+    yield* Effect.promise(() =>
+      writeFile(
+        join(sourceRoot, "messages.ts"),
+        overrides.messages ?? accessibilityMessagesFixture()
+      )
+    )
+    yield* Effect.promise(() =>
+      writeFile(
+        join(auditRoot, "manual-keyboard.md"),
+        overrides.manualAudit ?? accessibilityManualAuditFixture()
+      )
+    )
+    yield* Effect.promise(() =>
+      writeFile(join(auditRoot, "keyboard-walkthrough.webm"), "fixture screencast\n")
+    )
+    for (const mode of ["light-ltr", "dark-ltr", "light-rtl", "dark-rtl"]) {
+      yield* Effect.promise(() =>
+        writeFile(
+          join(auditRoot, `axe.${mode}.json`),
+          stringifyJson(axeAuditFixture(mode, overrides.axePasses, overrides.axeUrlForMode), 2)
+        )
+      )
+      yield* Effect.promise(() =>
+        writeFile(
+          join(auditRoot, `pa11y.${mode}.json`),
+          stringifyJson(pa11yAuditFixture(mode, overrides.pa11yUrlForMode), 2)
+        )
+      )
+    }
+  })
 
 const accessibilityManifestFixture = (): unknown => ({
   schemaVersion: 1,
@@ -9183,31 +10178,38 @@ const pa11yAuditFixture = (
   issues: []
 })
 
-const writeSemverFixture = async (
+const writeSemverFixture = (
   root: string,
   overrides: {
     readonly manifest?: unknown
     readonly matrix?: unknown
     readonly packageVersion?: string
   } = {}
-): Promise<void> => {
-  await mkdir(join(root, "release"), { recursive: true })
-  await mkdir(join(root, "engineering"), { recursive: true })
-  await mkdir(join(root, "packages", "core"), { recursive: true })
-  await writeFile(
-    join(root, "release", "semver.json"),
-    JSON.stringify(overrides.manifest ?? semverManifestFixture(), null, 2)
-  )
-  await writeFile(
-    join(root, "engineering", "verification-matrix.json"),
-    JSON.stringify(overrides.matrix ?? semverMatrixFixture(), null, 2)
-  )
-  const packageVersion = overrides.packageVersion ?? "0.0.0"
-  await writeFile(
-    join(root, "packages", "core", "package.json"),
-    JSON.stringify({ name: "@effect-desktop/core", version: packageVersion }, null, 2)
-  )
-}
+): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    yield* Effect.promise(() => mkdir(join(root, "release"), { recursive: true }))
+    yield* Effect.promise(() => mkdir(join(root, "engineering"), { recursive: true }))
+    yield* Effect.promise(() => mkdir(join(root, "packages", "core"), { recursive: true }))
+    yield* Effect.promise(() =>
+      writeFile(
+        join(root, "release", "semver.json"),
+        stringifyJson(overrides.manifest ?? semverManifestFixture(), 2)
+      )
+    )
+    yield* Effect.promise(() =>
+      writeFile(
+        join(root, "engineering", "verification-matrix.json"),
+        stringifyJson(overrides.matrix ?? semverMatrixFixture(), 2)
+      )
+    )
+    const packageVersion = overrides.packageVersion ?? "0.0.0"
+    yield* Effect.promise(() =>
+      writeFile(
+        join(root, "packages", "core", "package.json"),
+        stringifyJson({ name: "@effect-desktop/core", version: packageVersion }, 2)
+      )
+    )
+  })
 
 const semverManifestFixture = (): unknown => ({
   schemaVersion: 1,

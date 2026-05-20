@@ -104,6 +104,11 @@ export class WorkerResourceBusyError extends Data.TaggedError("ResourceBusy")<{
   readonly maxConcurrent: number
 }> {}
 
+class WorkerShutdownStageFailure extends Data.TaggedError("WorkerShutdownStageFailure")<{
+  readonly stage: "postMessage" | "terminate"
+  readonly cause: unknown
+}> {}
+
 export class WorkerStaleHandleError extends Data.TaggedError("StaleHandle")<{
   readonly operation: string
   readonly kind: string
@@ -402,7 +407,9 @@ export const makeWorker = (
     } satisfies WorkerApi)
   })
 
-export class Worker extends Context.Service<Worker, WorkerApi>()("Worker") {}
+export class Worker extends Context.Service<Worker, WorkerApi>()(
+  "@effect-desktop/core/runtime/worker"
+) {}
 
 export const WorkerLive = Layer.effect(
   Worker,
@@ -442,12 +449,13 @@ const makeHandle = <In, Out>(
 
   return Object.freeze({
     resource,
-    send: (message: unknown) =>
-      Effect.gen(function* () {
-        const decoded = yield* decodeInput(message, inputSchema, script)
-        yield* assertWorkerHandleFresh(registry, resource, "Worker.send")
-        yield* runtime.send(decoded)
-      }).pipe(Effect.withSpan("Worker.send", { attributes: { script, resourceId: resource.id } })),
+    send: Effect.fn("Worker.send", {
+      attributes: { script, resourceId: resource.id }
+    })(function* (message: unknown) {
+      const decoded = yield* decodeInput(message, inputSchema, script)
+      yield* assertWorkerHandleFresh(registry, resource, "Worker.send")
+      yield* runtime.send(decoded)
+    }),
     messages,
     close: resource.dispose()
   })
@@ -939,7 +947,7 @@ const shutdownBunWorker = (
     shutdownRequested.current = true
     yield* Effect.try({
       try: () => worker.postMessage({ _tag: "Shutdown" }),
-      catch: (cause) => cause
+      catch: (cause) => new WorkerShutdownStageFailure({ stage: "postMessage", cause })
     }).pipe(
       Effect.tapError((cause) => warnShutdownFailure("postMessage", cause)),
       Effect.ignore
@@ -951,7 +959,7 @@ const shutdownBunWorker = (
     if (Option.isNone(gracefulExit)) {
       yield* Effect.try({
         try: () => worker.terminate(),
-        catch: (cause) => cause
+        catch: (cause) => new WorkerShutdownStageFailure({ stage: "terminate", cause })
       }).pipe(
         Effect.tapError((cause) => warnShutdownFailure("terminate", cause)),
         Effect.ignore

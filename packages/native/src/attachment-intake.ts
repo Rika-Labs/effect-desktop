@@ -53,13 +53,6 @@ export * from "./contracts/attachment-intake.js"
 const Surface = "AttachmentIntake"
 const UnsupportedReason = "host-adapter-unimplemented"
 const AttachmentIntakeEventMethod = "AttachmentIntake.Event"
-const UnsupportedSupport = NativeSurface.support.unsupported(UnsupportedReason, {
-  platforms: [
-    { platform: "macos", status: "unsupported", reason: UnsupportedReason },
-    { platform: "windows", status: "unsupported", reason: UnsupportedReason },
-    { platform: "linux", status: "unsupported", reason: UnsupportedReason }
-  ]
-})
 
 export type AttachmentIntakeError = HostProtocolError
 
@@ -545,7 +538,7 @@ function attachmentIntakeRpc<
     success,
     authority: NativeSurface.authority.custom(capability),
     endpoint: "mutation",
-    support: UnsupportedSupport
+    support: NativeSurface.support.supported
   })
 }
 

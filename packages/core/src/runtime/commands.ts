@@ -1,4 +1,5 @@
 import {
+  Cause,
   Clock,
   Context,
   Data,
@@ -155,7 +156,7 @@ interface StoredCommand {
   readonly invoke: (
     input: unknown,
     context: PermissionContext
-  ) => Effect.Effect<unknown, unknown, never>
+  ) => Effect.Effect<unknown, CommandRegistryHandlerFailureError | PermissionDenied, never>
   readonly invocationCount: number
   readonly lastInvocation?: CommandInvocationRecord
   readonly lastError?: CommandInvocationRecord
@@ -209,23 +210,20 @@ export const makeCommandRegistry = (
           now,
           registration
         ).pipe(Effect.withSpan("CommandRegistry.registerGroup")),
-      unregister: (id) =>
-        Effect.gen(function* () {
-          const decodedId = yield* decodeCommandId(id, "CommandRegistry.unregister")
-          const command = yield* remove(decodedId)
+      unregister: Effect.fn("CommandRegistry.unregister")(function* (id: string) {
+        const decodedId = yield* decodeCommandId(id, "CommandRegistry.unregister")
+        const command = yield* remove(decodedId)
 
-          if (command === undefined) {
-            return yield* Effect.fail(
-              new CommandRegistryCommandNotFoundError({
-                operation: "CommandRegistry.unregister",
-                commandId: decodedId
-              })
-            )
-          }
+        if (command === undefined) {
+          return yield* new CommandRegistryCommandNotFoundError({
+            operation: "CommandRegistry.unregister",
+            commandId: decodedId
+          })
+        }
 
-          yield* resources.dispose(command.resourceId)
-          yield* auditCommand(options.audit, "command-unregistered", decodedId, "unregistered", now)
-        }).pipe(Effect.withSpan("CommandRegistry.unregister")),
+        yield* resources.dispose(command.resourceId)
+        yield* auditCommand(options.audit, "command-unregistered", decodedId, "unregistered", now)
+      }),
       invoke: (id, input, context) =>
         invokeCommand(commands, invocations, options.audit, now, id, input, context),
       list: () =>
@@ -254,7 +252,7 @@ export const makeCommandRegistry = (
   })
 
 export class CommandRegistry extends Context.Service<CommandRegistry, CommandRegistryApi>()(
-  "CommandRegistry",
+  "@effect-desktop/core/runtime/commands/CommandRegistry",
   {
     make: Effect.gen(function* () {
       const resources = yield* ResourceRegistry
@@ -501,14 +499,24 @@ const registerCommandGroup = <Rpcs extends Rpc.Any, E, R>(
     reservedToken = registrationToken
     const scope = yield* Scope.make()
     commandScope = scope
+    // ToHandler<AddMiddleware<Rpcs, M>> reduces to ToHandler<Rpcs> for every
+    // concrete Rpcs (both expand to Handler<Tag>), but TS cannot reduce the
+    // conditional for the unbound `Rpcs` generic. Re-tag the handlers Layer at
+    // the middleware-decorated handler type so Effect.provide closes the
+    // requirements channel structurally.
+    const middlewareHandlers = registration.handlers as unknown as Layer.Layer<
+      Rpc.ToHandler<Rpc.AddMiddleware<Rpcs, typeof PermissionInterceptor>>,
+      E,
+      R
+    >
+    const clientContext = yield* Layer.build(
+      Layer.mergeAll(middlewareHandlers, makePermissionInterceptorLayer()).pipe(
+        Layer.provideMerge(Layer.succeed(PermissionRegistry, permissions))
+      )
+    ).pipe(Scope.provide(scope))
     const client = yield* RpcTest.makeClient(
       registration.group.middleware(PermissionInterceptor)
-    ).pipe(
-      Effect.provide(registration.handlers),
-      Effect.provide(makePermissionInterceptorLayer()),
-      Effect.provideService(PermissionRegistry, permissions),
-      Scope.provide(scope)
-    )
+    ).pipe(Effect.provide(clientContext), Scope.provide(scope))
     const prepared = yield* prepareCommandGroup(registration, client, registrationToken)
     reservedIds = prepared.map((command) => command.id)
     const resourceId = commandGroupResourceId(reservedIds)
@@ -533,12 +541,10 @@ const registerCommandGroup = <Rpcs extends Rpc.Any, E, R>(
 
     if (!reserved) {
       completed = true
-      return yield* Effect.fail(
-        new CommandRegistryCommandAlreadyRegisteredError({
-          operation: "CommandRegistry.registerGroup",
-          commandId: reservedIds.find((id) => id.length > 0) ?? "unknown"
-        })
-      )
+      return yield* new CommandRegistryCommandAlreadyRegisteredError({
+        operation: "CommandRegistry.registerGroup",
+        commandId: reservedIds.find((id) => id.length > 0) ?? "unknown"
+      })
     }
 
     const registeredHandle = yield* resources
@@ -574,13 +580,11 @@ const registerCommandGroup = <Rpcs extends Rpc.Any, E, R>(
       return [true, next] as const
     })
     if (!committed) {
-      return yield* Effect.fail(
-        new CommandRegistryRegistrationLostError({
-          operation: "CommandRegistry.registerGroup",
-          commandId: reservedIds[0] ?? "unknown",
-          resourceId: registeredHandle.id
-        })
-      )
+      return yield* new CommandRegistryRegistrationLostError({
+        operation: "CommandRegistry.registerGroup",
+        commandId: reservedIds[0] ?? "unknown",
+        resourceId: registeredHandle.id
+      })
     }
 
     yield* Effect.forEach(reservedIds, (id) =>
@@ -588,11 +592,7 @@ const registerCommandGroup = <Rpcs extends Rpc.Any, E, R>(
     )
     completed = true
     return registeredHandle
-  }).pipe(Effect.ensuring(rollback)) as Effect.Effect<
-    ResourceHandle<"command-group", "registered">,
-    CommandRegistryError | E,
-    R
-  >
+  }).pipe(Effect.ensuring(rollback))
 }
 
 const getCommand = (
@@ -604,23 +604,74 @@ const getCommand = (
     const current = yield* Ref.get(commands)
     const command = current.get(id)
     if (command === undefined || !command.committed) {
-      return yield* Effect.fail(
-        new CommandRegistryCommandNotFoundError({ operation, commandId: id })
-      )
+      return yield* new CommandRegistryCommandNotFoundError({ operation, commandId: id })
     }
 
     return command
   })
 
-type DynamicRpcClient = Readonly<
-  Record<
-    string,
-    (
-      input: unknown,
-      options?: { readonly headers?: Readonly<Record<string, string>> }
-    ) => Effect.Effect<unknown, unknown, never>
-  >
->
+interface DynamicRpcClient {
+  readonly has: (tag: string) => boolean
+  readonly invoke: (
+    tag: string,
+    input: unknown,
+    options?: { readonly headers?: Readonly<Record<string, string>> }
+  ) => Effect.Effect<unknown, PermissionDenied | RpcInvokerFailure, never>
+}
+
+// Wraps any non-PermissionDenied failure from a dynamically dispatched RPC client.
+// The underlying RpcTest client erases per-RPC error types behind a dynamic record,
+// so we re-tag opaque failures here and surface them as a single tagged cause.
+class RpcInvokerFailure extends Data.TaggedError("RpcInvokerFailure")<{
+  readonly cause: unknown
+}> {}
+
+// The dynamic-record cast erases each per-RPC error type. We absorb the
+// untyped error channel here, exactly once, and re-tag it as RpcInvokerFailure
+// (preserving PermissionDenied) so the rest of the registry only sees typed errors.
+type RpcInvokerOptions = { readonly headers?: Readonly<Record<string, string>> }
+
+const dynamicRpcClient = (raw: unknown): DynamicRpcClient => {
+  // RpcTest generates one method per RPC tag; dynamic command dispatch is the string boundary.
+  const record = raw as Readonly<Record<string, unknown>>
+  return {
+    has: (tag) => Object.hasOwn(record, tag) && typeof record[tag] === "function",
+    invoke: (tag, input, options) => {
+      const fn = record[tag]
+      if (typeof fn !== "function") {
+        return Effect.die(
+          new Error(`command RPC client is missing a generated endpoint for "${tag}"`)
+        )
+      }
+      return coerceRpcEffect(
+        (fn as (input: unknown, options?: RpcInvokerOptions) => unknown)(input, options)
+      )
+    }
+  }
+}
+
+const coerceRpcEffect = (
+  raw: unknown
+): Effect.Effect<unknown, PermissionDenied | RpcInvokerFailure, never> => {
+  const untyped = raw as Effect.Effect<unknown, never, never>
+  return Effect.matchCauseEffect(untyped, {
+    onFailure: (cause) => failureFromCause(cause),
+    onSuccess: (value) => Effect.succeed(value)
+  })
+}
+
+const failureFromCause = (
+  cause: Cause.Cause<never>
+): Effect.Effect<never, PermissionDenied | RpcInvokerFailure, never> => {
+  const failure = Cause.findErrorOption(cause)
+  if (Option.isNone(failure)) {
+    return Effect.failCause(cause)
+  }
+  const error: unknown = failure.value
+  return error instanceof PermissionDenied
+    ? Effect.fail(error)
+    : Effect.fail(new RpcInvokerFailure({ cause: error }))
+}
 
 const prepareCommandGroup = <Rpcs extends Rpc.Any, E, R>(
   registration: CommandGroupRegistration<Rpcs, E, R>,
@@ -628,23 +679,19 @@ const prepareCommandGroup = <Rpcs extends Rpc.Any, E, R>(
   registrationToken: symbol
 ): Effect.Effect<readonly StoredCommand[], CommandRegistryInvalidInputError, never> =>
   Effect.gen(function* () {
-    // RpcTest generates one method per RPC tag; dynamic command dispatch is the string boundary.
-    const dynamicClient = client as DynamicRpcClient
+    const dynamicClient = dynamicRpcClient(client)
     const commands: StoredCommand[] = []
     for (const rpc of registration.group.requests.values()) {
       const id = yield* decodeCommandId(rpc._tag, "CommandRegistry.registerGroup")
       const capability = yield* decodeCommandCapability(rpc)
-      const invoke = dynamicClient[rpc._tag]
-      if (invoke === undefined) {
-        return yield* Effect.fail(
-          new CommandRegistryInvalidInputError({
-            operation: "CommandRegistry.registerGroup",
-            commandId: Option.some(id),
-            field: "handler",
-            message: "command RPC client is missing a generated endpoint",
-            cause: Option.some(rpc._tag)
-          })
-        )
+      if (!dynamicClient.has(rpc._tag)) {
+        return yield* new CommandRegistryInvalidInputError({
+          operation: "CommandRegistry.registerGroup",
+          commandId: Option.some(id),
+          field: "handler",
+          message: "command RPC client is missing a generated endpoint",
+          cause: Option.some(rpc._tag)
+        })
       }
 
       commands.push({
@@ -655,7 +702,13 @@ const prepareCommandGroup = <Rpcs extends Rpc.Any, E, R>(
         resourceGeneration: 0,
         registrationToken,
         committed: false,
-        invoke: (input, context) => invoke(input, { headers: commandHeaders(context) }),
+        invoke: (input, context) =>
+          dynamicClient.invoke(rpc._tag, input, { headers: commandHeaders(context) }).pipe(
+            Effect.mapError((cause) =>
+              cause instanceof PermissionDenied ? cause : handlerFailure(id, cause.cause)
+            ),
+            Effect.catchDefect((cause) => Effect.fail(handlerFailure(id, cause)))
+          ),
         invocationCount: 0
       })
     }
@@ -705,12 +758,7 @@ const invokeCommandRpc = (
   input: unknown,
   context: PermissionContext
 ): Effect.Effect<unknown, CommandRegistryHandlerFailureError | PermissionDenied, never> =>
-  command.invoke(input, context).pipe(
-    Effect.mapError((cause) =>
-      cause instanceof PermissionDenied ? cause : handlerFailure(command.id, cause)
-    ),
-    Effect.catchDefect((cause) => Effect.fail(handlerFailure(command.id, cause)))
-  )
+  command.invoke(input, context)
 
 const commandTraceId = (context: PermissionContext, commandId: string): string =>
   context.traceId === undefined || context.traceId.length === 0

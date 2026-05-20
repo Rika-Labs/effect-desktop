@@ -12,6 +12,7 @@ const WindowTitleBarStyle = Schema.Literals([
   "hiddenInset",
   "customButtonsOnHover"
 ])
+export type WindowTitleBarStyleValue = Schema.Schema.Type<typeof WindowTitleBarStyle>
 const WindowVibrancyMaterial = Schema.Literals([
   "appearanceBased",
   "appearance-based",
@@ -29,6 +30,7 @@ const WindowVibrancyMaterial = Schema.Literals([
   "windowBackground",
   "window-background"
 ])
+export type WindowVibrancyMaterialInput = Schema.Schema.Type<typeof WindowVibrancyMaterial>
 const WindowProgressStateLiteral = Schema.Literals([
   "none",
   "normal",
@@ -37,7 +39,14 @@ const WindowProgressStateLiteral = Schema.Literals([
   "error"
 ])
 const WindowAttentionTypeLiteral = Schema.Literals(["critical", "informational"])
-const WindowRegistryEventPhase = Schema.Literals(["opened", "focused", "closed"])
+const WindowRegistryEventPhase = Schema.Literals([
+  "opened",
+  "shown",
+  "hidden",
+  "focused",
+  "closeRequested",
+  "closed"
+])
 
 export const WindowResource = ResourceHandleSchema("window", "open")
 export type WindowHandle = ResourceHandle<"window", "open">
@@ -75,6 +84,12 @@ export class WindowParentResult extends Schema.Class<WindowParentResult>("Window
   parent: Schema.optionalKey(WindowResource)
 }) {}
 
+export class WindowChildrenResult extends Schema.Class<WindowChildrenResult>(
+  "WindowChildrenResult"
+)({
+  children: Schema.Array(WindowResource)
+}) {}
+
 export class WindowSubscribeEventsResult extends Schema.Class<WindowSubscribeEventsResult>(
   "WindowSubscribeEventsResult"
 )({
@@ -92,18 +107,9 @@ export class WindowRegistryEvent extends Schema.Class<WindowRegistryEvent>("Wind
 export class WindowState extends Schema.Class<WindowState>("WindowState")({
   minimized: Schema.Boolean,
   maximized: Schema.Boolean,
-  fullscreen: Schema.Boolean
+  fullscreen: Schema.Boolean,
+  simpleFullscreen: Schema.Boolean
 }) {}
-
-export class WindowStateEvent extends Schema.Class<WindowStateEvent>("WindowStateEvent")({
-  type: Schema.Literal("window-state-event"),
-  windowId: Schema.NonEmptyString,
-  window: Schema.optionalKey(WindowResource),
-  state: WindowState
-}) {}
-
-export const WindowEvent = Schema.Union([WindowRegistryEvent, WindowStateEvent])
-export type WindowEvent = Schema.Schema.Type<typeof WindowEvent>
 
 export class WindowBounds extends Schema.Class<WindowBounds>("WindowBounds")({
   x: Schema.Number.check(Schema.isFinite()),
@@ -114,8 +120,33 @@ export class WindowBounds extends Schema.Class<WindowBounds>("WindowBounds")({
 
 export type WindowBoundsType = Schema.Schema.Type<typeof WindowBounds>
 
+export class WindowStateEvent extends Schema.Class<WindowStateEvent>("WindowStateEvent")({
+  type: Schema.Literal("window-state-event"),
+  windowId: Schema.NonEmptyString,
+  window: Schema.optionalKey(WindowResource),
+  state: WindowState
+}) {}
+
+export class WindowBoundsEvent extends Schema.Class<WindowBoundsEvent>("WindowBoundsEvent")({
+  type: Schema.Literal("window-bounds-event"),
+  windowId: Schema.NonEmptyString,
+  window: Schema.optionalKey(WindowResource),
+  bounds: WindowBounds
+}) {}
+
+export const WindowEvent = Schema.Union([WindowRegistryEvent, WindowStateEvent, WindowBoundsEvent])
+export type WindowEvent = Schema.Schema.Type<typeof WindowEvent>
+
 export class WindowBoundsInput extends Schema.Class<WindowBoundsInput>("WindowBoundsInput")({
   window: WindowResource,
+  bounds: WindowBounds
+}) {}
+
+export class WindowDisplayBoundsInput extends Schema.Class<WindowDisplayBoundsInput>(
+  "WindowDisplayBoundsInput"
+)({
+  window: WindowResource,
+  displayId: Schema.NonEmptyString,
   bounds: WindowBounds
 }) {}
 
@@ -129,6 +160,13 @@ export class WindowFullscreenInput extends Schema.Class<WindowFullscreenInput>(
 )({
   window: WindowResource,
   fullscreen: Schema.Boolean
+}) {}
+
+export class WindowSimpleFullscreenInput extends Schema.Class<WindowSimpleFullscreenInput>(
+  "WindowSimpleFullscreenInput"
+)({
+  window: WindowResource,
+  simpleFullscreen: Schema.Boolean
 }) {}
 
 export class WindowTitleInput extends Schema.Class<WindowTitleInput>("WindowTitleInput")({
@@ -212,12 +250,33 @@ export class WindowBackgroundColorInput extends Schema.Class<WindowBackgroundCol
 
 export class WindowVibrancyInput extends Schema.Class<WindowVibrancyInput>("WindowVibrancyInput")({
   window: WindowResource,
-  material: Schema.String
+  material: WindowVibrancyMaterial
 }) {}
 
 export class WindowShadowInput extends Schema.Class<WindowShadowInput>("WindowShadowInput")({
   window: WindowResource,
   hasShadow: Schema.Boolean
+}) {}
+
+export class WindowTitleBarStyleInput extends Schema.Class<WindowTitleBarStyleInput>(
+  "WindowTitleBarStyleInput"
+)({
+  window: WindowResource,
+  titleBarStyle: WindowTitleBarStyle
+}) {}
+
+export class WindowTitleBarTransparentInput extends Schema.Class<WindowTitleBarTransparentInput>(
+  "WindowTitleBarTransparentInput"
+)({
+  window: WindowResource,
+  titleBarTransparent: Schema.Boolean
+}) {}
+
+export class WindowTransparentInput extends Schema.Class<WindowTransparentInput>(
+  "WindowTransparentInput"
+)({
+  window: WindowResource,
+  transparent: Schema.Boolean
 }) {}
 
 export class WindowScaleFactorOutput extends Schema.Class<WindowScaleFactorOutput>(
