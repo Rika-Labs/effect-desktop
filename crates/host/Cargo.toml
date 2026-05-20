@@ -16,7 +16,6 @@ path = "src/main.rs"
 anyhow.workspace = true
 arboard.workspace = true
 base64 = "0.22.1"
-block2.workspace = true
 cpal = "0.17.3"
 host-protocol = { path = "../host-protocol" }
 image.workspace = true
@@ -45,6 +44,7 @@ keyring = { version = "3.6.3", default-features = false, features = [
 notify-rust = "4.17.0"
 
 [target.'cfg(target_os = "macos")'.dependencies]
+block2.workspace = true
 core-foundation = "0.10.1"
 keyring = { version = "3.6.3", default-features = false, features = ["apple-native"] }
 muda = "0.19.1"
