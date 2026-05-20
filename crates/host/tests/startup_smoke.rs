@@ -2,14 +2,17 @@ use std::{
     fs,
     path::Path,
     process::{Child, Command, Output, Stdio},
+    sync::{Mutex, MutexGuard},
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 const HOST_SMOKE_TIMEOUT: Duration = Duration::from_secs(20);
+static HOST_SMOKE_LOCK: Mutex<()> = Mutex::new(());
 
 #[test]
 fn host_binary_emits_startup_event_and_exits_zero() {
+    let _guard = host_smoke_guard();
     let mut command = host_command();
     command.arg("--window-smoke-test");
     let output = output_with_timeout(command, "host binary should execute");
@@ -84,6 +87,7 @@ fn host_binary_emits_startup_event_and_exits_zero() {
 
 #[test]
 fn host_binary_verifies_resident_lifecycle_close_to_background() {
+    let _guard = host_smoke_guard();
     let mut command = host_command();
     command.arg("--resident-lifecycle-smoke-test");
     let output = output_with_timeout(
@@ -119,6 +123,7 @@ fn host_binary_verifies_resident_lifecycle_close_to_background() {
 
 #[test]
 fn host_binary_verifies_app_quit_lifecycle_exit() {
+    let _guard = host_smoke_guard();
     let mut command = host_command();
     command.arg("--app-quit-smoke-test");
     let output = output_with_timeout(command, "host binary should execute app quit smoke");
@@ -147,6 +152,7 @@ fn host_binary_verifies_app_quit_lifecycle_exit() {
 
 #[test]
 fn host_binary_verifies_app_focus_lifecycle_path() {
+    let _guard = host_smoke_guard();
     let mut command = host_command();
     command.arg("--app-focus-smoke-test");
     let output = output_with_timeout(command, "host binary should execute app focus smoke");
@@ -175,6 +181,7 @@ fn host_binary_verifies_app_focus_lifecycle_path() {
 
 #[test]
 fn host_binary_verifies_app_restart_lifecycle_path() {
+    let _guard = host_smoke_guard();
     let marker = unique_marker_path("app-restart-smoke");
     let mut command = host_command();
     command
@@ -213,6 +220,7 @@ fn host_binary_verifies_app_restart_lifecycle_path() {
 
 #[test]
 fn host_binary_verifies_single_instance_lock_between_processes() {
+    let _guard = host_smoke_guard();
     let lock_path = unique_lock_path("single-instance-lock-smoke");
     let mut primary_command = host_command();
     let primary = primary_command
@@ -277,6 +285,7 @@ fn host_binary_verifies_single_instance_lock_between_processes() {
 #[cfg(target_os = "macos")]
 #[test]
 fn host_binary_verifies_system_appearance_on_main_thread() {
+    let _guard = host_smoke_guard();
     let mut command = host_command();
     command.arg("--system-appearance-smoke-test");
     let output = output_with_timeout(
@@ -312,6 +321,12 @@ fn host_binary_verifies_system_appearance_on_main_thread() {
 
 fn host_command() -> Command {
     Command::new(env!("CARGO_BIN_EXE_host"))
+}
+
+fn host_smoke_guard() -> MutexGuard<'static, ()> {
+    HOST_SMOKE_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 fn output_with_timeout(mut command: Command, context: &str) -> Output {
