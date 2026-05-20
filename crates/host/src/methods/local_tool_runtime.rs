@@ -16,12 +16,14 @@ use host_protocol::{
 };
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{to_value, Value};
+#[cfg(not(windows))]
+use std::process::{Command, Stdio};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fs,
     io::{self, Read},
     path::{Path, PathBuf},
-    process::{Command, ExitStatus, Stdio},
+    process::ExitStatus,
     sync::{
         mpsc::{self, Receiver, RecvTimeoutError, Sender},
         Arc, Mutex, OnceLock,

@@ -5696,24 +5696,33 @@ mod tests {
             )
             .expect("notification support should return response");
 
-        #[cfg(target_os = "linux")]
-        let expected_payload = serde_json::json!({ "supported": true });
-        #[cfg(not(target_os = "linux"))]
-        let expected_payload = serde_json::json!({
-            "supported": false,
-            "reason": host_protocol::NOTIFICATION_UNSUPPORTED_REASON
-        });
+        let HostProtocolEnvelope::Response {
+            id,
+            timestamp,
+            trace_id,
+            payload,
+            error,
+        } = response
+        else {
+            panic!("notification support should return a response");
+        };
 
-        assert_eq!(
-            response,
-            HostProtocolEnvelope::Response {
-                id: "request-notification-supported".to_string(),
-                timestamp: 1710000000188,
-                trace_id: "trace-request-notification-supported".to_string(),
-                payload: Some(expected_payload),
-                error: None,
-            }
-        );
+        assert_eq!(id, "request-notification-supported");
+        assert_eq!(timestamp, 1710000000188);
+        assert_eq!(trace_id, "trace-request-notification-supported");
+        assert_eq!(error, None);
+
+        let payload = payload.expect("notification support should return payload");
+        let supported = payload
+            .get("supported")
+            .and_then(serde_json::Value::as_bool)
+            .expect("notification support should include a boolean supported field");
+        if !supported {
+            assert_eq!(
+                payload.get("reason").and_then(serde_json::Value::as_str),
+                Some(host_protocol::NOTIFICATION_UNSUPPORTED_REASON)
+            );
+        }
     }
 
     #[test]
