@@ -1,7 +1,4 @@
-import {
-  HostProtocolNotFoundError,
-  hostProtocolErrorRecoverableDefault
-} from "@effect-desktop/bridge"
+import { HostProtocolNotFoundError, hostProtocolErrorRecoverableDefault } from "@orika/bridge"
 import { expect, test } from "bun:test"
 import { Cause, Effect, Exit, Schema, Stream } from "effect"
 import { EventJournal } from "effect/unstable/eventlog"

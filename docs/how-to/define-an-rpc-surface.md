@@ -8,7 +8,7 @@ effect_version: 4
 
 # How to define an RPC surface
 
-Every renderer-callable API in Effect Desktop is an Effect `RpcGroup`. This recipe shows the four steps from a fresh contract to a working call.
+Every renderer-callable API in ORIKA is an Effect `RpcGroup`. This recipe shows the four steps from a fresh contract to a working call.
 
 ## 1. Define the group
 
@@ -67,7 +67,7 @@ Forgetting a method is a compile error. Returning the wrong type is a compile er
 ## 3. Add to the manifest
 
 ```ts
-import { Desktop } from "@effect-desktop/core"
+import { Desktop } from "@orika/core"
 import { TodoRpcs } from "./contracts.js"
 import { TodoHandlersLive } from "./handlers.js"
 
@@ -85,7 +85,7 @@ The `rpcs` array is a list of `{ group, handlers }` pairs. You can register many
 ## 4. Call from the renderer
 
 ```tsx
-import { ReactDesktop } from "@effect-desktop/react"
+import { ReactDesktop } from "@orika/react"
 import { Manifest } from "./manifest.js"
 import { TodoRpcs } from "./contracts.js"
 
@@ -113,7 +113,7 @@ function CreateTodo() {
 If a handler performs privileged work (filesystem, process, secret, native invoke), annotate the RPC with capability metadata so the framework checks it before dispatch:
 
 ```ts
-import { P } from "@effect-desktop/core"
+import { P } from "@orika/core"
 
 export const TodoExport = Rpc.make("Todos.export", {
   payload: { path: Schema.String },

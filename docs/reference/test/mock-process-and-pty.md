@@ -13,7 +13,7 @@ Test layers for `Process` and `PTY`. Records calls, returns deterministic output
 ## MockProcess
 
 ```ts
-import { MockProcess } from "@effect-desktop/test"
+import { MockProcess } from "@orika/test"
 
 const layer = MockProcess.layer({
   // configure scripted responses per command
@@ -25,7 +25,7 @@ Records: stdin writes, kill calls, tree cleanup. Streams: configurable per-comma
 ## MockPTY
 
 ```ts
-import { MockPTY } from "@effect-desktop/test"
+import { MockPTY } from "@orika/test"
 
 const layer = MockPTY.layer({
   // configure scripted responses

@@ -22,7 +22,7 @@ A declaration is `{ capability, effect, source, audit?, expiresAt?, oneTime? }`:
 ## 1. Allow at startup
 
 ```ts
-import { PermissionRegistry } from "@effect-desktop/core"
+import { PermissionRegistry } from "@orika/core"
 
 const permissions = yield * PermissionRegistry
 

@@ -13,14 +13,14 @@ In-memory implementation of the `Filesystem` service. Same contract — root con
 ## Import
 
 ```ts
-import { MemoryFilesystem, type FilesystemOptions } from "@effect-desktop/test"
+import { MemoryFilesystem, type FilesystemOptions } from "@orika/test"
 ```
 
 ## Layer
 
 ```ts
 import { Layer } from "effect"
-import { ResourceOwner } from "@effect-desktop/core"
+import { ResourceOwner } from "@orika/core"
 
 const FilesystemLive = MemoryFilesystem.layer({
   rootScope: "/",

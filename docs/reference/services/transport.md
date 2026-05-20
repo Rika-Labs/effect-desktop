@@ -21,7 +21,7 @@ import {
   unframe,
   unframeStream,
   makeInMemoryTransportPair
-} from "@effect-desktop/core"
+} from "@orika/core"
 ```
 
 ## Framing helpers

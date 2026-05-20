@@ -76,7 +76,7 @@ tracked by #1284.
 - `packages/core/src/runtime/workflow.test.ts`
   - Remove. It only tests upstream workflow behavior through the deleted wrapper.
 
-- `api/snapshots/@effect-desktop__core.snapshot.json`
+- `api/snapshots/@orika__core.snapshot.json`
   - Regenerate after the public surface changes.
 
 - Docs

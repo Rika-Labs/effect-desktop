@@ -5,7 +5,7 @@ import {
   type DesktopObservabilityLayerOptions,
   InspectorSafetyPolicy,
   Telemetry
-} from "@effect-desktop/core"
+} from "@orika/core"
 import { Layer } from "effect"
 
 import {

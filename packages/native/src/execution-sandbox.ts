@@ -6,8 +6,8 @@ import {
   type HostProtocolError,
   HostProtocolUnsupportedError,
   RpcGroup
-} from "@effect-desktop/bridge"
-import { type DesktopRpcClient, P, type PermissionRegistry } from "@effect-desktop/core"
+} from "@orika/bridge"
+import { type DesktopRpcClient, P, type PermissionRegistry } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { runNativeRpc } from "./native-client.js"
@@ -76,7 +76,7 @@ export interface ExecutionSandboxClientApi {
 export class ExecutionSandboxClient extends Context.Service<
   ExecutionSandboxClient,
   ExecutionSandboxClientApi
->()("@effect-desktop/native/ExecutionSandboxClient") {}
+>()("@orika/native/ExecutionSandboxClient") {}
 
 export interface ExecutionSandboxServiceApi {
   readonly isSupported: () => Effect.Effect<
@@ -90,7 +90,7 @@ export interface ExecutionSandboxServiceApi {
 export class ExecutionSandbox extends Context.Service<
   ExecutionSandbox,
   ExecutionSandboxServiceApi
->()("@effect-desktop/native/ExecutionSandbox") {
+>()("@orika/native/ExecutionSandbox") {
   static readonly layer = Layer.effect(ExecutionSandbox)(
     Effect.gen(function* () {
       const client = yield* ExecutionSandboxClient

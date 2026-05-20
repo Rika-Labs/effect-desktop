@@ -169,7 +169,7 @@ export const runAccessibilityGate = (
 
 export const formatAccessibilityGateReport = (report: AccessibilityGateReport): string =>
   [
-    "Effect Desktop accessibility",
+    "ORIKA accessibility",
     "status            passed",
     `release           ${report.release}`,
     `templates         ${report.templates.length}`,

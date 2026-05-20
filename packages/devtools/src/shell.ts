@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto"
 
-import { makeInspectorSafetyPolicy } from "@effect-desktop/core"
+import { makeInspectorSafetyPolicy } from "@orika/core"
 import { Context, Data, Effect, Layer, Option, Schema } from "effect"
 
 const NonEmptyString = Schema.NonEmptyString
@@ -100,7 +100,7 @@ export interface DevtoolsShellOptions {
 }
 
 export class DevtoolsShell extends Context.Service<DevtoolsShell, DevtoolsShellApi>()(
-  "@effect-desktop/devtools/shell/DevtoolsShell"
+  "@orika/devtools/shell/DevtoolsShell"
 ) {}
 
 export const DevtoolsShellLive = (options: DevtoolsShellOptions = {}): Layer.Layer<DevtoolsShell> =>

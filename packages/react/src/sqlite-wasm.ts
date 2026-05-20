@@ -1,1 +1,1 @@
-export * from "@effect-desktop/platform-browser/sqlite-wasm"
+export * from "@orika/platform-browser/sqlite-wasm"

@@ -8,7 +8,7 @@ effect_version: 4
 
 # Resource lifecycle
 
-A "resource" in Effect Desktop is anything long-lived enough that someone has to clean it up: a window, a file watcher, a child process, a PTY session, a worker, a job, a database connection. The framework's rule:
+A "resource" in ORIKA is anything long-lived enough that someone has to clean it up: a window, a file watcher, a child process, a PTY session, a worker, a job, a database connection. The framework's rule:
 
 > **Every resource has an owner scope. When the scope closes, the resource closes.**
 
@@ -38,7 +38,7 @@ Effect's `Scope` inverts the responsibility. The caller declares "I am opening a
 - `observe()` — a stream of registrations and disposals.
 - `RegistrySnapshot` — a structural value you can assert against in tests.
 
-You rarely call the registry yourself. You _do_ rely on it during testing: `assertNoOpenResourcesIn(registry)` or `installResourceLeakDetection(registry)` from `@effect-desktop/test` will fail your test if a handler opens a resource without closing it.
+You rarely call the registry yourself. You _do_ rely on it during testing: `assertNoOpenResourcesIn(registry)` or `installResourceLeakDetection(registry)` from `@orika/test` will fail your test if a handler opens a resource without closing it.
 
 ## Resource owners are layer services
 
@@ -54,7 +54,7 @@ Why an owner service and not an argument on every call? Two reasons:
 
 ```ts
 import { Effect } from "effect"
-import { Process } from "@effect-desktop/core"
+import { Process } from "@orika/core"
 
 const program = Effect.gen(function* () {
   const proc = yield* Process

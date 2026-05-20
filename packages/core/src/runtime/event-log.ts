@@ -1,4 +1,4 @@
-import type { RedactionFilterOptions } from "@effect-desktop/bridge"
+import type { RedactionFilterOptions } from "@orika/bridge"
 import { Clock, Context, Effect, Layer, Option, Schema } from "effect"
 import { EventGroup, EventJournal, EventLog, EventLogEncryption } from "effect/unstable/eventlog"
 
@@ -89,7 +89,7 @@ export const DesktopEventLogHandlersLive = EventLog.group(DesktopEventLogGroup, 
 )
 
 export class DesktopEventLog extends Context.Service<DesktopEventLog, DesktopEventLogApi>()(
-  "@effect-desktop/core/runtime/event-log/DesktopEventLog"
+  "@orika/core/runtime/event-log/DesktopEventLog"
 ) {}
 
 export const makeDesktopEventLog = (

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 
-import { makeHostProtocolHostUnavailableError } from "@effect-desktop/bridge"
+import { makeHostProtocolHostUnavailableError } from "@orika/bridge"
 import { Cause, Effect, Exit, Sink, Stream } from "effect"
 
 import { ProcessExitStatus, type ProcessApi, type ProcessHandle } from "./process.js"

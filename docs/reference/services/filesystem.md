@@ -10,7 +10,7 @@ effect_version: 4
 
 Runtime filesystem service. Enforces root containment, binds handles to the `ResourceOwner` in the layer graph, and returns typed failures.
 
-> Note: this is `@effect-desktop/core`'s `Filesystem`, distinct from Effect's `FileSystem` from `effect/platform`.
+> Note: this is `@orika/core`'s `Filesystem`, distinct from Effect's `FileSystem` from `effect/platform`.
 
 ## Import
 
@@ -24,7 +24,7 @@ import {
   FilesystemInvalidArgument,
   FilesystemSystemError,
   makeFilesystem
-} from "@effect-desktop/core"
+} from "@orika/core"
 ```
 
 ## API
@@ -65,7 +65,7 @@ const bytes = yield * fs.read("/Users/me/Documents/notes.md")
 
 ## Test layer
 
-`MemoryFilesystem.layer(options)` from `@effect-desktop/test`.
+`MemoryFilesystem.layer(options)` from `@orika/test`.
 
 ## Related
 

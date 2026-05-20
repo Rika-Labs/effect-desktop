@@ -60,7 +60,7 @@ import {
   Rpc,
   RpcGroup,
   bridgeContractFromRpcGroup
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import {
   Filesystem,
   PermissionActor,
@@ -81,7 +81,7 @@ import {
   type ResourceOwnerApi,
   unsafeSecretBytes,
   wipeSecretBytes
-} from "@effect-desktop/core"
+} from "@orika/core"
 import {
   Clipboard,
   ClipboardClient,
@@ -103,7 +103,7 @@ import {
   type DialogError,
   type ScreenClientApi,
   type ScreenError
-} from "@effect-desktop/native"
+} from "@orika/native"
 import {
   ClipboardImage,
   ClipboardSupportedResult,
@@ -114,7 +114,7 @@ import {
   ScreenDisplaysResult,
   ScreenPoint,
   ScreenSupportedResult
-} from "@effect-desktop/native/contracts"
+} from "@orika/native/contracts"
 
 import {
   assertNoOpenResourcesIn,
@@ -149,13 +149,13 @@ import {
   makeMockBridge as makeSubpathMockBridge,
   MockHost as SubpathMockHost,
   MockHostLive as SubpathMockHostLive
-} from "@effect-desktop/test/bridge"
-import { MemoryFilesystemLive as SubpathMemoryFilesystemLive } from "@effect-desktop/test/core"
+} from "@orika/test/bridge"
+import { MemoryFilesystemLive as SubpathMemoryFilesystemLive } from "@orika/test/core"
 import {
   ClipboardTest as SubpathClipboardTest,
   TestDesktop as SubpathTestDesktop
-} from "@effect-desktop/test/native"
-import { CapabilityLaws as SubpathCapabilityLaws } from "@effect-desktop/test/renderer"
+} from "@orika/test/native"
+import { CapabilityLaws as SubpathCapabilityLaws } from "@orika/test/renderer"
 
 const id = makeResourceId
 const TEST_OWNER: ResourceOwnerApi = Object.freeze({
@@ -2016,7 +2016,7 @@ test("LayerMatrix interruption closes scoped capability layers", () =>
       class InterruptibleService extends Context.Service<
         InterruptibleService,
         { readonly wait: Effect.Effect<never, never, never> }
-      >()("@effect-desktop/test/index.test/InterruptibleService") {}
+      >()("@orika/test/index.test/InterruptibleService") {}
 
       let acquired = 0
       let released = 0

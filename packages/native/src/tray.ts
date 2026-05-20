@@ -10,7 +10,7 @@ import {
   type RpcSupportMetadata,
   RpcGroup,
   type HostProtocolError
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import {
   type PermissionRegistry,
   P,
@@ -18,7 +18,7 @@ import {
   ResourceRegistry,
   type ResourceRegistryApi,
   ResourceRegistryLive
-} from "@effect-desktop/core"
+} from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
@@ -154,7 +154,7 @@ export interface TrayClientApi {
 }
 
 export class TrayClient extends Context.Service<TrayClient, TrayClientApi>()(
-  "@effect-desktop/native/TrayClient"
+  "@orika/native/TrayClient"
 ) {}
 
 export interface TrayServiceApi extends Omit<TrayClientApi, "isSupported"> {
@@ -165,7 +165,7 @@ export interface TrayServiceOptions {
   readonly resources: ResourceRegistryApi
 }
 
-export class Tray extends Context.Service<Tray, TrayServiceApi>()("@effect-desktop/native/Tray") {
+export class Tray extends Context.Service<Tray, TrayServiceApi>()("@orika/native/Tray") {
   static readonly layer = Layer.provide(
     Layer.effect(Tray)(
       Effect.gen(function* () {

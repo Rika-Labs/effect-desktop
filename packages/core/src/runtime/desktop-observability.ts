@@ -71,13 +71,13 @@ export class DesktopObservabilityConfigError extends Data.TaggedError(
 }> {}
 
 export class CollectorRegistry extends Context.Service<CollectorRegistry, CollectorRegistryApi>()(
-  "@effect-desktop/core/runtime/desktop-observability/CollectorRegistry"
+  "@orika/core/runtime/desktop-observability/CollectorRegistry"
 ) {}
 
 export class DesktopObservability extends Context.Service<
   DesktopObservability,
   DesktopObservabilityApi
->()("@effect-desktop/core/runtime/desktop-observability/DesktopObservability") {}
+>()("@orika/core/runtime/desktop-observability/DesktopObservability") {}
 
 export const makeCollectorRegistry = (options: {
   readonly enabled: boolean

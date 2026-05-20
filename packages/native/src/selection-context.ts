@@ -6,8 +6,8 @@ import {
   type HostProtocolError,
   HostProtocolUnsupportedError,
   RpcGroup
-} from "@effect-desktop/bridge"
-import { type DesktopRpcClient, P, type PermissionRegistry } from "@effect-desktop/core"
+} from "@orika/bridge"
+import { type DesktopRpcClient, P, type PermissionRegistry } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import {
@@ -79,7 +79,7 @@ export interface SelectionContextClientApi {
 export class SelectionContextClient extends Context.Service<
   SelectionContextClient,
   SelectionContextClientApi
->()("@effect-desktop/native/SelectionContextClient") {}
+>()("@orika/native/SelectionContextClient") {}
 
 export interface SelectionContextServiceApi {
   readonly isSupported: () => Effect.Effect<
@@ -93,7 +93,7 @@ export interface SelectionContextServiceApi {
 export class SelectionContext extends Context.Service<
   SelectionContext,
   SelectionContextServiceApi
->()("@effect-desktop/native/SelectionContext") {
+>()("@orika/native/SelectionContext") {
   static readonly layer = Layer.effect(SelectionContext)(
     Effect.gen(function* () {
       const client = yield* SelectionContextClient

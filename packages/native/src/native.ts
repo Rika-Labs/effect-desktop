@@ -1,8 +1,4 @@
-import {
-  Desktop,
-  type DesktopNativeLayer,
-  type AnyDesktopNativeRegistration
-} from "@effect-desktop/core"
+import { Desktop, type DesktopNativeLayer, type AnyDesktopNativeRegistration } from "@orika/core"
 
 import { ActivationRegistrySurface } from "./activation-registry.js"
 import { AppMetadataSurface } from "./app-metadata.js"

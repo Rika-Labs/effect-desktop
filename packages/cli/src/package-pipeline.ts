@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url"
 
 import { Data, Effect, Schema } from "effect"
 
-import type { DesktopProviderBudget } from "@effect-desktop/core"
+import type { DesktopProviderBudget } from "@orika/core"
 
 import {
   ReleaseFileSystem,
@@ -1099,7 +1099,7 @@ const macosInfoPlist = (plan: PackagePlan): string => `<?xml version="1.0" encod
 const windowsWxs = (
   plan: PackagePlan
 ): string => `<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
-  <Package Name="${escapeXml(plan.appName)}" Manufacturer="Effect Desktop" Version="${escapeXml(plan.appVersion)}" UpgradeCode="${appUpgradeCode(plan.appId)}" Scope="perUser">
+  <Package Name="${escapeXml(plan.appName)}" Manufacturer="ORIKA" Version="${escapeXml(plan.appVersion)}" UpgradeCode="${appUpgradeCode(plan.appId)}" Scope="perUser">
     <MajorUpgrade DowngradeErrorMessage="A newer version is already installed." />
     <Feature Id="Main">
       <ComponentGroupRef Id="ApplicationFiles" />
@@ -1167,7 +1167,7 @@ const stageDebRoot = (
         "Section: utils",
         "Priority: optional",
         `Architecture: ${debArch(plan.target)}`,
-        "Maintainer: Effect Desktop <maintainers@example.invalid>",
+        "Maintainer: ORIKA <maintainers@example.invalid>",
         `Description: ${plan.appName}`,
         ""
       ].join("\n")
@@ -1192,7 +1192,7 @@ const rpmSpec = (plan: PackagePlan): string => {
     `Name: ${plan.linuxPackageName}`,
     `Version: ${plan.appVersion}`,
     "Release: 1",
-    "Summary: Effect Desktop application",
+    "Summary: ORIKA application",
     "License: Proprietary",
     `BuildArch: ${rpmArch(plan.target)}`,
     "",

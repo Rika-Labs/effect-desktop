@@ -84,11 +84,11 @@ The biggest gates that still need substantive (not mechanical) work:
   call `globalThis.crypto.randomUUID()`. Effect-first defaults need to
   return `Effect.Effect<string>` so the runtime can inject randomness via
   the `Random` service. This is an API-shape change; downstream callers
-  in `@effect-desktop/native` and tests will need to thread an Effect
+  in `@orika/native` and tests will need to thread an Effect
   through trace/request id resolution.
 - **`Context.Service` declared as a variable in `contracts.ts` and
   `rpc-endpoint.ts`.** The Effect-idiomatic shape is the class form
-  `class Foo extends Context.Service<Foo, T>()("@effect-desktop/bridge/Foo") {}`.
+  `class Foo extends Context.Service<Foo, T>()("@orika/bridge/Foo") {}`.
   The variable form was used because these annotations are private to the
   module and have no runtime registration; flipping them to the class form
   exposes a slot for future Layer composition but does not change behavior

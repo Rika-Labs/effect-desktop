@@ -88,7 +88,7 @@ Document controls are partially host-backed for child WebViews. `print` and
 `printToPdf`, `findInPage`, and `setUserAgent` are non-callable capability facts
 because Wry exposes no portable public screenshot, PDF export, find-in-page, or
 runtime user-agent setter. Wry supports user-agent policy at WebView creation
-time; Effect Desktop does not pretend that is a runtime mutation.
+time; ORIKA does not pretend that is a runtime mutation.
 
 Inspection controls are partially host-backed for child WebViews.
 `openDevTools` and `closeDevTools` route through the retained Wry WebView in
@@ -135,20 +135,20 @@ partitioned browser data store contract.
 scoped to `SessionProfileHandle`, but the host adapter is still
 validation-first unsupported until WebView creation binds profile handles to
 Wry contexts. The installed WebView provider exposes a coarse clear-all
-operation, but Effect Desktop does not route it as profile-partitioned state
+operation, but ORIKA does not route it as profile-partitioned state
 yet.
 
 `CookieStore` now exposes typed cookie read, write, remove, and event contracts
 scoped to `SessionProfileHandle`, but the host adapter is still validation-first
 unsupported until WebView creation binds profile handles to Wry contexts. The
-installed WebView provider has low-level cookie primitives, but Effect Desktop
+installed WebView provider has low-level cookie primitives, but ORIKA
 does not route them to partitioned browser state yet.
 
 ## Import
 
 ```ts
-import { Desktop } from "@effect-desktop/core"
-import { Native, WebView, WebViewError, WebViewRpcs } from "@effect-desktop/native"
+import { Desktop } from "@orika/core"
+import { Native, WebView, WebViewError, WebViewRpcs } from "@orika/native"
 ```
 
 ## Methods

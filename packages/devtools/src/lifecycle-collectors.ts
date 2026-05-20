@@ -2,8 +2,8 @@ import type {
   BridgeStreamRegistry,
   BridgeStreamRegistryEntry,
   ResourceLifecycleEvent
-} from "@effect-desktop/core"
-import { ResourceRegistry } from "@effect-desktop/core"
+} from "@orika/core"
+import { ResourceRegistry } from "@orika/core"
 import {
   Context,
   Deferred,
@@ -89,22 +89,22 @@ export interface StreamInspectorCollectorApi {
 export class ResourceInspectorCollector extends Context.Service<
   ResourceInspectorCollector,
   ResourceInspectorCollectorApi
->()("@effect-desktop/devtools/lifecycle-collectors/ResourceInspectorCollector") {}
+>()("@orika/devtools/lifecycle-collectors/ResourceInspectorCollector") {}
 
 export class ScopeInspectorCollector extends Context.Service<
   ScopeInspectorCollector,
   ScopeInspectorCollectorApi
->()("@effect-desktop/devtools/lifecycle-collectors/ScopeInspectorCollector") {}
+>()("@orika/devtools/lifecycle-collectors/ScopeInspectorCollector") {}
 
 export class FiberInspectorCollector extends Context.Service<
   FiberInspectorCollector,
   FiberInspectorCollectorApi
->()("@effect-desktop/devtools/lifecycle-collectors/FiberInspectorCollector") {}
+>()("@orika/devtools/lifecycle-collectors/FiberInspectorCollector") {}
 
 export class StreamInspectorCollector extends Context.Service<
   StreamInspectorCollector,
   StreamInspectorCollectorApi
->()("@effect-desktop/devtools/lifecycle-collectors/StreamInspectorCollector") {}
+>()("@orika/devtools/lifecycle-collectors/StreamInspectorCollector") {}
 
 export const ResourceInspectorCollectorLive: Layer.Layer<
   ResourceInspectorCollector,

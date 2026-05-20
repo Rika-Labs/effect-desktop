@@ -6,8 +6,8 @@ import {
   type HostProtocolError,
   HostProtocolUnsupportedError,
   RpcGroup
-} from "@effect-desktop/bridge"
-import { type DesktopRpcClient, P, type PermissionRegistry } from "@effect-desktop/core"
+} from "@orika/bridge"
+import { type DesktopRpcClient, P, type PermissionRegistry } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeNetworkEvent, NativeNetworkSupportedResult } from "./contracts/native-network.js"
@@ -74,7 +74,7 @@ export interface NativeNetworkClientApi {
 export class NativeNetworkClient extends Context.Service<
   NativeNetworkClient,
   NativeNetworkClientApi
->()("@effect-desktop/native/NativeNetworkClient") {}
+>()("@orika/native/NativeNetworkClient") {}
 
 export interface NativeNetworkServiceApi {
   readonly isSupported: () => Effect.Effect<NativeNetworkSupportedResult, NativeNetworkError, never>
@@ -82,7 +82,7 @@ export interface NativeNetworkServiceApi {
 }
 
 export class NativeNetwork extends Context.Service<NativeNetwork, NativeNetworkServiceApi>()(
-  "@effect-desktop/native/NativeNetwork"
+  "@orika/native/NativeNetwork"
 ) {
   static readonly layer = Layer.effect(NativeNetwork)(
     Effect.gen(function* () {

@@ -13,7 +13,7 @@ import {
   type RpcPlatformSupportMetadata,
   RpcSupport,
   type RpcSupportMetadata
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import {
   type AnyDesktopNativeRegistration,
   DesktopRpc,
@@ -27,7 +27,7 @@ import {
   type NormalizedCapability,
   P,
   type PermissionRegistry
-} from "@effect-desktop/core"
+} from "@orika/core"
 import { Context, Effect, Layer, Option, Schema } from "effect"
 import { Rpc, RpcClient, RpcGroup } from "effect/unstable/rpc"
 

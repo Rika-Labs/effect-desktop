@@ -4,7 +4,7 @@
 
 Superseded by #1213. The runtime spine now imports upstream Bun and Node platform
 layers inside the provider graph instead of exposing a framework-owned
-`BunServicesLayer` wrapper from `@effect-desktop/core`.
+`BunServicesLayer` wrapper from `@orika/core`.
 
 ## Context
 

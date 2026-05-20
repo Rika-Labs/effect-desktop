@@ -11,8 +11,8 @@ import {
   type RpcSupportMetadata,
   RpcGroup,
   type HostProtocolError
-} from "@effect-desktop/bridge"
-import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
+} from "@orika/bridge"
+import { type PermissionRegistry, P, type DesktopRpcClient } from "@orika/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
@@ -117,14 +117,12 @@ export interface ShellClientApi {
 }
 
 export class ShellClient extends Context.Service<ShellClient, ShellClientApi>()(
-  "@effect-desktop/native/ShellClient"
+  "@orika/native/ShellClient"
 ) {}
 
 export type ShellServiceApi = ShellClientApi
 
-export class Shell extends Context.Service<Shell, ShellServiceApi>()(
-  "@effect-desktop/native/Shell"
-) {
+export class Shell extends Context.Service<Shell, ShellServiceApi>()("@orika/native/Shell") {
   static readonly layer = Layer.effect(Shell)(
     Effect.gen(function* () {
       const client = yield* ShellClient

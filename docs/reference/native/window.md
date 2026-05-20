@@ -13,7 +13,7 @@ Native window lifecycle and state controls. The runtime calls `Window.create` to
 ## Import
 
 ```ts
-import { Desktop } from "@effect-desktop/core"
+import { Desktop } from "@orika/core"
 import {
   Window,
   WindowRpcs,
@@ -26,7 +26,7 @@ import {
   type WindowPosition,
   type WindowSize,
   type WindowError
-} from "@effect-desktop/native"
+} from "@orika/native"
 ```
 
 ## Methods
@@ -123,7 +123,7 @@ to the caller. `getState` reads the current Tao window state at call time; the
 host does not synthesize a cached desired state.
 
 The z-order and attention surface is intentionally narrower than Electron-style
-window chrome. Effect Desktop exposes explicit window-scoped z-order,
+window chrome. ORIKA exposes explicit window-scoped z-order,
 skip-taskbar, progress, and attention commands where the host can route them.
 Badge controls live on the app/taskbar-scoped `Dock` surface rather than on
 individual `Window` handles. There is no separate flash command: the portable
@@ -140,7 +140,7 @@ Desktop can route today. `show`, `hide`, `focus`, `destroy`, and compatibility
 focused, `closeRequested`, and closed registry phases. Installed Tao 0.35.2
 exposes `set_visible`, `set_focus`, focus observation, and `CloseRequested`
 events; it does not expose a portable `blur` command or a close-request
-veto/confirm decision API. Effect Desktop therefore does not add a `blur`
+veto/confirm decision API. ORIKA therefore does not add a `blur`
 method or a close-request confirmation facade that would promise unsupported
 host behavior.
 

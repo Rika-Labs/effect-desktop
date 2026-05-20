@@ -18,7 +18,7 @@ import {
   RpcGroup,
   type HostProtocolError,
   WINDOW_EVENT_METHOD
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import {
   P,
   PermissionRegistry,
@@ -26,7 +26,7 @@ import {
   makeResourceId,
   type DesktopRpcClient,
   type ResourceRegistryApi
-} from "@effect-desktop/core"
+} from "@orika/core"
 import { Context, Effect, Layer, Option, Schema, Stream } from "effect"
 
 import { subscribeNativeEvent } from "./event-stream.js"
@@ -722,16 +722,14 @@ export interface WindowClientApi {
 }
 
 export class WindowClient extends Context.Service<WindowClient, WindowClientApi>()(
-  "@effect-desktop/native/WindowClient"
+  "@orika/native/WindowClient"
 ) {}
 
 export interface WindowServiceApi extends Omit<WindowClientApi, "create"> {
   readonly create: (input?: WindowCreateOptions) => Effect.Effect<WindowHandle, WindowError, never>
 }
 
-export class Window extends Context.Service<Window, WindowServiceApi>()(
-  "@effect-desktop/native/Window"
-) {
+export class Window extends Context.Service<Window, WindowServiceApi>()("@orika/native/Window") {
   static readonly layer = Layer.effect(Window)(
     Effect.gen(function* () {
       const client = yield* WindowClient

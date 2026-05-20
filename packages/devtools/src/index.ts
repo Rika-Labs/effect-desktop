@@ -6,7 +6,7 @@ import {
   type InspectorSafetySummary,
   Worker,
   type WorkerSnapshot
-} from "@effect-desktop/core"
+} from "@orika/core"
 import { Context, Effect, Layer, Option, Schedule, Stream } from "effect"
 
 export * from "./shell.js"
@@ -34,7 +34,7 @@ export interface CommandsDevtoolsApi {
 }
 
 export class CommandsDevtools extends Context.Service<CommandsDevtools, CommandsDevtoolsApi>()(
-  "@effect-desktop/devtools/CommandsDevtools"
+  "@orika/devtools/CommandsDevtools"
 ) {}
 
 export const CommandsDevtoolsLive = Layer.effect(CommandsDevtools)(
@@ -58,7 +58,7 @@ export interface WorkersDevtoolsApi {
 }
 
 export class WorkersDevtools extends Context.Service<WorkersDevtools, WorkersDevtoolsApi>()(
-  "@effect-desktop/devtools/WorkersDevtools"
+  "@orika/devtools/WorkersDevtools"
 ) {}
 
 export const WorkersDevtoolsLive: Layer.Layer<

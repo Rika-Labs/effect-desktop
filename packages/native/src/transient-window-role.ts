@@ -7,8 +7,8 @@ import {
   HostProtocolInternalError,
   HostProtocolUnsupportedError,
   RpcGroup
-} from "@effect-desktop/bridge"
-import { type DesktopRpcClient, P, type PermissionRegistry } from "@effect-desktop/core"
+} from "@orika/bridge"
+import { type DesktopRpcClient, P, type PermissionRegistry } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import {
@@ -80,14 +80,14 @@ export interface TransientWindowRoleClientApi {
 export class TransientWindowRoleClient extends Context.Service<
   TransientWindowRoleClient,
   TransientWindowRoleClientApi
->()("@effect-desktop/native/TransientWindowRoleClient") {}
+>()("@orika/native/TransientWindowRoleClient") {}
 
 export interface TransientWindowRoleServiceApi extends TransientWindowRoleClientApi {}
 
 export class TransientWindowRole extends Context.Service<
   TransientWindowRole,
   TransientWindowRoleServiceApi
->()("@effect-desktop/native/TransientWindowRole") {
+>()("@orika/native/TransientWindowRole") {
   static readonly layer = Layer.effect(TransientWindowRole)(
     Effect.gen(function* () {
       const client = yield* TransientWindowRoleClient

@@ -8,7 +8,7 @@ effect_version: 4
 
 # Effect-first philosophy
 
-Effect Desktop is built on Effect v4. Not as a dependency, not as an internal helper — as the default architecture. The framework's [`AGENTS.md`](../../AGENTS.md) makes the rule explicit:
+ORIKA is built on Effect v4. Not as a dependency, not as an internal helper — as the default architecture. The framework's [`AGENTS.md`](../../AGENTS.md) makes the rule explicit:
 
 > Effect primitives are the default architecture. Custom abstractions must justify themselves by owning durable desktop-specific policy, lifecycle, security, or protocol translation.
 
@@ -22,7 +22,7 @@ The wrapper rule prevents that drift. If `WrappedThing` only renames, mirrors, n
 
 A custom abstraction should own at least one of:
 
-- **Desktop-specific policy.** "Filesystem writes must be inside a declared root and audited" is desktop policy. The plain `effect/platform` `FileSystem` does not enforce that. `@effect-desktop/core`'s `Filesystem` does. It earns its place.
+- **Desktop-specific policy.** "Filesystem writes must be inside a declared root and audited" is desktop policy. The plain `effect/platform` `FileSystem` does not enforce that. `@orika/core`'s `Filesystem` does. It earns its place.
 - **Lifecycle that crosses a boundary.** `Window` owns a Rust-side resource keyed by a `WindowHandle`. The lifecycle has to coordinate runtime and host scopes. That is a real wrapper.
 - **Security at a chokepoint.** `PermissionRegistry`, `ApprovalBroker`, `RedactionFilter` are non-trivial primitives. They earn their place.
 - **Protocol translation.** `HostProtocolEnvelope` and `Client` translate Effect RPC into the framed wire format that the Rust host speaks. Without this translation, the bridge does not work.
@@ -53,7 +53,7 @@ This is why `BridgeRpc` is explicitly marked as a temporary boundary adapter —
 Two payoffs:
 
 1. **Cohesion.** A small surface area of well-understood Effect primitives, plus a small set of clearly-justified desktop wrappers, is easier to reason about than a sprawl of helpers.
-2. **Portability.** Your handlers are ordinary Effect programs. A handler that uses `SqlClient` and `PermissionRegistry` is not coupled to "Effect Desktop" beyond those two services. The same logic could move into a different runtime if you ever needed to.
+2. **Portability.** Your handlers are ordinary Effect programs. A handler that uses `SqlClient` and `PermissionRegistry` is not coupled to "ORIKA" beyond those two services. The same logic could move into a different runtime if you ever needed to.
 
 ## When you really do need a wrapper
 

@@ -3,7 +3,7 @@ import {
   type HostProtocolError,
   type HostProtocolEventEnvelope,
   makeHostProtocolInvalidOutputError
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import { Effect, Schema, SchemaAST, Stream } from "effect"
 
 const SUBSCRIPTION_UNSUPPORTED = "event exchange does not support subscriptions"

@@ -31,7 +31,7 @@ import {
   WorkerUnsupportedError,
   type WorkerError,
   makeWorker
-} from "@effect-desktop/core"
+} from "@orika/core"
 ```
 
 ## API

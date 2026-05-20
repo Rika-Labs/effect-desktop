@@ -14,7 +14,7 @@ Close the Phase 15 epic after the Secrets service, redaction, and legacy plainte
 
 ## What actually ended up working
 
-The epic could not honestly close as a doc-only change because §24.15 also named "mock secrets" as a deliverable. The closure PR adds `makeMemorySecretsSafeStorage` to `@effect-desktop/test`, reusing the core-owned `SecretsSafeStorageApi` port rather than adding a new runtime abstraction. The milestone document then maps the phase deliverables, public APIs, Appendix C evidence, validation gate, known limitations, and follow-up phases to concrete files and PRs.
+The epic could not honestly close as a doc-only change because §24.15 also named "mock secrets" as a deliverable. The closure PR adds `makeMemorySecretsSafeStorage` to `@orika/test`, reusing the core-owned `SecretsSafeStorageApi` port rather than adding a new runtime abstraction. The milestone document then maps the phase deliverables, public APIs, Appendix C evidence, validation gate, known limitations, and follow-up phases to concrete files and PRs.
 
 ```mermaid
 flowchart TD

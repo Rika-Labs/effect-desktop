@@ -1,8 +1,8 @@
 {
-  "name": "@effect-desktop/config",
+  "name": "@orika/config",
   "version": "2.0.0",
   "private": true,
-  "description": "Configuration schema and production security checks for Effect Desktop applications.",
+  "description": "Configuration schema and production security checks for ORIKA applications.",
   "license": "MIT OR Apache-2.0",
   "author": "Rika Labs, LLC",
   "repository": {

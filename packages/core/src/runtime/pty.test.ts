@@ -6,7 +6,7 @@ import {
   HostProtocolPermissionDeniedError,
   HostProtocolResourceBusyError,
   HostProtocolStaleHandleError
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import { Cause, Deferred, Effect, Exit, Fiber, Option, Schedule, Schema, Stream } from "effect"
 
 import { PermissionActor } from "./permission-registry.js"

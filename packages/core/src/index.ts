@@ -1,4 +1,4 @@
-import { RedactionFilter, RpcCapability, RpcEndpoint, RpcSupport } from "@effect-desktop/bridge"
+import { RedactionFilter, RpcCapability, RpcEndpoint, RpcSupport } from "@orika/bridge"
 import { Effect, Layer } from "effect"
 import { WorkflowEngine } from "effect/unstable/workflow"
 
@@ -31,14 +31,8 @@ import { DesktopRpc } from "./runtime/desktop-rpc-surface.js"
 import { PermissionRegistry } from "./runtime/permission-registry.js"
 import { describeRpcs } from "./runtime/rpc-descriptors.js"
 
-export {
-  RedactionFilter,
-  RpcCapability,
-  RpcEndpoint,
-  RpcSupport,
-  redact
-} from "@effect-desktop/bridge"
-export { makeBridgeCallRegistry, makeBridgeStreamRegistry } from "@effect-desktop/bridge"
+export { RedactionFilter, RpcCapability, RpcEndpoint, RpcSupport, redact } from "@orika/bridge"
+export { makeBridgeCallRegistry, makeBridgeStreamRegistry } from "@orika/bridge"
 export type {
   BridgeCallRegistry,
   BridgeCallState,
@@ -47,7 +41,7 @@ export type {
   RpcCapabilityMetadata,
   RpcEndpointKind,
   RpcSupportMetadata
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 export * from "./runtime/desktop-env-config.js"
 export * from "./runtime/desktop-schedules.js"
 export * from "./runtime/logger.js"
@@ -156,13 +150,17 @@ export {
   NativeParityMatrixSummary,
   NativeParityPlatform,
   NativeParityPlatformSupport,
+  NativeParityReleaseDisposition,
+  NativeParityReleaseStatus,
   NativeParitySupport,
   NativeParitySupportStatus,
   type NativeHostMethodInventorySnapshotType,
   type NativeParityCapabilityKind,
   type NativeParityMatrixResultType,
   type NativeParityMatrixRowType,
-  type NativeParityMatrixSummaryType
+  type NativeParityMatrixSummaryType,
+  type NativeParityReleaseDisposition as NativeParityReleaseDispositionType,
+  type NativeParityReleaseStatus as NativeParityReleaseStatusType
 } from "./native-parity-matrix.js"
 
 export interface DesktopWorkflowEngineOptions<RIn = never, E = never> {

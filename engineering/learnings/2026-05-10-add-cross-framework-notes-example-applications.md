@@ -16,7 +16,7 @@ Add runnable Apple Notes-style examples for React, Vue, Solid, Next, and Astro t
 
 The shared `notes-common` package became the useful center: it owns the renderer-safe schemas, `NotesRpcs`, manifest, initial state, demo browser transport, and host-only desktop layer split into `host.ts`. React, Vue, Solid, Next, and Astro then import the same manifest and present the same notes workflow through hooks, composables, signals, a Next client component, and an Astro React island.
 
-The examples also exposed a real framework boundary bug. Importing the normal core barrel from renderer packages pulled host-only Bun/runtime modules into browser builds, so the framework now has `@effect-desktop/core/renderer` and shared RPC group metadata. That keeps renderer adapters on descriptor/client types while desktop startup code stays in the host path.
+The examples also exposed a real framework boundary bug. Importing the normal core barrel from renderer packages pulled host-only Bun/runtime modules into browser builds, so the framework now has `@orika/core/renderer` and shared RPC group metadata. That keeps renderer adapters on descriptor/client types while desktop startup code stays in the host path.
 
 ```mermaid
 flowchart LR
@@ -27,7 +27,7 @@ flowchart LR
   Common --> Solid[Solid signals]
   Common --> Next[Next client component]
   Common --> Astro[Astro React island]
-  RendererCore["@effect-desktop/core/renderer"] --> React
+  RendererCore["@orika/core/renderer"] --> React
   RendererCore --> Vue
   RendererCore --> Solid
   RendererCore --> Next

@@ -40,7 +40,7 @@ use tao::{
 use tracing::{info, warn};
 use uuid::Uuid;
 
-const WINDOW_TITLE: &str = "Effect Desktop";
+const WINDOW_TITLE: &str = "ORIKA";
 const WINDOW_WIDTH: f64 = 960.0;
 const WINDOW_HEIGHT: f64 = 640.0;
 const WINDOW_OPENED_EVENT: &str = "host.window.opened";
@@ -8043,7 +8043,7 @@ mod tests {
 
         assert_eq!(
             request,
-            WindowCreateRequest::new("Effect Desktop".to_string(), 960.0, 640.0)
+            WindowCreateRequest::new("ORIKA".to_string(), 960.0, 640.0)
                 .expect("default request should validate")
         );
     }

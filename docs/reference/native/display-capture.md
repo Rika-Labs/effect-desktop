@@ -21,7 +21,7 @@ The current Rust host adapter captures on macOS through the system `screencaptur
 
 `image` contains `mime: "image/png" | "image/jpeg"` and `bytes: number[]` with values from `0` through `255`. The public client rejects empty bytes and mismatched image headers. `metadata` records source identity and dimensions without storing image bytes.
 
-On macOS, `displayId` is a `screencapture` display selector: `"main"`, a positive display index such as `"1"`, or `"display-1"`. `windowId` is a positive macOS capture window id accepted by `screencapture -l`; it is not the Effect Desktop `WindowHandle.id`.
+On macOS, `displayId` is a `screencapture` display selector: `"main"`, a positive display index such as `"1"`, or `"display-1"`. `windowId` is a positive macOS capture window id accepted by `screencapture -l`; it is not the ORIKA `WindowHandle.id`.
 
 ## Layers
 

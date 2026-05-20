@@ -5,8 +5,8 @@ import {
   type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
   RpcGroup
-} from "@effect-desktop/bridge"
-import { type DesktopRpcClient, type PermissionRegistry, P } from "@effect-desktop/core"
+} from "@orika/bridge"
+import { type DesktopRpcClient, type PermissionRegistry, P } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import {
@@ -85,12 +85,12 @@ export interface RecentDocumentsClientApi {
 export class RecentDocumentsClient extends Context.Service<
   RecentDocumentsClient,
   RecentDocumentsClientApi
->()("@effect-desktop/native/RecentDocumentsClient") {}
+>()("@orika/native/RecentDocumentsClient") {}
 
 export type RecentDocumentsServiceApi = RecentDocumentsClientApi
 
 export class RecentDocuments extends Context.Service<RecentDocuments, RecentDocumentsServiceApi>()(
-  "@effect-desktop/native/RecentDocuments"
+  "@orika/native/RecentDocuments"
 ) {
   static readonly layer = Layer.effect(RecentDocuments)(
     Effect.gen(function* () {

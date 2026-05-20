@@ -52,7 +52,7 @@ The runtime updater is not executable yet. `UpdaterRpcs` and `UpdaterHandlersLiv
 Do not wire `UpdaterRpcs` into production apps until #1331 is implemented. The eventual manifest shape is expected to look like this:
 
 ```ts
-import { Desktop } from "@effect-desktop/core"
+import { Desktop } from "@orika/core"
 
 export const App = Desktop.make({
   id: "dev.example.notes",

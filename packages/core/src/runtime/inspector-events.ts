@@ -1,4 +1,4 @@
-import { BridgeRuntime, Rpc, RpcGroup } from "@effect-desktop/bridge"
+import { BridgeRuntime, Rpc, RpcGroup } from "@orika/bridge"
 import { Context, Effect, Layer, PubSub, Schema, Stream } from "effect"
 
 const NonNegativeNumber = Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0))
@@ -197,37 +197,37 @@ export interface RendererInspectorCollectorApi {
 export class ExecutionInspectorCollector extends Context.Service<
   ExecutionInspectorCollector,
   ExecutionInspectorCollectorApi
->()("@effect-desktop/core/runtime/inspector-events/ExecutionInspectorCollector") {}
+>()("@orika/core/runtime/inspector-events/ExecutionInspectorCollector") {}
 
 export class FilesystemInspectorCollector extends Context.Service<
   FilesystemInspectorCollector,
   FilesystemInspectorCollectorApi
->()("@effect-desktop/core/runtime/inspector-events/FilesystemInspectorCollector") {}
+>()("@orika/core/runtime/inspector-events/FilesystemInspectorCollector") {}
 
 export class NativeHostInspectorCollector extends Context.Service<
   NativeHostInspectorCollector,
   NativeHostInspectorCollectorApi
->()("@effect-desktop/core/runtime/inspector-events/NativeHostInspectorCollector") {}
+>()("@orika/core/runtime/inspector-events/NativeHostInspectorCollector") {}
 
 export class PersistenceInspectorCollector extends Context.Service<
   PersistenceInspectorCollector,
   PersistenceInspectorCollectorApi
->()("@effect-desktop/core/runtime/inspector-events/PersistenceInspectorCollector") {}
+>()("@orika/core/runtime/inspector-events/PersistenceInspectorCollector") {}
 
 export class WorkflowInspectorCollector extends Context.Service<
   WorkflowInspectorCollector,
   WorkflowInspectorCollectorApi
->()("@effect-desktop/core/runtime/inspector-events/WorkflowInspectorCollector") {}
+>()("@orika/core/runtime/inspector-events/WorkflowInspectorCollector") {}
 
 export class EventLogInspectorCollector extends Context.Service<
   EventLogInspectorCollector,
   EventLogInspectorCollectorApi
->()("@effect-desktop/core/runtime/inspector-events/EventLogInspectorCollector") {}
+>()("@orika/core/runtime/inspector-events/EventLogInspectorCollector") {}
 
 export class RendererInspectorCollector extends Context.Service<
   RendererInspectorCollector,
   RendererInspectorCollectorApi
->()("@effect-desktop/core/runtime/inspector-events/RendererInspectorCollector") {}
+>()("@orika/core/runtime/inspector-events/RendererInspectorCollector") {}
 
 export interface InspectorCollectorsApi {
   readonly execution: ExecutionInspectorCollectorApi
@@ -243,7 +243,7 @@ export interface InspectorCollectorsApi {
 export class InspectorCollectors extends Context.Service<
   InspectorCollectors,
   InspectorCollectorsApi
->()("@effect-desktop/core/runtime/inspector-events/InspectorCollectors") {}
+>()("@orika/core/runtime/inspector-events/InspectorCollectors") {}
 
 const makeCollector = <A>(): Effect.Effect<
   {

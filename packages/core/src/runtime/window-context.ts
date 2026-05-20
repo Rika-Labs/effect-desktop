@@ -6,7 +6,7 @@ export interface WindowContextApi {
 }
 
 export class WindowContext extends Context.Service<WindowContext, WindowContextApi>()(
-  "@effect-desktop/core/runtime/window-context/WindowContext"
+  "@orika/core/runtime/window-context/WindowContext"
 ) {}
 
 export const makeWindowContext = (input: {

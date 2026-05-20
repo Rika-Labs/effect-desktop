@@ -63,7 +63,7 @@ Follow-up:
 ## Verification
 
 - Focused:
-  - `bun run typecheck --filter=@effect-desktop/core`
+  - `bun run typecheck --filter=@orika/core`
   - `bun test packages/core/src/runtime/sqlite.test.ts packages/core/src/index.test.ts tests/repo-shape.test.ts`
   - `rg -n "makeSQLite|SQLiteLive|yield\\* SQLite|SqliteConnection|SqlitePreparedStatement|SqliteParams|SqliteRow|SqliteValue" packages apps templates tests docs api/snapshots`
 - API:

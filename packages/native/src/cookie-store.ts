@@ -6,8 +6,8 @@ import {
   type HostProtocolError,
   HostProtocolUnsupportedError,
   RpcGroup
-} from "@effect-desktop/bridge"
-import { type DesktopRpcClient, P, type PermissionRegistry } from "@effect-desktop/core"
+} from "@orika/bridge"
+import { type DesktopRpcClient, P, type PermissionRegistry } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { CookieStoreEvent, CookieStoreSupportedResult } from "./contracts/cookie-store.js"
@@ -71,7 +71,7 @@ export interface CookieStoreClientApi {
 }
 
 export class CookieStoreClient extends Context.Service<CookieStoreClient, CookieStoreClientApi>()(
-  "@effect-desktop/native/CookieStoreClient"
+  "@orika/native/CookieStoreClient"
 ) {}
 
 export interface CookieStoreServiceApi {
@@ -82,7 +82,7 @@ export interface CookieStoreServiceApi {
 }
 
 export class CookieStore extends Context.Service<CookieStore, CookieStoreServiceApi>()(
-  "@effect-desktop/native/CookieStore"
+  "@orika/native/CookieStore"
 ) {
   static readonly layer = Layer.effect(CookieStore)(
     Effect.gen(function* () {

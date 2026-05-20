@@ -4,7 +4,7 @@ import {
   makeHostHandshakeClient,
   makeHostWindowClient,
   negotiateHostVersion
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import { Effect, ManagedRuntime, Schema } from "effect"
 
 import packageJson from "../../package.json" with { type: "json" }

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { PermissionRegistry, makePermissionRegistry } from "@effect-desktop/core"
+import { PermissionRegistry, makePermissionRegistry } from "@orika/core"
 import { Effect, Layer, Schema, Stream } from "effect"
 import { HttpRouter, HttpServer } from "effect/unstable/http"
 import { HttpApiClient } from "effect/unstable/httpapi"

@@ -10,7 +10,7 @@ import {
   type HostProtocolError,
   type RpcCapabilityMetadata,
   RpcGroup
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import {
   type AuditEventsApi,
   type DesktopRpcClient,
@@ -23,7 +23,7 @@ import {
   type PermissionRegistryApi,
   type PermissionRegistryError,
   permissionAuditEvent
-} from "@effect-desktop/core"
+} from "@orika/core"
 import { Clock, Context, Effect, Layer, PubSub, Schema, Stream } from "effect"
 
 import {
@@ -92,7 +92,7 @@ export interface DistributionParityClientApi {
 export class DistributionParityClient extends Context.Service<
   DistributionParityClient,
   DistributionParityClientApi
->()("@effect-desktop/native/distribution-parity/DistributionParityClient") {}
+>()("@orika/native/distribution-parity/DistributionParityClient") {}
 
 export interface DistributionParityServiceApi extends DistributionParityClientApi {}
 
@@ -104,7 +104,7 @@ export interface DistributionParityServiceOptions {
 export class DistributionParity extends Context.Service<
   DistributionParity,
   DistributionParityServiceApi
->()("@effect-desktop/native/distribution-parity/DistributionParity") {
+>()("@orika/native/distribution-parity/DistributionParity") {
   static readonly layer = Layer.effect(DistributionParity)(
     Effect.gen(function* () {
       const client = yield* DistributionParityClient

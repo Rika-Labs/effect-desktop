@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "packageName": "@effect-desktop/devtools",
+  "packageName": "@orika/devtools",
   "entrypoint": "src/index.ts",
   "symbols": [
     {
@@ -26,7 +26,7 @@
     {
       "name": "ClusterPanel",
       "kind": "class",
-      "signature": "export class ClusterPanel extends Context.Service<ClusterPanel, ClusterPanelApi>()( \"@effect-desktop/devtools/cluster-panel/ClusterPanel\" ) {}"
+      "signature": "export class ClusterPanel extends Context.Service<ClusterPanel, ClusterPanelApi>()( \"@orika/devtools/cluster-panel/ClusterPanel\" ) {}"
     },
     {
       "name": "ClusterPanelApi",
@@ -76,7 +76,7 @@
     {
       "name": "CommandsDevtools",
       "kind": "class",
-      "signature": "export class CommandsDevtools extends Context.Service<CommandsDevtools, CommandsDevtoolsApi>()( \"@effect-desktop/devtools/CommandsDevtools\" ) {}"
+      "signature": "export class CommandsDevtools extends Context.Service<CommandsDevtools, CommandsDevtoolsApi>()( \"@orika/devtools/CommandsDevtools\" ) {}"
     },
     {
       "name": "CommandsDevtoolsApi",
@@ -151,7 +151,7 @@
     {
       "name": "DevtoolsShell",
       "kind": "class",
-      "signature": "export class DevtoolsShell extends Context.Service<DevtoolsShell, DevtoolsShellApi>()( \"@effect-desktop/devtools/shell/DevtoolsShell\" ) {}"
+      "signature": "export class DevtoolsShell extends Context.Service<DevtoolsShell, DevtoolsShellApi>()( \"@orika/devtools/shell/DevtoolsShell\" ) {}"
     },
     {
       "name": "DevtoolsShellApi",
@@ -186,7 +186,7 @@
     {
       "name": "DevtoolsSnapshotClient",
       "kind": "class",
-      "signature": "export class DevtoolsSnapshotClient extends Context.Service< DevtoolsSnapshotClient, DevtoolsSnapshotClientApi >()(\"@effect-desktop/devtools/snapshot-client/DevtoolsSnapshotClient\") {}"
+      "signature": "export class DevtoolsSnapshotClient extends Context.Service< DevtoolsSnapshotClient, DevtoolsSnapshotClientApi >()(\"@orika/devtools/snapshot-client/DevtoolsSnapshotClient\") {}"
     },
     {
       "name": "DevtoolsSnapshotClientApi",
@@ -226,7 +226,7 @@
     {
       "name": "DiagnosticsPanels",
       "kind": "class",
-      "signature": "export class DiagnosticsPanels extends Context.Service<DiagnosticsPanels, DiagnosticsPanelsApi>()( \"@effect-desktop/devtools/diagnostics-panels/DiagnosticsPanels\" ) {}"
+      "signature": "export class DiagnosticsPanels extends Context.Service<DiagnosticsPanels, DiagnosticsPanelsApi>()( \"@orika/devtools/diagnostics-panels/DiagnosticsPanels\" ) {}"
     },
     {
       "name": "DiagnosticsPanelsApi",
@@ -271,7 +271,7 @@
     {
       "name": "EmbeddedInspectorPanel",
       "kind": "class",
-      "signature": "export class EmbeddedInspectorPanel extends Context.Service< EmbeddedInspectorPanel, EmbeddedInspectorPanelApi >()(\"@effect-desktop/devtools/embedded-inspector-panel/EmbeddedInspectorPanel\") {}"
+      "signature": "export class EmbeddedInspectorPanel extends Context.Service< EmbeddedInspectorPanel, EmbeddedInspectorPanelApi >()(\"@orika/devtools/embedded-inspector-panel/EmbeddedInspectorPanel\") {}"
     },
     {
       "name": "EmbeddedInspectorPanelApi",
@@ -316,7 +316,7 @@
     {
       "name": "EventLogPanel",
       "kind": "class",
-      "signature": "export class EventLogPanel extends Context.Service<EventLogPanel, EventLogPanelApi>()( \"@effect-desktop/devtools/event-log-panel/EventLogPanel\" ) {}"
+      "signature": "export class EventLogPanel extends Context.Service<EventLogPanel, EventLogPanelApi>()( \"@orika/devtools/event-log-panel/EventLogPanel\" ) {}"
     },
     {
       "name": "EventLogPanelApi",
@@ -356,7 +356,7 @@
     {
       "name": "FiberInspectorCollector",
       "kind": "class",
-      "signature": "export class FiberInspectorCollector extends Context.Service< FiberInspectorCollector, FiberInspectorCollectorApi >()(\"@effect-desktop/devtools/lifecycle-collectors/FiberInspectorCollector\") {}"
+      "signature": "export class FiberInspectorCollector extends Context.Service< FiberInspectorCollector, FiberInspectorCollectorApi >()(\"@orika/devtools/lifecycle-collectors/FiberInspectorCollector\") {}"
     },
     {
       "name": "FiberInspectorCollectorApi",
@@ -481,7 +481,7 @@
     {
       "name": "InspectorTest",
       "kind": "class",
-      "signature": "export class InspectorTest extends Context.Service<InspectorTest, InspectorTestApi>()( \"@effect-desktop/devtools/testing/InspectorTest\" ) {}"
+      "signature": "export class InspectorTest extends Context.Service<InspectorTest, InspectorTestApi>()( \"@orika/devtools/testing/InspectorTest\" ) {}"
     },
     {
       "name": "InspectorTestApi",
@@ -521,7 +521,7 @@
     {
       "name": "LayerGraphPanel",
       "kind": "class",
-      "signature": "export class LayerGraphPanel extends Context.Service<LayerGraphPanel, LayerGraphPanelApi>()( \"@effect-desktop/devtools/layer-graph-panel/LayerGraphPanel\" ) {}"
+      "signature": "export class LayerGraphPanel extends Context.Service<LayerGraphPanel, LayerGraphPanelApi>()( \"@orika/devtools/layer-graph-panel/LayerGraphPanel\" ) {}"
     },
     {
       "name": "LayerGraphPanelApi",
@@ -546,7 +546,7 @@
     {
       "name": "LiveRuntimePanels",
       "kind": "class",
-      "signature": "export class LiveRuntimePanels extends Context.Service<LiveRuntimePanels, LiveRuntimePanelsApi>()( \"@effect-desktop/devtools/live-panels/LiveRuntimePanels\" ) {}"
+      "signature": "export class LiveRuntimePanels extends Context.Service<LiveRuntimePanels, LiveRuntimePanelsApi>()( \"@orika/devtools/live-panels/LiveRuntimePanels\" ) {}"
     },
     {
       "name": "LiveRuntimePanelsApi",
@@ -576,7 +576,7 @@
     {
       "name": "LogsPanel",
       "kind": "class",
-      "signature": "export class LogsPanel extends Context.Service<LogsPanel, LogsPanelApi>()( \"@effect-desktop/devtools/logs-panel/LogsPanel\" ) {}"
+      "signature": "export class LogsPanel extends Context.Service<LogsPanel, LogsPanelApi>()( \"@orika/devtools/logs-panel/LogsPanel\" ) {}"
     },
     {
       "name": "LogsPanelApi",
@@ -696,7 +696,7 @@
     {
       "name": "PerformanceOverlay",
       "kind": "class",
-      "signature": "export class PerformanceOverlay extends Context.Service< PerformanceOverlay, PerformanceOverlayApi >()(\"@effect-desktop/devtools/performance-overlay/PerformanceOverlay\") {}"
+      "signature": "export class PerformanceOverlay extends Context.Service< PerformanceOverlay, PerformanceOverlayApi >()(\"@orika/devtools/performance-overlay/PerformanceOverlay\") {}"
     },
     {
       "name": "PerformanceOverlayApi",
@@ -736,7 +736,7 @@
     {
       "name": "PersistencePanel",
       "kind": "class",
-      "signature": "export class PersistencePanel extends Context.Service<PersistencePanel, PersistencePanelApi>()( \"@effect-desktop/devtools/persistence-panel/PersistencePanel\" ) {}"
+      "signature": "export class PersistencePanel extends Context.Service<PersistencePanel, PersistencePanelApi>()( \"@orika/devtools/persistence-panel/PersistencePanel\" ) {}"
     },
     {
       "name": "PersistencePanelApi",
@@ -771,7 +771,7 @@
     {
       "name": "ReactivityPanel",
       "kind": "class",
-      "signature": "export class ReactivityPanel extends Context.Service<ReactivityPanel, ReactivityPanelApi>()( \"@effect-desktop/devtools/reactivity-panel/ReactivityPanel\" ) {}"
+      "signature": "export class ReactivityPanel extends Context.Service<ReactivityPanel, ReactivityPanelApi>()( \"@orika/devtools/reactivity-panel/ReactivityPanel\" ) {}"
     },
     {
       "name": "ReactivityPanelApi",
@@ -796,7 +796,7 @@
     {
       "name": "ReactivityTracker",
       "kind": "class",
-      "signature": "export class ReactivityTracker extends Context.Service<ReactivityTracker, ReactivityTrackerApi>()( \"@effect-desktop/devtools/reactivity-panel/ReactivityTracker\" ) {}"
+      "signature": "export class ReactivityTracker extends Context.Service<ReactivityTracker, ReactivityTrackerApi>()( \"@orika/devtools/reactivity-panel/ReactivityTracker\" ) {}"
     },
     {
       "name": "ReactivityTrackerApi",
@@ -831,7 +831,7 @@
     {
       "name": "ReplayTransport",
       "kind": "class",
-      "signature": "export class ReplayTransport extends Context.Service<ReplayTransport, ReplayTransportApi>()( \"@effect-desktop/devtools/testing/ReplayTransport\" ) {}"
+      "signature": "export class ReplayTransport extends Context.Service<ReplayTransport, ReplayTransportApi>()( \"@orika/devtools/testing/ReplayTransport\" ) {}"
     },
     {
       "name": "ReplayTransportApi",
@@ -856,7 +856,7 @@
     {
       "name": "ResourceInspectorCollector",
       "kind": "class",
-      "signature": "export class ResourceInspectorCollector extends Context.Service< ResourceInspectorCollector, ResourceInspectorCollectorApi >()(\"@effect-desktop/devtools/lifecycle-collectors/ResourceInspectorCollector\") {}"
+      "signature": "export class ResourceInspectorCollector extends Context.Service< ResourceInspectorCollector, ResourceInspectorCollectorApi >()(\"@orika/devtools/lifecycle-collectors/ResourceInspectorCollector\") {}"
     },
     {
       "name": "ResourceInspectorCollectorApi",
@@ -881,7 +881,7 @@
     {
       "name": "ScopeInspectorCollector",
       "kind": "class",
-      "signature": "export class ScopeInspectorCollector extends Context.Service< ScopeInspectorCollector, ScopeInspectorCollectorApi >()(\"@effect-desktop/devtools/lifecycle-collectors/ScopeInspectorCollector\") {}"
+      "signature": "export class ScopeInspectorCollector extends Context.Service< ScopeInspectorCollector, ScopeInspectorCollectorApi >()(\"@orika/devtools/lifecycle-collectors/ScopeInspectorCollector\") {}"
     },
     {
       "name": "ScopeInspectorCollectorApi",
@@ -906,7 +906,7 @@
     {
       "name": "StreamInspectorCollector",
       "kind": "class",
-      "signature": "export class StreamInspectorCollector extends Context.Service< StreamInspectorCollector, StreamInspectorCollectorApi >()(\"@effect-desktop/devtools/lifecycle-collectors/StreamInspectorCollector\") {}"
+      "signature": "export class StreamInspectorCollector extends Context.Service< StreamInspectorCollector, StreamInspectorCollectorApi >()(\"@orika/devtools/lifecycle-collectors/StreamInspectorCollector\") {}"
     },
     {
       "name": "StreamInspectorCollectorApi",
@@ -941,7 +941,7 @@
     {
       "name": "WorkersDevtools",
       "kind": "class",
-      "signature": "export class WorkersDevtools extends Context.Service<WorkersDevtools, WorkersDevtoolsApi>()( \"@effect-desktop/devtools/WorkersDevtools\" ) {}"
+      "signature": "export class WorkersDevtools extends Context.Service<WorkersDevtools, WorkersDevtoolsApi>()( \"@orika/devtools/WorkersDevtools\" ) {}"
     },
     {
       "name": "WorkersDevtoolsApi",
@@ -971,7 +971,7 @@
     {
       "name": "WorkflowExecutionRegistry",
       "kind": "class",
-      "signature": "export class WorkflowExecutionRegistry extends Context.Service< WorkflowExecutionRegistry, WorkflowExecutionRegistryApi >()(\"@effect-desktop/devtools/workflows-panel/WorkflowExecutionRegistry\") {}"
+      "signature": "export class WorkflowExecutionRegistry extends Context.Service< WorkflowExecutionRegistry, WorkflowExecutionRegistryApi >()(\"@orika/devtools/workflows-panel/WorkflowExecutionRegistry\") {}"
     },
     {
       "name": "WorkflowExecutionRegistryApi",
@@ -991,7 +991,7 @@
     {
       "name": "WorkflowsPanel",
       "kind": "class",
-      "signature": "export class WorkflowsPanel extends Context.Service<WorkflowsPanel, WorkflowsPanelApi>()( \"@effect-desktop/devtools/workflows-panel/WorkflowsPanel\" ) {}"
+      "signature": "export class WorkflowsPanel extends Context.Service<WorkflowsPanel, WorkflowsPanelApi>()( \"@orika/devtools/workflows-panel/WorkflowsPanel\" ) {}"
     },
     {
       "name": "WorkflowsPanelApi",

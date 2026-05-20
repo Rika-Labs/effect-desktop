@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto"
 import { Data, Effect, Layer, Option, Schema } from "effect"
 import { Rpc, RpcMiddleware } from "effect/unstable/rpc"
 
-import { rpcCapability, type RpcCapabilityMetadata } from "@effect-desktop/bridge"
+import { rpcCapability, type RpcCapabilityMetadata } from "@orika/bridge"
 
 import {
   capabilityCovers,

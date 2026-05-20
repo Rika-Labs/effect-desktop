@@ -1,4 +1,4 @@
-# @effect-desktop/native
+# @orika/native
 
 > **Status:** Native service APIs are Layer-first Effect services backed by canonical Effect RPC surfaces. See `engineering/SPEC.md`.
 
@@ -32,13 +32,13 @@ See `engineering/SPEC.md` for the package's normative non-goals.
 
 ```ts
 import { Effect } from "effect"
-import { Screen, Window } from "@effect-desktop/native"
+import { Screen, Window } from "@orika/native"
 
 const program = Effect.gen(function* () {
   const screen = yield* Screen
   const window = yield* Window
   const pointer = yield* screen.getPointerPoint()
-  const created = yield* window.create({ title: "Effect Desktop" })
+  const created = yield* window.create({ title: "ORIKA" })
   return { created, pointer }
 })
 ```
@@ -52,7 +52,7 @@ bun run typecheck
 
 ## Dependency notes
 
-This package depends on `effect` for services/layers, streams, `PubSub`, `SubscriptionRef`, and typed failures; on `@effect-desktop/bridge` for `RpcGroup` bridge helpers and host protocol error schemas; and on `@effect-desktop/core` for the runtime resource registry used by the live Window adapter. These are framework-internal dependencies required by the Phase 5 Window service boundary.
+This package depends on `effect` for services/layers, streams, `PubSub`, `SubscriptionRef`, and typed failures; on `@orika/bridge` for `RpcGroup` bridge helpers and host protocol error schemas; and on `@orika/core` for the runtime resource registry used by the live Window adapter. These are framework-internal dependencies required by the Phase 5 Window service boundary.
 
 ## Platform notes
 

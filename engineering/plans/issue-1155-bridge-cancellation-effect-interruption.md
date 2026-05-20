@@ -37,13 +37,13 @@ methods should not expose a parallel cancellation option.
 
 ## Modules
 
-| Module                                                | Change                                                                                                                                 |
-| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/bridge/src/client.ts`                       | Remove `BridgeClientCallOptions`, remove abort listener helpers, send protocol cancel from `Effect.onInterrupt` and stream finalizers. |
-| `packages/bridge/src/client.test.ts`                  | Replace abort-signal tests with Effect fiber interruption tests.                                                                       |
-| `packages/bridge/src/streams.test.ts`                 | Replace stream abort-signal tests with stream fiber interruption tests.                                                                |
-| `api/snapshots/@effect-desktop__bridge.snapshot.json` | Update the public bridge API after removing method call options.                                                                       |
-| `engineering/roadmap/layer-first-issue-order.md`      | Record #1155 completion after validation.                                                                                              |
+| Module                                           | Change                                                                                                                                 |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/bridge/src/client.ts`                  | Remove `BridgeClientCallOptions`, remove abort listener helpers, send protocol cancel from `Effect.onInterrupt` and stream finalizers. |
+| `packages/bridge/src/client.test.ts`             | Replace abort-signal tests with Effect fiber interruption tests.                                                                       |
+| `packages/bridge/src/streams.test.ts`            | Replace stream abort-signal tests with stream fiber interruption tests.                                                                |
+| `api/snapshots/@orika__bridge.snapshot.json`     | Update the public bridge API after removing method call options.                                                                       |
+| `engineering/roadmap/layer-first-issue-order.md` | Record #1155 completion after validation.                                                                                              |
 
 ## Verification
 

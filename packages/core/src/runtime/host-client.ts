@@ -6,14 +6,14 @@ import {
   makeHostProtocolInvalidOutputError,
   encodeHostProtocolFrame,
   parseHostProtocolFrameJson
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import type {
   HostHandshakeExchange,
   HostProtocolError,
   HostProtocolEventEnvelope,
   HostProtocolRequestEnvelope,
   HostProtocolResponseEnvelope
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import { Deferred, Effect, Exit, Fiber, FiberSet, Queue, Random, Scope, Stream } from "effect"
 
 import { AuditEvent, emitAuditEvent, type AuditEventsApi } from "./audit-events.js"

@@ -1,8 +1,8 @@
 {
-  "name": "@effect-desktop/next",
+  "name": "@orika/next",
   "version": "2.0.0",
   "private": true,
-  "description": "Next.js client-component wrapper for Effect Desktop React RPC clients.",
+  "description": "Next.js client-component wrapper for ORIKA React RPC clients.",
   "license": "MIT OR Apache-2.0",
   "author": "Rika Labs, LLC",
   "repository": {
@@ -30,8 +30,8 @@
     "lint": "oxlint ."
   },
   "dependencies": {
-    "@effect-desktop/core": "workspace:*",
-    "@effect-desktop/react": "workspace:*"
+    "@orika/core": "workspace:*",
+    "@orika/react": "workspace:*"
   },
   "peerDependencies": {
     "react": "^19.0.0"

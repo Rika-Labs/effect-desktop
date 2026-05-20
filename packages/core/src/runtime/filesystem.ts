@@ -8,7 +8,7 @@ import {
   HostProtocolSymlinkEscapesRootError,
   makeHostProtocolInvalidArgumentError,
   type HostProtocolError
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import {
   Clock,
   Context,
@@ -433,7 +433,7 @@ export const makeFilesystem = (
   })
 
 export class Filesystem extends Context.Service<Filesystem, FilesystemApi>()(
-  "@effect-desktop/core/runtime/filesystem"
+  "@orika/core/runtime/filesystem"
 ) {}
 
 export const FilesystemLive: Layer.Layer<

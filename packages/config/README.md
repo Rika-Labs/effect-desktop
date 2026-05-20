@@ -1,4 +1,4 @@
-# @effect-desktop/config
+# @orika/config
 
 > **Status:** Phase 16 starts the production security checker; full config
 > loading and manifest emission land in later phases. See `engineering/SPEC.md`.

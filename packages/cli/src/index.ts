@@ -13,7 +13,7 @@ import {
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
-import { HOST_PROTOCOL_VERSION } from "@effect-desktop/bridge"
+import { HOST_PROTOCOL_VERSION } from "@orika/bridge"
 import {
   provider,
   providers,
@@ -23,7 +23,7 @@ import {
   type DesktopProviderBudget,
   type DesktopWindowsLayer,
   type LayerGraphSnapshot
-} from "@effect-desktop/core"
+} from "@orika/core"
 import {
   Clock,
   Console,
@@ -57,7 +57,7 @@ import {
   type ProductionSecurityConfig,
   type RuntimeEngine,
   type WebEngine
-} from "@effect-desktop/config"
+} from "@orika/config"
 
 import {
   runDesktopPackage,
@@ -2156,7 +2156,7 @@ const providerMeasurementReport = (options: {
 
 const formatBuildReport = (report: DesktopBuildReport): string =>
   [
-    "Effect Desktop build",
+    "ORIKA build",
     `app               ${report.appId}`,
     `target            ${report.target}`,
     [
@@ -2221,7 +2221,7 @@ const formatBuildErrorText = (error: BuildPipelineError): string => {
 
 const formatPackageReport = (report: DesktopPackageReport): string =>
   [
-    "Effect Desktop package",
+    "ORIKA package",
     `app               ${report.appId}`,
     `target            ${report.target}`,
     ...(report.providers === undefined
@@ -3100,7 +3100,7 @@ const readOptionalUpdateChannel = (
 
 const formatSignReport = (report: DesktopSignReport): string =>
   [
-    "Effect Desktop sign",
+    "ORIKA sign",
     `app               ${report.appId}`,
     `target            ${report.target}`,
     `output            ${report.outputPath}`,
@@ -3150,7 +3150,7 @@ const formatSignErrorText = (error: SignPipelineError): string => {
 
 const formatNotarizeReport = (report: DesktopNotarizeReport): string =>
   [
-    "Effect Desktop notarize",
+    "ORIKA notarize",
     `app               ${report.appId}`,
     `target            ${report.target}`,
     `output            ${report.outputPath}`,
@@ -3214,7 +3214,7 @@ const formatProductionCheckError = (error: BuildConfigError | Error): string =>
 
 const formatPublishReport = (report: DesktopPublishReport): string =>
   [
-    "Effect Desktop publish",
+    "ORIKA publish",
     `app               ${report.appId}`,
     `version           ${report.version}`,
     `channel           ${report.channel}`,
@@ -3253,7 +3253,7 @@ const formatPublishErrorText = (error: PublishPipelineError): string => {
 
 const formatReleaseReport = (report: DesktopReleaseReport): string =>
   [
-    "Effect Desktop release",
+    "ORIKA release",
     `app               ${report.appId}`,
     `version           ${report.appVersion}`,
     `target            ${report.target}`,

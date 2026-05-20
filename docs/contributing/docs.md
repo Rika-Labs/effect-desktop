@@ -37,7 +37,7 @@ effect_version: 4
 ---
 ```
 
-Code samples use real package names (`@effect-desktop/core`), not relative source paths. Cross-links use relative paths (`../reference/services/permission-registry.md`) so the tree can be re-mounted.
+Code samples use real package names (`@orika/core`), not relative source paths. Cross-links use relative paths (`../reference/services/permission-registry.md`) so the tree can be re-mounted.
 
 ## The release gate
 

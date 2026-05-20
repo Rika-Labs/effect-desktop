@@ -29,7 +29,7 @@ export interface EventLogPanelOptions {
 }
 
 export class EventLogPanel extends Context.Service<EventLogPanel, EventLogPanelApi>()(
-  "@effect-desktop/devtools/event-log-panel/EventLogPanel"
+  "@orika/devtools/event-log-panel/EventLogPanel"
 ) {}
 
 export const EventLogPanelLive = (

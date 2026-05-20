@@ -2,7 +2,7 @@ import {
   InspectorSafetyPolicy,
   type InspectorSafetyPolicyApi,
   type InspectorSafetySummary
-} from "@effect-desktop/core"
+} from "@orika/core"
 import { Context, Effect, Layer, Option, Schedule, Stream } from "effect"
 
 import {
@@ -48,7 +48,7 @@ export interface EmbeddedInspectorPanelApi {
 export class EmbeddedInspectorPanel extends Context.Service<
   EmbeddedInspectorPanel,
   EmbeddedInspectorPanelApi
->()("@effect-desktop/devtools/embedded-inspector-panel/EmbeddedInspectorPanel") {}
+>()("@orika/devtools/embedded-inspector-panel/EmbeddedInspectorPanel") {}
 
 export const EmbeddedInspectorPanelLive = (
   options: EmbeddedInspectorPanelOptions = {}

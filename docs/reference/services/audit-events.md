@@ -18,7 +18,7 @@ import {
   type AuditEvent,
   type AuditEventKind,
   makeAuditEvents
-} from "@effect-desktop/core"
+} from "@orika/core"
 ```
 
 ## API

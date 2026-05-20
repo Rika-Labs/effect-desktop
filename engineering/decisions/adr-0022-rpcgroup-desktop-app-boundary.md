@@ -99,7 +99,7 @@ New apps should define APIs as:
 ```ts
 import { Effect, Schema } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
-import { Desktop } from "@effect-desktop/core"
+import { Desktop } from "@orika/core"
 
 class Note extends Schema.Class<Note>("Note")({
   id: Schema.String,
@@ -166,7 +166,7 @@ PR #1306 replaced that pair with a single composed Layer:
 
 Removed: `AnyDesktopRpcLayer`, `DesktopRpcLayer`, `Desktop.Rpcs.layer`, the entire
 `packages/core/src/runtime/rpc-group-metadata.ts` file, plus `servedRpcGroup` and
-the `Symbol("@effect-desktop/core/servedRpcGroup")` metadata channel.
+the `Symbol("@orika/core/servedRpcGroup")` metadata channel.
 
 The boundary decision (RpcGroup as the renderer-callable contract) is unchanged —
 the same `RpcGroup`, the same `RpcGroup.toLayer({ ...handlers })`, the same renderer

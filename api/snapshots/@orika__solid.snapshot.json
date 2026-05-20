@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "packageName": "@effect-desktop/solid",
+  "packageName": "@orika/solid",
   "entrypoint": "src/index.ts",
   "symbols": [
     {

@@ -6,8 +6,8 @@ import {
   type HostProtocolError,
   HostProtocolUnsupportedError,
   RpcGroup
-} from "@effect-desktop/bridge"
-import { type DesktopRpcClient, P, type PermissionRegistry } from "@effect-desktop/core"
+} from "@orika/bridge"
+import { type DesktopRpcClient, P, type PermissionRegistry } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { BrowsingDataEvent, BrowsingDataSupportedResult } from "./contracts/browsing-data.js"
@@ -73,7 +73,7 @@ export interface BrowsingDataClientApi {
 export class BrowsingDataClient extends Context.Service<
   BrowsingDataClient,
   BrowsingDataClientApi
->()("@effect-desktop/native/BrowsingDataClient") {}
+>()("@orika/native/BrowsingDataClient") {}
 
 export interface BrowsingDataServiceApi {
   readonly isSupported: () => Effect.Effect<BrowsingDataSupportedResult, BrowsingDataError, never>
@@ -83,7 +83,7 @@ export interface BrowsingDataServiceApi {
 }
 
 export class BrowsingData extends Context.Service<BrowsingData, BrowsingDataServiceApi>()(
-  "@effect-desktop/native/BrowsingData"
+  "@orika/native/BrowsingData"
 ) {
   static readonly layer = Layer.effect(BrowsingData)(
     Effect.gen(function* () {

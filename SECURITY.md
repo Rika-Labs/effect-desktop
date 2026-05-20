@@ -1,6 +1,6 @@
 # Security Policy
 
-Effect Desktop is a security-sensitive desktop framework. Please report
+ORIKA is a security-sensitive desktop framework. Please report
 vulnerabilities privately before opening a public issue.
 
 ## Supported Versions

@@ -3,7 +3,7 @@ import type {
   BridgeClientExchange,
   HostProtocolError,
   HostProtocolRequestEnvelope
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import { Cause, Effect, Exit, type Layer, ManagedRuntime, Stream } from "effect"
 
 import {

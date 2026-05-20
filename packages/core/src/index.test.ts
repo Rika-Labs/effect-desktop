@@ -8,7 +8,7 @@ import {
   RpcEndpoint,
   RpcSupport,
   type HostProtocolEnvelope
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import * as SqliteClient from "@effect/sql-sqlite-bun/SqliteClient"
 import { BunServices } from "@effect/platform-bun"
 import { NodeServices } from "@effect/platform-node"
@@ -32,7 +32,7 @@ import type { SqlError } from "effect/unstable/sql/SqlError"
 import type { Socket } from "effect/unstable/socket"
 import { Reactivity } from "effect/unstable/reactivity"
 import { WorkflowEngine } from "effect/unstable/workflow"
-import type * as RuntimeTransport from "@effect-desktop/core/runtime/transport"
+import type * as RuntimeTransport from "@orika/core/runtime/transport"
 import * as core from "./index.js"
 import type {
   DesktopRuntimeProviderDescriptor,
@@ -141,13 +141,9 @@ test("public barrel keeps low-level runtime plumbing behind subpaths", () => {
 test("public barrel keeps optional runtime provider layers behind provider subpaths", () =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const bunProvider = yield* Effect.promise(() => import("@effect-desktop/core/providers/bun"))
-      const nodeProvider = yield* Effect.promise(
-        () => import("@effect-desktop/core/providers/node")
-      )
-      const testProvider = yield* Effect.promise(
-        () => import("@effect-desktop/core/providers/test")
-      )
+      const bunProvider = yield* Effect.promise(() => import("@orika/core/providers/bun"))
+      const nodeProvider = yield* Effect.promise(() => import("@orika/core/providers/node"))
+      const testProvider = yield* Effect.promise(() => import("@orika/core/providers/test"))
 
       expect("BunRuntimeProviderLayer" in core).toBe(false)
       expect("NodeRuntimeProviderLayer" in core).toBe(false)
@@ -162,9 +158,7 @@ test("public barrel keeps optional runtime provider layers behind provider subpa
 test("runtime transport subpath exposes framed transport helpers", () =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const transport = yield* Effect.promise(
-        () => import("@effect-desktop/core/runtime/transport")
-      )
+      const transport = yield* Effect.promise(() => import("@orika/core/runtime/transport"))
 
       expect(transport.FrameDecoder).toBeFunction()
       expect(transport.encodeFrame).toBeFunction()
@@ -180,7 +174,7 @@ test("deleted zero-policy runtime wrapper subpaths are not exported", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       for (const module of ["reactivity", "workflow"]) {
-        const specifier = "@effect-desktop/core/runtime/" + module
+        const specifier = "@orika/core/runtime/" + module
         const exit = yield* Effect.exit(Effect.promise(() => import(specifier)))
         expect(Exit.isFailure(exit)).toBe(true)
       }
@@ -190,7 +184,7 @@ test("deleted zero-policy runtime wrapper subpaths are not exported", () =>
 test("runtime event-log subpath exposes desktop policy without raw journal shortcuts", () =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const eventLog = yield* Effect.promise(() => import("@effect-desktop/core/runtime/event-log"))
+      const eventLog = yield* Effect.promise(() => import("@orika/core/runtime/event-log"))
 
       expect(eventLog.DesktopEventLog).toBeDefined()
       expect(eventLog.DesktopEventSchema).toBeDefined()
@@ -283,8 +277,8 @@ test("Desktop.runtimeGraph exposes selected providers and composition nodes with
           {
             id: "test",
             kind: "runtime",
-            package: "@effect-desktop/core",
-            importPath: "@effect-desktop/core/providers/test",
+            package: "@orika/core",
+            importPath: "@orika/core/providers/test",
             startupBudgetMs: 25,
             bundleBudgetKb: 64
           }
@@ -346,7 +340,7 @@ test("Desktop.runtimeGraph exposes node runtime provider selection", () =>
           id: "node",
           kind: "runtime",
           package: "@effect/platform-node",
-          importPath: "@effect-desktop/core/providers/node",
+          importPath: "@orika/core/providers/node",
           startupBudgetMs: 25,
           bundleBudgetKb: 64
         }
@@ -368,7 +362,7 @@ test("Desktop.provider accepts custom provider descriptors through layer composi
   Effect.runPromise(
     Effect.gen(function* () {
       const { TestRuntimeProviderLayer } = yield* Effect.promise(
-        () => import("@effect-desktop/core/providers/test")
+        () => import("@orika/core/providers/test")
       )
       const customRuntime = core.Desktop.Provider.runtime({
         id: "custom-runtime",
@@ -376,8 +370,8 @@ test("Desktop.provider accepts custom provider descriptors through layer composi
         budget: {
           id: "custom-runtime",
           kind: "runtime",
-          package: "@effect-desktop/core",
-          importPath: "@effect-desktop/core/providers/custom-runtime",
+          package: "@orika/core",
+          importPath: "@orika/core/providers/custom-runtime",
           startupBudgetMs: 25,
           bundleBudgetKb: 64
         }
@@ -480,7 +474,7 @@ test("Desktop.runtime runs the same provider-backed app program under bun, node,
 
 test("Desktop runtime accepts handler services provided around Desktop.layer(App)", () => {
   class Greeting extends Context.Service<Greeting, { readonly value: string }>()(
-    "@effect-desktop/core/index.test/Greeting"
+    "@orika/core/index.test/Greeting"
   ) {}
   const GreetingLayer = Layer.succeed(Greeting)({ value: "hello" })
   const Ping = Rpc.make("Notes.Layer.Ping", { success: Schema.String })
@@ -523,8 +517,8 @@ test("Desktop.runtime preserves lazy runtime provider load failures as typed sta
     budget: {
       id: "failing-runtime",
       kind: "runtime" as const,
-      package: "@effect-desktop/core",
-      importPath: "@effect-desktop/core/providers/failing-runtime",
+      package: "@orika/core",
+      importPath: "@orika/core/providers/failing-runtime",
       startupBudgetMs: 25,
       bundleBudgetKb: 64
     },
@@ -739,14 +733,14 @@ test("Desktop.Rpc.surface derives server, client, test, docs, and laws from one 
   class NotesClient extends Context.Service<
     NotesClient,
     RpcClient.RpcClient<RpcGroup.Rpcs<typeof NotesRpcs>>
-  >()("@effect-desktop/core/index.test/NotesClient") {}
+  >()("@orika/core/index.test/NotesClient") {}
   const NotesLive = NotesRpcs.toLayer({
     "Notes.Ping": () => Effect.succeed("pong")
   })
   class NotesFacade extends Context.Service<
     NotesFacade,
     { readonly ping: () => Effect.Effect<string> }
-  >()("@effect-desktop/core/index.test/NotesFacade") {}
+  >()("@orika/core/index.test/NotesFacade") {}
   const assertSurfaceRequiresMappedCustomServices = (
     makeSurface: typeof core.Desktop.Rpc.surface
   ): void => {
@@ -870,7 +864,7 @@ test("Desktop.Rpc.supportedGroup filters unsupported RPCs from generated clients
   class NotesClient extends Context.Service<
     NotesClient,
     DesktopRpcClient<RpcGroup.Rpcs<typeof NotesRpcs>>
-  >()("@effect-desktop/core/index.test/NotesClient") {}
+  >()("@orika/core/index.test/NotesClient") {}
   const assertSupportedClient = (
     client: SupportedDesktopRpcClient<RpcGroup.Rpcs<typeof NotesRpcs>>
   ): void => {

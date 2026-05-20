@@ -6,8 +6,8 @@ import {
   type HostProtocolError,
   HostProtocolUnsupportedError,
   RpcGroup
-} from "@effect-desktop/bridge"
-import { type DesktopRpcClient, P, type PermissionRegistry } from "@effect-desktop/core"
+} from "@orika/bridge"
+import { type DesktopRpcClient, P, type PermissionRegistry } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import {
@@ -74,7 +74,7 @@ export interface DownloadClientApi {
 }
 
 export class DownloadClient extends Context.Service<DownloadClient, DownloadClientApi>()(
-  "@effect-desktop/native/DownloadClient"
+  "@orika/native/DownloadClient"
 ) {}
 
 export interface DownloadServiceApi {
@@ -83,7 +83,7 @@ export interface DownloadServiceApi {
 }
 
 export class Download extends Context.Service<Download, DownloadServiceApi>()(
-  "@effect-desktop/native/Download"
+  "@orika/native/Download"
 ) {
   static readonly layer = Layer.effect(Download)(
     Effect.gen(function* () {

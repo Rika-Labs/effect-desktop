@@ -9,8 +9,8 @@ import {
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
-} from "@effect-desktop/bridge"
-import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
+} from "@orika/bridge"
+import { type PermissionRegistry, P, type DesktopRpcClient } from "@orika/core"
 import { Context, Effect, Layer, Schema } from "effect"
 import * as nodePath from "node:path"
 
@@ -85,13 +85,13 @@ export interface ProtocolClientApi {
 }
 
 export class ProtocolClient extends Context.Service<ProtocolClient, ProtocolClientApi>()(
-  "@effect-desktop/native/ProtocolClient"
+  "@orika/native/ProtocolClient"
 ) {}
 
 export type ProtocolServiceApi = ProtocolClientApi
 
 export class Protocol extends Context.Service<Protocol, ProtocolServiceApi>()(
-  "@effect-desktop/native/Protocol"
+  "@orika/native/Protocol"
 ) {
   static readonly layer = Layer.effect(Protocol)(
     Effect.gen(function* () {

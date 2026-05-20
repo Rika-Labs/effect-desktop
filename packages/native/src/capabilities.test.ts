@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
-import type { RpcCapabilityMetadata, RpcSupportMetadata } from "@effect-desktop/bridge"
-import { type DesktopNativeLayer, type DesktopRpcSchemaDoc } from "@effect-desktop/core"
+import type { RpcCapabilityMetadata, RpcSupportMetadata } from "@orika/bridge"
+import { type DesktopNativeLayer, type DesktopRpcSchemaDoc } from "@orika/core"
 import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Schema } from "effect"
 
 import {

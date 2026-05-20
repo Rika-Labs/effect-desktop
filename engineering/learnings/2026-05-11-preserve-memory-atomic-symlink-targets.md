@@ -10,7 +10,7 @@ Close #683 by making memory-backed `Filesystem.writeAtomic` match real rename se
 
 ## Review
 
-The memory adapter already renamed over the destination entry; the bug was the core write-authorization mode resolving the symlink leaf before the adapter saw it. While verifying the touched package, `@effect-desktop/test` typecheck exposed an existing `makeMockPty` error-type mismatch, so its signature now reflects `HostProtocolInvalidArgumentError`.
+The memory adapter already renamed over the destination entry; the bug was the core write-authorization mode resolving the symlink leaf before the adapter saw it. While verifying the touched package, `@orika/test` typecheck exposed an existing `makeMockPty` error-type mismatch, so its signature now reflects `HostProtocolInvalidArgumentError`.
 
 ## Lesson
 

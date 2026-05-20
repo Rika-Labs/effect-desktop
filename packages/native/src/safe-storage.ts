@@ -13,8 +13,8 @@ import {
   RpcGroup,
   type HostProtocolError,
   unsafeSecretBytes
-} from "@effect-desktop/bridge"
-import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
+} from "@orika/bridge"
+import { type PermissionRegistry, P, type DesktopRpcClient } from "@orika/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
@@ -37,7 +37,7 @@ export {
   unsafeSecretBytes,
   wipeSecretBytes,
   type SecretBytes
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 
 export const SafeStorageSet = safeStorageRpc(
   "set",
@@ -108,13 +108,13 @@ export interface SafeStorageClientApi {
 }
 
 export class SafeStorageClient extends Context.Service<SafeStorageClient, SafeStorageClientApi>()(
-  "@effect-desktop/native/SafeStorageClient"
+  "@orika/native/SafeStorageClient"
 ) {}
 
 export type SafeStorageServiceApi = SafeStorageClientApi
 
 export class SafeStorage extends Context.Service<SafeStorage, SafeStorageServiceApi>()(
-  "@effect-desktop/native/SafeStorage"
+  "@orika/native/SafeStorage"
 ) {
   static readonly layer = Layer.effect(SafeStorage)(
     Effect.gen(function* () {

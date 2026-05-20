@@ -29,7 +29,7 @@ import {
   type WorkerAdapter,
   type WorkerError,
   type WorkerRuntime
-} from "@effect-desktop/core"
+} from "@orika/core"
 import {
   Cause,
   Clock,

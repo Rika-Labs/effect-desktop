@@ -22,4 +22,4 @@ The tests use a fake command runner for deterministic PNG output and argument as
 
 Touched area: DisplayCapture native support metadata, Rust host display-capture route, host protocol payload constructors, generated parity data, and reference docs.
 
-No wrapper debt was added. The host adapter keeps platform policy at the native boundary and continues to use the existing Effect RPC and Schema contract. Remaining debt: the macOS `windowId` target currently accepts the native capture window id used by `screencapture -l`, not an Effect Desktop `WindowHandle.id`; Windows and Linux adapters are still unsupported. `#1411` remains open for those gaps and for host-originated capture lifecycle events.
+No wrapper debt was added. The host adapter keeps platform policy at the native boundary and continues to use the existing Effect RPC and Schema contract. Remaining debt: the macOS `windowId` target currently accepts the native capture window id used by `screencapture -l`, not an ORIKA `WindowHandle.id`; Windows and Linux adapters are still unsupported. `#1411` remains open for those gaps and for host-originated capture lifecycle events.

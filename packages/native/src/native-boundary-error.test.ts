@@ -4,7 +4,7 @@ import {
   HostProtocolPermissionDeniedError,
   HostProtocolUnsupportedError,
   makeHostProtocolHostUnavailableError
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import { Context, Effect, Layer } from "effect"
 
 import {

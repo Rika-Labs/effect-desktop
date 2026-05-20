@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { HostProtocolInternalError, RpcCapability } from "@effect-desktop/bridge"
+import { HostProtocolInternalError, RpcCapability } from "@orika/bridge"
 import {
   type AuditEvent,
   type AuditEventsApi,
@@ -9,7 +9,7 @@ import {
   makeResourceRegistry,
   type NormalizedCapability,
   P
-} from "@effect-desktop/core"
+} from "@orika/core"
 import { Cause, Effect, Exit, Fiber, ManagedRuntime, Schema, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 

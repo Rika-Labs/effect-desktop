@@ -1,4 +1,4 @@
-import { NormalizedCapability } from "@effect-desktop/core"
+import { NormalizedCapability } from "@orika/core"
 import { Schema } from "effect"
 
 import { BridgeSafeNonEmptyString, BridgeSafeString, PrintableNonEmptyString } from "./strings.js"

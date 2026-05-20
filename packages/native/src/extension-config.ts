@@ -11,7 +11,7 @@ import {
   type RpcCapabilityMetadata,
   RpcGroup,
   type SecretBytes
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import {
   type AuditEventsApi,
   type DesktopRpcClient,
@@ -25,7 +25,7 @@ import {
   type PermissionRegistryApi,
   type PermissionRegistryError,
   permissionAuditEvent
-} from "@effect-desktop/core"
+} from "@orika/core"
 import {
   Clock,
   Context,
@@ -162,7 +162,7 @@ export interface ExtensionConfigClientApi {
 export class ExtensionConfigClient extends Context.Service<
   ExtensionConfigClient,
   ExtensionConfigClientApi
->()("@effect-desktop/native/ExtensionConfigClient") {}
+>()("@orika/native/ExtensionConfigClient") {}
 
 export interface ExtensionConfigServiceApi {
   readonly read: (
@@ -215,7 +215,7 @@ export interface ExtensionConfigServiceOptions {
 }
 
 export class ExtensionConfig extends Context.Service<ExtensionConfig, ExtensionConfigServiceApi>()(
-  "@effect-desktop/native/ExtensionConfig"
+  "@orika/native/ExtensionConfig"
 ) {
   static readonly layer = Layer.effect(ExtensionConfig)(
     Effect.gen(function* () {

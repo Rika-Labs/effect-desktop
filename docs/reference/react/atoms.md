@@ -26,7 +26,7 @@ import {
   useAtomInitialValues,
   AsyncResult,
   Atom
-} from "@effect-desktop/react"
+} from "@orika/react"
 ```
 
 ## When to use atoms

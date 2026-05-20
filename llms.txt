@@ -1,6 +1,6 @@
-# Effect Desktop
+# ORIKA
 
-> Effect Desktop is a desktop application framework with three process boundaries — a Rust host that owns the native shell, a Bun runtime that owns application services, and a renderer (React, Solid, Vue, or your own) that owns UI. Every privileged operation crosses a typed Effect service. Permissions are deny-by-default. Resources are scoped. Failures are tagged.
+> ORIKA is a desktop application framework with three process boundaries — a Rust host that owns the native shell, a Bun runtime that owns application services, and a renderer (React, Solid, Vue, or your own) that owns UI. Every privileged operation crosses a typed Effect service. Permissions are deny-by-default. Resources are scoped. Failures are tagged.
 
 The framework is **pre-v1**. Workspace packages are private at version `0.0.0` and not yet published to npm; consumers develop against this repository directly. APIs are stable in shape but not in version.
 
@@ -52,7 +52,7 @@ The documentation follows the [Diátaxis](https://diataxis.fr/) framework: tutor
 - [Devtools](docs/reference/devtools.md): inspector shell and panels
 - [Platform browser](docs/reference/platform-browser.md): IndexedDB, SQLite WASM, PGlite
 
-## Reference — runtime services (`@effect-desktop/core`)
+## Reference — runtime services (`@orika/core`)
 
 - [PermissionRegistry](docs/reference/services/permission-registry.md)
 - [ApprovalBroker](docs/reference/services/approval-broker.md)
@@ -72,14 +72,14 @@ The documentation follows the [Diátaxis](https://diataxis.fr/) framework: tutor
 - [WindowState](docs/reference/services/window-state.md)
 - [ProviderRegistry](docs/reference/services/provider-registry.md)
 
-## Reference — native RPC groups (`@effect-desktop/native`)
+## Reference — native RPC groups (`@orika/native`)
 
 - [App](docs/reference/native/app.md), [Clipboard](docs/reference/native/clipboard.md), [ContextMenu](docs/reference/native/context-menu.md), [CrashReporter](docs/reference/native/crash-reporter.md), [Dialog](docs/reference/native/dialog.md)
 - [Dock](docs/reference/native/dock.md), [GlobalShortcut](docs/reference/native/global-shortcut.md), [Menu](docs/reference/native/menu.md), [Notification](docs/reference/native/notification.md), [Path](docs/reference/native/path.md)
 - [PowerMonitor](docs/reference/native/power-monitor.md), [Protocol](docs/reference/native/protocol.md), [SafeStorage](docs/reference/native/safe-storage.md), [Screen](docs/reference/native/screen.md), [Shell](docs/reference/native/shell.md)
 - [SystemAppearance](docs/reference/native/system-appearance.md), [Tray](docs/reference/native/tray.md), [Updater](docs/reference/native/updater.md), [WebView](docs/reference/native/webview.md), [Window](docs/reference/native/window.md)
 
-## Reference — React hooks (`@effect-desktop/react`)
+## Reference — React hooks (`@orika/react`)
 
 - [Provider and context](docs/reference/react/provider-and-context.md)
 - [Mutations](docs/reference/react/mutations.md)
@@ -90,14 +90,14 @@ The documentation follows the [Diátaxis](https://diataxis.fr/) framework: tutor
 - [Atoms](docs/reference/react/atoms.md)
 - [Native hooks](docs/reference/react/native-hooks.md)
 
-## Reference — bridge protocol (`@effect-desktop/bridge`)
+## Reference — bridge protocol (`@orika/bridge`)
 
 - [Host protocol](docs/reference/bridge/host-protocol.md)
 - [Envelopes and framing](docs/reference/bridge/envelopes-and-framing.md)
 - [Streams and cancellation](docs/reference/bridge/streams-and-cancellation.md)
 - [Redaction](docs/reference/bridge/redaction.md)
 
-## Reference — test layers (`@effect-desktop/test`)
+## Reference — test layers (`@orika/test`)
 
 - [HeadlessRuntime](docs/reference/test/headless-runtime.md)
 - [Mock host and bridge](docs/reference/test/mock-host-and-bridge.md)

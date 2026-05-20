@@ -10,7 +10,7 @@ The production checker now treats every scope list entry as invalid if trimming 
 
 ## Review Surface
 
-The change is confined to `hasScopedList` in `@effect-desktop/config`, with regression coverage for blank roots, trimmed wildcard roots, trimmed wildcard process allow entries, and valid scoped entries.
+The change is confined to `hasScopedList` in `@orika/config`, with regression coverage for blank roots, trimmed wildcard roots, trimmed wildcard process allow entries, and valid scoped entries.
 
 ## Lesson
 

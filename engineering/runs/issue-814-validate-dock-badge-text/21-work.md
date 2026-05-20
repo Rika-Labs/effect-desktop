@@ -20,6 +20,6 @@ https://github.com/Rika-Labs/effect-desktop/issues/814
 - `bun run typecheck`
 - `bun run lint`
 - `bun run lint:types`
-- `bunx prettier --check packages/native/src/contracts/dock.ts packages/native/src/index.test.ts engineering/runs/issue-814-validate-dock-badge-text/05-architect.md engineering/runs/issue-814-validate-dock-badge-text/19-review.md issues.json api/snapshots/@effect-desktop__native.snapshot.json`
+- `bunx prettier --check packages/native/src/contracts/dock.ts packages/native/src/index.test.ts engineering/runs/issue-814-validate-dock-badge-text/05-architect.md engineering/runs/issue-814-validate-dock-badge-text/19-review.md issues.json api/snapshots/@orika__native.snapshot.json`
 - `bun run check`
 - `bun test`

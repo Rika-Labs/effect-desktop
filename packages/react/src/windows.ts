@@ -1,6 +1,6 @@
-import { makeHostProtocolInvalidStateError, type HostProtocolError } from "@effect-desktop/bridge"
-import type { WindowError } from "@effect-desktop/native"
-import type { WindowCreateOptions, WindowHandle } from "@effect-desktop/native/contracts"
+import { makeHostProtocolInvalidStateError, type HostProtocolError } from "@orika/bridge"
+import type { WindowError } from "@orika/native"
+import type { WindowCreateOptions, WindowHandle } from "@orika/native/contracts"
 import { Effect, Option } from "effect"
 
 import { useMutation, type MutationResult } from "./mutation.js"

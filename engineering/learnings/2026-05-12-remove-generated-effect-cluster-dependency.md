@@ -15,7 +15,7 @@ inside the canonical `effect` package.
 
 ## What changed
 
-`create-effect-desktop --include-cluster` no longer writes `@effect/cluster` into the
+`create-orika --include-cluster` no longer writes `@effect/cluster` into the
 generated `package.json`. The scaffold still pins `effect@4.0.0-beta.60`, which is the
 package that owns `effect/unstable/cluster`.
 

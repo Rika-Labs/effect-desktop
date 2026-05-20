@@ -10,7 +10,7 @@ import {
   makeHostProtocolInvalidArgumentError,
   type RpcCapabilityMetadata,
   RpcGroup
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import {
   type AuditEventsApi,
   type DesktopRpcClient,
@@ -27,7 +27,7 @@ import {
   permissionAuditEvent,
   ResourceRegistry,
   type ResourceRegistryApi
-} from "@effect-desktop/core"
+} from "@orika/core"
 import { Clock, Context, Effect, Layer, PubSub, Ref, Schema, Semaphore, Stream } from "effect"
 
 import {
@@ -126,7 +126,7 @@ export interface ResidentLifecycleClientApi {
 export class ResidentLifecycleClient extends Context.Service<
   ResidentLifecycleClient,
   ResidentLifecycleClientApi
->()("@effect-desktop/native/resident-lifecycle/ResidentLifecycleClient") {}
+>()("@orika/native/resident-lifecycle/ResidentLifecycleClient") {}
 
 export interface ResidentLifecycleServiceApi extends ResidentLifecycleClientApi {}
 
@@ -144,7 +144,7 @@ interface ActiveResidentLifecycle {
 export class ResidentLifecycle extends Context.Service<
   ResidentLifecycle,
   ResidentLifecycleServiceApi
->()("@effect-desktop/native/resident-lifecycle/ResidentLifecycle") {
+>()("@orika/native/resident-lifecycle/ResidentLifecycle") {
   static readonly layer = Layer.effect(ResidentLifecycle)(
     Effect.gen(function* () {
       const client = yield* ResidentLifecycleClient

@@ -65,7 +65,7 @@ export const makeReleaseFileSystem = (): Effect.Effect<
   })
 
 export class ReleaseFileSystem extends Context.Service<ReleaseFileSystem, ReleaseFileSystemApi>()(
-  "@effect-desktop/cli/ReleaseFileSystem"
+  "@orika/cli/ReleaseFileSystem"
 ) {}
 
 export const ReleaseFileSystemLive: Layer.Layer<ReleaseFileSystem, never, FileSystem.FileSystem> =

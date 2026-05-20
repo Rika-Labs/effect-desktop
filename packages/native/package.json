@@ -1,8 +1,8 @@
 {
-  "name": "@effect-desktop/native",
+  "name": "@orika/native",
   "version": "2.0.0",
   "private": true,
-  "description": "TypeScript-facing native desktop services backed by the Effect Desktop host.",
+  "description": "TypeScript-facing native desktop services backed by the ORIKA host.",
   "license": "MIT OR Apache-2.0",
   "author": "Rika Labs, LLC",
   "repository": {
@@ -38,9 +38,9 @@
     "lint": "oxlint ."
   },
   "dependencies": {
-    "@effect-desktop/bridge": "workspace:*",
-    "@effect-desktop/config": "workspace:*",
-    "@effect-desktop/core": "workspace:*",
+    "@orika/bridge": "workspace:*",
+    "@orika/config": "workspace:*",
+    "@orika/core": "workspace:*",
     "effect": "4.0.0-beta.60"
   }
 }

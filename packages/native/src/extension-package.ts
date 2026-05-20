@@ -13,7 +13,7 @@ import {
   type HostProtocolError,
   type RpcCapabilityMetadata,
   RpcGroup
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import {
   type AuditEventsApi,
   type DesktopRpcClient,
@@ -27,7 +27,7 @@ import {
   type PermissionRegistryApi,
   type PermissionRegistryError,
   permissionAuditEvent
-} from "@effect-desktop/core"
+} from "@orika/core"
 import { Clock, Context, Effect, Layer, PubSub, Ref, Schema, Stream } from "effect"
 
 import { subscribeNativeEvent } from "./event-stream.js"
@@ -148,7 +148,7 @@ export interface ExtensionPackageClientApi {
 export class ExtensionPackageClient extends Context.Service<
   ExtensionPackageClient,
   ExtensionPackageClientApi
->()("@effect-desktop/native/ExtensionPackageClient") {}
+>()("@orika/native/ExtensionPackageClient") {}
 
 export interface ExtensionPackageServiceApi {
   readonly install: (
@@ -179,7 +179,7 @@ export interface ExtensionPackageServiceOptions {
 export class ExtensionPackage extends Context.Service<
   ExtensionPackage,
   ExtensionPackageServiceApi
->()("@effect-desktop/native/ExtensionPackage") {
+>()("@orika/native/ExtensionPackage") {
   static readonly layer = Layer.effect(ExtensionPackage)(
     Effect.gen(function* () {
       const client = yield* ExtensionPackageClient

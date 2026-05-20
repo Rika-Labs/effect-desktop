@@ -14,7 +14,7 @@ The bridge carries typed messages between renderer, runtime, and host boundaries
 
 ## Main exports
 
-`@effect-desktop/bridge` exports:
+`@orika/bridge` exports:
 
 - `HostProtocolEnvelope`, request, response, cancel, stream, and error envelope classes.
 - `Client` and bridge client helpers.

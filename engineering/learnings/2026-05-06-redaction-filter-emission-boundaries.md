@@ -14,7 +14,7 @@ Issue #13 asked for the §14.10 redaction policy: structured fields matching sec
 
 ## What actually ended up working
 
-The first durable boundary is a pure `RedactionFilter` in `@effect-desktop/bridge`, the lowest shared package in the graph. It redacts nested records and arrays by field name, supports additional patterns and allowlisted paths, handles cycles, leaves byte arrays intact unless the containing field matches, and returns the original object when no field changes. The filter is wired into bridge failure responses and bridge failed-state emission, CrashReporter structured breadcrumb details, and the core `Desktop.RedactionFilter` facade.
+The first durable boundary is a pure `RedactionFilter` in `@orika/bridge`, the lowest shared package in the graph. It redacts nested records and arrays by field name, supports additional patterns and allowlisted paths, handles cycles, leaves byte arrays intact unless the containing field matches, and returns the original object when no field changes. The filter is wired into bridge failure responses and bridge failed-state emission, CrashReporter structured breadcrumb details, and the core `Desktop.RedactionFilter` facade.
 
 ```mermaid
 flowchart TD
@@ -27,7 +27,7 @@ flowchart TD
 
 ## What surfaced in review
 
-There were no PR review comments. Local review found one important scope constraint: `@effect-desktop/devtools`, `@effect-desktop/config`, and the CLI production checker are still Phase 0 stubs, so this PR cannot honestly wire real devtools panels or `bun desktop check --production` behavior without creating later-phase packages. The PR therefore ships the enforceable shared filter and the existing emission boundaries.
+There were no PR review comments. Local review found one important scope constraint: `@orika/devtools`, `@orika/config`, and the CLI production checker are still Phase 0 stubs, so this PR cannot honestly wire real devtools panels or `bun desktop check --production` behavior without creating later-phase packages. The PR therefore ships the enforceable shared filter and the existing emission boundaries.
 
 ## First-principles postmortem
 
@@ -39,7 +39,7 @@ The local incentive is to overclaim redaction by adding docs or tests for sinks 
 
 ## Non-obvious lesson
 
-A cross-cutting security primitive should live at the lowest package that every sink can depend on. In this repo that is `@effect-desktop/bridge`, not `core`, because bridge cannot import core and native already depends on bridge.
+A cross-cutting security primitive should live at the lowest package that every sink can depend on. In this repo that is `@orika/bridge`, not `core`, because bridge cannot import core and native already depends on bridge.
 
 ## Reproducible pattern (if any)
 

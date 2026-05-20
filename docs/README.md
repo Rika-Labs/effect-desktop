@@ -1,14 +1,14 @@
 ---
-title: Effect Desktop documentation
+title: ORIKA documentation
 description: Build local-first desktop apps with a Rust host, a TypeScript runtime, and Effect services at every privileged boundary.
 kind: index
 audience: app-developers
 effect_version: 4
 ---
 
-# Effect Desktop documentation
+# ORIKA documentation
 
-Effect Desktop is a desktop application framework with three process boundaries — a **Rust host** that owns the native shell, a **TypeScript runtime** that owns application services, and a **renderer** (React, Solid, Vue, or your own) that owns UI. Bun is the default runtime provider; Node is selectable. Every privileged operation crosses a typed Effect service. Permissions are deny-by-default. Resources are scoped. Failures are tagged.
+ORIKA is a desktop application framework with three process boundaries — a **Rust host** that owns the native shell, a **TypeScript runtime** that owns application services, and a **renderer** (React, Solid, Vue, or your own) that owns UI. Bun is the default runtime provider; Node is selectable. Every privileged operation crosses a typed Effect service. Permissions are deny-by-default. Resources are scoped. Failures are tagged.
 
 > **Pre-v1.** Public APIs are stable in shape but not in version. Workspace packages are `private: true` and not yet published to npm — develop against this repository directly.
 

@@ -10,11 +10,11 @@ effect_version: 4
 
 > Full references: [`reference/test/`](reference/test/). Explanation: [`testability`](explanation/testability.md).
 
-Effect Desktop's test support is built around substitutable layers, mock bridge clients, headless runtime execution, and resource leak detection.
+ORIKA's test support is built around substitutable layers, mock bridge clients, headless runtime execution, and resource leak detection.
 
 ## Public surface
 
-`@effect-desktop/test` exports:
+`@orika/test` exports:
 
 - `runHeadless` and `HeadlessRuntime`.
 - `MockHost` and `MockBridge`.

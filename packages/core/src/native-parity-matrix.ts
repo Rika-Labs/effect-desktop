@@ -54,6 +54,29 @@ export const NativeParityHostStatus = Schema.Literals(["routed", "missing", "cap
 
 export type NativeParityHostStatus = Schema.Schema.Type<typeof NativeParityHostStatus>
 
+export const NativeParityReleaseStatus = Schema.Literals(["complete", "tracked", "untracked"])
+
+export type NativeParityReleaseStatus = Schema.Schema.Type<typeof NativeParityReleaseStatus>
+
+export const NativeParityReleaseDisposition = Schema.Union([
+  Schema.Struct({
+    status: Schema.Literal("complete")
+  }),
+  Schema.Struct({
+    status: Schema.Literal("tracked"),
+    issue: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
+    url: Schema.NonEmptyString
+  }),
+  Schema.Struct({
+    status: Schema.Literal("untracked"),
+    reason: Schema.NonEmptyString
+  })
+])
+
+export type NativeParityReleaseDisposition = Schema.Schema.Type<
+  typeof NativeParityReleaseDisposition
+>
+
 const NativeParityCount = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 
 export class NativeHostMethodInventorySnapshot extends Schema.Class<NativeHostMethodInventorySnapshot>(
@@ -75,6 +98,7 @@ export class NativeParityMatrixRow extends Schema.Class<NativeParityMatrixRow>(
   capability: NativeParityCapabilityKind,
   support: NativeParitySupport,
   hostStatus: NativeParityHostStatus,
+  release: NativeParityReleaseDisposition,
   hostMethod: Schema.optionalKey(Schema.NonEmptyString)
 }) {}
 
@@ -88,7 +112,10 @@ export class NativeParityMatrixSummary extends Schema.Class<NativeParityMatrixSu
   missing: NativeParityCount,
   supported: NativeParityCount,
   partial: NativeParityCount,
-  unsupported: NativeParityCount
+  unsupported: NativeParityCount,
+  releaseComplete: NativeParityCount,
+  releaseTracked: NativeParityCount,
+  releaseUntracked: NativeParityCount
 }) {}
 
 export type NativeParityMatrixSummaryType = Schema.Schema.Type<typeof NativeParityMatrixSummary>

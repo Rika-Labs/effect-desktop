@@ -1,4 +1,4 @@
-import { ResourceHandleSchema } from "@effect-desktop/core"
+import { ResourceHandleSchema } from "@orika/core"
 import { Schema } from "effect"
 
 import { MenuTemplate } from "./menu.js"

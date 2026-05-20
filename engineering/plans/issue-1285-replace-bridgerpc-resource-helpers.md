@@ -2,7 +2,7 @@
 
 ## Decision
 
-Move resource handle contracts to `@effect-desktop/core`. `BridgeRpc.Resource(kind, state)` is a
+Move resource handle contracts to `@orika/core`. `BridgeRpc.Resource(kind, state)` is a
 custom DSL over Schema and should be removed instead of preserved as a compatibility alias.
 
 ## Files to change
@@ -40,8 +40,8 @@ Keep:
 - `bun test packages/core/src/runtime/resources.test.ts`
 - `bun test packages/bridge/src/client.test.ts packages/bridge/src/contracts.test.ts packages/bridge/src/handlers.test.ts`
 - `bun test packages/native/src/index.test.ts packages/test/src/index.test.ts`
-- `bun run typecheck --filter=@effect-desktop/core --filter=@effect-desktop/bridge --filter=@effect-desktop/native --filter=@effect-desktop/test`
-- `bun run lint --filter=@effect-desktop/core --filter=@effect-desktop/bridge --filter=@effect-desktop/native --filter=@effect-desktop/test`
+- `bun run typecheck --filter=@orika/core --filter=@orika/bridge --filter=@orika/native --filter=@orika/test`
+- `bun run lint --filter=@orika/core --filter=@orika/bridge --filter=@orika/native --filter=@orika/test`
 - `bun run desktop check --api --write`
 - `bun run desktop check --api`
 - changed-file Prettier check

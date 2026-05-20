@@ -1,1 +1,1 @@
-export * from "@effect-desktop/platform-browser/storage/idb"
+export * from "@orika/platform-browser/storage/idb"

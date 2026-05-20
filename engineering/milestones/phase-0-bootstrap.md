@@ -23,7 +23,7 @@ Specifically deferred from this phase: WRY/TAO native code (Phase 1), Bun runtim
 - `.gitignore`, `.editorconfig`, `.prettierrc`, `.prettierignore`, `oxlint.json`, `README.md`, `AGENTS.md`.
 - `.github/workflows/ci.yml`, `.github/dependabot.yml`.
 - `engineering/SPEC.md` (renamed from repo root), `engineering/decisions/adr-0000-template.md`, `engineering/architecture/`, `engineering/milestones/`, `engineering/validation/`.
-- 9 stub TypeScript packages under `packages/{core,bridge,native,react,cli,devtools,test,config,create-effect-desktop}`.
+- 9 stub TypeScript packages under `packages/{core,bridge,native,react,cli,devtools,test,config,create-orika}`.
 - 4 stub Rust crates under `crates/{host,host-protocol,native-pty,native-updater}`.
 - Skeleton `apps/*`, `apps/examples/*`, `templates/*`, `scripts/` (`.gitkeep`).
 - `tests/repo-shape.test.ts` enforcing the workspace and stub-marker contracts.

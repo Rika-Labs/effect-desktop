@@ -1,4 +1,4 @@
-import type { RedactionFilterOptions } from "@effect-desktop/bridge"
+import type { RedactionFilterOptions } from "@orika/bridge"
 import { Context, Effect, Layer, Option, PubSub, Schema, Stream } from "effect"
 import { EventGroup, EventJournal, EventLog } from "effect/unstable/eventlog"
 
@@ -224,7 +224,7 @@ export const AuditGroupLayer = EventLog.group(AuditGroup, (handlers) =>
 export const AuditReactivityLayer = EventLog.groupReactivity(AuditGroup, ["audit"])
 
 export class AuditEvents extends Context.Service<AuditEvents, AuditEventsApi>()(
-  "@effect-desktop/core/runtime/audit-events/AuditEvents",
+  "@orika/core/runtime/audit-events/AuditEvents",
   {
     make: Effect.succeed({
       emit: () => Effect.void,

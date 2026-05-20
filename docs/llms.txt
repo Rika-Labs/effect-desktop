@@ -1,6 +1,6 @@
-# Effect Desktop documentation
+# ORIKA documentation
 
-> A Diátaxis-organized site for the Effect Desktop framework. Tutorials (learning), how-to guides (tasks), reference (lookup), explanation (understanding). All grounded in the current repository — every reference symbol can be grepped in `packages/`.
+> A Diátaxis-organized site for the ORIKA framework. Tutorials (learning), how-to guides (tasks), reference (lookup), explanation (understanding). All grounded in the current repository — every reference symbol can be grepped in `packages/`.
 
 This file mirrors the root `/llms.txt` for agents that fetch the docs path directly.
 

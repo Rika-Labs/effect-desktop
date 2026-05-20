@@ -1,10 +1,10 @@
-# @effect-desktop/next
+# @orika/next
 
-Next.js client-component adapter for app-scoped Effect Desktop RPC groups.
+Next.js client-component adapter for app-scoped ORIKA RPC groups.
 
 ## Purpose
 
-`@effect-desktop/next` is a `"use client"` boundary over the React adapter. It
+`@orika/next` is a `"use client"` boundary over the React adapter. It
 keeps desktop RPC access in client components while allowing Next applications to
 use their normal routing and server-component model.
 
@@ -16,7 +16,7 @@ use their normal routing and server-component model.
 - `DesktopRoot` is the underlying client provider component.
 - `useDesktop(group)` derives endpoints from the imported `RpcGroup`.
 
-Endpoint shapes match `@effect-desktop/react`: queries use `useQuery`, mutations
+Endpoint shapes match `@orika/react`: queries use `useQuery`, mutations
 use `useMutation`, streams use `useStream`, and every endpoint exposes `support`
 and `isSupported`.
 
@@ -34,8 +34,8 @@ and `isSupported`.
 ```tsx
 "use client"
 
-import { Desktop as DesktopCore } from "@effect-desktop/core"
-import { NextDesktop } from "@effect-desktop/next"
+import { Desktop as DesktopCore } from "@orika/core"
+import { NextDesktop } from "@orika/next"
 import { App, NotesRpcs } from "../desktop/app"
 
 export const Desktop = NextDesktop.from(DesktopCore.manifest(App))

@@ -2,7 +2,7 @@ import { BunFileSystem, BunPath, BunServices } from "@effect/platform-bun"
 import {
   HostProtocolPermissionDeniedError,
   type HostProtocolSymlinkEscapesRootError
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import { expect, test } from "bun:test"
 import {
   DateTime,

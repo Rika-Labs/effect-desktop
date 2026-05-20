@@ -5,8 +5,8 @@ import {
   type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
   RpcGroup
-} from "@effect-desktop/bridge"
-import { type DesktopRpcClient, type PermissionRegistry, P } from "@effect-desktop/core"
+} from "@orika/bridge"
+import { type DesktopRpcClient, type PermissionRegistry, P } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import {
@@ -104,13 +104,13 @@ export interface AssociationClientApi {
 }
 
 export class AssociationClient extends Context.Service<AssociationClient, AssociationClientApi>()(
-  "@effect-desktop/native/AssociationClient"
+  "@orika/native/AssociationClient"
 ) {}
 
 export type AssociationServiceApi = AssociationClientApi
 
 export class Association extends Context.Service<Association, AssociationServiceApi>()(
-  "@effect-desktop/native/Association"
+  "@orika/native/Association"
 ) {
   static readonly layer = Layer.effect(Association)(
     Effect.gen(function* () {

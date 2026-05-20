@@ -15,7 +15,7 @@ When a permission resolves to `approval`, `ApprovalBroker` queues the request. T
 Place `PermissionApprovalQueue` near your app root so it can render approval modals over your UI:
 
 ```tsx
-import { PermissionApprovalQueue } from "@effect-desktop/react"
+import { PermissionApprovalQueue } from "@orika/react"
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
@@ -41,7 +41,7 @@ The component reads `ApprovalBroker`'s pending queue, renders the host-rendered 
 The default prompt is functional but plain. To customize:
 
 ```tsx
-import { usePermissionApproval } from "@effect-desktop/react"
+import { usePermissionApproval } from "@orika/react"
 
 function CustomApprovalQueue() {
   const { pending, resolve } = usePermissionApproval()
@@ -67,7 +67,7 @@ function CustomApprovalQueue() {
 For background flows, you may want a system notification when an approval is waiting:
 
 ```tsx
-import { useApprovalNotifications } from "@effect-desktop/react"
+import { useApprovalNotifications } from "@orika/react"
 
 function App() {
   useApprovalNotifications({

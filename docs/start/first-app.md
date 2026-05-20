@@ -10,9 +10,9 @@ effect_version: 4
 
 You will write three small files — an RPC contract, a runtime layer, and a React component — and see a typed call cross from the renderer to the runtime. No scaffolder, no magic.
 
-This page lives inside the workspace, so every import path is `@effect-desktop/<pkg>` and every snippet is verified against the source you just cloned.
+This page lives inside the workspace, so every import path is `@orika/<pkg>` and every snippet is verified against the source you just cloned.
 
-## The three pieces of an Effect Desktop app
+## The three pieces of an ORIKA app
 
 ```mermaid
 flowchart LR
@@ -70,7 +70,7 @@ export const AppHandlersLive = AppRpcs.toLayer({
 Create `app/manifest.ts`:
 
 ```ts
-import { Desktop } from "@effect-desktop/core"
+import { Desktop } from "@orika/core"
 import { AppHandlersLive } from "./handlers.js"
 import { AppRpcs } from "./contracts.js"
 
@@ -90,7 +90,7 @@ export const Manifest = Desktop.manifest(App)
 Create `app/Greeter.tsx`:
 
 ```tsx
-import { ReactDesktop } from "@effect-desktop/react"
+import { ReactDesktop } from "@orika/react"
 import { Manifest } from "./manifest.js"
 import { AppRpcs } from "./contracts.js"
 

@@ -6,8 +6,8 @@ import {
   type HostProtocolError,
   HostProtocolUnsupportedError,
   RpcGroup
-} from "@effect-desktop/bridge"
-import { type DesktopRpcClient, P, type PermissionRegistry } from "@effect-desktop/core"
+} from "@orika/bridge"
+import { type DesktopRpcClient, P, type PermissionRegistry } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import type { SessionProfileHandle } from "./contracts/session-profile.js"
@@ -73,7 +73,7 @@ export interface WebRequestClientApi {
 }
 
 export class WebRequestClient extends Context.Service<WebRequestClient, WebRequestClientApi>()(
-  "@effect-desktop/native/WebRequestClient"
+  "@orika/native/WebRequestClient"
 ) {}
 
 export interface WebRequestServiceApi {
@@ -84,7 +84,7 @@ export interface WebRequestServiceApi {
 }
 
 export class WebRequest extends Context.Service<WebRequest, WebRequestServiceApi>()(
-  "@effect-desktop/native/WebRequest"
+  "@orika/native/WebRequest"
 ) {
   static readonly layer = Layer.effect(WebRequest)(
     Effect.gen(function* () {

@@ -1,8 +1,8 @@
 {
-  "name": "@effect-desktop/solid",
+  "name": "@orika/solid",
   "version": "2.0.0",
   "private": true,
-  "description": "Solid primitives for Effect Desktop app-scoped RPC clients.",
+  "description": "Solid primitives for ORIKA app-scoped RPC clients.",
   "license": "MIT OR Apache-2.0",
   "author": "Rika Labs, LLC",
   "repository": {
@@ -30,8 +30,8 @@
     "lint": "oxlint ."
   },
   "dependencies": {
-    "@effect-desktop/bridge": "workspace:*",
-    "@effect-desktop/core": "workspace:*",
+    "@orika/bridge": "workspace:*",
+    "@orika/core": "workspace:*",
     "@effect/atom-solid": "4.0.0-beta.60",
     "effect": "4.0.0-beta.60"
   },

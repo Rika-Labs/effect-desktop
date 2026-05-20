@@ -7,8 +7,8 @@ import {
   type RpcCapabilityMetadata,
   type RpcEndpointKind,
   RpcGroup
-} from "@effect-desktop/bridge"
-import { type DesktopRpcClient, type PermissionRegistry, P } from "@effect-desktop/core"
+} from "@orika/bridge"
+import { type DesktopRpcClient, type PermissionRegistry, P } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import {
@@ -127,14 +127,14 @@ export interface NativeFileSystemClientApi {
 export class NativeFileSystemClient extends Context.Service<
   NativeFileSystemClient,
   NativeFileSystemClientApi
->()("@effect-desktop/native/NativeFileSystemClient") {}
+>()("@orika/native/NativeFileSystemClient") {}
 
 export type NativeFileSystemServiceApi = NativeFileSystemClientApi
 
 export class NativeFileSystem extends Context.Service<
   NativeFileSystem,
   NativeFileSystemServiceApi
->()("@effect-desktop/native/NativeFileSystem") {
+>()("@orika/native/NativeFileSystem") {
   static readonly layer = Layer.effect(NativeFileSystem)(
     Effect.gen(function* () {
       const client = yield* NativeFileSystemClient

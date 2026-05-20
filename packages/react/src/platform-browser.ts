@@ -1,1 +1,1 @@
-export * from "@effect-desktop/platform-browser"
+export * from "@orika/platform-browser"

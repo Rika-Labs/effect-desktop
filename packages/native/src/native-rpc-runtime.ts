@@ -5,7 +5,7 @@ import {
   type NativeHostInspectorCollectorApi,
   PermissionInterceptor,
   PermissionRegistry
-} from "@effect-desktop/core"
+} from "@orika/core"
 import {
   type BridgeCallState,
   type BridgeHandlerRuntime,
@@ -14,7 +14,7 @@ import {
   makeDesktopRpcHandlerRuntime,
   type Rpc,
   type RpcGroup
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import { Clock, Effect, Layer } from "effect"
 
 type NativeRpcGroup<Rpcs extends Rpc.Any> = RpcGroup.RpcGroup<Rpcs> & {

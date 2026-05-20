@@ -37,7 +37,7 @@ Each step reads `desktop.config.ts` and writes its outputs to a known location. 
 Create `desktop.config.ts` at the root of your app:
 
 ```ts
-import { defineDesktopConfig } from "@effect-desktop/config"
+import { defineDesktopConfig } from "@orika/config"
 
 export default defineDesktopConfig({
   app: {

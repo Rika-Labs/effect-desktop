@@ -1,8 +1,8 @@
 {
-  "name": "@effect-desktop/devtools",
+  "name": "@orika/devtools",
   "version": "2.0.0",
   "private": true,
-  "description": "Runtime inspector projections and development shell services for Effect Desktop.",
+  "description": "Runtime inspector projections and development shell services for ORIKA.",
   "license": "MIT OR Apache-2.0",
   "author": "Rika Labs, LLC",
   "repository": {
@@ -34,7 +34,7 @@
     "lint": "oxlint ."
   },
   "dependencies": {
-    "@effect-desktop/core": "workspace:*",
+    "@orika/core": "workspace:*",
     "effect": "4.0.0-beta.60"
   },
   "devDependencies": {

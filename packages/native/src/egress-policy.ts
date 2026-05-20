@@ -11,7 +11,7 @@ import {
   type RpcCapabilityMetadata,
   type RpcSupportMetadata,
   RpcGroup
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import {
   type AuditEventsApi,
   type DesktopRpcClient,
@@ -23,7 +23,7 @@ import {
   PermissionActor,
   PermissionContext,
   permissionAuditEvent
-} from "@effect-desktop/core"
+} from "@orika/core"
 import { Clock, Context, Effect, Layer, PubSub, Ref, Schema, Stream } from "effect"
 
 import { subscribeNativeEvent } from "./event-stream.js"
@@ -126,7 +126,7 @@ export interface EgressPolicyClientApi {
 export class EgressPolicyClient extends Context.Service<
   EgressPolicyClient,
   EgressPolicyClientApi
->()("@effect-desktop/native/EgressPolicyClient") {}
+>()("@orika/native/EgressPolicyClient") {}
 
 export interface EgressPolicyServiceApi {
   readonly decide: (
@@ -147,7 +147,7 @@ export interface EgressPolicyServiceOptions {
 }
 
 export class EgressPolicy extends Context.Service<EgressPolicy, EgressPolicyServiceApi>()(
-  "@effect-desktop/native/EgressPolicy"
+  "@orika/native/EgressPolicy"
 ) {
   static readonly layer = Layer.effect(EgressPolicy)(
     Effect.gen(function* () {

@@ -10,7 +10,7 @@ effect_version: 4
 
 > The full essay lives at [`explanation/architecture.md`](explanation/architecture.md). This page is the release-gated reference summary.
 
-Effect Desktop is a host/runtime/renderer framework.
+ORIKA is a host/runtime/renderer framework.
 
 ## Process roles
 

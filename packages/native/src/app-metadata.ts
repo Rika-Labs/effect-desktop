@@ -7,8 +7,8 @@ import {
   type RpcCapabilityMetadata,
   type RpcEndpointKind,
   RpcGroup
-} from "@effect-desktop/bridge"
-import { type DesktopRpcClient, type PermissionRegistry, P } from "@effect-desktop/core"
+} from "@orika/bridge"
+import { type DesktopRpcClient, type PermissionRegistry, P } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import {
@@ -70,13 +70,13 @@ export interface AppMetadataClientApi {
 }
 
 export class AppMetadataClient extends Context.Service<AppMetadataClient, AppMetadataClientApi>()(
-  "@effect-desktop/native/app-metadata/AppMetadataClient"
+  "@orika/native/app-metadata/AppMetadataClient"
 ) {}
 
 export type AppMetadataServiceApi = AppMetadataClientApi
 
 export class AppMetadata extends Context.Service<AppMetadata, AppMetadataServiceApi>()(
-  "@effect-desktop/native/app-metadata/AppMetadata"
+  "@orika/native/app-metadata/AppMetadata"
 ) {
   static readonly layer = Layer.effect(AppMetadata)(
     Effect.gen(function* () {

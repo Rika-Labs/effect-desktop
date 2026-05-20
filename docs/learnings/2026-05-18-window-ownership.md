@@ -6,7 +6,7 @@ issue: 1347
 
 # Window ownership follows host creation semantics
 
-Tao exposes parent and owner relationships as creation-time window builder policy, not as a portable mutable window operation. The first usable Effect Desktop slice should therefore make ownership explicit on `Window.create` instead of adding a custom modal/ownership DSL above the host.
+Tao exposes parent and owner relationships as creation-time window builder policy, not as a portable mutable window operation. The first usable ORIKA slice should therefore make ownership explicit on `Window.create` instead of adding a custom modal/ownership DSL above the host.
 
 The native API now accepts `Window.create({ parent })`. The bridge lowers the fresh parent handle to `parentWindowId`, and the Rust host applies the platform primitive when Tao has one: macOS parent `NSWindow`, Windows owned window. Unsupported hosts return a typed `Unsupported` failure when a parent is requested.
 

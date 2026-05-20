@@ -2,7 +2,7 @@ import { expect, test } from "bun:test"
 
 import { Cause, Clock, Deferred, Effect, Exit, Fiber, Option, Schema, Stream } from "effect"
 import { Socket } from "effect/unstable/socket"
-import { makeBridgeInspector } from "@effect-desktop/bridge"
+import { makeBridgeInspector } from "@orika/bridge"
 
 import {
   FrameDecoder,

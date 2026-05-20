@@ -14,7 +14,7 @@ The `PTY` service owns pseudo-terminal sessions, resize/signal operations, outpu
 
 ## Public surface
 
-`@effect-desktop/core` exports `PTY`, `PtyOpenInput`, `PtyResizeInput`, `PtySignalInput`, `PtyExitStatus`, PTY errors, adapter types, and constructors such as `makePty`.
+`@orika/core` exports `PTY`, `PtyOpenInput`, `PtyResizeInput`, `PtySignalInput`, `PtyExitStatus`, PTY errors, adapter types, and constructors such as `makePty`.
 
 ## Runtime rule
 
@@ -33,7 +33,7 @@ if (PTY === undefined || MockPTY === undefined) {
 
 ## Testing
 
-`MockPTY.layer(options)` from `@effect-desktop/test` to verify open records, output frames, resize calls, signals, and exit behavior without a real terminal.
+`MockPTY.layer(options)` from `@orika/test` to verify open records, output frames, resize calls, signals, and exit behavior without a real terminal.
 
 ## Where to go next
 

@@ -1,12 +1,8 @@
 import { expect, test } from "bun:test"
 import { fileURLToPath } from "node:url"
 import { BunServices } from "@effect/platform-bun"
-import { makeHostProtocolInvalidStateError, RpcEndpoint, RpcSupport } from "@effect-desktop/bridge"
-import {
-  Desktop,
-  DuplicateDesktopRpcNameError,
-  MissingDesktopRpcClientError
-} from "@effect-desktop/core"
+import { makeHostProtocolInvalidStateError, RpcEndpoint, RpcSupport } from "@orika/bridge"
+import { Desktop, DuplicateDesktopRpcNameError, MissingDesktopRpcClientError } from "@orika/core"
 import { AsyncResult, Atom } from "effect/unstable/reactivity"
 import { Cause, Effect, Exit, FileSystem, ManagedRuntime, Option, Schema, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"

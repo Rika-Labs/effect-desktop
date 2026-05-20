@@ -1,6 +1,6 @@
 import { isAbsolute, join, relative } from "node:path"
 
-import { DesktopTimeouts } from "@effect-desktop/core"
+import { DesktopTimeouts } from "@orika/core"
 import { Data, Duration, Effect, Option, Schema } from "effect"
 
 import { ReleaseFileSystem, runReleaseFileSystem } from "./release-file-system.js"
@@ -225,7 +225,7 @@ export const runDocsReleaseGate = (
 
 export const formatDocsReleaseGateReport = (report: DocsReleaseGateReport): string =>
   [
-    "Effect Desktop docs",
+    "ORIKA docs",
     `status            ${report.passed ? "passed" : "failed"}`,
     `pages             ${report.pages.length}`,
     `examples          ${report.examples.length}`,

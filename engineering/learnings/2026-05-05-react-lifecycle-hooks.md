@@ -1,16 +1,16 @@
 ---
 date: 2026-05-05
 type: in-flight-feature
-topic: DesktopProvider, useDesktop, useDesktopStream, useResource, useWindow in @effect-desktop/react
+topic: DesktopProvider, useDesktop, useDesktopStream, useResource, useWindow in @orika/react
 issue: https://github.com/Rika-Labs/effect-desktop/issues/143
 pr: https://github.com/Rika-Labs/effect-desktop/pull/181
 ---
 
-# DesktopProvider, useDesktop, useDesktopStream, useResource, useWindow in @effect-desktop/react
+# DesktopProvider, useDesktop, useDesktopStream, useResource, useWindow in @orika/react
 
 ## What we set out to do
 
-The issue asked `@effect-desktop/react` to expose the Phase 6.4 hook surface so renderer code does not hand-roll bridge wiring. The invariant was that React components should see provider absence, stream failure, current-window absence, and permission deferral as typed values, while stream fibers and resource handles are tied to React cleanup.
+The issue asked `@orika/react` to expose the Phase 6.4 hook surface so renderer code does not hand-roll bridge wiring. The invariant was that React components should see provider absence, stream failure, current-window absence, and permission deferral as typed values, while stream fibers and resource handles are tied to React cleanup.
 
 ## What actually ended up working
 

@@ -30,7 +30,7 @@ import {
   makeHostProtocolInvalidStateError,
   makeHostProtocolInvalidOutputError,
   makeHostProtocolNotFoundError
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 ```
 
 ## Envelope variants

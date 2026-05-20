@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "packageName": "@effect-desktop/vue",
+  "packageName": "@orika/vue",
   "entrypoint": "src/index.ts",
   "symbols": [
     {

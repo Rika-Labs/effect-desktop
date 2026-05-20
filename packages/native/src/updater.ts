@@ -8,8 +8,8 @@ import {
   makeHostProtocolInvalidOutputError,
   RpcGroup,
   type HostProtocolError
-} from "@effect-desktop/bridge"
-import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
+} from "@orika/bridge"
+import { type PermissionRegistry, P, type DesktopRpcClient } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
@@ -181,13 +181,13 @@ export interface UpdaterClientApi {
 }
 
 export class UpdaterClient extends Context.Service<UpdaterClient, UpdaterClientApi>()(
-  "@effect-desktop/native/UpdaterClient"
+  "@orika/native/UpdaterClient"
 ) {}
 
 export type UpdaterServiceApi = UpdaterClientApi
 
 export class Updater extends Context.Service<Updater, UpdaterServiceApi>()(
-  "@effect-desktop/native/Updater"
+  "@orika/native/Updater"
 ) {
   static readonly layer = Layer.effect(Updater)(
     Effect.gen(function* () {

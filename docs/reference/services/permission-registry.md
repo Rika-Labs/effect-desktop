@@ -30,7 +30,7 @@ import {
   PermissionGrantNotFoundError,
   PermissionInvalidArgumentError,
   PermissionRevokedError
-} from "@effect-desktop/core"
+} from "@orika/core"
 ```
 
 ## Service
@@ -71,7 +71,7 @@ import {
 
 ```ts
 import { Layer } from "effect"
-import { PermissionRegistry, makePermissionRegistry } from "@effect-desktop/core"
+import { PermissionRegistry, makePermissionRegistry } from "@orika/core"
 
 const PermissionRegistryLive = Layer.effect(PermissionRegistry)(makePermissionRegistry())
 ```
@@ -82,7 +82,7 @@ const PermissionRegistryLive = Layer.effect(PermissionRegistry)(makePermissionRe
 
 ```ts
 import { Effect } from "effect"
-import { PermissionRegistry } from "@effect-desktop/core"
+import { PermissionRegistry } from "@orika/core"
 
 const program = Effect.gen(function* () {
   const permissions = yield* PermissionRegistry

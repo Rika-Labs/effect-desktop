@@ -4,14 +4,14 @@ import {
   HostProtocolEventEnvelope,
   HostProtocolInternalError,
   type HostProtocolRequestEnvelope
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import {
   type AuditEvent,
   type AuditEventsApi,
   makePermissionRegistry,
   makeResourceRegistry,
   P
-} from "@effect-desktop/core"
+} from "@orika/core"
 import {
   Cause,
   Deferred,
