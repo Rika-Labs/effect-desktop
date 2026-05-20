@@ -3,7 +3,17 @@ import { Buffer } from "node:buffer"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
 import { BunServices } from "@effect/platform-bun"
-import { Effect, Fiber, FileSystem, ManagedRuntime, Path, Queue, Schema, Stream } from "effect"
+import {
+  Effect,
+  Fiber,
+  FileSystem,
+  Inspectable,
+  ManagedRuntime,
+  Path,
+  Queue,
+  Schema,
+  Stream
+} from "effect"
 import { ChildProcess } from "effect/unstable/process"
 import {
   decodeHostProtocolFrame,
@@ -21,6 +31,9 @@ import {
   STARTUP_WINDOWS_ENV,
   WINDOW_SMOKE_TEST_ENV
 } from "./window-supervisor.js"
+
+const formatCause = (cause: unknown): string =>
+  cause instanceof Error ? cause.message : Inspectable.toStringUnknown(cause)
 
 const BunServicesRuntime = ManagedRuntime.make(BunServices.layer)
 
@@ -313,7 +326,7 @@ const runRuntimeWithFakeHost = (options: RuntimeHostOptions = {}): Promise<Runti
                   Effect.mapError(
                     (cause) =>
                       new MainTestRuntimeFailure({
-                        message: `failed to decode runtime stdout frame: ${String(cause)}`
+                        message: `failed to decode runtime stdout frame: ${formatCause(cause)}`
                       })
                   )
                 )
@@ -332,7 +345,7 @@ const runRuntimeWithFakeHost = (options: RuntimeHostOptions = {}): Promise<Runti
             Stream.mapError(
               (cause) =>
                 new MainTestRuntimeFailure({
-                  message: `runtime stdout stream failed: ${String(cause)}`
+                  message: `runtime stdout stream failed: ${formatCause(cause)}`
                 })
             ),
             Stream.runForEach(processChunk)
@@ -342,7 +355,7 @@ const runRuntimeWithFakeHost = (options: RuntimeHostOptions = {}): Promise<Runti
             Effect.mapError(
               (cause) =>
                 new MainTestRuntimeFailure({
-                  message: `runtime process exit failed: ${String(cause)}`
+                  message: `runtime process exit failed: ${formatCause(cause)}`
                 })
             )
           )
@@ -382,7 +395,7 @@ const runCommand = (command: string, args: readonly string[]): Promise<void> =>
           Effect.mapError(
             (cause) =>
               new MainTestRuntimeFailure({
-                message: `${command} ${args.join(" ")} failed to spawn: ${String(cause)}`
+                message: `${command} ${args.join(" ")} failed to spawn: ${formatCause(cause)}`
               })
           )
         )

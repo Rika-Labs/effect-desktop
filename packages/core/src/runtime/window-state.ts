@@ -510,18 +510,17 @@ const buildDefaultWindowStatePath = (bundleId: string): Effect.Effect<string, ne
     const path = yield* Path.Path
     const env = yield* readWindowStatePathEnv
     const home = Option.getOrElse(env.home, tmpdir)
-    switch (process.platform) {
-      case "darwin":
-        return path.join(home, "Library", "Application Support", bundleId, "window-state.json")
-      case "win32":
-        return path.join(Option.getOrElse(env.appData, tmpdir), bundleId, "window-state.json")
-      default:
-        return path.join(
-          Option.getOrElse(env.xdgStateHome, () => path.join(home, ".local", "state")),
-          bundleId,
-          "window-state.json"
-        )
+    if (process.platform === "darwin") {
+      return path.join(home, "Library", "Application Support", bundleId, "window-state.json")
     }
+    if (process.platform === "win32") {
+      return path.join(Option.getOrElse(env.appData, tmpdir), bundleId, "window-state.json")
+    }
+    return path.join(
+      Option.getOrElse(env.xdgStateHome, () => path.join(home, ".local", "state")),
+      bundleId,
+      "window-state.json"
+    )
   })
 
 const validateBundleId = (
