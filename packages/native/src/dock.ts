@@ -22,12 +22,9 @@ import {
   DockRequestAttentionInput,
   DockSetBadgeCountInput,
   DockSetBadgeTextInput,
-  DockSetJumpListInput,
-  DockSetMenuInput,
   DockSetProgressInput,
   DockSupportedResult
 } from "./contracts/dock.js"
-import type { MenuTemplateOptions } from "./menu.js"
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
 
@@ -37,10 +34,10 @@ type DockMethodName =
   | "setBadgeCount"
   | "setBadgeText"
   | "setProgress"
-  | "setMenu"
-  | "setJumpList"
   | "requestAttention"
   | "isSupported"
+
+type DockCapabilityMethod = "setMenu" | "setJumpList"
 
 const DOCK_PLATFORM_VARIANCE_REASON = "dock behavior is platform-specific"
 const DOCK_UNSUPPORTED_REASON = "host adapter does not implement this Dock method on any platform"
@@ -64,23 +61,17 @@ const DockSupportByMethod = Object.freeze({
     ]
   }),
   setProgress: NativeSurface.support.supported,
-  setMenu: NativeSurface.support.unsupported(DOCK_UNSUPPORTED_REASON, {
-    platforms: [
-      { platform: "macos", status: "unsupported", reason: DOCK_UNSUPPORTED_REASON },
-      { platform: "linux", status: "unsupported", reason: DOCK_UNSUPPORTED_REASON },
-      { platform: "windows", status: "unsupported", reason: DOCK_UNSUPPORTED_REASON }
-    ]
-  }),
-  setJumpList: NativeSurface.support.unsupported(DOCK_UNSUPPORTED_REASON, {
-    platforms: [
-      { platform: "macos", status: "unsupported", reason: DOCK_UNSUPPORTED_REASON },
-      { platform: "linux", status: "unsupported", reason: DOCK_UNSUPPORTED_REASON },
-      { platform: "windows", status: "unsupported", reason: DOCK_UNSUPPORTED_REASON }
-    ]
-  }),
   requestAttention: NativeSurface.support.supported,
   isSupported: NativeSurface.support.supported
 } satisfies Record<DockMethodName, RpcSupportMetadata>)
+
+const DockUnsupportedSupport = NativeSurface.support.unsupported(DOCK_UNSUPPORTED_REASON, {
+  platforms: [
+    { platform: "macos", status: "unsupported", reason: DOCK_UNSUPPORTED_REASON },
+    { platform: "linux", status: "unsupported", reason: DOCK_UNSUPPORTED_REASON },
+    { platform: "windows", status: "unsupported", reason: DOCK_UNSUPPORTED_REASON }
+  ]
+})
 
 export const DockSetBadgeCount = dockRpc(
   "setBadgeCount",
@@ -100,18 +91,6 @@ export const DockSetProgress = dockRpc(
   Schema.Void,
   P.nativeInvoke({ primitive: "Dock", methods: ["setProgress"] })
 )
-export const DockSetMenu = dockRpc(
-  "setMenu",
-  DockSetMenuInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Dock", methods: ["setMenu"] })
-)
-export const DockSetJumpList = dockRpc(
-  "setJumpList",
-  DockSetJumpListInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Dock", methods: ["setJumpList"] })
-)
 export const DockRequestAttention = dockRpc(
   "requestAttention",
   DockRequestAttentionInput,
@@ -122,6 +101,19 @@ export const DockIsSupported = dockRpc("isSupported", DockIsSupportedInput, Dock
   kind: "none"
 })
 
+const dockCapabilityFact = (method: DockCapabilityMethod) =>
+  NativeSurface.capabilityFact("Dock", method, {
+    authority: NativeSurface.authority.custom(
+      P.nativeInvoke({ primitive: "Dock", methods: [method] })
+    ),
+    support: DockUnsupportedSupport
+  })
+
+export const DockCapabilityFacts = Object.freeze([
+  dockCapabilityFact("setMenu"),
+  dockCapabilityFact("setJumpList")
+])
+
 export const DockRpcEvents = Object.freeze({})
 
 export type DockRpcEvents = typeof DockRpcEvents
@@ -130,8 +122,6 @@ const DockRpcGroup = RpcGroup.make(
   DockSetBadgeCount,
   DockSetBadgeText,
   DockSetProgress,
-  DockSetMenu,
-  DockSetJumpList,
   DockRequestAttention,
   DockIsSupported
 )
@@ -142,8 +132,6 @@ export const DockMethodNames = Object.freeze([
   "setBadgeCount",
   "setBadgeText",
   "setProgress",
-  "setMenu",
-  "setJumpList",
   "requestAttention",
   "isSupported"
 ] as const satisfies readonly DockMethodName[])
@@ -152,8 +140,6 @@ const DockCapabilityMethods = Object.freeze([
   "setBadgeCount",
   "setBadgeText",
   "setProgress",
-  "setMenu",
-  "setJumpList",
   "requestAttention"
 ] as const satisfies readonly (typeof DockMethodNames)[number][])
 
@@ -163,14 +149,6 @@ export interface DockClientApi {
   readonly setProgress: (
     value: number | null,
     options?: { readonly state?: "normal" | "indeterminate" | "error" | "paused" }
-  ) => Effect.Effect<void, DockError, never>
-  readonly setMenu: (menu: MenuTemplateOptions | null) => Effect.Effect<void, DockError, never>
-  readonly setJumpList: (
-    items: ReadonlyArray<{
-      readonly id: string
-      readonly title: string
-      readonly commandId: string
-    }>
   ) => Effect.Effect<void, DockError, never>
   readonly requestAttention: (options?: {
     readonly critical?: boolean
@@ -194,8 +172,6 @@ export class Dock extends Context.Service<Dock, DockServiceApi>()("@effect-deskt
         setBadgeCount: (count) => client.setBadgeCount(count),
         setBadgeText: (text) => client.setBadgeText(text),
         setProgress: (value, options) => client.setProgress(value, options),
-        setMenu: (menu) => client.setMenu(menu),
-        setJumpList: (items) => client.setJumpList(items),
         requestAttention: (options) => client.requestAttention(options),
         isSupported: (method) =>
           client.isSupported(method).pipe(Effect.map((result) => result.supported))
@@ -237,16 +213,6 @@ export const DockHandlersLive = DockRpcGroup.toLayer({
       const dock = yield* Dock
       yield* dock.setProgress(input.value, input.options)
     }),
-  "Dock.setMenu": (input) =>
-    Effect.gen(function* () {
-      const dock = yield* Dock
-      yield* dock.setMenu(input.menu)
-    }),
-  "Dock.setJumpList": (input) =>
-    Effect.gen(function* () {
-      const dock = yield* Dock
-      yield* dock.setJumpList(input.items)
-    }),
   "Dock.requestAttention": (input) =>
     Effect.gen(function* () {
       const dock = yield* Dock
@@ -264,6 +230,7 @@ export const DockSurface = NativeSurface.make("Dock", DockRpcGroup, {
   service: DockClient,
   capabilities: DockCapabilityMethods,
   handlers: DockHandlersLive,
+  capabilityFacts: DockCapabilityFacts,
   client: (client) => dockClientFromRpcClient(client)
 })
 
@@ -295,16 +262,6 @@ const dockClientFromRpcClient = (client: DesktopRpcClient<DockRpc>): DockClientA
           runDockRpc(client["Dock.setProgress"](decoded), "Dock.setProgress")
         )
       ),
-    setMenu: (menu) =>
-      decodeDockSetMenuInput({ menu }).pipe(
-        Effect.flatMap((decoded) => runDockRpc(client["Dock.setMenu"](decoded), "Dock.setMenu"))
-      ),
-    setJumpList: (items) =>
-      decodeDockSetJumpListInput({ items }).pipe(
-        Effect.flatMap((decoded) =>
-          runDockRpc(client["Dock.setJumpList"](decoded), "Dock.setJumpList")
-        )
-      ),
     requestAttention: (options) =>
       decodeDockRequestAttentionInput(options ?? {}).pipe(
         Effect.flatMap((decoded) =>
@@ -332,8 +289,6 @@ export const makeLinuxDockClient = (): DockClientApi => {
       unsupportedEffect<void>("Dock.setBadgeText", "no portable badge text on Linux"),
     setProgress: () =>
       unsupportedEffect<void>("Dock.setProgress", "launcher progress API is not connected yet"),
-    setMenu: () => unsupportedEffect<void>("Dock.setMenu", "no portable dock menu on Linux"),
-    setJumpList: () => unsupportedEffect<void>("Dock.setJumpList", "jump lists are Windows-only"),
     requestAttention: () => Effect.void,
     isSupported: (method) =>
       Effect.succeed(new DockSupportedResult({ supported: method === "requestAttention" }))
@@ -363,16 +318,6 @@ const decodeDockSetProgressInput = (
   input: unknown
 ): Effect.Effect<DockSetProgressInput, DockError, never> =>
   decodeInput(DockSetProgressInput, input, "Dock.setProgress")
-
-const decodeDockSetMenuInput = (
-  input: unknown
-): Effect.Effect<DockSetMenuInput, DockError, never> =>
-  decodeInput(DockSetMenuInput, input, "Dock.setMenu")
-
-const decodeDockSetJumpListInput = (
-  input: unknown
-): Effect.Effect<DockSetJumpListInput, DockError, never> =>
-  decodeInput(DockSetJumpListInput, input, "Dock.setJumpList")
 
 const decodeDockRequestAttentionInput = (
   input: unknown

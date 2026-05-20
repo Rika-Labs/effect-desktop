@@ -209,10 +209,6 @@ pub(crate) fn clear_application_menu() -> std::result::Result<(), HostProtocolEr
     platform::clear_application_menu()
 }
 
-pub(crate) fn set_dock_menu(template: Option<Value>) -> std::result::Result<(), HostProtocolError> {
-    platform::set_dock_menu(template)
-}
-
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct MacosScreenWorkArea {
     x: f64,
@@ -519,15 +515,6 @@ mod platform {
         Ok(())
     }
 
-    pub(super) fn set_dock_menu(
-        _template: Option<serde_json::Value>,
-    ) -> std::result::Result<(), HostProtocolError> {
-        Err(HostProtocolError::unsupported(
-            "macOS Dock menu installation requires an NSApplication delegate bridge that is not part of this host adapter yet",
-            host_protocol::DOCK_SET_MENU_METHOD,
-        ))
-    }
-
     pub(super) fn screen_work_area(monitor: &MonitorHandle) -> Option<MacosScreenWorkArea> {
         let screen = monitor.ns_screen()?;
         // SAFETY: Tao returns this pointer with Retained::into_raw, transferring a
@@ -781,15 +768,6 @@ mod platform {
         Err(HostProtocolError::unsupported(
             "application menus are macOS-only in the host adapter",
             host_protocol::MENU_CLEAR_METHOD,
-        ))
-    }
-
-    pub(super) fn set_dock_menu(
-        _template: Option<serde_json::Value>,
-    ) -> std::result::Result<(), HostProtocolError> {
-        Err(HostProtocolError::unsupported(
-            "Dock menus are macOS-only",
-            host_protocol::DOCK_SET_MENU_METHOD,
         ))
     }
 

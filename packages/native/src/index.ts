@@ -723,6 +723,7 @@ export {
 } from "./workspace-index.js"
 export {
   Dock,
+  DockCapabilityFacts,
   DockClient,
   DockHandlersLive,
   DockLive,
@@ -763,6 +764,7 @@ export {
 } from "./global-shortcut.js"
 export {
   Menu,
+  MenuCapabilityFacts,
   MenuClient,
   MenuHandlersLive,
   MenuLive,
@@ -1116,6 +1118,7 @@ export {
 } from "./session-profile.js"
 export {
   WebView,
+  WebViewCapabilityFacts,
   WebViewClient,
   WebViewHandlersLive,
   WebViewLive,

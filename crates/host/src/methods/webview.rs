@@ -3,11 +3,9 @@
 // wire contract. Boxing that error here would obscure the protocol surface.
 
 use crate::window::{
-    WebViewCreateRequest, WebViewExposedApi, WebViewFindInPageRequest, WebViewHandleRequest,
-    WebViewIsolationPolicy, WebViewLoadRouteRequest, WebViewLoadUrlRequest,
-    WebViewNavigationDecision, WebViewNavigationPolicy, WebViewPostToFrameRequest,
-    WebViewRespondToPermissionRequest, WebViewSetAudioMutedRequest,
-    WebViewSetNavigationPolicyRequest, WebViewSetUserAgentRequest, WebViewSetZoomRequest,
+    WebViewCreateRequest, WebViewExposedApi, WebViewHandleRequest, WebViewIsolationPolicy,
+    WebViewLoadRouteRequest, WebViewLoadUrlRequest, WebViewNavigationDecision,
+    WebViewNavigationPolicy, WebViewSetNavigationPolicyRequest, WebViewSetZoomRequest,
     WindowMethodHandler,
 };
 use host_protocol::HostProtocolError;
@@ -17,20 +15,12 @@ const ALLOWED_CREATE_FIELDS: &[&str] = &["window", "url", "originPolicy", "isola
 const ALLOWED_HANDLE_FIELDS: &[&str] = &["webview"];
 const ALLOWED_LOAD_ROUTE_FIELDS: &[&str] = &["webview", "route"];
 const ALLOWED_LOAD_URL_FIELDS: &[&str] = &["webview", "url"];
-const ALLOWED_FIND_FIELDS: &[&str] = &["webview", "query"];
 const ALLOWED_POLICY_FIELDS: &[&str] = &["webview", "policy"];
 const ALLOWED_SET_ZOOM_FIELDS: &[&str] = &["webview", "zoom"];
-const ALLOWED_SET_USER_AGENT_FIELDS: &[&str] = &["webview", "userAgent"];
-const ALLOWED_SET_AUDIO_MUTED_FIELDS: &[&str] = &["webview", "muted"];
-const ALLOWED_RESPOND_TO_PERMISSION_FIELDS: &[&str] = &["webview", "requestId", "decision"];
-const ALLOWED_POST_TO_FRAME_FIELDS: &[&str] = &["webview", "frame", "payload"];
-const ALLOWED_CAPABILITY_FIELDS: &[&str] = &["name", "platform", "mode"];
 const ALLOWED_ORIGIN_POLICY_FIELDS: &[&str] = &["allowedOrigins", "onDisallowed"];
 const ALLOWED_ISOLATION_FIELDS: &[&str] = &["exposedApis"];
 const ALLOWED_EXPOSED_API_FIELDS: &[&str] = &["name", "methods"];
 const ALLOWED_WEBVIEW_HANDLE_FIELDS: &[&str] = &["kind", "id", "generation", "ownerScope", "state"];
-const ALLOWED_WEBVIEW_FRAME_HANDLE_FIELDS: &[&str] =
-    &["kind", "id", "generation", "ownerScope", "state"];
 const ALLOWED_WINDOW_HANDLE_FIELDS: &[&str] = &["kind", "id", "generation", "ownerScope", "state"];
 
 pub(crate) fn create(
@@ -163,20 +153,6 @@ pub(crate) fn get_navigation_state(
     Ok(Some(response.into_json()))
 }
 
-pub(crate) fn capture_screenshot(
-    handler: &dyn WindowMethodHandler,
-    payload: Option<Value>,
-) -> Result<Option<Value>, HostProtocolError> {
-    let payload =
-        validate_handle_payload(payload, host_protocol::WEBVIEW_CAPTURE_SCREENSHOT_METHOD)?;
-    let response = handler.capture_webview_screenshot(decode_webview_handle(
-        &payload,
-        host_protocol::WEBVIEW_CAPTURE_SCREENSHOT_METHOD,
-    )?)?;
-
-    Ok(Some(response))
-}
-
 pub(crate) fn print(
     handler: &dyn WindowMethodHandler,
     payload: Option<Value>,
@@ -188,48 +164,6 @@ pub(crate) fn print(
     )?)?;
 
     Ok(None)
-}
-
-pub(crate) fn print_to_pdf(
-    handler: &dyn WindowMethodHandler,
-    payload: Option<Value>,
-) -> Result<Option<Value>, HostProtocolError> {
-    let payload = validate_handle_payload(payload, host_protocol::WEBVIEW_PRINT_TO_PDF_METHOD)?;
-    let response = handler.print_webview_to_pdf(decode_webview_handle(
-        &payload,
-        host_protocol::WEBVIEW_PRINT_TO_PDF_METHOD,
-    )?)?;
-
-    Ok(Some(response))
-}
-
-pub(crate) fn find_in_page(
-    handler: &dyn WindowMethodHandler,
-    payload: Option<Value>,
-) -> Result<Option<Value>, HostProtocolError> {
-    let payload = required_object(payload, host_protocol::WEBVIEW_FIND_IN_PAGE_METHOD)?;
-    validate_allowed_fields(
-        &payload,
-        ALLOWED_FIND_FIELDS,
-        host_protocol::WEBVIEW_FIND_IN_PAGE_METHOD,
-    )?;
-    validate_webview_handle_field(&payload, host_protocol::WEBVIEW_FIND_IN_PAGE_METHOD)?;
-    validate_printable_string_field(
-        &payload,
-        "query",
-        host_protocol::WEBVIEW_FIND_IN_PAGE_METHOD,
-    )?;
-    let response = handler.find_in_webview_page(WebViewFindInPageRequest::new(
-        decode_webview_handle(&payload, host_protocol::WEBVIEW_FIND_IN_PAGE_METHOD)?,
-        required_string(
-            &payload,
-            "query",
-            host_protocol::WEBVIEW_FIND_IN_PAGE_METHOD,
-        )?
-        .to_string(),
-    ))?;
-
-    Ok(Some(response))
 }
 
 pub(crate) fn set_zoom(
@@ -247,156 +181,6 @@ pub(crate) fn set_zoom(
     handler.set_webview_zoom(WebViewSetZoomRequest::new(
         decode_webview_handle(&payload, host_protocol::WEBVIEW_SET_ZOOM_METHOD)?,
         zoom,
-    ))?;
-
-    Ok(None)
-}
-
-pub(crate) fn set_user_agent(
-    handler: &dyn WindowMethodHandler,
-    payload: Option<Value>,
-) -> Result<Option<Value>, HostProtocolError> {
-    let payload = required_object(payload, host_protocol::WEBVIEW_SET_USER_AGENT_METHOD)?;
-    validate_allowed_fields(
-        &payload,
-        ALLOWED_SET_USER_AGENT_FIELDS,
-        host_protocol::WEBVIEW_SET_USER_AGENT_METHOD,
-    )?;
-    validate_webview_handle_field(&payload, host_protocol::WEBVIEW_SET_USER_AGENT_METHOD)?;
-    validate_printable_string_field(
-        &payload,
-        "userAgent",
-        host_protocol::WEBVIEW_SET_USER_AGENT_METHOD,
-    )?;
-    handler.set_webview_user_agent(WebViewSetUserAgentRequest::new(
-        decode_webview_handle(&payload, host_protocol::WEBVIEW_SET_USER_AGENT_METHOD)?,
-        required_string(
-            &payload,
-            "userAgent",
-            host_protocol::WEBVIEW_SET_USER_AGENT_METHOD,
-        )?
-        .to_string(),
-    ))?;
-
-    Ok(None)
-}
-
-pub(crate) fn set_audio_muted(
-    handler: &dyn WindowMethodHandler,
-    payload: Option<Value>,
-) -> Result<Option<Value>, HostProtocolError> {
-    let payload = required_object(payload, host_protocol::WEBVIEW_SET_AUDIO_MUTED_METHOD)?;
-    validate_allowed_fields(
-        &payload,
-        ALLOWED_SET_AUDIO_MUTED_FIELDS,
-        host_protocol::WEBVIEW_SET_AUDIO_MUTED_METHOD,
-    )?;
-    validate_webview_handle_field(&payload, host_protocol::WEBVIEW_SET_AUDIO_MUTED_METHOD)?;
-    let muted = payload
-        .get("muted")
-        .and_then(Value::as_bool)
-        .ok_or_else(|| {
-            HostProtocolError::invalid_argument(
-                "muted",
-                "must be a boolean",
-                host_protocol::WEBVIEW_SET_AUDIO_MUTED_METHOD,
-            )
-        })?;
-    handler.set_webview_audio_muted(WebViewSetAudioMutedRequest::new(
-        decode_webview_handle(&payload, host_protocol::WEBVIEW_SET_AUDIO_MUTED_METHOD)?,
-        muted,
-    ))?;
-
-    Ok(None)
-}
-
-pub(crate) fn respond_to_permission(
-    handler: &dyn WindowMethodHandler,
-    payload: Option<Value>,
-) -> Result<Option<Value>, HostProtocolError> {
-    let payload = required_object(payload, host_protocol::WEBVIEW_RESPOND_TO_PERMISSION_METHOD)?;
-    validate_allowed_fields(
-        &payload,
-        ALLOWED_RESPOND_TO_PERMISSION_FIELDS,
-        host_protocol::WEBVIEW_RESPOND_TO_PERMISSION_METHOD,
-    )?;
-    validate_webview_handle_field(
-        &payload,
-        host_protocol::WEBVIEW_RESPOND_TO_PERMISSION_METHOD,
-    )?;
-    validate_printable_string_field(
-        &payload,
-        "requestId",
-        host_protocol::WEBVIEW_RESPOND_TO_PERMISSION_METHOD,
-    )?;
-    let decision = required_string(
-        &payload,
-        "decision",
-        host_protocol::WEBVIEW_RESPOND_TO_PERMISSION_METHOD,
-    )?;
-    if !matches!(decision, "grant" | "deny") {
-        return Err(HostProtocolError::invalid_argument(
-            "decision",
-            "must be grant or deny",
-            host_protocol::WEBVIEW_RESPOND_TO_PERMISSION_METHOD,
-        ));
-    }
-    handler.respond_to_webview_permission(WebViewRespondToPermissionRequest::new(
-        decode_webview_handle(
-            &payload,
-            host_protocol::WEBVIEW_RESPOND_TO_PERMISSION_METHOD,
-        )?,
-        required_string(
-            &payload,
-            "requestId",
-            host_protocol::WEBVIEW_RESPOND_TO_PERMISSION_METHOD,
-        )?
-        .to_string(),
-        decision.to_string(),
-    ))?;
-
-    Ok(None)
-}
-
-pub(crate) fn list_frames(
-    handler: &dyn WindowMethodHandler,
-    payload: Option<Value>,
-) -> Result<Option<Value>, HostProtocolError> {
-    let payload = validate_handle_payload(payload, host_protocol::WEBVIEW_LIST_FRAMES_METHOD)?;
-    let response = handler.list_webview_frames(decode_webview_handle(
-        &payload,
-        host_protocol::WEBVIEW_LIST_FRAMES_METHOD,
-    )?)?;
-
-    Ok(Some(response))
-}
-
-pub(crate) fn post_to_frame(
-    handler: &dyn WindowMethodHandler,
-    payload: Option<Value>,
-) -> Result<Option<Value>, HostProtocolError> {
-    let payload = required_object(payload, host_protocol::WEBVIEW_POST_TO_FRAME_METHOD)?;
-    validate_allowed_fields(
-        &payload,
-        ALLOWED_POST_TO_FRAME_FIELDS,
-        host_protocol::WEBVIEW_POST_TO_FRAME_METHOD,
-    )?;
-    validate_webview_handle_field(&payload, host_protocol::WEBVIEW_POST_TO_FRAME_METHOD)?;
-    validate_webview_frame_handle_field(&payload, host_protocol::WEBVIEW_POST_TO_FRAME_METHOD)?;
-    validate_printable_string_field(
-        &payload,
-        "payload",
-        host_protocol::WEBVIEW_POST_TO_FRAME_METHOD,
-    )?;
-    handler.post_to_webview_frame(WebViewPostToFrameRequest::new(
-        decode_webview_handle(&payload, host_protocol::WEBVIEW_POST_TO_FRAME_METHOD)?,
-        decode_webview_frame_handle(&payload, host_protocol::WEBVIEW_POST_TO_FRAME_METHOD)?,
-        required_string(
-            &payload,
-            "payload",
-            host_protocol::WEBVIEW_POST_TO_FRAME_METHOD,
-        )?
-        .to_string(),
     ))?;
 
     Ok(None)
@@ -423,19 +207,6 @@ pub(crate) fn close_devtools(
     handler.close_webview_devtools(decode_webview_handle(
         &payload,
         host_protocol::WEBVIEW_CLOSE_DEVTOOLS_METHOD,
-    )?)?;
-
-    Ok(None)
-}
-
-pub(crate) fn attach_debugger(
-    handler: &dyn WindowMethodHandler,
-    payload: Option<Value>,
-) -> Result<Option<Value>, HostProtocolError> {
-    let payload = validate_handle_payload(payload, host_protocol::WEBVIEW_ATTACH_DEBUGGER_METHOD)?;
-    handler.attach_webview_debugger(decode_webview_handle(
-        &payload,
-        host_protocol::WEBVIEW_ATTACH_DEBUGGER_METHOD,
     )?)?;
 
     Ok(None)
@@ -473,18 +244,6 @@ pub(crate) fn set_navigation_policy(
     ))?;
 
     Ok(None)
-}
-
-pub(crate) fn capability(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
-    let payload = required_object(payload, host_protocol::WEBVIEW_CAPABILITY_METHOD)?;
-    validate_allowed_fields(
-        &payload,
-        ALLOWED_CAPABILITY_FIELDS,
-        host_protocol::WEBVIEW_CAPABILITY_METHOD,
-    )?;
-    validate_capability_payload(&payload)?;
-
-    Err(unsupported(host_protocol::WEBVIEW_CAPABILITY_METHOD))
 }
 
 pub(crate) fn destroy(
@@ -556,32 +315,6 @@ fn decode_webview_handle(
             .ok_or_else(|| {
                 HostProtocolError::invalid_argument(
                     "webview.generation",
-                    "must be an integer",
-                    operation,
-                )
-            })?,
-        required_string(handle, "ownerScope", operation)?.to_string(),
-    ))
-}
-
-fn decode_webview_frame_handle(
-    payload: &Map<String, Value>,
-    operation: &'static str,
-) -> Result<WebViewHandleRequest, HostProtocolError> {
-    let handle = payload
-        .get("frame")
-        .and_then(Value::as_object)
-        .ok_or_else(|| {
-            HostProtocolError::invalid_argument("frame", "must be an object", operation)
-        })?;
-    Ok(WebViewHandleRequest::new(
-        required_string(handle, "id", operation)?.to_string(),
-        handle
-            .get("generation")
-            .and_then(Value::as_u64)
-            .ok_or_else(|| {
-                HostProtocolError::invalid_argument(
-                    "frame.generation",
                     "must be an integer",
                     operation,
                 )
@@ -704,22 +437,6 @@ fn required_string<'a>(
         .ok_or_else(|| HostProtocolError::invalid_argument(field, "must be a string", operation))
 }
 
-fn validate_printable_string_field(
-    payload: &Map<String, Value>,
-    field: &'static str,
-    operation: &'static str,
-) -> Result<(), HostProtocolError> {
-    let value = required_string(payload, field, operation)?;
-    if value.is_empty() {
-        return Err(HostProtocolError::invalid_argument(
-            field,
-            "must not be empty",
-            operation,
-        ));
-    }
-    validate_printable_value(field, value, operation)
-}
-
 fn validate_zoom_field(
     payload: &Map<String, Value>,
     operation: &'static str,
@@ -815,47 +532,6 @@ fn validate_webview_handle_field(
     if state != "open" {
         return Err(HostProtocolError::invalid_argument(
             "webview.state",
-            "must be open",
-            operation,
-        ));
-    }
-
-    Ok(())
-}
-
-fn validate_webview_frame_handle_field(
-    payload: &Map<String, Value>,
-    operation: &'static str,
-) -> Result<(), HostProtocolError> {
-    let handle = payload
-        .get("frame")
-        .and_then(Value::as_object)
-        .ok_or_else(|| {
-            HostProtocolError::invalid_argument("frame", "must be an object", operation)
-        })?;
-    validate_allowed_fields(handle, ALLOWED_WEBVIEW_FRAME_HANDLE_FIELDS, operation)?;
-
-    let kind = handle.get("kind").and_then(Value::as_str).ok_or_else(|| {
-        HostProtocolError::invalid_argument("frame.kind", "must be a string", operation)
-    })?;
-    if kind != "webview-frame" {
-        return Err(HostProtocolError::invalid_argument(
-            "frame.kind",
-            "must be webview-frame",
-            operation,
-        ));
-    }
-
-    validate_printable_object_string(handle, "id", "frame.id", operation)?;
-    validate_u64_field(handle, "generation", "frame.generation", operation)?;
-    validate_printable_object_string(handle, "ownerScope", "frame.ownerScope", operation)?;
-
-    let state = handle.get("state").and_then(Value::as_str).ok_or_else(|| {
-        HostProtocolError::invalid_argument("frame.state", "must be a string", operation)
-    })?;
-    if state != "open" {
-        return Err(HostProtocolError::invalid_argument(
-            "frame.state",
             "must be open",
             operation,
         ));
@@ -997,45 +673,6 @@ fn validate_isolation_field(
         }
     }
     Ok(())
-}
-
-fn validate_capability_payload(payload: &Map<String, Value>) -> Result<(), HostProtocolError> {
-    let name = payload.get("name").and_then(Value::as_str).ok_or_else(|| {
-        HostProtocolError::invalid_argument(
-            "name",
-            "must be a string",
-            host_protocol::WEBVIEW_CAPABILITY_METHOD,
-        )
-    })?;
-    if !matches!(
-        name,
-        "print"
-            | "popup blocking"
-            | "autofill"
-            | "devtools open"
-            | "getUserMedia"
-            | "service workers in app:"
-            | "PDF embedded viewer"
-    ) {
-        return Err(HostProtocolError::invalid_argument(
-            "name",
-            "must be a known WebView capability",
-            host_protocol::WEBVIEW_CAPABILITY_METHOD,
-        ));
-    }
-
-    validate_optional_enum_field(
-        payload,
-        "platform",
-        &["macos", "windows", "linux"],
-        host_protocol::WEBVIEW_CAPABILITY_METHOD,
-    )?;
-    validate_optional_enum_field(
-        payload,
-        "mode",
-        &["dev", "prod"],
-        host_protocol::WEBVIEW_CAPABILITY_METHOD,
-    )
 }
 
 fn validate_url_field(
@@ -1205,23 +842,6 @@ fn validate_js_identifier(
     Ok(())
 }
 
-fn validate_optional_enum_field(
-    payload: &Map<String, Value>,
-    field: &'static str,
-    allowed: &[&str],
-    operation: &'static str,
-) -> Result<(), HostProtocolError> {
-    match payload.get(field) {
-        None => Ok(()),
-        Some(Value::String(value)) if allowed.contains(&value.as_str()) => Ok(()),
-        Some(_) => Err(HostProtocolError::invalid_argument(
-            field,
-            format!("must be one of {}", allowed.join(", ")),
-            operation,
-        )),
-    }
-}
-
 fn validate_printable_object_string(
     payload: &Map<String, Value>,
     field: &'static str,
@@ -1305,24 +925,5 @@ fn required_object(
             "is required",
             operation,
         )),
-    }
-}
-
-fn unsupported(operation: &'static str) -> HostProtocolError {
-    HostProtocolError::unsupported(host_protocol::WEBVIEW_UNSUPPORTED_REASON, operation)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::capability;
-    use host_protocol::HostProtocolError;
-    use serde_json::json;
-
-    #[test]
-    fn capability_rejects_unknown_names_before_unsupported() {
-        let error = capability(Some(json!({ "name": "unknown" })))
-            .expect_err("unknown capability should fail");
-
-        assert!(matches!(error, HostProtocolError::InvalidArgument { .. }));
     }
 }

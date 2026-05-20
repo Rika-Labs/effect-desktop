@@ -1098,7 +1098,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "Dock.setMenu",
@@ -1126,7 +1126,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "Dock.setProgress",
@@ -1940,7 +1940,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "Menu.capability",
@@ -4034,7 +4034,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "WebView.capability",
@@ -4062,7 +4062,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "WebView.captureScreenshot",
@@ -4090,7 +4090,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "WebView.closeDevTools",
@@ -4202,7 +4202,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "WebView.getNavigationState",
@@ -4314,7 +4314,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "WebView.loadRoute",
@@ -4426,7 +4426,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "WebView.print",
@@ -4482,7 +4482,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "WebView.reload",
@@ -4538,7 +4538,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "WebView.setAudioMuted",
@@ -4566,7 +4566,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "WebView.setNavigationPolicy",
@@ -4622,7 +4622,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "WebView.setZoom",
@@ -5257,7 +5257,7 @@
   ],
   "summary": {
     "total": 291,
-    "routed": 242,
+    "routed": 229,
     "missing": 0,
     "supported": 158,
     "partial": 71,

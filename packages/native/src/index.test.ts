@@ -45,19 +45,11 @@ import {
   WINDOW_SET_VIBRANCY_METHOD,
   WINDOW_SHOW_METHOD,
   WINDOW_SUBSCRIBE_EVENTS_METHOD,
-  WEBVIEW_ATTACH_DEBUGGER_METHOD,
   WEBVIEW_CLOSE_DEVTOOLS_METHOD,
-  WEBVIEW_FIND_IN_PAGE_METHOD,
   WEBVIEW_FRAME_EVENT_METHOD,
-  WEBVIEW_LIST_FRAMES_METHOD,
   WEBVIEW_OPEN_DEVTOOLS_METHOD,
-  WEBVIEW_POST_TO_FRAME_METHOD,
   WEBVIEW_PRINT_METHOD,
-  WEBVIEW_PRINT_TO_PDF_METHOD,
-  WEBVIEW_RESPOND_TO_PERMISSION_METHOD,
   WEBVIEW_RUNTIME_EVENT_METHOD,
-  WEBVIEW_SET_AUDIO_MUTED_METHOD,
-  WEBVIEW_SET_USER_AGENT_METHOD,
   WEBVIEW_SET_ZOOM_METHOD,
   makeHostProtocolHostUnavailableError,
   RpcCapability,
@@ -167,6 +159,7 @@ import {
   DialogMethodNames,
   DialogSurface,
   Dock,
+  DockCapabilityFacts,
   DockHandlersLive,
   DockRpcs,
   DockLive,
@@ -184,6 +177,7 @@ import {
   GlobalShortcutMethodNames,
   GlobalShortcutSurface,
   Menu,
+  MenuCapabilityFacts,
   MenuHandlersLive,
   MenuRpcs,
   MenuRpcEvents,
@@ -270,12 +264,14 @@ import {
   UpdaterMethodNames,
   UpdaterSurface,
   WebView,
+  WebViewCapabilityFacts,
   WebViewHandlersLive,
   WebViewRpcs,
   WebViewRpcEvents,
   WebViewLive,
   WebViewMethodNames,
   WebViewSurface,
+  makeNativeCapabilityManifest,
   Window,
   WindowHandlersLive,
   WindowRpcs,
@@ -458,12 +454,8 @@ import {
   UpdaterStatusState,
   WebViewApiCallEvent,
   WebViewFrameEvent,
-  WebViewFrameList,
-  WebViewFindInPageResult,
   WebViewNavigationBlockedEvent,
-  WebViewPdf,
   WebViewRuntimeEvent,
-  WebViewScreenshot,
   WindowBounds,
   WindowBoundsEvent,
   WindowRegistryEvent,
@@ -868,31 +860,35 @@ const expectedWebViewMethods: Array<(typeof WebViewMethodNames)[number]> = [
   "goBack",
   "goForward",
   "getNavigationState",
-  "captureScreenshot",
   "print",
+  "setZoom",
+  "openDevTools",
+  "closeDevTools",
+  "setNavigationPolicy",
+  "destroy"
+]
+
+const expectedWebViewCapabilityFactMethods = [
+  "captureScreenshot",
   "printToPdf",
   "findInPage",
-  "setZoom",
   "setUserAgent",
   "setAudioMuted",
   "respondToPermission",
   "listFrames",
   "postToFrame",
-  "openDevTools",
-  "closeDevTools",
   "attachDebugger",
-  "setNavigationPolicy",
-  "capability",
-  "destroy"
-]
+  "capability"
+] as const
 
 const expectedMenuMethods: Array<(typeof MenuMethodNames)[number]> = [
   "setApplicationMenu",
   "setWindowMenu",
   "clear",
-  "bindCommand",
   "capability"
 ]
+
+const expectedMenuCapabilityFactMethods = ["bindCommand"]
 
 const expectedContextMenuMethods: Array<(typeof ContextMenuMethodNames)[number]> = []
 
@@ -910,11 +906,11 @@ const expectedDockMethods: Array<(typeof DockMethodNames)[number]> = [
   "setBadgeCount",
   "setBadgeText",
   "setProgress",
-  "setMenu",
-  "setJumpList",
   "requestAttention",
   "isSupported"
 ]
+
+const expectedDockCapabilityFactMethods = ["setMenu", "setJumpList"]
 
 const expectedGlobalShortcutMethods: Array<(typeof GlobalShortcutMethodNames)[number]> = [
   "isRegistered",
@@ -1125,7 +1121,6 @@ const applicationMenuTemplate = new MenuTemplate({
 })
 
 const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1])
-const pngBytesJson = "iVBORw0KGgoB"
 const jpegBytes = new Uint8Array([0xff, 0xd8, 0xff, 1])
 const jpegBytesJson = "/9j/AQ=="
 
@@ -2184,6 +2179,42 @@ test("WebViewRpcs declares the Phase 7 WebView method and event surface", () => 
   ])
 })
 
+test("WebView declares the 10 unsupported methods as non-callable capability facts", () => {
+  const factTags = WebViewCapabilityFacts.map((fact) => fact.tag).toSorted()
+  expect(factTags).toEqual(
+    expectedWebViewCapabilityFactMethods.map((method) => `WebView.${method}`).toSorted()
+  )
+  for (const fact of WebViewCapabilityFacts) {
+    expect(fact.support.status).toBe("unsupported")
+  }
+  const callableTags = Array.from(WebViewRpcs.requests.keys())
+  for (const method of expectedWebViewCapabilityFactMethods) {
+    expect(callableTags).not.toContain(`WebView.${method}`)
+  }
+})
+
+test("WebView capability facts surface in the manifest and stay non-callable", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const manifest = yield* makeNativeCapabilityManifest([
+        { schemaDocs: WebViewSurface.schemaDocs }
+      ])
+      const byTag = new Map(manifest.map((fact) => [fact.tag, fact] as const))
+      for (const method of expectedWebViewCapabilityFactMethods) {
+        const fact = byTag.get(`WebView.${method}`)
+        expect(fact).toBeDefined()
+        expect(fact?.support.status).toBe("unsupported")
+      }
+      const nonCallableTags = WebViewSurface.schemaDocs
+        .filter((doc) => !doc.callable)
+        .map((doc) => doc.tag)
+        .toSorted()
+      expect(nonCallableTags).toEqual(
+        expectedWebViewCapabilityFactMethods.map((method) => `WebView.${method}`).toSorted()
+      )
+    })
+  ))
+
 test("WebView service delegates through a substitutable WebViewClient port", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -2199,24 +2230,14 @@ test("WebView service delegates through a substitutable WebViewClient port", () 
           yield* webview.goBack(created)
           yield* webview.goForward(created)
           const navigationState = yield* webview.getNavigationState(created)
-          const screenshot = yield* webview.captureScreenshot(created)
-          const pdf = yield* webview.printToPdf(created)
-          const findResult = yield* webview.findInPage(created, "needle")
           yield* webview.print(created)
           yield* webview.setZoom(created, 1.25)
-          yield* webview.setUserAgent(created, "EffectDesktopTest/1.0")
-          yield* webview.setAudioMuted(created, true)
-          yield* webview.respondToPermission(created, "permission-1", "deny")
-          const frames = yield* webview.listFrames(created)
-          yield* webview.postToFrame(created, webviewFrameHandle, '{"kind":"ping"}')
           yield* webview.openDevTools(created)
           yield* webview.closeDevTools(created)
-          yield* webview.attachDebugger(created)
           yield* webview.setNavigationPolicy(created, {
             allowedOrigins: ["app://localhost"],
             onDisallowed: "block"
           })
-          const linuxAutofill = yield* webview.capability("autofill", { platform: "linux" })
           const blocked = yield* webview
             .onNavigationBlocked()
             .pipe(Stream.take(1), Stream.runCollect)
@@ -2234,13 +2255,8 @@ test("WebView service delegates through a substitutable WebViewClient port", () 
             blocked,
             created,
             frameEvents,
-            frames,
-            findResult,
-            linuxAutofill,
             navigationState,
-            pdf,
-            runtimeEvents,
-            screenshot
+            runtimeEvents
           }
         }),
         makeWebViewServiceLayer(webViewClient(calls))
@@ -2252,12 +2268,6 @@ test("WebView service delegates through a substitutable WebViewClient port", () 
         canGoForward: false,
         loading: false
       })
-      expect(result.screenshot.bytes).toEqual(new Uint8Array([1, 2, 3]))
-      expect(result.pdf.bytes).toEqual(new Uint8Array([0x25, 0x50, 0x44, 0x46]))
-      expect(result.findResult).toEqual(
-        new WebViewFindInPageResult({ matches: 2, activeMatchOrdinal: 1 })
-      )
-      expect(result.linuxAutofill).toBe(false)
       expect(Array.from(result.blocked)).toEqual([
         new WebViewNavigationBlockedEvent({
           webview: webviewHandle,
@@ -2281,7 +2291,6 @@ test("WebView service delegates through a substitutable WebViewClient port", () 
           position: { x: 12, y: 24 }
         })
       ])
-      expect(result.frames).toEqual(new WebViewFrameList({ webview: webviewHandle, frames: [] }))
       expect(Array.from(result.frameEvents)).toEqual([
         new WebViewFrameEvent({
           webview: webviewHandle,
@@ -2299,19 +2308,10 @@ test("WebView service delegates through a substitutable WebViewClient port", () 
         "goBack",
         "goForward",
         "getNavigationState",
-        "captureScreenshot",
-        "printToPdf",
-        "findInPage:needle",
         "print",
         "setZoom:1.25",
-        "setUserAgent:EffectDesktopTest/1.0",
-        "setAudioMuted:true",
-        "respondToPermission:permission-1:deny",
-        "listFrames",
-        'postToFrame:frame-1:{"kind":"ping"}',
         "openDevTools",
         "closeDevTools",
-        "attachDebugger",
         "setNavigationPolicy:app://localhost:block",
         "destroy"
       ])
@@ -2366,36 +2366,23 @@ test("WebView document controls propagate success, unsupported, and host failure
           const webview = yield* WebView
           yield* webview.print(webviewHandle)
           yield* webview.setZoom(webviewHandle, 1.25)
-          const pdf = yield* webview.printToPdf(webviewHandle)
-          const findResult = yield* webview.findInPage(webviewHandle, "needle")
-          yield* webview.setUserAgent(webviewHandle, "EffectDesktopTest/1.0")
-          return { findResult, pdf }
         }),
         makeWebViewServiceLayer(webViewClient(calls))
       )
 
-      expect(success.pdf.bytes).toEqual(new Uint8Array([0x25, 0x50, 0x44, 0x46]))
-      expect(success.findResult).toEqual(
-        new WebViewFindInPageResult({ matches: 2, activeMatchOrdinal: 1 })
-      )
-      expect(calls).toEqual([
-        "print",
-        "setZoom:1.25",
-        "printToPdf",
-        "findInPage:needle",
-        "setUserAgent:EffectDesktopTest/1.0"
-      ])
+      expect(success).toBeUndefined()
+      expect(calls).toEqual(["print", "setZoom:1.25"])
 
       const unsupported = new HostProtocolUnsupportedError({
         tag: "Unsupported",
-        reason: "host-document-output-unavailable",
-        message: "unsupported WebView.printToPdf",
-        operation: WEBVIEW_PRINT_TO_PDF_METHOD,
+        reason: "host-print-zoom-provider-backed",
+        message: "unsupported WebView.print",
+        operation: WEBVIEW_PRINT_METHOD,
         recoverable: false
       })
       const unsupportedClient: WebViewClientApi = {
         ...webViewClient([]),
-        printToPdf: () => Effect.fail(unsupported)
+        print: () => Effect.fail(unsupported)
       }
       const hostFailureClient: WebViewClientApi = {
         ...webViewClient([]),
@@ -2405,7 +2392,7 @@ test("WebView document controls propagate success, unsupported, and host failure
       const unsupportedExit = yield* runScoped(
         Effect.gen(function* () {
           const webview = yield* WebView
-          return yield* Effect.exit(webview.printToPdf(webviewHandle))
+          return yield* Effect.exit(webview.print(webviewHandle))
         }),
         makeWebViewServiceLayer(unsupportedClient)
       )
@@ -2422,7 +2409,7 @@ test("WebView document controls propagate success, unsupported, and host failure
     })
   ))
 
-test("WebView devtools and debugger controls propagate success, unsupported, and host failures", () =>
+test("WebView devtools controls propagate success, unsupported, and host failures", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
@@ -2431,12 +2418,11 @@ test("WebView devtools and debugger controls propagate success, unsupported, and
           const webview = yield* WebView
           yield* webview.openDevTools(webviewHandle)
           yield* webview.closeDevTools(webviewHandle)
-          yield* webview.attachDebugger(webviewHandle)
         }),
         makeWebViewServiceLayer(webViewClient(calls))
       )
       expect(successResult).toBeUndefined()
-      expect(calls).toEqual(["openDevTools", "closeDevTools", "attachDebugger"])
+      expect(calls).toEqual(["openDevTools", "closeDevTools"])
 
       const devtoolsUnsupported = new HostProtocolUnsupportedError({
         tag: "Unsupported",
@@ -2445,17 +2431,9 @@ test("WebView devtools and debugger controls propagate success, unsupported, and
         operation: WEBVIEW_OPEN_DEVTOOLS_METHOD,
         recoverable: false
       })
-      const debuggerUnsupported = new HostProtocolUnsupportedError({
-        tag: "Unsupported",
-        reason: "host-debugger-protocol-unavailable",
-        message: "unsupported WebView.attachDebugger",
-        operation: WEBVIEW_ATTACH_DEBUGGER_METHOD,
-        recoverable: false
-      })
       const unsupportedClient: WebViewClientApi = {
         ...webViewClient([]),
-        openDevTools: () => Effect.fail(devtoolsUnsupported),
-        attachDebugger: () => Effect.fail(debuggerUnsupported)
+        openDevTools: () => Effect.fail(devtoolsUnsupported)
       }
       const hostFailureClient: WebViewClientApi = {
         ...webViewClient([]),
@@ -2470,13 +2448,6 @@ test("WebView devtools and debugger controls propagate success, unsupported, and
         }),
         makeWebViewServiceLayer(unsupportedClient)
       )
-      const debuggerExit = yield* runScoped(
-        Effect.gen(function* () {
-          const webview = yield* WebView
-          return yield* Effect.exit(webview.attachDebugger(webviewHandle))
-        }),
-        makeWebViewServiceLayer(unsupportedClient)
-      )
       const hostFailureExit = yield* runScoped(
         Effect.gen(function* () {
           const webview = yield* WebView
@@ -2486,144 +2457,6 @@ test("WebView devtools and debugger controls propagate success, unsupported, and
       )
 
       expectExitFailure(devtoolsExit, (error) => hasErrorTag(error, "Unsupported"))
-      expectExitFailure(debuggerExit, (error) => hasErrorTag(error, "Unsupported"))
-      expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
-    })
-  ))
-
-test("WebView runtime controls propagate success, unsupported, and host failures", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const calls: string[] = []
-      const successResult = yield* runScoped(
-        Effect.gen(function* () {
-          const webview = yield* WebView
-          yield* webview.setAudioMuted(webviewHandle, true)
-          yield* webview.respondToPermission(webviewHandle, "permission-1", "deny")
-        }),
-        makeWebViewServiceLayer(webViewClient(calls))
-      )
-      expect(successResult).toBeUndefined()
-      expect(calls).toEqual(["setAudioMuted:true", "respondToPermission:permission-1:deny"])
-
-      const audioUnsupported = new HostProtocolUnsupportedError({
-        tag: "Unsupported",
-        reason: "host-runtime-media-control-unavailable",
-        message: "unsupported WebView.setAudioMuted",
-        operation: WEBVIEW_SET_AUDIO_MUTED_METHOD,
-        recoverable: false
-      })
-      const permissionUnsupported = new HostProtocolUnsupportedError({
-        tag: "Unsupported",
-        reason: "host-permission-request-routing-unavailable",
-        message: "unsupported WebView.respondToPermission",
-        operation: WEBVIEW_RESPOND_TO_PERMISSION_METHOD,
-        recoverable: false
-      })
-      const unsupportedClient: WebViewClientApi = {
-        ...webViewClient([]),
-        setAudioMuted: () => Effect.fail(audioUnsupported),
-        respondToPermission: () => Effect.fail(permissionUnsupported)
-      }
-      const hostFailureClient: WebViewClientApi = {
-        ...webViewClient([]),
-        setAudioMuted: () =>
-          Effect.fail(makeHostProtocolHostUnavailableError(WEBVIEW_SET_AUDIO_MUTED_METHOD))
-      }
-
-      const audioExit = yield* runScoped(
-        Effect.gen(function* () {
-          const webview = yield* WebView
-          return yield* Effect.exit(webview.setAudioMuted(webviewHandle, true))
-        }),
-        makeWebViewServiceLayer(unsupportedClient)
-      )
-      const permissionExit = yield* runScoped(
-        Effect.gen(function* () {
-          const webview = yield* WebView
-          return yield* Effect.exit(
-            webview.respondToPermission(webviewHandle, "permission-1", "deny")
-          )
-        }),
-        makeWebViewServiceLayer(unsupportedClient)
-      )
-      const hostFailureExit = yield* runScoped(
-        Effect.gen(function* () {
-          const webview = yield* WebView
-          return yield* Effect.exit(webview.setAudioMuted(webviewHandle, true))
-        }),
-        makeWebViewServiceLayer(hostFailureClient)
-      )
-
-      expectExitFailure(audioExit, (error) => hasErrorTag(error, "Unsupported"))
-      expectExitFailure(permissionExit, (error) => hasErrorTag(error, "Unsupported"))
-      expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
-    })
-  ))
-
-test("WebView frame routing propagates success, unsupported, and host failures", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const calls: string[] = []
-      const success = yield* runScoped(
-        Effect.gen(function* () {
-          const webview = yield* WebView
-          const frames = yield* webview.listFrames(webviewHandle)
-          yield* webview.postToFrame(webviewHandle, webviewFrameHandle, '{"kind":"ping"}')
-          const events = yield* webview
-            .onFrameEvent(webviewHandle)
-            .pipe(Stream.take(1), Stream.runCollect)
-          return { events, frames }
-        }),
-        makeWebViewServiceLayer(webViewClient(calls))
-      )
-
-      expect(success.frames).toEqual(new WebViewFrameList({ webview: webviewHandle, frames: [] }))
-      expect(Array.from(success.events)).toEqual([
-        new WebViewFrameEvent({
-          webview: webviewHandle,
-          frame: webviewFrameHandle,
-          phase: "created",
-          url: "https://example.com/frame"
-        })
-      ])
-      expect(calls).toEqual(["listFrames", 'postToFrame:frame-1:{"kind":"ping"}'])
-
-      const unsupported = new HostProtocolUnsupportedError({
-        tag: "Unsupported",
-        reason: "host-frame-routing-unavailable",
-        message: "unsupported WebView.listFrames",
-        operation: WEBVIEW_LIST_FRAMES_METHOD,
-        recoverable: false
-      })
-      const unsupportedClient: WebViewClientApi = {
-        ...webViewClient([]),
-        listFrames: () => Effect.fail(unsupported)
-      }
-      const hostFailureClient: WebViewClientApi = {
-        ...webViewClient([]),
-        postToFrame: () =>
-          Effect.fail(makeHostProtocolHostUnavailableError(WEBVIEW_POST_TO_FRAME_METHOD))
-      }
-
-      const unsupportedExit = yield* runScoped(
-        Effect.gen(function* () {
-          const webview = yield* WebView
-          return yield* Effect.exit(webview.listFrames(webviewHandle))
-        }),
-        makeWebViewServiceLayer(unsupportedClient)
-      )
-      const hostFailureExit = yield* runScoped(
-        Effect.gen(function* () {
-          const webview = yield* WebView
-          return yield* Effect.exit(
-            webview.postToFrame(webviewHandle, webviewFrameHandle, '{"kind":"ping"}')
-          )
-        }),
-        makeWebViewServiceLayer(hostFailureClient)
-      )
-
-      expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
       expectExitFailure(hostFailureExit, (error) => hasErrorTag(error, "HostUnavailable"))
     })
   ))
@@ -2641,36 +2474,8 @@ test("native host RPC runtime denies protected WebView document and devtools cal
           capability: P.nativeInvoke({ primitive: "WebView", methods: ["print"] })
         },
         {
-          method: WEBVIEW_PRINT_TO_PDF_METHOD,
-          capability: P.nativeInvoke({ primitive: "WebView", methods: ["printToPdf"] })
-        },
-        {
-          method: WEBVIEW_FIND_IN_PAGE_METHOD,
-          capability: P.nativeInvoke({ primitive: "WebView", methods: ["findInPage"] })
-        },
-        {
           method: WEBVIEW_SET_ZOOM_METHOD,
           capability: P.nativeInvoke({ primitive: "WebView", methods: ["setZoom"] })
-        },
-        {
-          method: WEBVIEW_SET_USER_AGENT_METHOD,
-          capability: P.nativeInvoke({ primitive: "WebView", methods: ["setUserAgent"] })
-        },
-        {
-          method: WEBVIEW_SET_AUDIO_MUTED_METHOD,
-          capability: P.nativeInvoke({ primitive: "WebView", methods: ["setAudioMuted"] })
-        },
-        {
-          method: WEBVIEW_RESPOND_TO_PERMISSION_METHOD,
-          capability: P.nativeInvoke({ primitive: "WebView", methods: ["respondToPermission"] })
-        },
-        {
-          method: WEBVIEW_LIST_FRAMES_METHOD,
-          capability: P.nativeInvoke({ primitive: "WebView", methods: ["listFrames"] })
-        },
-        {
-          method: WEBVIEW_POST_TO_FRAME_METHOD,
-          capability: P.nativeInvoke({ primitive: "WebView", methods: ["postToFrame"] })
         },
         {
           method: WEBVIEW_OPEN_DEVTOOLS_METHOD,
@@ -2679,10 +2484,6 @@ test("native host RPC runtime denies protected WebView document and devtools cal
         {
           method: WEBVIEW_CLOSE_DEVTOOLS_METHOD,
           capability: P.nativeInvoke({ primitive: "WebView", methods: ["closeDevTools"] })
-        },
-        {
-          method: WEBVIEW_ATTACH_DEBUGGER_METHOD,
-          capability: P.nativeInvoke({ primitive: "WebView", methods: ["attachDebugger"] })
         }
       ] as const
       const permissions = yield* makePermissionRegistry({
@@ -2718,23 +2519,8 @@ test("native host RPC runtime denies protected WebView document and devtools cal
   ))
 
 const webviewDeniedPayload = (method: string): unknown => {
-  if (method === WEBVIEW_FIND_IN_PAGE_METHOD) {
-    return { webview: webviewHandle, query: "needle" }
-  }
   if (method === WEBVIEW_SET_ZOOM_METHOD) {
     return { webview: webviewHandle, zoom: 1.25 }
-  }
-  if (method === WEBVIEW_SET_USER_AGENT_METHOD) {
-    return { webview: webviewHandle, userAgent: "EffectDesktopTest/1.0" }
-  }
-  if (method === WEBVIEW_SET_AUDIO_MUTED_METHOD) {
-    return { webview: webviewHandle, muted: true }
-  }
-  if (method === WEBVIEW_RESPOND_TO_PERMISSION_METHOD) {
-    return { webview: webviewHandle, requestId: "permission-1", decision: "deny" }
-  }
-  if (method === WEBVIEW_POST_TO_FRAME_METHOD) {
-    return { webview: webviewHandle, frame: webviewFrameHandle, payload: '{"kind":"ping"}' }
   }
   return { webview: webviewHandle }
 }
@@ -2750,17 +2536,7 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
             ? webviewHandle
             : request.method === "WebView.getNavigationState"
               ? { canGoBack: true, canGoForward: false, loading: false }
-              : request.method === "WebView.captureScreenshot"
-                ? { mime: "image/png", bytes: pngBytesJson }
-                : request.method === "WebView.printToPdf"
-                  ? { mime: "application/pdf", bytes: "JVBERg==" }
-                  : request.method === "WebView.findInPage"
-                    ? { matches: 2, activeMatchOrdinal: 1 }
-                    : request.method === "WebView.listFrames"
-                      ? { webview: webviewHandle, frames: [] }
-                      : request.method === "WebView.capability"
-                        ? { supported: true }
-                        : undefined
+              : undefined
       }))
 
       const result = yield* runScoped(
@@ -2778,22 +2554,10 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
             allowedOrigins: ["app://localhost", "https://example.com"],
             onDisallowed: "openExternal"
           })
-          const screenshot = yield* webview.captureScreenshot(created)
           yield* webview.print(created)
-          const pdf = yield* webview.printToPdf(created)
-          const findResult = yield* webview.findInPage(created, "needle")
           yield* webview.setZoom(created, 1.25)
-          yield* webview.setUserAgent(created, "EffectDesktopTest/1.0")
-          yield* webview.setAudioMuted(created, true)
-          yield* webview.respondToPermission(created, "permission-1", "deny")
-          const frames = yield* webview.listFrames(created)
-          yield* webview.postToFrame(created, webviewFrameHandle, '{"kind":"ping"}')
           yield* webview.openDevTools(created)
           yield* webview.closeDevTools(created)
-          yield* webview.attachDebugger(created)
-          const canOpenDevtools = yield* webview.capability("devtools open", {
-            platform: "windows"
-          })
           const blocked = yield* webview
             .onNavigationBlocked()
             .pipe(Stream.take(1), Stream.runCollect)
@@ -2808,15 +2572,10 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
           return {
             apiCalls,
             blocked,
-            canOpenDevtools,
             created,
             frameEvents,
-            frames,
-            findResult,
             navigationState,
-            pdf,
-            runtimeEvents,
-            screenshot
+            runtimeEvents
           }
         }),
         Layer.provide(WebViewLive, makeWebViewBridgeClientLayer(exchange))
@@ -2828,16 +2587,6 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
         canGoForward: false,
         loading: false
       })
-      expect(result.screenshot).toEqual(
-        new WebViewScreenshot({ mime: "image/png", bytes: pngBytes })
-      )
-      expect(result.pdf).toEqual(
-        new WebViewPdf({ mime: "application/pdf", bytes: new Uint8Array([0x25, 0x50, 0x44, 0x46]) })
-      )
-      expect(result.findResult).toEqual(
-        new WebViewFindInPageResult({ matches: 2, activeMatchOrdinal: 1 })
-      )
-      expect(result.canOpenDevtools).toBe(true)
       expect(Array.from(result.blocked)).toEqual([
         new WebViewNavigationBlockedEvent({
           webview: webviewHandle,
@@ -2861,7 +2610,6 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
           position: { x: 12, y: 24 }
         })
       ])
-      expect(result.frames).toEqual(new WebViewFrameList({ webview: webviewHandle, frames: [] }))
       expect(Array.from(result.frameEvents)).toEqual([
         new WebViewFrameEvent({
           webview: webviewHandle,
@@ -2893,67 +2641,10 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
             }
           }
         ],
-        ["WebView.captureScreenshot", { webview: webviewHandle }],
         ["WebView.print", { webview: webviewHandle }],
-        ["WebView.printToPdf", { webview: webviewHandle }],
-        ["WebView.findInPage", { webview: webviewHandle, query: "needle" }],
         ["WebView.setZoom", { webview: webviewHandle, zoom: 1.25 }],
-        ["WebView.setUserAgent", { webview: webviewHandle, userAgent: "EffectDesktopTest/1.0" }],
-        ["WebView.setAudioMuted", { webview: webviewHandle, muted: true }],
-        [
-          "WebView.respondToPermission",
-          { webview: webviewHandle, requestId: "permission-1", decision: "deny" }
-        ],
-        ["WebView.listFrames", { webview: webviewHandle }],
-        [
-          "WebView.postToFrame",
-          { webview: webviewHandle, frame: webviewFrameHandle, payload: '{"kind":"ping"}' }
-        ],
         ["WebView.openDevTools", { webview: webviewHandle }],
-        ["WebView.closeDevTools", { webview: webviewHandle }],
-        ["WebView.attachDebugger", { webview: webviewHandle }],
-        ["WebView.capability", { name: "devtools open", platform: "windows" }]
-      ])
-    })
-  ))
-
-test("WebView captureScreenshot rejects empty byte payloads", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const requests: HostProtocolRequestEnvelope[] = []
-      const exit = yield* runScoped(
-        Effect.gen(function* () {
-          const client = yield* WebView
-          const created = yield* client.create(windowHandle)
-          return yield* Effect.exit(client.captureScreenshot(created))
-        }),
-        Layer.provide(
-          WebViewLive,
-          makeWebViewBridgeClientLayer(
-            webViewExchange(requests, (request) => ({
-              kind: "success",
-              payload:
-                request.method === "WebView.create"
-                  ? webviewHandle
-                  : request.method === "WebView.captureScreenshot"
-                    ? { mime: "image/png", bytes: new Uint8Array() }
-                    : undefined
-            }))
-          )
-        )
-      )
-
-      expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
-      expect(requests.map((request) => [request.method, request.payload])).toEqual([
-        [
-          "WebView.create",
-          {
-            window: windowHandle,
-            url: "app://localhost/",
-            originPolicy: { allowedOrigins: ["app://localhost"], onDisallowed: "block" }
-          }
-        ],
-        ["WebView.captureScreenshot", { webview: webviewHandle }]
+        ["WebView.closeDevTools", { webview: webviewHandle }]
       ])
     })
   ))
@@ -3242,94 +2933,44 @@ test("WebView bridge client rejects unsafe navigation inputs before transport", 
     })
   ))
 
-test("WebView bridge client rejects malformed screenshot output bytes as InvalidOutput", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const invalidScreenshots: Array<{ readonly mime: string; readonly bytes: Uint8Array }> = [
-        { mime: "image/png", bytes: new Uint8Array([1, 2, 3]) },
-        { mime: "image/jpeg", bytes: pngBytes },
-        { mime: "image/png", bytes: new Uint8Array() }
-      ]
-      for (const payload of invalidScreenshots) {
-        const requests: HostProtocolRequestEnvelope[] = []
-        const exchange = webViewExchange(requests, (request) =>
-          request.method === "WebView.captureScreenshot"
-            ? { kind: "success", payload }
-            : { kind: "success", payload: undefined }
-        )
-
-        const exit = yield* Effect.exit(
-          runScoped(
-            Effect.gen(function* () {
-              const webview = yield* WebView
-              return yield* webview.captureScreenshot(webviewHandle)
-            }),
-            Layer.provide(
-              WebViewLive,
-              makeWebViewBridgeClientLayer(exchange, {
-                nextRequestId: nextId(["capture-screenshot-request"]),
-                nextTraceId: nextId(["capture-screenshot-trace"]),
-                now: nextNumber([1710000000000])
-              })
-            )
-          )
-        )
-
-        expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
-        expect(requests).toEqual([
-          expect.objectContaining({
-            method: "WebView.captureScreenshot",
-            payload: { webview: webviewHandle }
-          })
-        ])
-      }
-    })
-  ))
-
-test("WebView capability matrix reports spec-partial features as unsupported", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const calls: string[] = []
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const webview = yield* WebView
-          return {
-            linuxPrint: yield* webview.capability("print", { platform: "linux" }),
-            linuxPopupBlocking: yield* webview.capability("popup blocking", { platform: "linux" }),
-            linuxGetUserMedia: yield* webview.capability("getUserMedia", { platform: "linux" }),
-            linuxServiceWorkers: yield* webview.capability("service workers in app:", {
-              platform: "linux"
-            }),
-            macosServiceWorkers: yield* webview.capability("service workers in app:", {
-              platform: "macos"
-            }),
-            windowsPrint: yield* webview.capability("print", { platform: "windows" }),
-            linuxPdf: yield* webview.capability("PDF embedded viewer", { platform: "linux" })
-          }
-        }),
-        makeWebViewServiceLayer({
-          ...webViewClient(calls),
-          capability: (input) =>
-            Effect.succeed({
-              supported: webViewCapability(input.name, input.platform, input.mode)
-            })
-        })
-      )
-
-      expect(result.linuxPrint).toBe(true)
-      expect(result.linuxPopupBlocking).toBe(false)
-      expect(result.linuxGetUserMedia).toBe(false)
-      expect(result.linuxServiceWorkers).toBe(false)
-      expect(result.macosServiceWorkers).toBe(false)
-      expect(result.windowsPrint).toBe(true)
-      expect(result.linuxPdf).toBe(false)
-    })
-  ))
+test("WebView capability matrix reports spec-partial features as unsupported", () => {
+  expect(webViewCapability("print", "linux")).toBe(true)
+  expect(webViewCapability("popup blocking", "linux")).toBe(false)
+  expect(webViewCapability("getUserMedia", "linux")).toBe(false)
+  expect(webViewCapability("service workers in app:", "linux")).toBe(false)
+  expect(webViewCapability("service workers in app:", "macos")).toBe(false)
+  expect(webViewCapability("print", "windows")).toBe(true)
+  expect(webViewCapability("PDF embedded viewer", "linux")).toBe(false)
+})
 
 test("MenuRpcs declares the Phase 7 Menu method and event surface", () => {
   expect([...MenuMethodNames]).toEqual(expectedMenuMethods)
   expect(rpcMethodNames("Menu", MenuRpcs)).toEqual(expectedMenuMethods)
   expect(Object.keys(MenuRpcEvents)).toEqual(["Activated"])
+})
+
+test("Menu declares bindCommand as a non-callable capability fact", () => {
+  const factTags = MenuCapabilityFacts.map((fact) => fact.tag).toSorted()
+  expect(factTags).toEqual(
+    expectedMenuCapabilityFactMethods.map((method) => `Menu.${method}`).toSorted()
+  )
+  for (const fact of MenuCapabilityFacts) {
+    expect(fact.support.status).toBe("unsupported")
+    expect(fact.capability.kind).toBe("native.invoke")
+  }
+
+  const callableTags = Array.from(MenuRpcs.requests.keys())
+  for (const method of expectedMenuCapabilityFactMethods) {
+    expect(callableTags).not.toContain(`Menu.${method}`)
+  }
+
+  const nonCallableTags = MenuSurface.schemaDocs
+    .filter((doc) => !doc.callable)
+    .map((doc) => doc.tag)
+    .toSorted()
+  expect(nonCallableTags).toEqual(
+    expectedMenuCapabilityFactMethods.map((method) => `Menu.${method}`).toSorted()
+  )
 })
 
 test("Menu service delegates through a substitutable MenuClient port", () =>
@@ -3543,15 +3184,16 @@ test("Menu bridge client validates templates, sends host envelopes, and decodes 
           const menu = yield* Menu
           yield* menu.setApplicationMenu(applicationMenuTemplate)
           yield* menu.setWindowMenu(windowHandle, menuTemplate)
-          yield* menu.bindCommand("file.open", "app.file.open")
+          const bindExit = yield* Effect.exit(menu.bindCommand("file.open", "app.file.open"))
           const activated = yield* menu.onActivated().pipe(Stream.take(1), Stream.runCollect)
           yield* menu.clear({ window: windowHandle })
 
-          return { activated }
+          return { activated, bindExit }
         }),
         Layer.mergeAll(Layer.provide(MenuLive, makeMenuBridgeClientLayer(exchange)), commandLayer)
       )
 
+      expectExitFailure(result.bindExit, (error) => hasErrorTag(error, "Unsupported"))
       expect(Array.from(result.activated)).toEqual([
         new MenuActivatedEvent({
           itemId: "file.open",
@@ -3562,7 +3204,6 @@ test("Menu bridge client validates templates, sends host envelopes, and decodes 
       expect(requests.map((request) => [request.method, request.payload])).toEqual([
         ["Menu.setApplicationMenu", { template: applicationMenuTemplate }],
         ["Menu.setWindowMenu", { window: windowHandle, template: menuTemplate }],
-        ["Menu.bindCommand", { itemId: "file.open", commandId: "app.file.open" }],
         ["Menu.clear", { window: windowHandle }]
       ])
     })
@@ -8109,7 +7750,10 @@ test("native DesktopRpc surfaces derive server, client, test, and metadata layer
           surface: DockSurface,
           group: DockRpcs,
           handlers: DockHandlersLive,
-          tags: Array.from(DockRpcs.requests.keys())
+          tags: [
+            ...Array.from(DockRpcs.requests.keys()),
+            ...DockCapabilityFacts.map((fact) => fact.tag)
+          ]
         },
         {
           name: "GlobalShortcut",
@@ -8126,7 +7770,10 @@ test("native DesktopRpc surfaces derive server, client, test, and metadata layer
           surface: MenuSurface,
           group: MenuRpcs,
           handlers: MenuHandlersLive,
-          tags: Array.from(MenuRpcs.requests.keys())
+          tags: [
+            ...Array.from(MenuRpcs.requests.keys()),
+            ...MenuCapabilityFacts.map((fact) => fact.tag)
+          ]
         },
         {
           name: "Notification",
@@ -8196,7 +7843,10 @@ test("native DesktopRpc surfaces derive server, client, test, and metadata layer
           surface: WebViewSurface,
           group: WebViewRpcs,
           handlers: WebViewHandlersLive,
-          tags: Array.from(WebViewRpcs.requests.keys())
+          tags: [
+            ...WebViewRpcs.requests.keys(),
+            ...expectedWebViewCapabilityFactMethods.map((method) => `WebView.${method}`)
+          ]
         },
         {
           name: "Window",
@@ -9191,6 +8841,29 @@ test("DockRpcs declares the Phase 8 Dock method surface", () => {
   expect(rpcMethodNames("Dock", DockRpcs)).toEqual(expectedDockMethods)
 })
 
+test("Dock declares setMenu, setJumpList as non-callable capability facts", () => {
+  const factTags = DockCapabilityFacts.map((fact) => fact.tag).toSorted()
+  expect(factTags).toEqual(
+    expectedDockCapabilityFactMethods.map((method) => `Dock.${method}`).toSorted()
+  )
+  for (const fact of DockCapabilityFacts) {
+    expect(fact.support.status).toBe("unsupported")
+  }
+
+  const callableTags = Array.from(DockRpcs.requests.keys())
+  for (const method of expectedDockCapabilityFactMethods) {
+    expect(callableTags).not.toContain(`Dock.${method}`)
+  }
+
+  const nonCallableTags = DockSurface.schemaDocs
+    .filter((doc) => !doc.callable)
+    .map((doc) => doc.tag)
+    .toSorted()
+  expect(nonCallableTags).toEqual(
+    expectedDockCapabilityFactMethods.map((method) => `Dock.${method}`).toSorted()
+  )
+})
+
 test("Dock service delegates through a substitutable DockClient port", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -9201,8 +8874,6 @@ test("Dock service delegates through a substitutable DockClient port", () =>
           yield* dock.setBadgeCount(5)
           yield* dock.setBadgeText("5")
           yield* dock.setProgress(0.5, { state: "normal" })
-          yield* dock.setMenu(menuTemplate)
-          yield* dock.setJumpList([{ id: "open", title: "Open", commandId: "app.open" }])
           yield* dock.requestAttention({ critical: true })
           return yield* dock.isSupported("setBadgeText")
         }),
@@ -9214,8 +8885,6 @@ test("Dock service delegates through a substitutable DockClient port", () =>
         "setBadgeCount:5",
         "setBadgeText:5",
         "setProgress:0.5:normal",
-        "setMenu:3",
-        "setJumpList:open",
         "requestAttention:true",
         "isSupported:setBadgeText"
       ])
@@ -9238,8 +8907,6 @@ test("Dock bridge client sends typed host envelopes and maps support result", ()
           yield* dock.setBadgeText("1")
           yield* dock.setBadgeText(null)
           yield* dock.setProgress(null)
-          yield* dock.setMenu(null)
-          yield* dock.setJumpList([{ id: "open", title: "Open", commandId: "app.open" }])
           yield* dock.requestAttention()
           return yield* dock.isSupported("setJumpList")
         }),
@@ -9252,8 +8919,6 @@ test("Dock bridge client sends typed host envelopes and maps support result", ()
         ["Dock.setBadgeText", { text: "1" }],
         ["Dock.setBadgeText", { text: null }],
         ["Dock.setProgress", { value: null }],
-        ["Dock.setMenu", { menu: null }],
-        ["Dock.setJumpList", { items: [{ id: "open", title: "Open", commandId: "app.open" }] }],
         ["Dock.requestAttention", {}],
         ["Dock.isSupported", { method: "setJumpList" }]
       ])
@@ -9318,40 +8983,6 @@ test("Dock bridge client rejects invalid numeric state before transport", () =>
     })
   ))
 
-test("Dock bridge client rejects malformed jump-list items before transport", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const requests: HostProtocolRequestEnvelope[] = []
-      const exchange = dockExchange(requests, () => ({
-        kind: "success",
-        payload: undefined
-      }))
-      const invalidItems: Array<
-        Array<{
-          readonly id: string
-          readonly title: string
-          readonly commandId: string
-        }>
-      > = [
-        [{ id: "", title: "Open", commandId: "app.open" }],
-        [{ id: "open", title: "", commandId: "app.open" }],
-        [{ id: "open", title: "Open", commandId: "" }],
-        [{ id: "open", title: "Open", commandId: "bad\u0000" }]
-      ]
-
-      const dock = yield* runScoped(
-        Dock.asEffect(),
-        Layer.provide(DockLive, makeDockBridgeClientLayer(exchange))
-      )
-
-      for (const items of invalidItems) {
-        const exit = yield* Effect.exit(dock.setJumpList(items))
-        expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
-      }
-      expect(requests).toEqual([])
-    })
-  ))
-
 test("native host RPC runtime denies protected Dock calls before handlers run", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -9369,14 +9000,6 @@ test("native host RPC runtime denies protected Dock calls before handlers run", 
           "Dock.setProgress": (input) =>
             Effect.sync(() => {
               calls.push(`setProgress:${input.value ?? ""}`)
-            }),
-          "Dock.setMenu": (input) =>
-            Effect.sync(() => {
-              calls.push(`setMenu:${input.menu?.items.length ?? 0}`)
-            }),
-          "Dock.setJumpList": (input) =>
-            Effect.sync(() => {
-              calls.push(`setJumpList:${input.items.map((item) => item.id).join(",")}`)
             }),
           "Dock.requestAttention": (input) =>
             Effect.sync(() => {
@@ -9415,13 +9038,13 @@ test("Dock service propagates unsupported platform and host failure", () =>
       const unsupported = new HostProtocolUnsupportedError({
         tag: "Unsupported",
         reason: "host-adapter-unimplemented",
-        message: "unsupported Dock.setJumpList",
-        operation: "Dock.setJumpList",
+        message: "unsupported Dock.setBadgeCount",
+        operation: "Dock.setBadgeCount",
         recoverable: false
       })
       const unsupportedClient: DockClientApi = {
         ...dockClient([]),
-        setJumpList: () => Effect.fail(unsupported)
+        setBadgeCount: () => Effect.fail(unsupported)
       }
       const hostFailureClient: DockClientApi = {
         ...dockClient([]),
@@ -9431,9 +9054,7 @@ test("Dock service propagates unsupported platform and host failure", () =>
       const unsupportedExit = yield* runScoped(
         Effect.gen(function* () {
           const dock = yield* Dock
-          return yield* Effect.exit(
-            dock.setJumpList([{ id: "open", title: "Open", commandId: "app.open" }])
-          )
+          return yield* Effect.exit(dock.setBadgeCount(1))
         }),
         makeDockServiceLayer(unsupportedClient)
       )
@@ -9465,14 +9086,12 @@ test("Linux Dock client reports unimplemented partial methods as unsupported", (
           const progressExit = yield* Effect.exit(dock.setProgress(0.5))
           const attentionExit = yield* Effect.exit(dock.requestAttention())
           const textExit = yield* Effect.exit(dock.setBadgeText("hi"))
-          const menuExit = yield* Effect.exit(dock.setMenu(null))
           return {
             attentionExit,
             attentionSupported,
             badgeCountExit,
             badgeCountSupported,
             badgeTextSupported,
-            menuExit,
             menuSupported,
             progressExit,
             progressSupported,
@@ -9499,7 +9118,6 @@ test("Linux Dock client reports unimplemented partial methods as unsupported", (
           "reason" in error &&
           error.reason === "no portable badge text on Linux"
       )
-      expectExitFailure(result.menuExit, (error) => hasErrorTag(error, "Unsupported"))
     })
   ))
 
@@ -13706,46 +13324,15 @@ const webViewClient = (calls: string[]): WebViewClientApi => ({
       calls.push("getNavigationState")
       return { canGoBack: true, canGoForward: false, loading: false }
     }),
-  captureScreenshot: () =>
-    Effect.sync(() => {
-      calls.push("captureScreenshot")
-      return new WebViewScreenshot({ mime: "image/png", bytes: new Uint8Array([1, 2, 3]) })
-    }),
   print: () => recordVoid(calls, "print"),
-  printToPdf: () =>
-    Effect.sync(() => {
-      calls.push("printToPdf")
-      return new WebViewPdf({
-        mime: "application/pdf",
-        bytes: new Uint8Array([0x25, 0x50, 0x44, 0x46])
-      })
-    }),
-  findInPage: (_webview, query) =>
-    Effect.sync(() => {
-      calls.push(`findInPage:${query}`)
-      return new WebViewFindInPageResult({ matches: 2, activeMatchOrdinal: 1 })
-    }),
   setZoom: (_webview, zoom) => recordVoid(calls, `setZoom:${zoom}`),
-  setUserAgent: (_webview, userAgent) => recordVoid(calls, `setUserAgent:${userAgent}`),
-  setAudioMuted: (_webview, muted) => recordVoid(calls, `setAudioMuted:${muted}`),
-  respondToPermission: (_webview, requestId, decision) =>
-    recordVoid(calls, `respondToPermission:${requestId}:${decision}`),
-  listFrames: () =>
-    Effect.sync(() => {
-      calls.push("listFrames")
-      return new WebViewFrameList({ webview: webviewHandle, frames: [] })
-    }),
-  postToFrame: (_webview, frame, payload) =>
-    recordVoid(calls, `postToFrame:${frame.id}:${payload}`),
   openDevTools: () => recordVoid(calls, "openDevTools"),
   closeDevTools: () => recordVoid(calls, "closeDevTools"),
-  attachDebugger: () => recordVoid(calls, "attachDebugger"),
   setNavigationPolicy: (_webview, policy) =>
     recordVoid(
       calls,
       `setNavigationPolicy:${policy.allowedOrigins.join(",")}:${policy.onDisallowed}`
     ),
-  capability: (input) => Effect.succeed({ supported: input.platform !== "linux" }),
   destroy: () => recordVoid(calls, "destroy"),
   onNavigationBlocked: () =>
     Stream.make(
@@ -14180,9 +13767,6 @@ const dockClient = (calls: string[]): DockClientApi => ({
   setBadgeText: (text) => recordVoid(calls, `setBadgeText:${text ?? ""}`),
   setProgress: (value, options) =>
     recordVoid(calls, `setProgress:${value ?? ""}:${options?.state ?? ""}`),
-  setMenu: (menu) => recordVoid(calls, `setMenu:${menu?.items.length ?? 0}`),
-  setJumpList: (items) =>
-    recordVoid(calls, `setJumpList:${items.map((item) => item.id).join(",")}`),
   requestAttention: (options) =>
     recordVoid(calls, `requestAttention:${options?.critical ?? false}`),
   isSupported: (method) =>

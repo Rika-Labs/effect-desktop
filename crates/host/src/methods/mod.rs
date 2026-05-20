@@ -457,14 +457,6 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Window(dock::set_progress),
     ),
     route(
-        host_protocol::DOCK_SET_MENU_METHOD,
-        HostMethodDispatcher::Window(dock::set_menu),
-    ),
-    route(
-        host_protocol::DOCK_SET_JUMP_LIST_METHOD,
-        HostMethodDispatcher::Payload(dock::set_jump_list),
-    ),
-    route(
         host_protocol::DOCK_REQUEST_ATTENTION_METHOD,
         HostMethodDispatcher::Window(dock::request_attention),
     ),
@@ -1045,10 +1037,6 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Payload(menu::clear),
     ),
     route(
-        host_protocol::MENU_BIND_COMMAND_METHOD,
-        HostMethodDispatcher::Payload(menu::bind_command),
-    ),
-    route(
         host_protocol::MENU_CAPABILITY_METHOD,
         HostMethodDispatcher::Payload(menu::capability),
     ),
@@ -1085,44 +1073,12 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Window(webview::get_navigation_state),
     ),
     route(
-        host_protocol::WEBVIEW_CAPTURE_SCREENSHOT_METHOD,
-        HostMethodDispatcher::Window(webview::capture_screenshot),
-    ),
-    route(
         host_protocol::WEBVIEW_PRINT_METHOD,
         HostMethodDispatcher::Window(webview::print),
     ),
     route(
-        host_protocol::WEBVIEW_PRINT_TO_PDF_METHOD,
-        HostMethodDispatcher::Window(webview::print_to_pdf),
-    ),
-    route(
-        host_protocol::WEBVIEW_FIND_IN_PAGE_METHOD,
-        HostMethodDispatcher::Window(webview::find_in_page),
-    ),
-    route(
         host_protocol::WEBVIEW_SET_ZOOM_METHOD,
         HostMethodDispatcher::Window(webview::set_zoom),
-    ),
-    route(
-        host_protocol::WEBVIEW_SET_USER_AGENT_METHOD,
-        HostMethodDispatcher::Window(webview::set_user_agent),
-    ),
-    route(
-        host_protocol::WEBVIEW_SET_AUDIO_MUTED_METHOD,
-        HostMethodDispatcher::Window(webview::set_audio_muted),
-    ),
-    route(
-        host_protocol::WEBVIEW_RESPOND_TO_PERMISSION_METHOD,
-        HostMethodDispatcher::Window(webview::respond_to_permission),
-    ),
-    route(
-        host_protocol::WEBVIEW_LIST_FRAMES_METHOD,
-        HostMethodDispatcher::Window(webview::list_frames),
-    ),
-    route(
-        host_protocol::WEBVIEW_POST_TO_FRAME_METHOD,
-        HostMethodDispatcher::Window(webview::post_to_frame),
     ),
     route(
         host_protocol::WEBVIEW_OPEN_DEVTOOLS_METHOD,
@@ -1133,16 +1089,8 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Window(webview::close_devtools),
     ),
     route(
-        host_protocol::WEBVIEW_ATTACH_DEBUGGER_METHOD,
-        HostMethodDispatcher::Window(webview::attach_debugger),
-    ),
-    route(
         host_protocol::WEBVIEW_SET_NAVIGATION_POLICY_METHOD,
         HostMethodDispatcher::Window(webview::set_navigation_policy),
-    ),
-    route(
-        host_protocol::WEBVIEW_CAPABILITY_METHOD,
-        HostMethodDispatcher::Payload(webview::capability),
     ),
     route(
         host_protocol::WEBVIEW_DESTROY_METHOD,
@@ -4444,37 +4392,7 @@ mod tests {
     }
 
     #[test]
-    fn dock_jump_list_route_fails_closed_after_validation() {
-        let router = test_router();
-        let jump_list_response = router
-            .dispatch_at(
-                request_with_payload(
-                    "request-dock-jump-list",
-                    host_protocol::DOCK_SET_JUMP_LIST_METHOD,
-                    serde_json::json!({
-                        "items": [{ "id": "open", "title": "Open", "commandId": "app.open" }]
-                    }),
-                ),
-                1710000000115,
-            )
-            .expect("dock jump list request should return response");
-        assert_eq!(
-            jump_list_response,
-            HostProtocolEnvelope::Response {
-                id: "request-dock-jump-list".to_string(),
-                timestamp: 1710000000115,
-                trace_id: "trace-request-dock-jump-list".to_string(),
-                payload: None,
-                error: Some(HostProtocolError::unsupported(
-                    "host-adapter-unimplemented",
-                    host_protocol::DOCK_SET_JUMP_LIST_METHOD,
-                )),
-            }
-        );
-    }
-
-    #[test]
-    fn dock_progress_and_jump_list_reject_invalid_payloads_before_side_effects() {
+    fn dock_progress_rejects_invalid_payloads_before_side_effects() {
         let progress_response = test_router()
             .dispatch_at(
                 request_with_payload(
@@ -4487,26 +4405,6 @@ mod tests {
             .expect("dock progress invalid request should return response");
         assert!(matches!(
             progress_response,
-            HostProtocolEnvelope::Response {
-                error: Some(HostProtocolError::InvalidArgument { .. }),
-                ..
-            }
-        ));
-
-        let jump_list_response = test_router()
-            .dispatch_at(
-                request_with_payload(
-                    "request-dock-jump-list-invalid",
-                    host_protocol::DOCK_SET_JUMP_LIST_METHOD,
-                    serde_json::json!({
-                        "items": [{ "id": "", "title": "Open", "commandId": "app.open" }]
-                    }),
-                ),
-                1710000000117,
-            )
-            .expect("dock jump list invalid request should return response");
-        assert!(matches!(
-            jump_list_response,
             HostProtocolEnvelope::Response {
                 error: Some(HostProtocolError::InvalidArgument { .. }),
                 ..
@@ -4987,13 +4885,6 @@ mod tests {
             "ownerScope": "window:window-1",
             "state": "open"
         });
-        let frame = serde_json::json!({
-            "kind": "webview-frame",
-            "id": "frame-1",
-            "generation": 0,
-            "ownerScope": "webview:webview-1",
-            "state": "open"
-        });
         let window = serde_json::json!({
             "kind": "window",
             "id": "window-1",
@@ -5055,67 +4946,14 @@ mod tests {
                 serde_json::json!({ "webview": webview }),
             ),
             (
-                "request-webview-print-to-pdf",
-                host_protocol::WEBVIEW_PRINT_TO_PDF_METHOD,
-                serde_json::json!({ "webview": webview }),
-            ),
-            (
-                "request-webview-find-in-page",
-                host_protocol::WEBVIEW_FIND_IN_PAGE_METHOD,
-                serde_json::json!({ "webview": webview, "query": "needle" }),
-            ),
-            (
                 "request-webview-set-zoom",
                 host_protocol::WEBVIEW_SET_ZOOM_METHOD,
                 serde_json::json!({ "webview": webview, "zoom": 1.25 }),
             ),
             (
-                "request-webview-set-user-agent",
-                host_protocol::WEBVIEW_SET_USER_AGENT_METHOD,
-                serde_json::json!({ "webview": webview, "userAgent": "EffectDesktopTest/1.0" }),
-            ),
-            (
-                "request-webview-set-audio-muted",
-                host_protocol::WEBVIEW_SET_AUDIO_MUTED_METHOD,
-                serde_json::json!({ "webview": webview, "muted": true }),
-            ),
-            (
-                "request-webview-respond-to-permission",
-                host_protocol::WEBVIEW_RESPOND_TO_PERMISSION_METHOD,
-                serde_json::json!({
-                    "webview": webview,
-                    "requestId": "permission-1",
-                    "decision": "deny"
-                }),
-            ),
-            (
-                "request-webview-list-frames",
-                host_protocol::WEBVIEW_LIST_FRAMES_METHOD,
-                serde_json::json!({ "webview": webview }),
-            ),
-            (
-                "request-webview-post-to-frame",
-                host_protocol::WEBVIEW_POST_TO_FRAME_METHOD,
-                serde_json::json!({
-                    "webview": webview,
-                    "frame": frame,
-                    "payload": "{\"kind\":\"ping\"}"
-                }),
-            ),
-            (
                 "request-webview-close-devtools",
                 host_protocol::WEBVIEW_CLOSE_DEVTOOLS_METHOD,
                 serde_json::json!({ "webview": webview }),
-            ),
-            (
-                "request-webview-attach-debugger",
-                host_protocol::WEBVIEW_ATTACH_DEBUGGER_METHOD,
-                serde_json::json!({ "webview": webview }),
-            ),
-            (
-                "request-webview-capability",
-                host_protocol::WEBVIEW_CAPABILITY_METHOD,
-                serde_json::json!({ "name": "devtools open", "platform": "windows" }),
             ),
         ] {
             let response = router
@@ -5141,13 +4979,6 @@ mod tests {
             "id": "webview-1",
             "generation": 0,
             "ownerScope": "window:window-1",
-            "state": "open"
-        });
-        let frame = serde_json::json!({
-            "kind": "webview-frame",
-            "id": "frame-1",
-            "generation": 0,
-            "ownerScope": "webview:webview-1",
             "state": "open"
         });
         let window = serde_json::json!({
@@ -5207,44 +5038,6 @@ mod tests {
                         "state": "open"
                     }
                 }),
-            ),
-            (
-                "request-webview-respond-to-permission-invalid-decision",
-                host_protocol::WEBVIEW_RESPOND_TO_PERMISSION_METHOD,
-                serde_json::json!({
-                    "webview": webview,
-                    "requestId": "permission-1",
-                    "decision": "allow"
-                }),
-            ),
-            (
-                "request-webview-post-to-frame-invalid-frame",
-                host_protocol::WEBVIEW_POST_TO_FRAME_METHOD,
-                serde_json::json!({
-                    "webview": webview,
-                    "frame": {
-                        "kind": "webview",
-                        "id": "frame-1",
-                        "generation": 0,
-                        "ownerScope": "webview:webview-1",
-                        "state": "open"
-                    },
-                    "payload": "{\"kind\":\"ping\"}"
-                }),
-            ),
-            (
-                "request-webview-post-to-frame-control-byte",
-                host_protocol::WEBVIEW_POST_TO_FRAME_METHOD,
-                serde_json::json!({
-                    "webview": webview,
-                    "frame": frame,
-                    "payload": format!("bad{}payload", char::from(0))
-                }),
-            ),
-            (
-                "request-webview-capability-unknown",
-                host_protocol::WEBVIEW_CAPABILITY_METHOD,
-                serde_json::json!({ "name": "unknown" }),
             ),
         ] {
             let response = router
@@ -7954,13 +7747,6 @@ mod tests {
         }
 
         fn request_dock_attention(&self, _critical: bool) -> Result<(), HostProtocolError> {
-            Ok(())
-        }
-
-        fn set_dock_menu(
-            &self,
-            _template: Option<serde_json::Value>,
-        ) -> Result<(), HostProtocolError> {
             Ok(())
         }
 

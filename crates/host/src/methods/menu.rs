@@ -83,13 +83,6 @@ fn test_clear_application_menu() -> Option<Result<(), HostProtocolError>> {
     }
 }
 
-pub(crate) fn bind_command(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
-    let payload = required_payload(payload, host_protocol::MENU_BIND_COMMAND_METHOD)?;
-    validate_command_binding(&payload, host_protocol::MENU_BIND_COMMAND_METHOD)?;
-
-    Err(unsupported(host_protocol::MENU_BIND_COMMAND_METHOD))
-}
-
 pub(crate) fn capability(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
     let payload = required_payload(payload, host_protocol::MENU_CAPABILITY_METHOD)?;
     validate_capability_payload(&payload)?;
@@ -173,12 +166,6 @@ fn validate_template(template: &Value, operation: &str) -> Result<(), HostProtoc
     Ok(())
 }
 
-fn validate_command_binding(payload: &Value, operation: &str) -> Result<(), HostProtocolError> {
-    validate_printable_field(payload, "itemId", operation)?;
-    validate_printable_field(payload, "commandId", operation)?;
-    Ok(())
-}
-
 fn validate_capability_payload(payload: &Value) -> Result<(), HostProtocolError> {
     let name = payload.get("name").and_then(Value::as_str).ok_or_else(|| {
         HostProtocolError::invalid_argument(
@@ -220,18 +207,6 @@ fn validate_window_id(payload: &Value, operation: &str) -> Result<(), HostProtoc
     validate_printable_value("window.id", window, operation)
 }
 
-fn validate_printable_field(
-    payload: &Value,
-    field: &'static str,
-    operation: &str,
-) -> Result<(), HostProtocolError> {
-    let value = payload
-        .get(field)
-        .and_then(Value::as_str)
-        .ok_or_else(|| HostProtocolError::invalid_argument(field, "must be a string", operation))?;
-    validate_printable_value(field, value, operation)
-}
-
 fn validate_printable_value(
     field: &str,
     value: &str,
@@ -258,13 +233,9 @@ fn required_payload(payload: Option<Value>, operation: &str) -> Result<Value, Ho
     payload.ok_or_else(|| HostProtocolError::invalid_argument("payload", "is required", operation))
 }
 
-fn unsupported(operation: &'static str) -> HostProtocolError {
-    HostProtocolError::unsupported(host_protocol::MENU_UNSUPPORTED_REASON, operation)
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{bind_command, capability, clear, decode_template};
+    use super::{capability, clear, decode_template};
     use host_protocol::HostProtocolError;
     use serde_json::json;
     use std::cell::RefCell;
@@ -322,16 +293,6 @@ mod tests {
             host_protocol::MENU_SET_APPLICATION_MENU_METHOD,
         )
         .is_err());
-    }
-
-    #[test]
-    fn unsupported_menu_methods_validate_payloads_first() {
-        assert!(matches!(
-            bind_command(Some(
-                json!({ "itemId": "file.open", "commandId": "app.open" })
-            )),
-            Err(HostProtocolError::Unsupported { .. })
-        ));
     }
 
     #[test]
@@ -406,10 +367,6 @@ mod tests {
 
     #[test]
     fn unsupported_menu_methods_reject_invalid_payloads_before_unsupported() {
-        assert!(matches!(
-            bind_command(Some(json!({ "itemId": "bad\n", "commandId": "app.open" }))),
-            Err(HostProtocolError::InvalidArgument { .. })
-        ));
         assert!(matches!(
             capability(Some(json!({ "name": "unknown" }))),
             Err(HostProtocolError::InvalidArgument { .. })

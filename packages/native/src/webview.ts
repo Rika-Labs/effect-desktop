@@ -7,7 +7,8 @@ import {
   makeHostProtocolInvalidOutputError,
   makeHostProtocolInvalidArgumentError,
   RpcGroup,
-  type HostProtocolError
+  type HostProtocolError,
+  type RpcSupportMetadata
 } from "@effect-desktop/bridge"
 import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
@@ -17,40 +18,26 @@ import { subscribeNativeEvent } from "./event-stream.js"
 export * from "./contracts/webview.js"
 import {
   type WebViewCapabilityName,
-  WebViewCapabilityResult,
-  WebViewCapabilityInput,
-  type WebViewCapabilityOptions,
   WebViewApiCallEvent,
   type WebViewCreateNavigationOptions,
   type WebViewCreateOptions,
   WebViewCreateInput,
   WebViewFrameEvent,
-  type WebViewFrameHandle,
-  WebViewFrameList,
+  WebViewNavigationBlockedEvent,
+  WebViewNavigationState,
+  type WebViewNavigationPolicyOptions,
   type WebViewHandle,
   WebViewHandleInput,
   WebViewLoadRouteInput,
   WebViewLoadUrlInput,
-  WebViewNavigationBlockedEvent,
-  WebViewNavigationState,
-  type WebViewNavigationPolicyOptions,
-  WebViewPdf,
-  WebViewFindInPageInput,
-  WebViewFindInPageResult,
-  WebViewPostToFrameInput,
   WebViewRuntimeEvent,
   WebViewResource,
   type WebViewPlatform,
-  WebViewRespondToPermissionInput,
   type WebViewRuntimeMode,
-  WebViewSetAudioMutedInput,
-  WebViewSetUserAgentInput,
   WebViewSetNavigationPolicyInput,
-  WebViewSetZoomInput,
-  WebViewScreenshot
+  WebViewSetZoomInput
 } from "./contracts/webview.js"
 import type { WindowHandle } from "./contracts/window.js"
-import { isSupportedImageHeader } from "./contracts/image.js"
 const StrictParseOptions = { onExcessProperty: "error" } as const
 type WebViewError = HostProtocolError
 const WebViewUnsupportedReason = "host-adapter-unimplemented"
@@ -253,15 +240,6 @@ export const WebViewGetNavigationState = NativeSurface.rpc("WebView", "getNaviga
   endpoint: "mutation",
   support: WebViewNavigationSupport
 })
-export const WebViewCaptureScreenshot = NativeSurface.rpc("WebView", "captureScreenshot", {
-  payload: WebViewHandleInput,
-  success: WebViewScreenshot,
-  authority: NativeSurface.authority.custom(
-    P.nativeInvoke({ primitive: "WebView", methods: ["captureScreenshot"] })
-  ),
-  endpoint: "mutation",
-  support: WebViewDocumentUnsupportedSupport
-})
 export const WebViewPrint = NativeSurface.rpc("WebView", "print", {
   payload: WebViewHandleInput,
   success: Schema.Void,
@@ -271,24 +249,6 @@ export const WebViewPrint = NativeSurface.rpc("WebView", "print", {
   endpoint: "mutation",
   support: WebViewPrintZoomSupport
 })
-export const WebViewPrintToPdf = NativeSurface.rpc("WebView", "printToPdf", {
-  payload: WebViewHandleInput,
-  success: WebViewPdf,
-  authority: NativeSurface.authority.custom(
-    P.nativeInvoke({ primitive: "WebView", methods: ["printToPdf"] })
-  ),
-  endpoint: "mutation",
-  support: WebViewDocumentUnsupportedSupport
-})
-export const WebViewFindInPage = NativeSurface.rpc("WebView", "findInPage", {
-  payload: WebViewFindInPageInput,
-  success: WebViewFindInPageResult,
-  authority: NativeSurface.authority.custom(
-    P.nativeInvoke({ primitive: "WebView", methods: ["findInPage"] })
-  ),
-  endpoint: "mutation",
-  support: WebViewDocumentUnsupportedSupport
-})
 export const WebViewSetZoom = NativeSurface.rpc("WebView", "setZoom", {
   payload: WebViewSetZoomInput,
   success: Schema.Void,
@@ -297,51 +257,6 @@ export const WebViewSetZoom = NativeSurface.rpc("WebView", "setZoom", {
   ),
   endpoint: "mutation",
   support: WebViewPrintZoomSupport
-})
-export const WebViewSetUserAgent = NativeSurface.rpc("WebView", "setUserAgent", {
-  payload: WebViewSetUserAgentInput,
-  success: Schema.Void,
-  authority: NativeSurface.authority.custom(
-    P.nativeInvoke({ primitive: "WebView", methods: ["setUserAgent"] })
-  ),
-  endpoint: "mutation",
-  support: WebViewRuntimeUserAgentSupport
-})
-export const WebViewSetAudioMuted = NativeSurface.rpc("WebView", "setAudioMuted", {
-  payload: WebViewSetAudioMutedInput,
-  success: Schema.Void,
-  authority: NativeSurface.authority.custom(
-    P.nativeInvoke({ primitive: "WebView", methods: ["setAudioMuted"] })
-  ),
-  endpoint: "mutation",
-  support: WebViewRuntimeMediaControlSupport
-})
-export const WebViewRespondToPermission = NativeSurface.rpc("WebView", "respondToPermission", {
-  payload: WebViewRespondToPermissionInput,
-  success: Schema.Void,
-  authority: NativeSurface.authority.custom(
-    P.nativeInvoke({ primitive: "WebView", methods: ["respondToPermission"] })
-  ),
-  endpoint: "mutation",
-  support: WebViewRuntimePermissionSupport
-})
-export const WebViewListFrames = NativeSurface.rpc("WebView", "listFrames", {
-  payload: WebViewHandleInput,
-  success: WebViewFrameList,
-  authority: NativeSurface.authority.custom(
-    P.nativeInvoke({ primitive: "WebView", methods: ["listFrames"] })
-  ),
-  endpoint: "mutation",
-  support: WebViewFrameRoutingSupport
-})
-export const WebViewPostToFrame = NativeSurface.rpc("WebView", "postToFrame", {
-  payload: WebViewPostToFrameInput,
-  success: Schema.Void,
-  authority: NativeSurface.authority.custom(
-    P.nativeInvoke({ primitive: "WebView", methods: ["postToFrame"] })
-  ),
-  endpoint: "mutation",
-  support: WebViewFrameRoutingSupport
 })
 export const WebViewOpenDevTools = NativeSurface.rpc("WebView", "openDevTools", {
   payload: WebViewHandleInput,
@@ -361,15 +276,6 @@ export const WebViewCloseDevTools = NativeSurface.rpc("WebView", "closeDevTools"
   endpoint: "mutation",
   support: WebViewDevToolsSupport
 })
-export const WebViewAttachDebugger = NativeSurface.rpc("WebView", "attachDebugger", {
-  payload: WebViewHandleInput,
-  success: Schema.Void,
-  authority: NativeSurface.authority.custom(
-    P.nativeInvoke({ primitive: "WebView", methods: ["attachDebugger"] })
-  ),
-  endpoint: "mutation",
-  support: WebViewDebuggerSupport
-})
 export const WebViewSetNavigationPolicy = NativeSurface.rpc("WebView", "setNavigationPolicy", {
   payload: WebViewSetNavigationPolicyInput,
   success: Schema.Void,
@@ -378,13 +284,6 @@ export const WebViewSetNavigationPolicy = NativeSurface.rpc("WebView", "setNavig
   ),
   endpoint: "mutation",
   support: WebViewNavigationSupport
-})
-export const WebViewCapability = NativeSurface.rpc("WebView", "capability", {
-  payload: WebViewCapabilityInput,
-  success: WebViewCapabilityResult,
-  authority: NativeSurface.authority.custom({ kind: "none" }),
-  endpoint: "mutation",
-  support: WebViewRpcSupport
 })
 export const WebViewDestroy = NativeSurface.rpc("WebView", "destroy", {
   payload: WebViewHandleInput,
@@ -395,6 +294,42 @@ export const WebViewDestroy = NativeSurface.rpc("WebView", "destroy", {
   endpoint: "mutation",
   support: WebViewNavigationSupport
 })
+
+const webViewCapabilityFact = (
+  method:
+    | "captureScreenshot"
+    | "printToPdf"
+    | "findInPage"
+    | "setUserAgent"
+    | "setAudioMuted"
+    | "respondToPermission"
+    | "listFrames"
+    | "postToFrame"
+    | "attachDebugger",
+  support: RpcSupportMetadata
+) =>
+  NativeSurface.capabilityFact("WebView", method, {
+    authority: NativeSurface.authority.custom(
+      P.nativeInvoke({ primitive: "WebView", methods: [method] })
+    ),
+    support
+  })
+
+export const WebViewCapabilityFacts = Object.freeze([
+  webViewCapabilityFact("captureScreenshot", WebViewDocumentUnsupportedSupport),
+  webViewCapabilityFact("printToPdf", WebViewDocumentUnsupportedSupport),
+  webViewCapabilityFact("findInPage", WebViewDocumentUnsupportedSupport),
+  webViewCapabilityFact("setUserAgent", WebViewRuntimeUserAgentSupport),
+  webViewCapabilityFact("setAudioMuted", WebViewRuntimeMediaControlSupport),
+  webViewCapabilityFact("respondToPermission", WebViewRuntimePermissionSupport),
+  webViewCapabilityFact("listFrames", WebViewFrameRoutingSupport),
+  webViewCapabilityFact("postToFrame", WebViewFrameRoutingSupport),
+  webViewCapabilityFact("attachDebugger", WebViewDebuggerSupport),
+  NativeSurface.capabilityFact("WebView", "capability", {
+    authority: NativeSurface.authority.custom({ kind: "none" }),
+    support: WebViewRpcSupport
+  })
+])
 
 export const WebViewRpcEvents = Object.freeze({
   NavigationBlocked: { payload: WebViewNavigationBlockedEvent },
@@ -414,21 +349,11 @@ const WebViewRpcGroup = RpcGroup.make(
   WebViewGoBack,
   WebViewGoForward,
   WebViewGetNavigationState,
-  WebViewCaptureScreenshot,
   WebViewPrint,
-  WebViewPrintToPdf,
-  WebViewFindInPage,
   WebViewSetZoom,
-  WebViewSetUserAgent,
-  WebViewSetAudioMuted,
-  WebViewRespondToPermission,
-  WebViewListFrames,
-  WebViewPostToFrame,
   WebViewOpenDevTools,
   WebViewCloseDevTools,
-  WebViewAttachDebugger,
   WebViewSetNavigationPolicy,
-  WebViewCapability,
   WebViewDestroy
 )
 
@@ -443,21 +368,11 @@ export const WebViewMethodNames = Object.freeze([
   "goBack",
   "goForward",
   "getNavigationState",
-  "captureScreenshot",
   "print",
-  "printToPdf",
-  "findInPage",
   "setZoom",
-  "setUserAgent",
-  "setAudioMuted",
-  "respondToPermission",
-  "listFrames",
-  "postToFrame",
   "openDevTools",
   "closeDevTools",
-  "attachDebugger",
   "setNavigationPolicy",
-  "capability",
   "destroy"
 ] as const)
 
@@ -470,13 +385,8 @@ const WebViewCapabilityMethods = Object.freeze([
   "goBack",
   "goForward",
   "getNavigationState",
-  "captureScreenshot",
   "print",
   "setZoom",
-  "setAudioMuted",
-  "respondToPermission",
-  "listFrames",
-  "postToFrame",
   "openDevTools",
   "closeDevTools",
   "setNavigationPolicy",
@@ -502,50 +412,17 @@ export interface WebViewClientApi {
   readonly getNavigationState: (
     webview: WebViewHandle
   ) => Effect.Effect<WebViewNavigationState, WebViewError, never>
-  readonly captureScreenshot: (
-    webview: WebViewHandle
-  ) => Effect.Effect<WebViewScreenshot, WebViewError, never>
   readonly print: (webview: WebViewHandle) => Effect.Effect<void, WebViewError, never>
-  readonly printToPdf: (webview: WebViewHandle) => Effect.Effect<WebViewPdf, WebViewError, never>
-  readonly findInPage: (
-    webview: WebViewHandle,
-    query: string
-  ) => Effect.Effect<WebViewFindInPageResult, WebViewError, never>
   readonly setZoom: (
     webview: WebViewHandle,
     zoom: number
   ) => Effect.Effect<void, WebViewError, never>
-  readonly setUserAgent: (
-    webview: WebViewHandle,
-    userAgent: string
-  ) => Effect.Effect<void, WebViewError, never>
-  readonly setAudioMuted: (
-    webview: WebViewHandle,
-    muted: boolean
-  ) => Effect.Effect<void, WebViewError, never>
-  readonly respondToPermission: (
-    webview: WebViewHandle,
-    requestId: string,
-    decision: "grant" | "deny"
-  ) => Effect.Effect<void, WebViewError, never>
-  readonly listFrames: (
-    webview: WebViewHandle
-  ) => Effect.Effect<WebViewFrameList, WebViewError, never>
-  readonly postToFrame: (
-    webview: WebViewHandle,
-    frame: WebViewFrameHandle,
-    payload: string
-  ) => Effect.Effect<void, WebViewError, never>
   readonly openDevTools: (webview: WebViewHandle) => Effect.Effect<void, WebViewError, never>
   readonly closeDevTools: (webview: WebViewHandle) => Effect.Effect<void, WebViewError, never>
-  readonly attachDebugger: (webview: WebViewHandle) => Effect.Effect<void, WebViewError, never>
   readonly setNavigationPolicy: (
     webview: WebViewHandle,
     policy: WebViewNavigationPolicyOptions
   ) => Effect.Effect<void, WebViewError, never>
-  readonly capability: (
-    input: WebViewCapabilityOptions
-  ) => Effect.Effect<WebViewCapabilityResult, WebViewError, never>
   readonly destroy: (webview: WebViewHandle) => Effect.Effect<void, WebViewError, never>
   readonly onNavigationBlocked: () => Stream.Stream<
     WebViewNavigationBlockedEvent,
@@ -565,15 +442,11 @@ export class WebViewClient extends Context.Service<WebViewClient, WebViewClientA
   "@effect-desktop/native/WebViewClient"
 ) {}
 
-export interface WebViewServiceApi extends Omit<WebViewClientApi, "create" | "capability"> {
+export interface WebViewServiceApi extends Omit<WebViewClientApi, "create"> {
   readonly create: (
     window: WindowHandle,
     input?: WebViewCreateNavigationOptions
   ) => Effect.Effect<WebViewHandle, WebViewError, never>
-  readonly capability: (
-    name: WebViewCapabilityName,
-    options?: { readonly mode?: WebViewRuntimeMode; readonly platform?: WebViewPlatform }
-  ) => Effect.Effect<boolean, WebViewError, never>
 }
 
 export class WebView extends Context.Service<WebView, WebViewServiceApi>()(
@@ -649,55 +522,15 @@ export const WebViewHandlersLive = WebViewRpcGroup.toLayer({
       const webview = yield* WebView
       return yield* webview.getNavigationState(input.webview)
     }),
-  "WebView.captureScreenshot": (input) =>
-    Effect.gen(function* () {
-      const webview = yield* WebView
-      return yield* webview.captureScreenshot(input.webview)
-    }),
   "WebView.print": (input) =>
     Effect.gen(function* () {
       const webview = yield* WebView
       yield* webview.print(input.webview)
     }),
-  "WebView.printToPdf": (input) =>
-    Effect.gen(function* () {
-      const webview = yield* WebView
-      return yield* webview.printToPdf(input.webview)
-    }),
-  "WebView.findInPage": (input) =>
-    Effect.gen(function* () {
-      const webview = yield* WebView
-      return yield* webview.findInPage(input.webview, input.query)
-    }),
   "WebView.setZoom": (input) =>
     Effect.gen(function* () {
       const webview = yield* WebView
       yield* webview.setZoom(input.webview, input.zoom)
-    }),
-  "WebView.setUserAgent": (input) =>
-    Effect.gen(function* () {
-      const webview = yield* WebView
-      yield* webview.setUserAgent(input.webview, input.userAgent)
-    }),
-  "WebView.setAudioMuted": (input) =>
-    Effect.gen(function* () {
-      const webview = yield* WebView
-      yield* webview.setAudioMuted(input.webview, input.muted)
-    }),
-  "WebView.respondToPermission": (input) =>
-    Effect.gen(function* () {
-      const webview = yield* WebView
-      yield* webview.respondToPermission(input.webview, input.requestId, input.decision)
-    }),
-  "WebView.listFrames": (input) =>
-    Effect.gen(function* () {
-      const webview = yield* WebView
-      return yield* webview.listFrames(input.webview)
-    }),
-  "WebView.postToFrame": (input) =>
-    Effect.gen(function* () {
-      const webview = yield* WebView
-      yield* webview.postToFrame(input.webview, input.frame, input.payload)
     }),
   "WebView.openDevTools": (input) =>
     Effect.gen(function* () {
@@ -709,24 +542,10 @@ export const WebViewHandlersLive = WebViewRpcGroup.toLayer({
       const webview = yield* WebView
       yield* webview.closeDevTools(input.webview)
     }),
-  "WebView.attachDebugger": (input) =>
-    Effect.gen(function* () {
-      const webview = yield* WebView
-      yield* webview.attachDebugger(input.webview)
-    }),
   "WebView.setNavigationPolicy": (input) =>
     Effect.gen(function* () {
       const webview = yield* WebView
       yield* webview.setNavigationPolicy(input.webview, input.policy)
-    }),
-  "WebView.capability": (input) =>
-    Effect.gen(function* () {
-      const webview = yield* WebView
-      const supported = yield* webview.capability(input.name, {
-        ...(input.mode === undefined ? {} : { mode: input.mode }),
-        ...(input.platform === undefined ? {} : { platform: input.platform })
-      })
-      return new WebViewCapabilityResult({ supported })
     }),
   "WebView.destroy": (input) =>
     Effect.gen(function* () {
@@ -739,6 +558,7 @@ export const WebViewSurface = NativeSurface.make("WebView", WebViewRpcGroup, {
   service: WebViewClient,
   capabilities: WebViewCapabilityMethods,
   handlers: WebViewHandlersLive,
+  capabilityFacts: WebViewCapabilityFacts,
   client: (client) => webViewClientFromRpcClient(client, undefined),
   bridgeClient: (client, exchange) => webViewClientFromRpcClient(client, exchange)
 })
@@ -768,29 +588,11 @@ const makeWebViewService = (client: WebViewClientApi): WebViewServiceApi => {
     goBack: (webview) => client.goBack(webview),
     goForward: (webview) => client.goForward(webview),
     getNavigationState: (webview) => client.getNavigationState(webview),
-    captureScreenshot: (webview) => client.captureScreenshot(webview),
     print: (webview) => client.print(webview),
-    printToPdf: (webview) => client.printToPdf(webview),
-    findInPage: (webview, query) => client.findInPage(webview, query),
     setZoom: (webview, zoom) => client.setZoom(webview, zoom),
-    setUserAgent: (webview, userAgent) => client.setUserAgent(webview, userAgent),
-    setAudioMuted: (webview, muted) => client.setAudioMuted(webview, muted),
-    respondToPermission: (webview, requestId, decision) =>
-      client.respondToPermission(webview, requestId, decision),
-    listFrames: (webview) => client.listFrames(webview),
-    postToFrame: (webview, frame, payload) => client.postToFrame(webview, frame, payload),
     openDevTools: (webview) => client.openDevTools(webview),
     closeDevTools: (webview) => client.closeDevTools(webview),
-    attachDebugger: (webview) => client.attachDebugger(webview),
     setNavigationPolicy: (webview, policy) => client.setNavigationPolicy(webview, policy),
-    capability: (name, options) =>
-      client
-        .capability({
-          name,
-          ...(options?.platform === undefined ? {} : { platform: options.platform }),
-          ...(options?.mode === undefined ? {} : { mode: options.mode })
-        })
-        .pipe(Effect.map((result) => result.supported)),
     destroy: (webview) => client.destroy(webview),
     onNavigationBlocked: () => client.onNavigationBlocked(),
     onApiCall: () => client.onApiCall(),
@@ -853,79 +655,16 @@ const webViewClientFromRpcClient = (
         ),
         Effect.flatMap(decodeWebViewNavigationState)
       ),
-    captureScreenshot: (webview) =>
-      decodeWebViewHandleInput({ webview: toWebViewHandle(webview) }).pipe(
-        Effect.flatMap((decoded) =>
-          runWebViewRpc(client["WebView.captureScreenshot"](decoded), "WebView.captureScreenshot")
-        ),
-        Effect.flatMap(validateWebViewScreenshot)
-      ),
     print: (webview) =>
       decodeWebViewHandleInput({ webview: toWebViewHandle(webview) }).pipe(
         Effect.flatMap((decoded) =>
           runWebViewRpc(client["WebView.print"](decoded), "WebView.print")
         )
       ),
-    printToPdf: (webview) =>
-      decodeWebViewHandleInput({ webview: toWebViewHandle(webview) }).pipe(
-        Effect.flatMap((decoded) =>
-          runWebViewRpc(client["WebView.printToPdf"](decoded), "WebView.printToPdf")
-        ),
-        Effect.flatMap(validateWebViewPdf)
-      ),
-    findInPage: (webview, query) =>
-      decodeWebViewFindInPageInput({ webview: toWebViewHandle(webview), query }).pipe(
-        Effect.flatMap((decoded) =>
-          runWebViewRpc(client["WebView.findInPage"](decoded), "WebView.findInPage")
-        ),
-        Effect.flatMap(decodeWebViewFindInPageResult)
-      ),
     setZoom: (webview, zoom) =>
       decodeWebViewSetZoomInput({ webview: toWebViewHandle(webview), zoom }).pipe(
         Effect.flatMap((decoded) =>
           runWebViewRpc(client["WebView.setZoom"](decoded), "WebView.setZoom")
-        )
-      ),
-    setUserAgent: (webview, userAgent) =>
-      decodeWebViewSetUserAgentInput({ webview: toWebViewHandle(webview), userAgent }).pipe(
-        Effect.flatMap((decoded) =>
-          runWebViewRpc(client["WebView.setUserAgent"](decoded), "WebView.setUserAgent")
-        )
-      ),
-    setAudioMuted: (webview, muted) =>
-      decodeWebViewSetAudioMutedInput({ webview: toWebViewHandle(webview), muted }).pipe(
-        Effect.flatMap((decoded) =>
-          runWebViewRpc(client["WebView.setAudioMuted"](decoded), "WebView.setAudioMuted")
-        )
-      ),
-    respondToPermission: (webview, requestId, decision) =>
-      decodeWebViewRespondToPermissionInput({
-        webview: toWebViewHandle(webview),
-        requestId,
-        decision
-      }).pipe(
-        Effect.flatMap((decoded) =>
-          runWebViewRpc(
-            client["WebView.respondToPermission"](decoded),
-            "WebView.respondToPermission"
-          )
-        )
-      ),
-    listFrames: (webview) =>
-      decodeWebViewHandleInput({ webview: toWebViewHandle(webview) }).pipe(
-        Effect.flatMap((decoded) =>
-          runWebViewRpc(client["WebView.listFrames"](decoded), "WebView.listFrames")
-        ),
-        Effect.flatMap(decodeWebViewFrameList)
-      ),
-    postToFrame: (webview, frame, payload) =>
-      decodeWebViewPostToFrameInput({
-        webview: toWebViewHandle(webview),
-        frame: toWebViewFrameHandle(frame),
-        payload
-      }).pipe(
-        Effect.flatMap((decoded) =>
-          runWebViewRpc(client["WebView.postToFrame"](decoded), "WebView.postToFrame")
         )
       ),
     openDevTools: (webview) =>
@@ -940,12 +679,6 @@ const webViewClientFromRpcClient = (
           runWebViewRpc(client["WebView.closeDevTools"](decoded), "WebView.closeDevTools")
         )
       ),
-    attachDebugger: (webview) =>
-      decodeWebViewHandleInput({ webview: toWebViewHandle(webview) }).pipe(
-        Effect.flatMap((decoded) =>
-          runWebViewRpc(client["WebView.attachDebugger"](decoded), "WebView.attachDebugger")
-        )
-      ),
     setNavigationPolicy: (webview, policy) =>
       decodeWebViewSetNavigationPolicyInput({ webview: toWebViewHandle(webview), policy }).pipe(
         Effect.flatMap((decoded) =>
@@ -953,12 +686,6 @@ const webViewClientFromRpcClient = (
             client["WebView.setNavigationPolicy"](decoded),
             "WebView.setNavigationPolicy"
           )
-        )
-      ),
-    capability: (input) =>
-      decodeWebViewCapabilityInput(input).pipe(
-        Effect.flatMap((decoded) =>
-          runWebViewRpc(client["WebView.capability"](decoded), "WebView.capability")
         )
       ),
     destroy: (webview) =>
@@ -1035,15 +762,6 @@ const toWebViewHandle = (handle: WebViewHandle): WebViewHandle =>
     state: handle.state
   })
 
-const toWebViewFrameHandle = (handle: WebViewFrameHandle): WebViewFrameHandle =>
-  Object.freeze({
-    kind: handle.kind,
-    id: handle.id,
-    generation: handle.generation,
-    ownerScope: handle.ownerScope,
-    state: handle.state
-  })
-
 const decodeWebViewCreateInput = (
   input: unknown
 ): Effect.Effect<WebViewCreateInput, WebViewError, never> =>
@@ -1078,94 +796,10 @@ const decodeWebViewSetNavigationPolicyInput = (
 ): Effect.Effect<WebViewSetNavigationPolicyInput, WebViewError, never> =>
   decodeInput(WebViewSetNavigationPolicyInput, input, "WebView.setNavigationPolicy")
 
-const decodeWebViewFindInPageInput = (
-  input: unknown
-): Effect.Effect<WebViewFindInPageInput, WebViewError, never> =>
-  decodeInput(WebViewFindInPageInput, input, "WebView.findInPage")
-
-const decodeWebViewFindInPageResult = (
-  input: unknown
-): Effect.Effect<WebViewFindInPageResult, WebViewError, never> =>
-  Schema.decodeUnknownEffect(WebViewFindInPageResult)(input, StrictParseOptions).pipe(
-    Effect.mapError((error) =>
-      makeHostProtocolInvalidOutputError("WebView.findInPage", formatUnknownError(error))
-    )
-  )
-
 const decodeWebViewSetZoomInput = (
   input: unknown
 ): Effect.Effect<WebViewSetZoomInput, WebViewError, never> =>
   decodeInput(WebViewSetZoomInput, input, "WebView.setZoom")
-
-const decodeWebViewSetUserAgentInput = (
-  input: unknown
-): Effect.Effect<WebViewSetUserAgentInput, WebViewError, never> =>
-  decodeInput(WebViewSetUserAgentInput, input, "WebView.setUserAgent")
-
-const decodeWebViewSetAudioMutedInput = (
-  input: unknown
-): Effect.Effect<WebViewSetAudioMutedInput, WebViewError, never> =>
-  decodeInput(WebViewSetAudioMutedInput, input, "WebView.setAudioMuted")
-
-const decodeWebViewRespondToPermissionInput = (
-  input: unknown
-): Effect.Effect<WebViewRespondToPermissionInput, WebViewError, never> =>
-  decodeInput(WebViewRespondToPermissionInput, input, "WebView.respondToPermission")
-
-const decodeWebViewFrameList = (
-  input: unknown
-): Effect.Effect<WebViewFrameList, WebViewError, never> =>
-  Schema.decodeUnknownEffect(WebViewFrameList)(input, StrictParseOptions).pipe(
-    Effect.mapError((error) =>
-      makeHostProtocolInvalidOutputError("WebView.listFrames", formatUnknownError(error))
-    )
-  )
-
-const decodeWebViewPostToFrameInput = (
-  input: unknown
-): Effect.Effect<WebViewPostToFrameInput, WebViewError, never> =>
-  decodeInput(WebViewPostToFrameInput, input, "WebView.postToFrame")
-
-const decodeWebViewCapabilityInput = (
-  input: unknown
-): Effect.Effect<WebViewCapabilityInput, WebViewError, never> =>
-  decodeInput(WebViewCapabilityInput, input, "WebView.capability")
-
-const validateWebViewScreenshot = (
-  screenshot: WebViewScreenshot
-): Effect.Effect<WebViewScreenshot, WebViewError, never> =>
-  Effect.gen(function* () {
-    if (screenshot.bytes.length === 0) {
-      return yield* Effect.fail(
-        makeHostProtocolInvalidOutputError(
-          "WebView.captureScreenshot",
-          "screenshot bytes must not be empty"
-        )
-      )
-    }
-
-    if (!isSupportedImageHeader(screenshot.mime, screenshot.bytes)) {
-      return yield* Effect.fail(
-        makeHostProtocolInvalidOutputError(
-          "WebView.captureScreenshot",
-          `declared ${screenshot.mime} does not match image header`
-        )
-      )
-    }
-
-    return screenshot
-  })
-
-const validateWebViewPdf = (pdf: WebViewPdf): Effect.Effect<WebViewPdf, WebViewError, never> =>
-  Effect.gen(function* () {
-    if (pdf.bytes.length === 0) {
-      return yield* Effect.fail(
-        makeHostProtocolInvalidOutputError("WebView.printToPdf", "PDF bytes must not be empty")
-      )
-    }
-
-    return pdf
-  })
 
 const decodeInput = <A>(
   schema: Schema.Codec<A, unknown, never, never>,
