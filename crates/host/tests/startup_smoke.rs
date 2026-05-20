@@ -1,17 +1,18 @@
 use std::{
     fs,
     path::Path,
-    process::{Command, Stdio},
+    process::{Child, Command, Output, Stdio},
     thread,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+
+const HOST_SMOKE_TIMEOUT: Duration = Duration::from_secs(20);
 
 #[test]
 fn host_binary_emits_startup_event_and_exits_zero() {
-    let output = Command::new(env!("CARGO_BIN_EXE_host"))
-        .arg("--window-smoke-test")
-        .output()
-        .expect("host binary should execute");
+    let mut command = host_command();
+    command.arg("--window-smoke-test");
+    let output = output_with_timeout(command, "host binary should execute");
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     let process_output = format!("{stdout}{stderr}");
@@ -83,10 +84,12 @@ fn host_binary_emits_startup_event_and_exits_zero() {
 
 #[test]
 fn host_binary_verifies_resident_lifecycle_close_to_background() {
-    let output = Command::new(env!("CARGO_BIN_EXE_host"))
-        .arg("--resident-lifecycle-smoke-test")
-        .output()
-        .expect("host binary should execute resident lifecycle smoke");
+    let mut command = host_command();
+    command.arg("--resident-lifecycle-smoke-test");
+    let output = output_with_timeout(
+        command,
+        "host binary should execute resident lifecycle smoke",
+    );
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     let process_output = format!("{stdout}{stderr}");
@@ -116,10 +119,9 @@ fn host_binary_verifies_resident_lifecycle_close_to_background() {
 
 #[test]
 fn host_binary_verifies_app_quit_lifecycle_exit() {
-    let output = Command::new(env!("CARGO_BIN_EXE_host"))
-        .arg("--app-quit-smoke-test")
-        .output()
-        .expect("host binary should execute app quit smoke");
+    let mut command = host_command();
+    command.arg("--app-quit-smoke-test");
+    let output = output_with_timeout(command, "host binary should execute app quit smoke");
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     let process_output = format!("{stdout}{stderr}");
@@ -145,10 +147,9 @@ fn host_binary_verifies_app_quit_lifecycle_exit() {
 
 #[test]
 fn host_binary_verifies_app_focus_lifecycle_path() {
-    let output = Command::new(env!("CARGO_BIN_EXE_host"))
-        .arg("--app-focus-smoke-test")
-        .output()
-        .expect("host binary should execute app focus smoke");
+    let mut command = host_command();
+    command.arg("--app-focus-smoke-test");
+    let output = output_with_timeout(command, "host binary should execute app focus smoke");
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     let process_output = format!("{stdout}{stderr}");
@@ -175,11 +176,11 @@ fn host_binary_verifies_app_focus_lifecycle_path() {
 #[test]
 fn host_binary_verifies_app_restart_lifecycle_path() {
     let marker = unique_marker_path("app-restart-smoke");
-    let output = Command::new(env!("CARGO_BIN_EXE_host"))
+    let mut command = host_command();
+    command
         .arg("--app-restart-smoke-test")
-        .env("EFFECT_DESKTOP_APP_RESTART_SMOKE_MARKER", &marker)
-        .output()
-        .expect("host binary should execute app restart smoke");
+        .env("EFFECT_DESKTOP_APP_RESTART_SMOKE_MARKER", &marker);
+    let output = output_with_timeout(command, "host binary should execute app restart smoke");
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     let process_output = format!("{stdout}{stderr}");
@@ -213,7 +214,8 @@ fn host_binary_verifies_app_restart_lifecycle_path() {
 #[test]
 fn host_binary_verifies_single_instance_lock_between_processes() {
     let lock_path = unique_lock_path("single-instance-lock-smoke");
-    let primary = Command::new(env!("CARGO_BIN_EXE_host"))
+    let mut primary_command = host_command();
+    let primary = primary_command
         .arg("--single-instance-lock-smoke-test")
         .env("EFFECT_DESKTOP_SINGLE_INSTANCE_LOCK_PATH", &lock_path)
         .env("EFFECT_DESKTOP_SINGLE_INSTANCE_SMOKE_HOLD_MS", "1000")
@@ -228,18 +230,22 @@ fn host_binary_verifies_single_instance_lock_between_processes() {
         lock_path.display()
     );
 
-    let secondary_output = Command::new(env!("CARGO_BIN_EXE_host"))
+    let mut secondary_command = host_command();
+    secondary_command
         .arg("--single-instance-lock-smoke-test")
-        .env("EFFECT_DESKTOP_SINGLE_INSTANCE_LOCK_PATH", &lock_path)
-        .output()
-        .expect("secondary host binary should execute single-instance smoke");
+        .env("EFFECT_DESKTOP_SINGLE_INSTANCE_LOCK_PATH", &lock_path);
+    let secondary_output = output_with_timeout(
+        secondary_command,
+        "secondary host binary should execute single-instance smoke",
+    );
     let secondary_stdout = String::from_utf8_lossy(&secondary_output.stdout);
     let secondary_stderr = String::from_utf8_lossy(&secondary_output.stderr);
     let secondary_process_output = format!("{secondary_stdout}{secondary_stderr}");
 
-    let primary_output = primary
-        .wait_with_output()
-        .expect("primary host binary should finish single-instance smoke");
+    let primary_output = child_output_with_timeout(
+        primary,
+        "primary host binary should finish single-instance smoke",
+    );
     let primary_stdout = String::from_utf8_lossy(&primary_output.stdout);
     let primary_stderr = String::from_utf8_lossy(&primary_output.stderr);
     let primary_process_output = format!("{primary_stdout}{primary_stderr}");
@@ -271,10 +277,12 @@ fn host_binary_verifies_single_instance_lock_between_processes() {
 #[cfg(target_os = "macos")]
 #[test]
 fn host_binary_verifies_system_appearance_on_main_thread() {
-    let output = Command::new(env!("CARGO_BIN_EXE_host"))
-        .arg("--system-appearance-smoke-test")
-        .output()
-        .expect("host binary should execute system appearance smoke");
+    let mut command = host_command();
+    command.arg("--system-appearance-smoke-test");
+    let output = output_with_timeout(
+        command,
+        "host binary should execute system appearance smoke",
+    );
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     let process_output = format!("{stdout}{stderr}");
@@ -300,6 +308,48 @@ fn host_binary_verifies_system_appearance_on_main_thread() {
         !process_output.contains("event=\"runtime.ready\""),
         "system appearance smoke should not start the renderer runtime\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
+}
+
+fn host_command() -> Command {
+    Command::new(env!("CARGO_BIN_EXE_host"))
+}
+
+fn output_with_timeout(mut command: Command, context: &str) -> Output {
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let child = command
+        .spawn()
+        .unwrap_or_else(|error| panic!("{context}: {error}"));
+    child_output_with_timeout(child, context)
+}
+
+fn child_output_with_timeout(mut child: Child, context: &str) -> Output {
+    let started_at = Instant::now();
+
+    loop {
+        if child
+            .try_wait()
+            .unwrap_or_else(|error| panic!("{context}: failed to poll child: {error}"))
+            .is_some()
+        {
+            return child
+                .wait_with_output()
+                .unwrap_or_else(|error| panic!("{context}: failed to read child output: {error}"));
+        }
+
+        if started_at.elapsed() >= HOST_SMOKE_TIMEOUT {
+            let _ = child.kill();
+            let output = child.wait_with_output().unwrap_or_else(|error| {
+                panic!("{context}: failed to read timed-out child output: {error}")
+            });
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            panic!(
+                "{context}: timed out after {HOST_SMOKE_TIMEOUT:?}\nstdout:\n{stdout}\nstderr:\n{stderr}"
+            );
+        }
+
+        thread::sleep(Duration::from_millis(50));
+    }
 }
 
 fn unique_lock_path(name: &str) -> std::path::PathBuf {
