@@ -691,6 +691,14 @@ fn handle_single_instance_handoff_stream(
     sender: &Sender<HostProtocolEnvelope>,
     token: &str,
 ) {
+    if let Err(error) = stream.set_nonblocking(false) {
+        warn!(
+            event = "host.app.single_instance_handoff.configure_stream_failed",
+            error = %error,
+            "failed to configure single-instance handoff stream"
+        );
+        return;
+    }
     let mut buffer = String::new();
     if let Err(error) = stream.read_to_string(&mut buffer) {
         warn!(

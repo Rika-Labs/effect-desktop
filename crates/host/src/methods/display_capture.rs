@@ -1,9 +1,13 @@
 #![allow(clippy::result_large_err)]
 
 use host_protocol::{
-    DisplayCaptureActorPayload, DisplayCaptureImagePayload, DisplayCaptureMetadataPayload,
-    DisplayCaptureRegionPayload, DisplayCaptureRequestPayload, DisplayCaptureResultPayload,
-    DisplayCaptureSource, DisplayCaptureSupportedPayload, HostProtocolError,
+    DisplayCaptureActorPayload, DisplayCaptureRequestPayload, DisplayCaptureSource,
+    DisplayCaptureSupportedPayload, HostProtocolError,
+};
+#[cfg(any(test, target_os = "macos"))]
+use host_protocol::{
+    DisplayCaptureImagePayload, DisplayCaptureMetadataPayload, DisplayCaptureRegionPayload,
+    DisplayCaptureResultPayload,
 };
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{to_value, Value};
