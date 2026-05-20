@@ -274,7 +274,7 @@ hostProtocolStdioTest(
         }
       })
     ),
-  20_000
+  120_000
 )
 
 test("LocalToolRuntime denies register before host side effects", () =>

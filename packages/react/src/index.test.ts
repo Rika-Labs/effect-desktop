@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import { fileURLToPath } from "node:url"
 import { BunServices } from "@effect/platform-bun"
 import { makeHostProtocolInvalidStateError, RpcEndpoint, RpcSupport } from "@effect-desktop/bridge"
 import {
@@ -52,7 +53,7 @@ const reactPackageJsonUrl = new URL("../package.json", import.meta.url)
 const reactPackageRootUrl = new URL("../", import.meta.url)
 const reactPackageIndexUrl = new URL("index.ts", import.meta.url)
 
-const urlToPath = (url: URL): string => decodeURIComponent(url.pathname)
+const urlToPath = (url: URL): string => fileURLToPath(url)
 
 const PlatformRuntime = ManagedRuntime.make(BunServices.layer)
 
