@@ -259,16 +259,6 @@
       "signature": "export type BridgeSuccessSchema = BridgeContractCodec | BridgeStreamSchema"
     },
     {
-      "name": "BROWSING_DATA_CLEAR_METHOD",
-      "kind": "value",
-      "signature": "const BROWSING_DATA_CLEAR_METHOD: \"BrowsingData.clear\""
-    },
-    {
-      "name": "BROWSING_DATA_ESTIMATE_METHOD",
-      "kind": "value",
-      "signature": "const BROWSING_DATA_ESTIMATE_METHOD: \"BrowsingData.estimate\""
-    },
-    {
       "name": "BROWSING_DATA_EVENT_METHOD",
       "kind": "value",
       "signature": "const BROWSING_DATA_EVENT_METHOD: \"BrowsingData.Event\""
@@ -277,11 +267,6 @@
       "name": "BROWSING_DATA_IS_SUPPORTED_METHOD",
       "kind": "value",
       "signature": "const BROWSING_DATA_IS_SUPPORTED_METHOD: \"BrowsingData.isSupported\""
-    },
-    {
-      "name": "BROWSING_DATA_LIST_TYPES_METHOD",
-      "kind": "value",
-      "signature": "const BROWSING_DATA_LIST_TYPES_METHOD: \"BrowsingData.listTypes\""
     },
     {
       "name": "Client",
@@ -294,44 +279,14 @@
       "signature": "const CONTEXT_MENU_ACTIVATED_EVENT_METHOD: \"ContextMenu.Activated\""
     },
     {
-      "name": "CONTEXT_MENU_BIND_COMMAND_METHOD",
-      "kind": "value",
-      "signature": "const CONTEXT_MENU_BIND_COMMAND_METHOD: \"ContextMenu.bindCommand\""
-    },
-    {
-      "name": "CONTEXT_MENU_BUILD_FROM_TEMPLATE_METHOD",
-      "kind": "value",
-      "signature": "const CONTEXT_MENU_BUILD_FROM_TEMPLATE_METHOD: \"ContextMenu.buildFromTemplate\""
-    },
-    {
-      "name": "CONTEXT_MENU_SHOW_METHOD",
-      "kind": "value",
-      "signature": "const CONTEXT_MENU_SHOW_METHOD: \"ContextMenu.show\""
-    },
-    {
       "name": "COOKIE_STORE_EVENT_METHOD",
       "kind": "value",
       "signature": "const COOKIE_STORE_EVENT_METHOD: \"CookieStore.Event\""
     },
     {
-      "name": "COOKIE_STORE_GET_METHOD",
-      "kind": "value",
-      "signature": "const COOKIE_STORE_GET_METHOD: \"CookieStore.get\""
-    },
-    {
       "name": "COOKIE_STORE_IS_SUPPORTED_METHOD",
       "kind": "value",
       "signature": "const COOKIE_STORE_IS_SUPPORTED_METHOD: \"CookieStore.isSupported\""
-    },
-    {
-      "name": "COOKIE_STORE_REMOVE_METHOD",
-      "kind": "value",
-      "signature": "const COOKIE_STORE_REMOVE_METHOD: \"CookieStore.remove\""
-    },
-    {
-      "name": "COOKIE_STORE_SET_METHOD",
-      "kind": "value",
-      "signature": "const COOKIE_STORE_SET_METHOD: \"CookieStore.set\""
     },
     {
       "name": "decodeHostProtocolEnvelope",
@@ -389,24 +344,9 @@
       "signature": "const DOCK_SET_BADGE_TEXT_METHOD: \"Dock.setBadgeText\""
     },
     {
-      "name": "DOCK_SET_JUMP_LIST_METHOD",
-      "kind": "value",
-      "signature": "const DOCK_SET_JUMP_LIST_METHOD: \"Dock.setJumpList\""
-    },
-    {
-      "name": "DOCK_SET_MENU_METHOD",
-      "kind": "value",
-      "signature": "const DOCK_SET_MENU_METHOD: \"Dock.setMenu\""
-    },
-    {
       "name": "DOCK_SET_PROGRESS_METHOD",
       "kind": "value",
       "signature": "const DOCK_SET_PROGRESS_METHOD: \"Dock.setProgress\""
-    },
-    {
-      "name": "DOWNLOAD_CANCEL_METHOD",
-      "kind": "value",
-      "signature": "const DOWNLOAD_CANCEL_METHOD: \"Download.cancel\""
     },
     {
       "name": "DOWNLOAD_EVENT_METHOD",
@@ -417,26 +357,6 @@
       "name": "DOWNLOAD_IS_SUPPORTED_METHOD",
       "kind": "value",
       "signature": "const DOWNLOAD_IS_SUPPORTED_METHOD: \"Download.isSupported\""
-    },
-    {
-      "name": "DOWNLOAD_LIST_METHOD",
-      "kind": "value",
-      "signature": "const DOWNLOAD_LIST_METHOD: \"Download.list\""
-    },
-    {
-      "name": "DOWNLOAD_PAUSE_METHOD",
-      "kind": "value",
-      "signature": "const DOWNLOAD_PAUSE_METHOD: \"Download.pause\""
-    },
-    {
-      "name": "DOWNLOAD_RESUME_METHOD",
-      "kind": "value",
-      "signature": "const DOWNLOAD_RESUME_METHOD: \"Download.resume\""
-    },
-    {
-      "name": "DOWNLOAD_START_METHOD",
-      "kind": "value",
-      "signature": "const DOWNLOAD_START_METHOD: \"Download.start\""
     },
     {
       "name": "encodeHostProtocolEnvelope",
@@ -904,11 +824,6 @@
       "signature": "const MENU_ACTIVATED_EVENT_METHOD: \"Menu.Activated\""
     },
     {
-      "name": "MENU_BIND_COMMAND_METHOD",
-      "kind": "value",
-      "signature": "const MENU_BIND_COMMAND_METHOD: \"Menu.bindCommand\""
-    },
-    {
       "name": "MENU_CAPABILITY_METHOD",
       "kind": "value",
       "signature": "const MENU_CAPABILITY_METHOD: \"Menu.capability\""
@@ -929,39 +844,14 @@
       "signature": "const MENU_SET_WINDOW_MENU_METHOD: \"Menu.setWindowMenu\""
     },
     {
-      "name": "NATIVE_NETWORK_CLOSE_WEB_SOCKET_METHOD",
-      "kind": "value",
-      "signature": "const NATIVE_NETWORK_CLOSE_WEB_SOCKET_METHOD: \"NativeNetwork.closeWebSocket\""
-    },
-    {
-      "name": "NATIVE_NETWORK_CONNECT_WEB_SOCKET_METHOD",
-      "kind": "value",
-      "signature": "const NATIVE_NETWORK_CONNECT_WEB_SOCKET_METHOD: \"NativeNetwork.connectWebSocket\""
-    },
-    {
       "name": "NATIVE_NETWORK_EVENT_METHOD",
       "kind": "value",
       "signature": "const NATIVE_NETWORK_EVENT_METHOD: \"NativeNetwork.Event\""
     },
     {
-      "name": "NATIVE_NETWORK_FETCH_METHOD",
-      "kind": "value",
-      "signature": "const NATIVE_NETWORK_FETCH_METHOD: \"NativeNetwork.fetch\""
-    },
-    {
       "name": "NATIVE_NETWORK_IS_SUPPORTED_METHOD",
       "kind": "value",
       "signature": "const NATIVE_NETWORK_IS_SUPPORTED_METHOD: \"NativeNetwork.isSupported\""
-    },
-    {
-      "name": "NATIVE_NETWORK_LOCALHOST_URL_METHOD",
-      "kind": "value",
-      "signature": "const NATIVE_NETWORK_LOCALHOST_URL_METHOD: \"NativeNetwork.localhostUrl\""
-    },
-    {
-      "name": "NATIVE_NETWORK_UPLOAD_METHOD",
-      "kind": "value",
-      "signature": "const NATIVE_NETWORK_UPLOAD_METHOD: \"NativeNetwork.upload\""
     },
     {
       "name": "negotiateHostVersion",
@@ -974,24 +864,9 @@
       "signature": "const NETWORK_AUTH_EVENT_METHOD: \"NetworkAuth.Event\""
     },
     {
-      "name": "NETWORK_AUTH_HANDLE_AUTH_METHOD",
-      "kind": "value",
-      "signature": "const NETWORK_AUTH_HANDLE_AUTH_METHOD: \"NetworkAuth.handleAuth\""
-    },
-    {
-      "name": "NETWORK_AUTH_HANDLE_CERTIFICATE_METHOD",
-      "kind": "value",
-      "signature": "const NETWORK_AUTH_HANDLE_CERTIFICATE_METHOD: \"NetworkAuth.handleCertificate\""
-    },
-    {
       "name": "NETWORK_AUTH_IS_SUPPORTED_METHOD",
       "kind": "value",
       "signature": "const NETWORK_AUTH_IS_SUPPORTED_METHOD: \"NetworkAuth.isSupported\""
-    },
-    {
-      "name": "NETWORK_AUTH_SET_PROXY_METHOD",
-      "kind": "value",
-      "signature": "const NETWORK_AUTH_SET_PROXY_METHOD: \"NetworkAuth.setProxy\""
     },
     {
       "name": "parseHostProtocolFrameJson",
@@ -1254,11 +1129,6 @@
       "signature": "export type SecretString = Redacted.Redacted<string>"
     },
     {
-      "name": "SESSION_PERMISSION_DECIDE_METHOD",
-      "kind": "value",
-      "signature": "const SESSION_PERMISSION_DECIDE_METHOD: \"SessionPermission.decide\""
-    },
-    {
       "name": "SESSION_PERMISSION_EVENT_METHOD",
       "kind": "value",
       "signature": "const SESSION_PERMISSION_EVENT_METHOD: \"SessionPermission.Event\""
@@ -1269,39 +1139,14 @@
       "signature": "const SESSION_PERMISSION_IS_SUPPORTED_METHOD: \"SessionPermission.isSupported\""
     },
     {
-      "name": "SESSION_PERMISSION_LIST_DECISIONS_METHOD",
-      "kind": "value",
-      "signature": "const SESSION_PERMISSION_LIST_DECISIONS_METHOD: \"SessionPermission.listDecisions\""
-    },
-    {
-      "name": "SESSION_PERMISSION_REQUEST_METHOD",
-      "kind": "value",
-      "signature": "const SESSION_PERMISSION_REQUEST_METHOD: \"SessionPermission.request\""
-    },
-    {
-      "name": "SESSION_PROFILE_DESTROY_METHOD",
-      "kind": "value",
-      "signature": "const SESSION_PROFILE_DESTROY_METHOD: \"SessionProfile.destroy\""
-    },
-    {
       "name": "SESSION_PROFILE_EVENT_METHOD",
       "kind": "value",
       "signature": "const SESSION_PROFILE_EVENT_METHOD: \"SessionProfile.Event\""
     },
     {
-      "name": "SESSION_PROFILE_FROM_PARTITION_METHOD",
-      "kind": "value",
-      "signature": "const SESSION_PROFILE_FROM_PARTITION_METHOD: \"SessionProfile.fromPartition\""
-    },
-    {
       "name": "SESSION_PROFILE_IS_SUPPORTED_METHOD",
       "kind": "value",
       "signature": "const SESSION_PROFILE_IS_SUPPORTED_METHOD: \"SessionProfile.isSupported\""
-    },
-    {
-      "name": "SESSION_PROFILE_LIST_METHOD",
-      "kind": "value",
-      "signature": "const SESSION_PROFILE_LIST_METHOD: \"SessionProfile.list\""
     },
     {
       "name": "UnaryDesktopTransportFromBridgeClientExchangeOptions",
@@ -1344,39 +1189,9 @@
       "signature": "const WEB_REQUEST_IS_SUPPORTED_METHOD: \"WebRequest.isSupported\""
     },
     {
-      "name": "WEB_REQUEST_ON_BEFORE_REQUEST_METHOD",
-      "kind": "value",
-      "signature": "const WEB_REQUEST_ON_BEFORE_REQUEST_METHOD: \"WebRequest.onBeforeRequest\""
-    },
-    {
-      "name": "WEB_REQUEST_ON_HEADERS_RECEIVED_METHOD",
-      "kind": "value",
-      "signature": "const WEB_REQUEST_ON_HEADERS_RECEIVED_METHOD: \"WebRequest.onHeadersReceived\""
-    },
-    {
-      "name": "WEB_REQUEST_REMOVE_LISTENER_METHOD",
-      "kind": "value",
-      "signature": "const WEB_REQUEST_REMOVE_LISTENER_METHOD: \"WebRequest.removeListener\""
-    },
-    {
       "name": "WEBVIEW_API_CALL_EVENT_METHOD",
       "kind": "value",
       "signature": "const WEBVIEW_API_CALL_EVENT_METHOD: \"WebView.ApiCall\""
-    },
-    {
-      "name": "WEBVIEW_ATTACH_DEBUGGER_METHOD",
-      "kind": "value",
-      "signature": "const WEBVIEW_ATTACH_DEBUGGER_METHOD: \"WebView.attachDebugger\""
-    },
-    {
-      "name": "WEBVIEW_CAPABILITY_METHOD",
-      "kind": "value",
-      "signature": "const WEBVIEW_CAPABILITY_METHOD: \"WebView.capability\""
-    },
-    {
-      "name": "WEBVIEW_CAPTURE_SCREENSHOT_METHOD",
-      "kind": "value",
-      "signature": "const WEBVIEW_CAPTURE_SCREENSHOT_METHOD: \"WebView.captureScreenshot\""
     },
     {
       "name": "WEBVIEW_CLOSE_DEVTOOLS_METHOD",
@@ -1392,11 +1207,6 @@
       "name": "WEBVIEW_DESTROY_METHOD",
       "kind": "value",
       "signature": "const WEBVIEW_DESTROY_METHOD: \"WebView.destroy\""
-    },
-    {
-      "name": "WEBVIEW_FIND_IN_PAGE_METHOD",
-      "kind": "value",
-      "signature": "const WEBVIEW_FIND_IN_PAGE_METHOD: \"WebView.findInPage\""
     },
     {
       "name": "WEBVIEW_FRAME_EVENT_METHOD",
@@ -1419,11 +1229,6 @@
       "signature": "const WEBVIEW_GO_FORWARD_METHOD: \"WebView.goForward\""
     },
     {
-      "name": "WEBVIEW_LIST_FRAMES_METHOD",
-      "kind": "value",
-      "signature": "const WEBVIEW_LIST_FRAMES_METHOD: \"WebView.listFrames\""
-    },
-    {
       "name": "WEBVIEW_LOAD_ROUTE_METHOD",
       "kind": "value",
       "signature": "const WEBVIEW_LOAD_ROUTE_METHOD: \"WebView.loadRoute\""
@@ -1444,19 +1249,9 @@
       "signature": "const WEBVIEW_OPEN_DEVTOOLS_METHOD: \"WebView.openDevTools\""
     },
     {
-      "name": "WEBVIEW_POST_TO_FRAME_METHOD",
-      "kind": "value",
-      "signature": "const WEBVIEW_POST_TO_FRAME_METHOD: \"WebView.postToFrame\""
-    },
-    {
       "name": "WEBVIEW_PRINT_METHOD",
       "kind": "value",
       "signature": "const WEBVIEW_PRINT_METHOD: \"WebView.print\""
-    },
-    {
-      "name": "WEBVIEW_PRINT_TO_PDF_METHOD",
-      "kind": "value",
-      "signature": "const WEBVIEW_PRINT_TO_PDF_METHOD: \"WebView.printToPdf\""
     },
     {
       "name": "WEBVIEW_RELOAD_METHOD",
@@ -1464,29 +1259,14 @@
       "signature": "const WEBVIEW_RELOAD_METHOD: \"WebView.reload\""
     },
     {
-      "name": "WEBVIEW_RESPOND_TO_PERMISSION_METHOD",
-      "kind": "value",
-      "signature": "const WEBVIEW_RESPOND_TO_PERMISSION_METHOD: \"WebView.respondToPermission\""
-    },
-    {
       "name": "WEBVIEW_RUNTIME_EVENT_METHOD",
       "kind": "value",
       "signature": "const WEBVIEW_RUNTIME_EVENT_METHOD: \"WebView.RuntimeEvent\""
     },
     {
-      "name": "WEBVIEW_SET_AUDIO_MUTED_METHOD",
-      "kind": "value",
-      "signature": "const WEBVIEW_SET_AUDIO_MUTED_METHOD: \"WebView.setAudioMuted\""
-    },
-    {
       "name": "WEBVIEW_SET_NAVIGATION_POLICY_METHOD",
       "kind": "value",
       "signature": "const WEBVIEW_SET_NAVIGATION_POLICY_METHOD: \"WebView.setNavigationPolicy\""
-    },
-    {
-      "name": "WEBVIEW_SET_USER_AGENT_METHOD",
-      "kind": "value",
-      "signature": "const WEBVIEW_SET_USER_AGENT_METHOD: \"WebView.setUserAgent\""
     },
     {
       "name": "WEBVIEW_SET_ZOOM_METHOD",
