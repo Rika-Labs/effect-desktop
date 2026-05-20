@@ -221,7 +221,7 @@ pub(crate) fn clear_runtime_notifications() -> Result<(), HostProtocolError> {
         for (_, stored) in notifications.drain() {
             stored.handle.close();
         }
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(target_os = "linux"))]

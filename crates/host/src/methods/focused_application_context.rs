@@ -179,6 +179,7 @@ struct HostFocusedApplication {
 }
 
 impl HostFocusedApplication {
+    #[cfg(any(test, target_os = "macos"))]
     fn new(application_id: impl Into<String>) -> Self {
         Self {
             application_id: application_id.into(),

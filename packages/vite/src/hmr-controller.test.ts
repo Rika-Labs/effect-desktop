@@ -1,19 +1,6 @@
-import { NodeServices } from "@effect/platform-node"
 import { describe, expect, test } from "bun:test"
 import { encodeFrame, FrameDecoder } from "@effect-desktop/core/runtime/transport"
-import {
-  type Cause,
-  Deferred,
-  Effect,
-  Layer,
-  ManagedRuntime,
-  Path,
-  Queue,
-  Schedule,
-  Schema,
-  Sink,
-  Stream
-} from "effect"
+import { type Cause, Deferred, Effect, Layer, Queue, Schedule, Schema, Sink, Stream } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 import { makeHmrController, type ViteDevRuntimeServer } from "./hmr-controller.js"
 import {
@@ -30,15 +17,7 @@ class MissingProcessRecord extends Schema.TaggedErrorClass<MissingProcessRecord>
   {}
 ) {}
 
-const pathRuntime = ManagedRuntime.make(NodeServices.layer)
-
-const resolvePath = (...segments: ReadonlyArray<string>): string =>
-  pathRuntime.runSync(
-    Effect.gen(function* () {
-      const path = yield* Path.Path
-      return path.resolve(...segments)
-    })
-  )
+const SyntheticRuntimePath = "/workspace/app/src/runtime.ts"
 
 describe("HMR controller", () => {
   test("spawns the runtime through ChildProcessSpawner and forwards frames through HMR", () =>
@@ -61,10 +40,7 @@ describe("HMR controller", () => {
           return
         }
         expect(record.command.command).toBe("bun")
-        expect(record.command.args).toEqual([
-          "run",
-          resolvePath("/workspace/app", "src/runtime.ts")
-        ])
+        expect(record.command.args).toEqual(["run", SyntheticRuntimePath])
         expect(record.command.options.stdin).toEqual({ stream: "pipe", endOnDone: false })
 
         const down = new Uint8Array([1, 2, 3, 4])
@@ -98,7 +74,7 @@ describe("HMR controller", () => {
         })
 
         yield* waitFor(() => server.sent.some(([event]) => event === RUNTIME_READY_EVENT))
-        server.emitWatchChange(resolvePath("/workspace/app", "src/runtime.ts"))
+        server.emitWatchChange(SyntheticRuntimePath)
 
         yield* waitFor(() => fake.records.length === 2)
         expect(fake.records[0]?.killed).toBe(true)
@@ -214,7 +190,7 @@ describe("HMR controller", () => {
         })
 
         yield* waitFor(() => server.sent.some(([event]) => event === RUNTIME_READY_EVENT))
-        const entryPath = resolvePath("/workspace/app", "src/runtime.ts")
+        const entryPath = SyntheticRuntimePath
         server.emitWatchChange(entryPath)
         server.emitWatchChange(entryPath)
 

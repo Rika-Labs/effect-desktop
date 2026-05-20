@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import { makeInspectorTransport } from "@effect-desktop/core/inspector-transport"
-import { ReplayTransport, ReplayTransportFromSession } from "@effect-desktop/devtools/testing"
+import { makeReplayTransport } from "@effect-desktop/devtools/testing"
 import { Effect } from "effect"
 
 import {
@@ -9,8 +9,8 @@ import {
   summarizeCategories
 } from "./inspector-app.js"
 
-test("InspectorApp selects live sessions and categorizes transport events", async () => {
-  const snapshot = await Effect.runPromise(
+test("InspectorApp selects live sessions and categorizes transport events", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
       const live = yield* makeInspectorTransport({
         sessionId: "live-one",
@@ -23,37 +23,31 @@ test("InspectorApp selects live sessions and categorizes transport events", asyn
         payload: { id: "main", state: "open" },
         timestampMs: 12
       })
-      const replay = yield* Effect.service(ReplayTransport).pipe(
-        Effect.provide(ReplayTransportFromSession(recordedInspectorSession))
-      )
+      const replay = makeReplayTransport(recordedInspectorSession)
       const app = makeInspectorAppForTransports(live, replay)
       return yield* app.snapshot()
     })
-  )
+  ).then((snapshot) => {
+    expect(snapshot.selectedSessionId).toBe("live-one")
+    expect(snapshot.sessions.map((session) => session.kind)).toEqual(["live", "recorded"])
+    expect(snapshot.events.map((event) => event.category)).toEqual(["rpc", "resources"])
+    expect(snapshot.categories.find((category) => category.id === "rpc")?.events).toBe(1)
+  }))
 
-  expect(snapshot.selectedSessionId).toBe("live-one")
-  expect(snapshot.sessions.map((session) => session.kind)).toEqual(["live", "recorded"])
-  expect(snapshot.events.map((event) => event.category)).toEqual(["rpc", "resources"])
-  expect(snapshot.categories.find((category) => category.id === "rpc")?.events).toBe(1)
-})
-
-test("InspectorApp replays recorded fixtures without a live observed app", async () => {
-  const snapshot = await Effect.runPromise(
+test("InspectorApp replays recorded fixtures without a live observed app", () =>
+  Effect.runPromise(
     Effect.gen(function* () {
       const live = yield* makeInspectorTransport({ sessionId: "live-empty", now: () => 10 })
-      const replay = yield* Effect.service(ReplayTransport).pipe(
-        Effect.provide(ReplayTransportFromSession(recordedInspectorSession))
-      )
+      const replay = makeReplayTransport(recordedInspectorSession)
       const app = makeInspectorAppForTransports(live, replay)
       return yield* app.snapshot(recordedInspectorSession.id)
     })
-  )
-
-  expect(snapshot.selectedSessionId).toBe(recordedInspectorSession.id)
-  expect(snapshot.events).toHaveLength(1)
-  expect(snapshot.events[0]?.surface).toBe("diagnostics")
-  expect(snapshot.categories.find((category) => category.id === "timeline")?.events).toBe(1)
-})
+  ).then((snapshot) => {
+    expect(snapshot.selectedSessionId).toBe(recordedInspectorSession.id)
+    expect(snapshot.events).toHaveLength(1)
+    expect(snapshot.events[0]?.surface).toBe("diagnostics")
+    expect(snapshot.categories.find((category) => category.id === "timeline")?.events).toBe(1)
+  }))
 
 test("summarizeCategories returns stable empty categories", () => {
   expect(summarizeCategories([])).toEqual([

@@ -691,6 +691,14 @@ fn handle_single_instance_handoff_stream(
     sender: &Sender<HostProtocolEnvelope>,
     token: &str,
 ) {
+    if let Err(error) = stream.set_nonblocking(false) {
+        warn!(
+            event = "host.app.single_instance_handoff.configure_stream_failed",
+            error = %error,
+            "failed to configure single-instance handoff stream"
+        );
+        return;
+    }
     let mut buffer = String::new();
     if let Err(error) = stream.read_to_string(&mut buffer) {
         warn!(
@@ -946,10 +954,8 @@ fn unlock_single_instance_file(file: &File) {
 #[cfg(windows)]
 fn windows_single_instance_lock_overlapped() -> OVERLAPPED {
     let mut overlapped = OVERLAPPED::default();
-    unsafe {
-        overlapped.Anonymous.Anonymous.Offset = 0;
-        overlapped.Anonymous.Anonymous.OffsetHigh = WINDOWS_SINGLE_INSTANCE_LOCK_OFFSET_HIGH;
-    }
+    overlapped.Anonymous.Anonymous.Offset = 0;
+    overlapped.Anonymous.Anonymous.OffsetHigh = WINDOWS_SINGLE_INSTANCE_LOCK_OFFSET_HIGH;
     overlapped
 }
 

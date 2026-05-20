@@ -48,7 +48,7 @@ result            ok
 [OK] bun-version: Bun 1.3.13 satisfies 1.3.13
 [OK] rust-toolchain: cargo and rustc are available
 [WARN] signing-credentials: signing credentials are not configured; unsigned local packages remain allowed
-[WARN] native-capabilities: native capability matrix reports 184 methods, 99 host-routed, 85 missing host routes
+[OK] native-capabilities: native capability matrix reports 291 methods, 229 host-routed, 0 missing host routes
 ```
 
 Each row maps to one probe. `missing` probes fail the gate with a non-zero exit. Warnings are advisory, but a `native-capabilities` warning means some declared native methods still lack host routes.

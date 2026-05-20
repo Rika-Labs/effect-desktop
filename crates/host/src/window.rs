@@ -9,12 +9,11 @@ use host_protocol::{
     AppBeforeQuitEventPayload, DockProgressState, DockSetProgressPayload, HostProtocolEnvelope,
     HostProtocolError, ScreenBoundsPayload, ScreenDisplayPayload,
     ScreenDisplaysChangedEventPayload, ScreenDisplaysResultPayload, ScreenMethodPayload,
-    ScreenPointPayload, ScreenSupportedPayload, TrayActivatedEventPayload, TrayResourcePayload,
-    WindowAttentionType, WindowBoundsEventPayload, WindowBoundsPayload, WindowCreatePayload,
-    WindowCreateResponse, WindowListResponse, WindowLookupResponse, WindowParentResponse,
-    WindowProgressState, WindowRegistryEventPayload, WindowRegistryEventPhase,
-    WindowSetProgressPayload, WindowStateEventPayload, WindowStatePayload, WindowTitleBarStyle,
-    WindowTrafficLights,
+    ScreenPointPayload, ScreenSupportedPayload, TrayResourcePayload, WindowAttentionType,
+    WindowBoundsEventPayload, WindowBoundsPayload, WindowCreatePayload, WindowCreateResponse,
+    WindowListResponse, WindowLookupResponse, WindowParentResponse, WindowProgressState,
+    WindowRegistryEventPayload, WindowRegistryEventPhase, WindowSetProgressPayload,
+    WindowStateEventPayload, WindowStatePayload, WindowTitleBarStyle, WindowTrafficLights,
 };
 use std::{
     cell::RefCell,
@@ -684,10 +683,15 @@ impl WebViewNavigationStatePayload {
 
 #[derive(Clone, Debug)]
 pub(crate) struct TrayCreateRequest {
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     icon: String,
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     tooltip: Option<String>,
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     title: Option<String>,
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     menu: Option<serde_json::Value>,
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     event_sender: Option<Sender<HostProtocolEnvelope>>,
 }
 
@@ -1026,6 +1030,7 @@ enum WindowLifecycleEvent {
 struct NativeWindowResources {
     _window: Window,
     _webview: webview::HostWebView,
+    visible: bool,
 }
 
 struct NativeWebViewResources {
@@ -2767,31 +2772,44 @@ impl TrayCreateRequest {
         menu: Option<serde_json::Value>,
         event_sender: Option<Sender<HostProtocolEnvelope>>,
     ) -> Self {
+        #[cfg(target_os = "linux")]
+        let _ = (icon, tooltip, title, menu, event_sender);
+
         Self {
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
             icon,
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
             tooltip,
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
             title,
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
             menu,
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
             event_sender,
         }
     }
 
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     fn icon(&self) -> &str {
         &self.icon
     }
 
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     fn tooltip(&self) -> Option<&str> {
         self.tooltip.as_deref()
     }
 
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     fn title(&self) -> Option<&str> {
         self.title.as_deref()
     }
 
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     fn menu(&self) -> Option<&serde_json::Value> {
         self.menu.as_ref()
     }
 
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     fn event_sender(&self) -> Option<Sender<HostProtocolEnvelope>> {
         self.event_sender.clone()
     }
@@ -2860,6 +2878,7 @@ impl WindowRegistry {
             NativeWindowResources {
                 _window: window,
                 _webview: webview,
+                visible: true,
             },
         );
         self.track_window_opened(&window_id, native_window_id);
@@ -2984,7 +3003,7 @@ impl WindowRegistry {
         destroyed_window_ids
     }
 
-    fn show(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+    fn show(&mut self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
         self.set_visible(
             window_id,
             true,
@@ -2993,7 +3012,7 @@ impl WindowRegistry {
         )
     }
 
-    fn hide(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+    fn hide(&mut self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
         self.set_visible(
             window_id,
             false,
@@ -3747,13 +3766,13 @@ impl WindowRegistry {
     }
 
     fn set_visible(
-        &self,
+        &mut self,
         window_id: &str,
         visible: bool,
         phase: WindowRegistryEventPhase,
         operation: &'static str,
     ) -> std::result::Result<(), HostProtocolError> {
-        let Some(resources) = self.windows.get(window_id) else {
+        let Some(resources) = self.windows.get_mut(window_id) else {
             return Err(HostProtocolError::not_found(
                 format!("Window:{window_id}"),
                 operation,
@@ -3761,6 +3780,7 @@ impl WindowRegistry {
         };
 
         resources._window.set_visible(visible);
+        resources.visible = visible;
         if let Err(error) = emit_window_registry_event(window_id, phase) {
             warn!(
                 event = "host.window.event_emit_failed",
@@ -3850,7 +3870,7 @@ impl WindowRegistry {
         #[cfg(target_os = "linux")]
         {
             let _ = request;
-            return Err(unsupported_tray(host_protocol::TRAY_CREATE_METHOD));
+            Err(unsupported_tray(host_protocol::TRAY_CREATE_METHOD))
         }
 
         #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -3921,7 +3941,7 @@ impl WindowRegistry {
         #[cfg(target_os = "linux")]
         {
             let _ = (tray, icon);
-            return Err(unsupported_tray(operation));
+            Err(unsupported_tray(operation))
         }
 
         #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -3946,7 +3966,7 @@ impl WindowRegistry {
         #[cfg(target_os = "linux")]
         {
             let _ = (tray, tooltip);
-            return Err(unsupported_tray(operation));
+            Err(unsupported_tray(operation))
         }
 
         #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -3970,16 +3990,16 @@ impl WindowRegistry {
         #[cfg(target_os = "linux")]
         {
             let _ = (tray, title);
-            return Err(unsupported_tray(operation));
+            Err(unsupported_tray(operation))
         }
 
         #[cfg(target_os = "windows")]
         {
             let _ = (tray, title);
-            return Err(HostProtocolError::unsupported(
+            Err(HostProtocolError::unsupported(
                 "tray title is unsupported on Windows",
                 operation,
-            ));
+            ))
         }
 
         #[cfg(target_os = "macos")]
@@ -4003,7 +4023,7 @@ impl WindowRegistry {
         #[cfg(target_os = "linux")]
         {
             let _ = (tray, menu);
-            return Err(unsupported_tray(operation));
+            Err(unsupported_tray(operation))
         }
 
         #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -4027,7 +4047,7 @@ impl WindowRegistry {
         #[cfg(target_os = "linux")]
         {
             let _ = tray;
-            return Err(unsupported_tray(operation));
+            Err(unsupported_tray(operation))
         }
 
         #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -5088,7 +5108,7 @@ impl WindowRegistry {
             );
             return WindowLifecycleEvent::WindowCreateFailed;
         };
-        let visible = resources._window.is_visible();
+        let visible = resources.visible;
         if !matches!(lifecycle_event, WindowLifecycleEvent::Other) || visible {
             warn!(
                 event = "host.resident_lifecycle.smoke_failed",
@@ -5755,7 +5775,7 @@ fn apply_window_parent(
 
     #[cfg(windows)]
     {
-        return windows::apply_window_parent(builder, parent);
+        windows::apply_window_parent(builder, parent)
     }
 
     #[cfg(not(any(target_os = "macos", windows)))]
@@ -6607,7 +6627,7 @@ fn forward_tray_icon_event(event: tray_icon::TrayIconEvent) {
         Some(sender) => sender,
         None => return,
     };
-    let payload = match serde_json::to_value(TrayActivatedEventPayload::new(tray)) {
+    let payload = match serde_json::to_value(host_protocol::TrayActivatedEventPayload::new(tray)) {
         Ok(payload) => payload,
         Err(error) => {
             warn!(

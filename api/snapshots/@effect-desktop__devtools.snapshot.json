@@ -669,6 +669,11 @@
       "signature": "const makeReactivityTracker: (options?: { readonly maxRows?: number; readonly now?: () => number; }) => Effect.Effect<ReactivityTrackerApi, never, never>"
     },
     {
+      "name": "makeReplayTransport",
+      "kind": "value",
+      "signature": "const makeReplayTransport: (session: RecordedSession) => ReplayTransportApi"
+    },
+    {
       "name": "makeWorkflowExecutionRegistry",
       "kind": "value",
       "signature": "const makeWorkflowExecutionRegistry: (options?: { readonly maxRows?: number; readonly now?: () => number; }) => Effect.Effect<WorkflowExecutionRegistryApi, never, never>"

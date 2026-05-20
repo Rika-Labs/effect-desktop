@@ -59,7 +59,7 @@ export interface InspectorAppOptions {
 }
 
 export class InspectorApp extends Context.Service<InspectorApp, InspectorAppApi>()(
-  "@effect-desktop/inspector/InspectorApp"
+  "@effect-desktop/inspector/inspector-app/InspectorApp"
 ) {}
 
 export const InspectorAppLive = (

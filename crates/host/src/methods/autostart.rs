@@ -8,8 +8,10 @@ use host_protocol::{
 };
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{to_value, Value};
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use std::fs;
 use std::{
-    env, fs,
+    env,
     path::{Path, PathBuf},
     sync::mpsc::Sender,
 };
@@ -21,6 +23,7 @@ pub(crate) static AUTOSTART_TEST_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mut
 const AUTOSTART_APP_ID_ENV: &str = "EFFECT_DESKTOP_AUTOSTART_APP_ID";
 const AUTOSTART_APP_NAME_ENV: &str = "EFFECT_DESKTOP_AUTOSTART_APP_NAME";
 const AUTOSTART_EXE_ENV: &str = "EFFECT_DESKTOP_AUTOSTART_EXE";
+#[cfg(any(test, target_os = "macos", target_os = "linux"))]
 const AUTOSTART_ROOT_ENV: &str = "EFFECT_DESKTOP_AUTOSTART_ROOT";
 const APP_ID_ENV: &str = "EFFECT_DESKTOP_APP_ID";
 const DEFAULT_APP_ID: &str = "dev.effect-desktop.host";
@@ -319,6 +322,7 @@ fn host_unavailable(message: String, operation: &'static str) -> HostProtocolErr
 }
 
 struct AutostartAppContext {
+    #[cfg_attr(target_os = "windows", allow(dead_code))]
     app_id: String,
     #[cfg_attr(target_os = "macos", allow(dead_code))]
     app_name: String,

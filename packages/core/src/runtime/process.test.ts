@@ -1209,24 +1209,29 @@ const makeFakeChild = (options: {
   let settled = false
   const exitState = Effect.runSync(Deferred.make<ProcessExitStatus>())
   const finish = (
-    status: { readonly code: number; readonly signal?: string } = options.exit
+    status: { readonly code: number; readonly signal?: string } = options.exit,
+    interruptNaturalExit = true
   ): Effect.Effect<void> =>
     Effect.sync(() => {
       if (settled) {
-        return
+        return false
       }
       settled = true
-      clearTimeout(naturalExitTimer)
       running = false
-      return
+      return true
     }).pipe(
-      Effect.andThen(Deferred.succeed(exitState, new ProcessExitStatus(status))),
+      Effect.flatMap((shouldComplete) =>
+        shouldComplete
+          ? Deferred.succeed(exitState, new ProcessExitStatus(status)).pipe(
+              Effect.andThen(interruptNaturalExit ? Fiber.interrupt(naturalExitFiber) : Effect.void)
+            )
+          : Effect.void
+      ),
       Effect.asVoid
     )
-  const naturalExitTimer = setTimeout(() => {
-    Effect.runFork(finish())
-  }, options.naturalExitDelayMs ?? 0)
-  naturalExitTimer.unref()
+  const naturalExitFiber = Effect.runFork(
+    Effect.sleep(options.naturalExitDelayMs ?? 0).pipe(Effect.andThen(finish(options.exit, false)))
+  )
 
   const child = ChildProcessSpawner.makeHandle({
     all: streamBytes(options.stdout, options.stdoutChunkDelayMs),

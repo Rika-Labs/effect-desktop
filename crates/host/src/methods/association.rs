@@ -13,7 +13,9 @@ use serde_json::{to_value, Value};
 use std::sync::mpsc::Sender;
 use uuid::Uuid;
 
+#[cfg(any(test, target_os = "macos"))]
 const APP_ID_ENV: &str = "EFFECT_DESKTOP_APP_ID";
+#[cfg(any(test, target_os = "macos"))]
 const DEFAULT_APP_ID: &str = "dev.effect-desktop.host";
 const RESERVED_SCHEMES: &[&str] = &[
     "about",
@@ -316,6 +318,7 @@ fn send_event(sender: Option<Sender<HostProtocolEnvelope>>, payload: Association
     });
 }
 
+#[cfg(any(test, target_os = "macos"))]
 fn app_id(operation: &'static str) -> Result<String, HostProtocolError> {
     let id = std::env::var(APP_ID_ENV).unwrap_or_else(|_| DEFAULT_APP_ID.to_string());
     if id.is_empty()

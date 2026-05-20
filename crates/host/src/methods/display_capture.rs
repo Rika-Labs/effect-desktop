@@ -1,21 +1,27 @@
 #![allow(clippy::result_large_err)]
 
 use host_protocol::{
-    DisplayCaptureActorPayload, DisplayCaptureImagePayload, DisplayCaptureMetadataPayload,
-    DisplayCaptureRegionPayload, DisplayCaptureRequestPayload, DisplayCaptureResultPayload,
-    DisplayCaptureSource, DisplayCaptureSupportedPayload, HostProtocolError,
+    DisplayCaptureActorPayload, DisplayCaptureRequestPayload, DisplayCaptureSource,
+    DisplayCaptureSupportedPayload, HostProtocolError,
+};
+#[cfg(any(test, target_os = "macos"))]
+use host_protocol::{
+    DisplayCaptureImagePayload, DisplayCaptureMetadataPayload, DisplayCaptureRegionPayload,
+    DisplayCaptureResultPayload,
 };
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{to_value, Value};
+
+#[cfg(target_os = "macos")]
+use std::process::Command;
+#[cfg(any(test, target_os = "macos"))]
 use std::{
     fs,
     path::Path,
     time::{SystemTime, UNIX_EPOCH},
 };
+#[cfg(any(test, target_os = "macos"))]
 use uuid::Uuid;
-
-#[cfg(target_os = "macos")]
-use std::process::Command;
 
 pub(crate) fn capture_display(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
     let input = decode_payload::<DisplayCaptureRequestPayload>(
@@ -288,6 +294,7 @@ fn unsupported(operation: &'static str) -> HostProtocolError {
     HostProtocolError::unsupported(host_protocol::DISPLAY_CAPTURE_UNSUPPORTED_REASON, operation)
 }
 
+#[cfg(any(test, target_os = "macos"))]
 trait CaptureCommandRunner {
     fn run(
         &self,
@@ -371,6 +378,7 @@ fn capture_with_platform(
     }
 }
 
+#[cfg(any(test, target_os = "macos"))]
 fn capture_with_runner(
     input: &DisplayCaptureRequestPayload,
     source: DisplayCaptureSource,
@@ -413,6 +421,7 @@ fn capture_with_runner(
     )
 }
 
+#[cfg(any(test, target_os = "macos"))]
 fn build_screencapture_args(
     input: &DisplayCaptureRequestPayload,
     source: DisplayCaptureSource,
@@ -446,6 +455,7 @@ fn build_screencapture_args(
     Ok(args)
 }
 
+#[cfg(any(test, target_os = "macos"))]
 fn push_display_selector(
     args: &mut Vec<String>,
     display_id: Option<&str>,
@@ -465,6 +475,7 @@ fn push_display_selector(
     Ok(())
 }
 
+#[cfg(any(test, target_os = "macos"))]
 fn parse_positive_u32(
     field: &str,
     value: &str,
@@ -487,6 +498,7 @@ fn parse_positive_u32(
     Ok(parsed)
 }
 
+#[cfg(any(test, target_os = "macos"))]
 fn screencapture_region(
     region: &DisplayCaptureRegionPayload,
     operation: &'static str,
@@ -501,6 +513,7 @@ fn screencapture_region(
     ))
 }
 
+#[cfg(any(test, target_os = "macos"))]
 fn finite_i32(field: &str, value: f64, operation: &'static str) -> Result<i32, HostProtocolError> {
     if !value.is_finite() || value < f64::from(i32::MIN) || value > f64::from(i32::MAX) {
         return Err(HostProtocolError::invalid_argument(
@@ -512,6 +525,7 @@ fn finite_i32(field: &str, value: f64, operation: &'static str) -> Result<i32, H
     Ok(value.round() as i32)
 }
 
+#[cfg(any(test, target_os = "macos"))]
 fn finite_u32(field: &str, value: f64, operation: &'static str) -> Result<u32, HostProtocolError> {
     if !value.is_finite() || value <= 0.0 || value > f64::from(u32::MAX) {
         return Err(HostProtocolError::invalid_argument(
@@ -523,6 +537,7 @@ fn finite_u32(field: &str, value: f64, operation: &'static str) -> Result<u32, H
     Ok(value.round() as u32)
 }
 
+#[cfg(any(test, target_os = "macos"))]
 fn metadata_for_capture(
     input: &DisplayCaptureRequestPayload,
     source: DisplayCaptureSource,
@@ -561,6 +576,7 @@ fn metadata_for_capture(
     })
 }
 
+#[cfg(any(test, target_os = "macos"))]
 fn method_for_source(source: DisplayCaptureSource) -> &'static str {
     match source {
         DisplayCaptureSource::Display => host_protocol::DISPLAY_CAPTURE_CAPTURE_DISPLAY_METHOD,

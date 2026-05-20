@@ -421,8 +421,14 @@ fn system_known_folder_path(
         KnownFolder::Downloads => &windows_sys::Win32::UI::Shell::FOLDERID_Downloads,
     };
     let mut raw = std::ptr::null_mut();
-    let result =
-        unsafe { SHGetKnownFolderPath(folder_id, KF_FLAG_DEFAULT, std::ptr::null_mut(), &mut raw) };
+    let result = unsafe {
+        SHGetKnownFolderPath(
+            folder_id,
+            KF_FLAG_DEFAULT as u32,
+            std::ptr::null_mut(),
+            &mut raw,
+        )
+    };
     if result != S_OK {
         unsafe { CoTaskMemFree(raw.cast()) };
         return Err(unavailable(
@@ -683,6 +689,7 @@ mod tests {
 
     #[test]
     fn missing_base_directory_inputs_return_typed_unsupported() {
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
         let env = FakePathEnvironment::new().with_temp("/tmp");
 
         #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -697,6 +704,7 @@ mod tests {
 
     #[test]
     fn invalid_base_directory_outputs_are_rejected() {
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
         let env = FakePathEnvironment::new()
             .with_var("HOME", "relative")
             .with_temp("/tmp");

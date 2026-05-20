@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import { fileURLToPath } from "node:url"
 import { RpcEndpoint, RpcSupport } from "@effect-desktop/bridge"
 import { Desktop, MissingDesktopRpcClientError } from "@effect-desktop/core"
 import { BunServices } from "@effect/platform-bun"
@@ -16,7 +17,7 @@ const Root = {
   }
 }
 
-const indexSourcePath = new URL("./index.ts", import.meta.url).pathname
+const indexSourcePath = fileURLToPath(new URL("./index.ts", import.meta.url))
 
 const PlatformRuntime = ManagedRuntime.make(BunServices.layer)
 

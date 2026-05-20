@@ -65,6 +65,7 @@ fn encode_payload<T: Serialize>(
     })
 }
 
+#[cfg(target_os = "macos")]
 fn event_frame<T: Serialize>(
     method: &'static str,
     payload: T,
@@ -83,6 +84,7 @@ fn event_frame<T: Serialize>(
     })
 }
 
+#[cfg(target_os = "macos")]
 fn send_event<T: Serialize>(
     sender: &Sender<HostProtocolEnvelope>,
     method: &'static str,
@@ -103,6 +105,7 @@ fn send_event<T: Serialize>(
     }
 }
 
+#[cfg(target_os = "macos")]
 fn timestamp_millis(operation: &'static str) -> Result<u64, HostProtocolError> {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -342,7 +345,10 @@ mod platform {
 
 #[cfg(test)]
 mod tests {
-    use super::{clear_runtime_event_sender, install_runtime_event_sender, is_supported};
+    use super::is_supported;
+    #[cfg(target_os = "macos")]
+    use super::{clear_runtime_event_sender, install_runtime_event_sender};
+    #[cfg(target_os = "macos")]
     use host_protocol::HostProtocolEnvelope;
     use serde_json::json;
 

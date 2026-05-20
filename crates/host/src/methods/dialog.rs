@@ -54,13 +54,13 @@ impl DialogAdapter for NativeDialogAdapter {
     fn open_file(&self, input: &DialogOpenFilePayload) -> Result<Vec<PathBuf>, HostProtocolError> {
         #[cfg(target_os = "linux")]
         {
-            return zenity_file_selection(
+            zenity_file_selection(
                 input,
                 ZenitySelectionMode::File {
                     multiple: input.multiple(),
                 },
                 host_protocol::DIALOG_OPEN_FILE_METHOD,
-            );
+            )
         }
 
         #[cfg(not(target_os = "linux"))]
@@ -81,13 +81,13 @@ impl DialogAdapter for NativeDialogAdapter {
     ) -> Result<Vec<PathBuf>, HostProtocolError> {
         #[cfg(target_os = "linux")]
         {
-            return zenity_file_selection(
+            zenity_file_selection(
                 input,
                 ZenitySelectionMode::Directory {
                     multiple: input.multiple(),
                 },
                 host_protocol::DIALOG_OPEN_DIRECTORY_METHOD,
-            );
+            )
         }
 
         #[cfg(not(target_os = "linux"))]
@@ -115,7 +115,7 @@ impl DialogAdapter for NativeDialogAdapter {
     ) -> Result<Option<PathBuf>, HostProtocolError> {
         #[cfg(target_os = "linux")]
         {
-            return zenity_save_file(input, host_protocol::DIALOG_SAVE_FILE_METHOD);
+            zenity_save_file(input, host_protocol::DIALOG_SAVE_FILE_METHOD)
         }
 
         #[cfg(not(target_os = "linux"))]
@@ -128,7 +128,7 @@ impl DialogAdapter for NativeDialogAdapter {
     fn message(&self, input: &DialogMessagePayload) -> Result<(), HostProtocolError> {
         #[cfg(target_os = "linux")]
         {
-            return zenity_message(input, host_protocol::DIALOG_MESSAGE_METHOD);
+            zenity_message(input, host_protocol::DIALOG_MESSAGE_METHOD)
         }
 
         #[cfg(not(target_os = "linux"))]
@@ -143,7 +143,7 @@ impl DialogAdapter for NativeDialogAdapter {
     fn confirm(&self, input: &DialogConfirmPayload) -> Result<bool, HostProtocolError> {
         #[cfg(target_os = "linux")]
         {
-            return zenity_confirm(input, host_protocol::DIALOG_CONFIRM_METHOD);
+            zenity_confirm(input, host_protocol::DIALOG_CONFIRM_METHOD)
         }
 
         #[cfg(not(target_os = "linux"))]
@@ -198,11 +198,8 @@ where
 
     let mut command = zenity_command();
     command.arg("--file-selection");
-    match mode {
-        ZenitySelectionMode::Directory { .. } => {
-            command.arg("--directory");
-        }
-        _ => {}
+    if let ZenitySelectionMode::Directory { .. } = mode {
+        command.arg("--directory");
     }
     apply_zenity_file_dialog_options(&mut command, input);
     Ok(selected_zenity_path(command, operation)?
@@ -433,6 +430,7 @@ fn confirm_with(
     )
 }
 
+#[cfg(not(target_os = "linux"))]
 fn apply_file_dialog_options<T>(mut dialog: rfd::FileDialog, input: &T) -> rfd::FileDialog
 where
     T: FileDialogOptions,
@@ -461,6 +459,7 @@ where
     dialog
 }
 
+#[cfg(not(target_os = "linux"))]
 fn apply_message_dialog_options(
     mut dialog: rfd::MessageDialog,
     input: &DialogMessagePayload,
@@ -474,6 +473,7 @@ fn apply_message_dialog_options(
     dialog
 }
 
+#[cfg(not(target_os = "linux"))]
 fn apply_confirm_dialog_options(
     mut dialog: rfd::MessageDialog,
     input: &DialogConfirmPayload,
@@ -505,6 +505,20 @@ impl FileDialogOptions for DialogOpenFilePayload {
     }
 }
 
+impl FileDialogOptions for DialogOpenDirectoryPayload {
+    fn title(&self) -> Option<&str> {
+        self.title()
+    }
+
+    fn default_path(&self) -> Option<&str> {
+        self.default_path()
+    }
+
+    fn filters(&self) -> &[DialogFileFilterPayload] {
+        &[]
+    }
+}
+
 impl FileDialogOptions for DialogSaveFilePayload {
     fn title(&self) -> Option<&str> {
         self.title()
@@ -526,6 +540,7 @@ fn description(message: &str, detail: Option<&str>) -> String {
     }
 }
 
+#[cfg(not(target_os = "linux"))]
 fn message_level(level: DialogLevelPayload) -> rfd::MessageLevel {
     match level {
         DialogLevelPayload::Info => rfd::MessageLevel::Info,

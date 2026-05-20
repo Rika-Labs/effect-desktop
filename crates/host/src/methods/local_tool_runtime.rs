@@ -2,6 +2,7 @@
 // Host method adapters return the canonical HostProtocolError enum from the
 // wire contract. Boxing that error here would obscure the protocol surface.
 
+#[cfg(not(windows))]
 use crate::runtime::platform;
 use host_protocol::{
     HostProtocolEnvelope, HostProtocolError, LocalToolRuntimeActorPayload,
@@ -15,12 +16,14 @@ use host_protocol::{
 };
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{to_value, Value};
+#[cfg(not(windows))]
+use std::process::{Command, Stdio};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fs,
     io::{self, Read},
     path::{Path, PathBuf},
-    process::{Command, ExitStatus, Stdio},
+    process::ExitStatus,
     sync::{
         mpsc::{self, Receiver, RecvTimeoutError, Sender},
         Arc, Mutex, OnceLock,
@@ -1583,12 +1586,14 @@ fn merged_environment(
     env.into_iter().collect()
 }
 
+#[cfg(not(windows))]
 fn apply_stdio(command: &mut Command, stdio: &host_protocol::LocalToolRuntimeStdioPolicyPayload) {
     command.stdin(Stdio::null());
     command.stdout(stdio_for_mode(stdio.stdout()));
     command.stderr(stdio_for_mode(stdio.stderr()));
 }
 
+#[cfg(not(windows))]
 fn stdio_for_mode(mode: LocalToolRuntimeStdioMode) -> Stdio {
     match mode {
         LocalToolRuntimeStdioMode::Capture => Stdio::piped(),
@@ -1999,12 +2004,12 @@ fn inheritable_pipe() -> io::Result<(WindowsHandle, WindowsHandle)> {
 
     let mut read = null_mut();
     let mut write = null_mut();
-    let mut security = SECURITY_ATTRIBUTES {
+    let security = SECURITY_ATTRIBUTES {
         nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
         lpSecurityDescriptor: null_mut(),
         bInheritHandle: 1,
     };
-    let created = unsafe { CreatePipe(&mut read, &mut write, &mut security, 0) };
+    let created = unsafe { CreatePipe(&mut read, &mut write, &security, 0) };
     if created == 0 {
         Err(io::Error::last_os_error())
     } else {
@@ -2785,15 +2790,20 @@ fn is_shell_metacharacter(value: char) -> bool {
 mod tests {
     use super::{
         clear_runtime_resources_for_runtime_ids, health, is_supported, register,
-        register_with_event, run, run_with_event_sink, stop, RuntimeEventSink,
-        OWNED_WORKING_DIRECTORY_BASE, OWNED_WORKING_DIRECTORY_MARKER, UNBOUNDED_OS_BUDGET,
+        register_with_event, run, stop, OWNED_WORKING_DIRECTORY_BASE,
+        OWNED_WORKING_DIRECTORY_MARKER, UNBOUNDED_OS_BUDGET,
     };
-    use host_protocol::{HostProtocolEnvelope, HostProtocolError};
+    #[cfg(unix)]
+    use super::{run_with_event_sink, RuntimeEventSink};
+    #[cfg(unix)]
+    use host_protocol::HostProtocolEnvelope;
+    use host_protocol::HostProtocolError;
     use serde_json::json;
+    #[cfg(unix)]
+    use std::sync::mpsc;
     use std::{
         env, fs,
         path::{Path, PathBuf},
-        sync::mpsc,
     };
     use uuid::Uuid;
 
