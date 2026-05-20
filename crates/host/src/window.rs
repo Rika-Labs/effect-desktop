@@ -1030,6 +1030,7 @@ enum WindowLifecycleEvent {
 struct NativeWindowResources {
     _window: Window,
     _webview: webview::HostWebView,
+    visible: bool,
 }
 
 struct NativeWebViewResources {
@@ -2877,6 +2878,7 @@ impl WindowRegistry {
             NativeWindowResources {
                 _window: window,
                 _webview: webview,
+                visible: true,
             },
         );
         self.track_window_opened(&window_id, native_window_id);
@@ -3001,7 +3003,7 @@ impl WindowRegistry {
         destroyed_window_ids
     }
 
-    fn show(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+    fn show(&mut self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
         self.set_visible(
             window_id,
             true,
@@ -3010,7 +3012,7 @@ impl WindowRegistry {
         )
     }
 
-    fn hide(&self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
+    fn hide(&mut self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
         self.set_visible(
             window_id,
             false,
@@ -3764,13 +3766,13 @@ impl WindowRegistry {
     }
 
     fn set_visible(
-        &self,
+        &mut self,
         window_id: &str,
         visible: bool,
         phase: WindowRegistryEventPhase,
         operation: &'static str,
     ) -> std::result::Result<(), HostProtocolError> {
-        let Some(resources) = self.windows.get(window_id) else {
+        let Some(resources) = self.windows.get_mut(window_id) else {
             return Err(HostProtocolError::not_found(
                 format!("Window:{window_id}"),
                 operation,
@@ -3778,6 +3780,7 @@ impl WindowRegistry {
         };
 
         resources._window.set_visible(visible);
+        resources.visible = visible;
         if let Err(error) = emit_window_registry_event(window_id, phase) {
             warn!(
                 event = "host.window.event_emit_failed",
@@ -5105,7 +5108,7 @@ impl WindowRegistry {
             );
             return WindowLifecycleEvent::WindowCreateFailed;
         };
-        let visible = resources._window.is_visible();
+        let visible = resources.visible;
         if !matches!(lifecycle_event, WindowLifecycleEvent::Other) || visible {
             warn!(
                 event = "host.resident_lifecycle.smoke_failed",
