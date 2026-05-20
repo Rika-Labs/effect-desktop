@@ -5,7 +5,7 @@ import {
   makeHostWindowClient,
   negotiateHostVersion
 } from "@effect-desktop/bridge"
-import { Effect, Schema } from "effect"
+import { Effect, ManagedRuntime, Schema } from "effect"
 
 import packageJson from "../../package.json" with { type: "json" }
 import { createHostProtocolExchange } from "./host-client.js"
@@ -30,7 +30,9 @@ const readyEvent = encodeReadyEvent({
   version: packageJson.version
 })
 
-await Effect.runPromise(
+const runtime = ManagedRuntime.make(layerStdioSocket)
+
+await runtime.runPromise(
   Effect.gen(function* () {
     yield* writeStdout(`${readyEvent}\n`)
 
@@ -47,7 +49,9 @@ await Effect.runPromise(
     yield* openDeclaredWindows(windows, declaredRegistrations, {
       smokeTest: startupEnvironment.smokeTest
     })
-  }).pipe(Effect.scoped, Effect.provide(layerStdioSocket))
+  }).pipe(Effect.scoped)
 )
+
+await runtime.dispose()
 
 process.exit(0)

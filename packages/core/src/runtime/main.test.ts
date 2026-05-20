@@ -1,10 +1,10 @@
 import { expect, test } from "bun:test"
 import { Buffer } from "node:buffer"
-import { spawn } from "node:child_process"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
 import { BunServices } from "@effect/platform-bun"
-import { Effect, FileSystem, ManagedRuntime, Path, Schema } from "effect"
+import { Effect, Fiber, FileSystem, ManagedRuntime, Path, Queue, Schema, Stream } from "effect"
+import { ChildProcess } from "effect/unstable/process"
 import {
   decodeHostProtocolFrame,
   HOST_PING_METHOD,
@@ -235,183 +235,165 @@ interface RuntimeHostOptions {
   readonly runtimeArgs?: readonly string[]
 }
 
-const runRuntimeWithFakeHost = (options: RuntimeHostOptions = {}): Promise<RuntimeHostResult> =>
-  Effect.runPromise(
-    Effect.callback<RuntimeHostResult, MainTestRuntimeFailure>((resume) => {
-      const env: NodeJS.ProcessEnv = {
-        ...process.env
-      }
-      if (options.windowSmokeTest !== false) {
-        env[WINDOW_SMOKE_TEST_ENV] = "1"
-      } else {
-        delete env[WINDOW_SMOKE_TEST_ENV]
-      }
-      delete env[STARTUP_WINDOWS_ENV]
-      delete env[APP_MODULE_ENV]
-      delete env[APP_EXPORT_ENV]
-      if (options.appModule !== undefined) {
-        env[APP_MODULE_ENV] = options.appModule
-      }
-      if (options.startupWindows !== undefined) {
-        env[STARTUP_WINDOWS_ENV] = encodeUnknownJson(options.startupWindows)
-      }
+const runtimeEnv = (options: RuntimeHostOptions): Record<string, string | undefined> => {
+  const env: Record<string, string | undefined> = { ...process.env }
+  if (options.windowSmokeTest !== false) {
+    env[WINDOW_SMOKE_TEST_ENV] = "1"
+  } else {
+    delete env[WINDOW_SMOKE_TEST_ENV]
+  }
+  delete env[STARTUP_WINDOWS_ENV]
+  delete env[APP_MODULE_ENV]
+  delete env[APP_EXPORT_ENV]
+  if (options.appModule !== undefined) {
+    env[APP_MODULE_ENV] = options.appModule
+  }
+  if (options.startupWindows !== undefined) {
+    env[STARTUP_WINDOWS_ENV] = encodeUnknownJson(options.startupWindows)
+  }
+  return env
+}
 
-      const child = spawn(
+const runRuntimeWithFakeHost = (options: RuntimeHostOptions = {}): Promise<RuntimeHostResult> =>
+  BunServicesRuntime.runPromise(
+    Effect.gen(function* () {
+      const stdinQueue = yield* Queue.unbounded<Uint8Array>()
+      const command = ChildProcess.make(
         options.runtimeCommand ?? "bun",
         Array.from(options.runtimeArgs ?? ["src/runtime/main.ts"]),
         {
           cwd: PACKAGE_ROOT,
-          env,
-          stdio: ["pipe", "pipe", "pipe"]
+          env: runtimeEnv(options),
+          extendEnv: false,
+          stdin: Stream.fromQueue(stdinQueue),
+          stdout: "pipe",
+          stderr: "pipe"
         }
       )
+
       const readyEvents: RuntimeReadyEvent[] = []
       const methods: string[] = []
-      const stderrChunks: Buffer[] = []
       let stdoutBuffer = Buffer.alloc(0)
       let readyParsed = false
-      let settled = false
 
-      const reject = (message: string): void => {
-        if (settled) {
-          return
-        }
+      return yield* Effect.scoped(
+        Effect.gen(function* () {
+          const handle = yield* command
+          const stderrFiber = yield* handle.stderr.pipe(
+            Stream.runFold(
+              () => Buffer.alloc(0),
+              (acc, chunk) => Buffer.concat([acc, Buffer.from(chunk)])
+            ),
+            Effect.forkChild
+          )
 
-        settled = true
-        child.kill()
-        resume(Effect.fail(new MainTestRuntimeFailure({ message })))
-      }
+          const processChunk = (chunk: Uint8Array): Effect.Effect<void, MainTestRuntimeFailure> =>
+            Effect.gen(function* () {
+              stdoutBuffer = Buffer.concat([stdoutBuffer, Buffer.from(chunk)])
+              if (!readyParsed) {
+                const newline = stdoutBuffer.indexOf(0x0a)
+                if (newline === -1) {
+                  return
+                }
+                const line = stdoutBuffer.subarray(0, newline).toString("utf8").replace(/\r$/, "")
+                stdoutBuffer = stdoutBuffer.subarray(newline + 1)
+                readyEvents.push(decodeRuntimeReadyEventJson(line))
+                readyParsed = true
+              }
 
-      child.stdout.on("data", (chunk: Buffer) => {
-        stdoutBuffer = Buffer.concat([stdoutBuffer, chunk])
-        try {
-          processStdout()
-        } catch (error) {
-          reject(error instanceof globalThis.Error ? error.message : String(error))
-        }
-      })
-      child.stderr.on("data", (chunk: Buffer) => {
-        stderrChunks.push(chunk)
-      })
-      child.on("error", (error) => reject(error.message))
-      child.on("close", (exitCode) => {
-        if (exitCode !== null && typeof exitCode !== "number") {
-          reject("runtime process closed with invalid exit code")
-          return
-        }
-        if (settled) {
-          return
-        }
+              while (stdoutBuffer.byteLength >= 4) {
+                const frameLength = stdoutBuffer.readUInt32BE(0)
+                if (stdoutBuffer.byteLength < 4 + frameLength) {
+                  return
+                }
+                const requestValue = yield* decodeHostProtocolFrame(
+                  stdoutBuffer.subarray(4, 4 + frameLength),
+                  "runtime stdout request"
+                ).pipe(
+                  Effect.mapError(
+                    (cause) =>
+                      new MainTestRuntimeFailure({
+                        message: `failed to decode runtime stdout frame: ${String(cause)}`
+                      })
+                  )
+                )
+                stdoutBuffer = stdoutBuffer.subarray(4 + frameLength)
+                if (requestValue.kind !== "request") {
+                  return yield* new MainTestRuntimeFailure({
+                    message: `runtime stdout was not a request: ${encodeUnknownJson(requestValue)}`
+                  })
+                }
+                methods.push(requestValue.method)
+                yield* Queue.offer(stdinQueue, encodeFrame(responseFor(requestValue)))
+              }
+            })
 
-        settled = true
-        resume(
-          Effect.succeed({
-            readyEvents,
-            methods,
-            stderr: Buffer.concat(stderrChunks).toString("utf8"),
-            exitCode,
-            trailingStdoutBytes: stdoutBuffer.byteLength
-          })
-        )
-      })
+          yield* handle.stdout.pipe(
+            Stream.mapError(
+              (cause) =>
+                new MainTestRuntimeFailure({
+                  message: `runtime stdout stream failed: ${String(cause)}`
+                })
+            ),
+            Stream.runForEach(processChunk)
+          )
 
-      const processStdout = (): void => {
-        if (!readyParsed) {
-          const newline = stdoutBuffer.indexOf(0x0a)
-          if (newline === -1) {
-            return
-          }
-
-          const line = stdoutBuffer.subarray(0, newline).toString("utf8").replace(/\r$/, "")
-          stdoutBuffer = stdoutBuffer.subarray(newline + 1)
-          const parsed = decodeRuntimeReadyEventJson(line)
-          readyEvents.push(parsed)
-          readyParsed = true
-        }
-
-        while (stdoutBuffer.byteLength >= 4) {
-          const frameLength = stdoutBuffer.readUInt32BE(0)
-          if (stdoutBuffer.byteLength < 4 + frameLength) {
-            return
-          }
-
-          const requestValue = Effect.runSync(
-            decodeHostProtocolFrame(
-              stdoutBuffer.subarray(4, 4 + frameLength),
-              "runtime stdout request"
+          const exitCode = yield* handle.exitCode.pipe(
+            Effect.mapError(
+              (cause) =>
+                new MainTestRuntimeFailure({
+                  message: `runtime process exit failed: ${String(cause)}`
+                })
             )
           )
-          stdoutBuffer = stdoutBuffer.subarray(4 + frameLength)
+          const stderrBuffer = yield* Fiber.join(stderrFiber)
 
-          if (requestValue.kind !== "request") {
-            throw new globalThis.Error(
-              `runtime stdout was not a request: ${encodeUnknownJson(requestValue)}`
-            )
-          }
-
-          methods.push(requestValue.method)
-          child.stdin.write(encodeFrame(responseFor(requestValue)))
-        }
-      }
-      return Effect.sync(() => {
-        if (!settled) {
-          settled = true
-          child.kill()
-        }
-      })
+          return {
+            readyEvents,
+            methods,
+            stderr: stderrBuffer.toString("utf8"),
+            exitCode: exitCode as number,
+            trailingStdoutBytes: stdoutBuffer.byteLength
+          } satisfies RuntimeHostResult
+        })
+      )
     })
   )
 
 const runCommand = (command: string, args: readonly string[]): Promise<void> =>
-  Effect.runPromise(
-    Effect.callback<void, MainTestRuntimeFailure>((resume) => {
-      const child = spawn(command, Array.from(args), {
-        cwd: PACKAGE_ROOT,
-        stdio: ["ignore", "ignore", "pipe"]
-      })
-      const stderrChunks: Buffer[] = []
-
-      child.stderr.on("data", (chunk: Buffer) => {
-        stderrChunks.push(chunk)
-      })
-      let settled = false
-      const reject = (message: string): void => {
-        if (settled) {
-          return
-        }
-        settled = true
-        resume(Effect.fail(new MainTestRuntimeFailure({ message })))
-      }
-
-      child.on("error", (error) => reject(error.message))
-      child.on("close", (exitCode) => {
-        if (exitCode !== null && typeof exitCode !== "number") {
-          reject(`${command} ${args.join(" ")} closed with invalid exit code`)
-          return
-        }
-        if (settled) {
-          return
-        }
-        settled = true
-        if (exitCode === 0) {
-          resume(Effect.void)
-        } else {
-          resume(
-            Effect.fail(
+  BunServicesRuntime.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const child = ChildProcess.make(command, Array.from(args), {
+          cwd: PACKAGE_ROOT,
+          stdin: "ignore",
+          stdout: "ignore",
+          stderr: "pipe"
+        })
+        const handle = yield* child
+        const stderrFiber = yield* handle.stderr.pipe(
+          Stream.runFold(
+            () => Buffer.alloc(0),
+            (acc, chunk) => Buffer.concat([acc, Buffer.from(chunk)])
+          ),
+          Effect.forkChild
+        )
+        const exitCode = yield* handle.exitCode.pipe(
+          Effect.mapError(
+            (cause) =>
               new MainTestRuntimeFailure({
-                message: `${command} ${args.join(" ")} failed with ${exitCode}: ${Buffer.concat(stderrChunks).toString("utf8")}`
+                message: `${command} ${args.join(" ")} failed to spawn: ${String(cause)}`
               })
-            )
           )
+        )
+        const stderrBuffer = yield* Fiber.join(stderrFiber)
+        if ((exitCode as number) !== 0) {
+          return yield* new MainTestRuntimeFailure({
+            message: `${command} ${args.join(" ")} failed with ${String(exitCode)}: ${stderrBuffer.toString("utf8")}`
+          })
         }
       })
-      return Effect.sync(() => {
-        if (!settled) {
-          settled = true
-          child.kill()
-        }
-      })
-    })
+    )
   )
 
 const responseFor = (request: HostProtocolRequest): unknown => {

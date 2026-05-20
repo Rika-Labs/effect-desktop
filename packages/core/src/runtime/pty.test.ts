@@ -7,7 +7,7 @@ import {
   HostProtocolResourceBusyError,
   HostProtocolStaleHandleError
 } from "@effect-desktop/bridge"
-import { Cause, Deferred, Effect, Exit, Option, Schedule, Schema, Stream } from "effect"
+import { Cause, Deferred, Effect, Exit, Fiber, Option, Schedule, Schema, Stream } from "effect"
 
 import { PermissionActor } from "./permission-registry.js"
 import {
@@ -956,7 +956,7 @@ const makeFakeChild = (options: {
       return
     }
     settled = true
-    clearTimeout(naturalExitTimer)
+    Effect.runFork(Fiber.interrupt(naturalExitFiber))
     running = false
     Effect.runSync(
       Deferred.succeed(
@@ -977,20 +977,25 @@ const makeFakeChild = (options: {
       return
     }
     settled = true
-    clearTimeout(naturalExitTimer)
+    Effect.runFork(Fiber.interrupt(naturalExitFiber))
     running = false
     Effect.runSync(
       Deferred.fail(exitState, new PtyFakeChildFailure({ cause: error })).pipe(Effect.asVoid)
     )
   }
-  const naturalExitTimer = setTimeout(() => {
-    if (options.exitError === undefined) {
-      finish()
-    } else {
-      fail(options.exitError)
-    }
-  }, options.naturalExitDelayMs ?? 0)
-  naturalExitTimer.unref()
+  const naturalExitFiber = Effect.runFork(
+    Effect.sleep(options.naturalExitDelayMs ?? 0).pipe(
+      Effect.andThen(
+        Effect.sync(() => {
+          if (options.exitError === undefined) {
+            finish()
+          } else {
+            fail(options.exitError)
+          }
+        })
+      )
+    )
+  )
 
   return {
     pid: Option.some(42),
@@ -1041,12 +1046,16 @@ const makeFakeChild = (options: {
       if (options.killExitDelayMs === undefined) {
         finish(String(killedWith))
       } else {
-        return new Promise<void>((resolve) => {
-          setTimeout(() => {
-            finish(String(killedWith))
-            resolve()
-          }, options.killExitDelayMs)
-        })
+        const delayMs = options.killExitDelayMs
+        return Effect.runPromise(
+          Effect.sleep(delayMs).pipe(
+            Effect.andThen(
+              Effect.sync(() => {
+                finish(String(killedWith))
+              })
+            )
+          )
+        )
       }
     }
     return Promise.resolve()

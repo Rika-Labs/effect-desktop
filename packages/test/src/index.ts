@@ -10,6 +10,7 @@ import {
   FileSystem,
   Layer,
   Option,
+  Path,
   Queue,
   Schema,
   Sink,
@@ -462,7 +463,8 @@ export const makeMemoryFilesystem = (
     const now = options.now ?? (() => clock.currentTimeMillisUnsafe())
     const memory = makeMemoryFilesystemRuntime(options, now)
     return yield* makeFilesystem(registry, owner, memory.options).pipe(
-      Effect.provideService(FileSystem.FileSystem, memory.fileSystem)
+      Effect.provideService(FileSystem.FileSystem, memory.fileSystem),
+      Effect.provide(Path.layer)
     )
   })
 

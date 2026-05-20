@@ -509,16 +509,14 @@ const registerCommandGroup = <Rpcs extends Rpc.Any, E, R>(
       E,
       R
     >
+    const clientContext = yield* Layer.build(
+      Layer.mergeAll(middlewareHandlers, makePermissionInterceptorLayer()).pipe(
+        Layer.provideMerge(Layer.succeed(PermissionRegistry, permissions))
+      )
+    ).pipe(Scope.provide(scope))
     const client = yield* RpcTest.makeClient(
       registration.group.middleware(PermissionInterceptor)
-    ).pipe(
-      Effect.provide(
-        Layer.mergeAll(middlewareHandlers, makePermissionInterceptorLayer()).pipe(
-          Layer.provideMerge(Layer.succeed(PermissionRegistry, permissions))
-        )
-      ),
-      Scope.provide(scope)
-    )
+    ).pipe(Effect.provide(clientContext), Scope.provide(scope))
     const prepared = yield* prepareCommandGroup(registration, client, registrationToken)
     reservedIds = prepared.map((command) => command.id)
     const resourceId = commandGroupResourceId(reservedIds)

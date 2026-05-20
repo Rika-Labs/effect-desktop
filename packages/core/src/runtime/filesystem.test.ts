@@ -873,7 +873,10 @@ const makeTestFilesystem = (
 ): Effect.Effect<FilesystemApi> =>
   Effect.gen(function* () {
     const registry = yield* makeResourceRegistry()
-    return yield* runtimeProvide(makeFilesystem(registry, TEST_OWNER, options), fileSystemLayer)
+    return yield* runtimeProvide(
+      makeFilesystem(registry, TEST_OWNER, options),
+      Layer.mergeAll(fileSystemLayer, BunPath.layer)
+    )
   })
 
 const runtimeProvide = <A, E, R, LE>(
@@ -1167,7 +1170,7 @@ const makeWatchFixture = (
       makeFilesystem(registry, TEST_OWNER, {
         permissions: { readRoots: ["/tmp/project"] }
       }),
-      fsLayer
+      Layer.mergeAll(fsLayer, BunPath.layer)
     )
 
     return {
