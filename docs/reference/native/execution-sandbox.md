@@ -8,19 +8,22 @@ effect_version: 4
 
 # `ExecutionSandbox`
 
-Product-neutral isolated execution sandbox service. Callers create a sandbox with explicit cwd, environment, filesystem, network, budget, and cleanup policy, run a command inside that sandbox, and destroy the sandbox when the resource is no longer needed.
+Product-neutral isolated execution sandbox service. The contract describes creating a sandbox with explicit cwd, environment, filesystem, network, budget, and cleanup policy, running a command inside that sandbox, and destroying the sandbox when the resource is no longer needed. The create, run, and destroy operations are declared as capability facts but are not callable in this build; `isSupported` and the `ExecutionSandbox.Event` stream are the genuinely callable surface.
 
-The public service is Layer-first and test-substitutable. The TypeScript service validates Schema contracts before transport, checks declared permissions before privileged work, emits typed lifecycle events, and records audit rows for privileged use and denial.
+The public service is Layer-first and test-substitutable.
 
 ## Methods
 
-| Method        | Payload                                   | Success                                                   |
-| ------------- | ----------------------------------------- | --------------------------------------------------------- |
-| `create`      | `{ actor, policy, sandboxId?, traceId? }` | `{ sandboxId, policy, state: "created" }`                 |
-| `run`         | `{ sandboxId, command, args?, traceId? }` | `{ sandboxId, runId, status, exitCode?, stdout, stderr }` |
-| `destroy`     | `{ sandboxId, traceId? }`                 | `{ sandboxId, destroyed }`                                |
-| `isSupported` | `void`                                    | `{ supported, reason? }`                                  |
-| `events`      | `void`                                    | stream of sandbox lifecycle events                        |
+| Method        | Payload | Success                            |
+| ------------- | ------- | ---------------------------------- |
+| `isSupported` | `void`  | `{ supported, reason? }`           |
+| `events`      | `void`  | stream of sandbox lifecycle events |
+
+## Capability facts (non-callable)
+
+`create`, `run`, and `destroy` are advertised in the native capability manifest as capability facts with `support.status: "unsupported"` (reason `host-adapter-unimplemented`). They are not invocable RPCs: the surface registers no handlers or client methods for them, and the RPC group exposes only `isSupported`. They exist only so the manifest can describe the intended sandbox lifecycle and so permission tooling can reason about the `native.invoke` authority they would require.
+
+When OS isolation support lands, `create` would accept `{ actor, policy, sandboxId?, traceId? }` and return `{ sandboxId, policy, state: "created" }`, `run` would accept `{ sandboxId, command, args?, traceId? }` and return `{ sandboxId, runId, status, exitCode?, stdout, stderr }`, and `destroy` would accept `{ sandboxId, traceId? }` and return `{ sandboxId, destroyed }`.
 
 ## Policy
 
@@ -45,7 +48,7 @@ Filesystem and network access deny by default. Omitting `filesystem` or `network
 
 ## Audit
 
-The service audits permission use and denial. `create` checks filesystem and network permissions only when the policy asks for roots or hosts. `run` checks `process.spawn` for the command, cwd, and environment mode before calling the host client.
+The intended permission model audits permission use and denial: `create` would check filesystem and network permissions only when the policy asks for roots or hosts, and `run` would check `process.spawn` for the command, cwd, and environment mode before calling the host client. Because `create`, `run`, and `destroy` are non-callable capability facts in this build, no audit rows are produced for them yet.
 
 ## Errors
 
@@ -53,7 +56,7 @@ The service audits permission use and denial. `create` checks filesystem and net
 
 ## Support
 
-The current Rust host adapter is intentionally fail-closed while OS isolation adapters are not implemented.
+The lifecycle operations are demoted to non-callable capability facts while OS isolation adapters are not implemented.
 Production OS isolation is tracked in [issue #1406](https://github.com/Rika-Labs/effect-desktop/issues/1406).
 
 | Platform | Status        | Reason                       |
@@ -62,8 +65,7 @@ Production OS isolation is tracked in [issue #1406](https://github.com/Rika-Labs
 | Windows  | `unsupported` | `host-adapter-unimplemented` |
 | Linux    | `unsupported` | `host-adapter-unimplemented` |
 
-`isSupported` returns `{ supported: false, reason: "host-adapter-unimplemented" }`. Mutating host requests decode and validate payloads, then return typed `Unsupported`; invalid payloads are rejected before the unsupported response.
-The bridge-backed `ExecutionSandbox.Event` stream also fails as typed `Unsupported` before opening a host subscription until an OS-enforced native adapter can publish lifecycle events.
+`isSupported` returns `{ supported: false, reason: "host-adapter-unimplemented" }`. The bridge-backed `ExecutionSandbox.Event` stream fails as typed `Unsupported` before opening a host subscription until an OS-enforced native adapter can publish lifecycle events.
 
 ## Testing
 

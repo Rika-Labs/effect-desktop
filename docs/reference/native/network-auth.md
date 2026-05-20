@@ -14,21 +14,28 @@ The public service is Layer-first and test-substitutable. The TypeScript service
 
 ## Methods
 
-| Method              | Payload                               | Success                  |
-| ------------------- | ------------------------------------- | ------------------------ |
-| `setProxy`          | `{ profile, mode, server?, bypass? }` | proxy result             |
-| `handleAuth`        | `{ profile, requestId, origin, ... }` | decision record          |
-| `handleCertificate` | `{ profile, requestId, origin, ... }` | decision record          |
-| `isSupported`       | `void`                                | `{ supported, reason? }` |
-| `events`            | optional `SessionProfileHandle`       | stream of events         |
+The surface exposes only the genuinely callable methods below.
 
-Proxy modes are `direct`, `system`, and `fixed`. `fixed` requires an `http`, `https`, or `socks5` proxy server origin. HTTP auth `allow` requires `username` and `password`; `deny` must omit credentials. Certificate fingerprints must be `sha256:` followed by 64 hex characters.
+| Method        | Payload                         | Success                  |
+| ------------- | ------------------------------- | ------------------------ |
+| `isSupported` | `void`                          | `{ supported, reason? }` |
+| `events`      | optional `SessionProfileHandle` | stream of events         |
 
-Denied certificate decisions fail as typed `PermissionDenied` security errors. Malformed certificate fingerprints fail as typed `InvalidArgument` before client work.
+## Capability facts (non-callable)
+
+`setProxy`, `handleAuth`, and `handleCertificate` are **not callable**. They are advertised in the native capability manifest as capability facts with `support.status: "unsupported"`, so callers can discover the intended contract, but the surface does not register them as invocable RPCs.
+
+| Capability fact     | Intended payload                      | Status        |
+| ------------------- | ------------------------------------- | ------------- |
+| `setProxy`          | `{ profile, mode, server?, bypass? }` | `unsupported` |
+| `handleAuth`        | `{ profile, requestId, origin, ... }` | `unsupported` |
+| `handleCertificate` | `{ profile, requestId, origin, ... }` | `unsupported` |
+
+Proxy modes are `direct`, `system`, and `fixed`. `fixed` requires an `http`, `https`, or `socks5` proxy server origin. HTTP auth `allow` requires `username` and `password`; `deny` must omit credentials. Certificate fingerprints must be `sha256:` followed by 64 hex characters. These constraints describe the intended contract; the methods cannot currently be invoked.
 
 ## Support
 
-The Rust host routes the methods and validates payloads, but it does not yet receive portable proxy, auth-challenge, or certificate-decision callbacks from profile-bound WebViews. Host requests therefore fail closed with typed `Unsupported` after validation.
+The host does not yet receive portable proxy, auth-challenge, or certificate-decision callbacks from profile-bound WebViews. Because those methods are not implemented, they are published as non-callable capability facts with `support.status: "unsupported"` rather than registered as invocable RPCs.
 
 | Platform | Status        | Reason                          |
 | -------- | ------------- | ------------------------------- |
@@ -36,7 +43,7 @@ The Rust host routes the methods and validates payloads, but it does not yet rec
 | Windows  | `unsupported` | `host-network-auth-unavailable` |
 | Linux    | `unsupported` | `host-network-auth-unavailable` |
 
-`isSupported` returns `{ supported: false, reason: "host-network-auth-unavailable" }` from the host. Use `makeNetworkAuthMemoryClient()` for deterministic success and security-denial tests; use `makeNetworkAuthUnsupportedClient()` for the typed unsupported path.
+`isSupported` returns `{ supported: false, reason: "host-network-auth-unavailable" }` from the host. Use `makeNetworkAuthMemoryClient()` for deterministic `isSupported` and event tests; use `makeNetworkAuthUnsupportedClient()` for the typed unsupported path.
 
 ## Related
 

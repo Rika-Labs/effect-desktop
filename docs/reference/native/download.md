@@ -8,27 +8,26 @@ effect_version: 4
 
 # `Download`
 
-`Download` declares profile-owned download start, pause, resume, cancel, list, and event operations. Each started download returns a generation-stamped `download` resource handle registered with `ResourceRegistry`; closing the owner scope cancels the native download once.
+`Download` describes profile-owned download lifecycle and event operations. The download start, pause, resume, cancel, and list operations are declared as capability facts but are not callable in this build; `isSupported` and the `Download.Event` stream are the genuinely callable surface.
 
-The public service is Layer-first and test-substitutable. The TypeScript service validates Schema contracts before transport, checks `native.invoke` permissions before client side effects, and exposes `Download.Event` as a typed stream. The memory client records snapshots under download handles and emits ordered replayable events, including terminal `canceled` events for interrupted downloads.
+The public service is Layer-first and test-substitutable. The TypeScript service exposes `Download.Event` as a typed stream. The memory client records snapshots under download handles and emits ordered replayable events, including terminal `canceled` events for interrupted downloads.
 
 ## Methods
 
-| Method        | Payload                          | Success                  |
-| ------------- | -------------------------------- | ------------------------ |
-| `start`       | `{ profile, url, destination? }` | download snapshot        |
-| `pause`       | `{ download }`                   | download snapshot        |
-| `resume`      | `{ download }`                   | download snapshot        |
-| `cancel`      | `{ download }`                   | download snapshot        |
-| `list`        | `{ profile? }`                   | `{ downloads }`          |
-| `isSupported` | `void`                           | `{ supported, reason? }` |
-| `events`      | optional download handle         | stream of events         |
+| Method        | Payload                  | Success                  |
+| ------------- | ------------------------ | ------------------------ |
+| `isSupported` | `void`                   | `{ supported, reason? }` |
+| `events`      | optional download handle | stream of events         |
 
-`url` must be absolute `http` or `https`. `destination` must be non-empty and must not contain parent traversal segments.
+## Capability facts (non-callable)
+
+`start`, `pause`, `resume`, `cancel`, and `list` are advertised in the native capability manifest as capability facts with `support.status: "unsupported"` (reason `host-download-unavailable`). They are not invocable RPCs: the surface registers no handlers or client methods for them. They exist only so the manifest can describe the intended profile-owned download lifecycle and so permission tooling can reason about the `native.invoke` authority they would require.
+
+When download support lands, `start` accepts `{ profile, url, destination? }` where `url` must be absolute `http` or `https` and `destination` must be non-empty without parent traversal segments; `pause`, `resume`, and `cancel` take `{ download }`; `list` takes `{ profile? }`. Each started download would return a generation-stamped `download` resource handle registered with `ResourceRegistry`.
 
 ## Support
 
-The Rust host routes the methods and validates payloads, but it does not yet receive portable provider download callbacks from profile-bound WebViews. Host requests therefore fail closed with typed `Unsupported` after validation.
+The host does not yet receive portable provider download callbacks from profile-bound WebViews, so the lifecycle methods are demoted to non-callable capability facts rather than routed RPCs.
 
 | Platform | Status        | Reason                      |
 | -------- | ------------- | --------------------------- |

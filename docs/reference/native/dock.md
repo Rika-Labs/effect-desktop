@@ -17,10 +17,17 @@ Dock/taskbar-facing application state. The surface is intentionally explicit abo
 | `setBadgeCount`    | `{ count: number }`                                              | `void`                   |
 | `setBadgeText`     | `{ text: string \| null }`                                       | `void`                   |
 | `setProgress`      | `{ value: number \| null, options?: { state?: ProgressState } }` | `void`                   |
-| `setMenu`          | `{ menu: MenuTemplate \| null }`                                 | `void`                   |
-| `setJumpList`      | `{ items: DockJumpListItem[] }`                                  | `void`                   |
 | `requestAttention` | `{ critical?: boolean }`                                         | `void`                   |
 | `isSupported`      | `{ method: DockMethod }`                                         | `{ supported: boolean }` |
+
+## Capability facts (non-callable)
+
+`setMenu` and `setJumpList` are not callable RPCs. They are advertised in the native capability manifest as capability facts with `support.status: "unsupported"` (reason: host adapter does not implement the method on any platform), but no host adapter can be invoked.
+
+| Capability fact | Intended role                                 |
+| --------------- | --------------------------------------------- |
+| `setMenu`       | Install a Dock context menu (`MenuTemplate`). |
+| `setJumpList`   | Install Windows taskbar jump-list items.      |
 
 ## Errors
 
@@ -31,8 +38,7 @@ Dock/taskbar-facing application state. The surface is intentionally explicit abo
 - `requestAttention` is supported.
 - `setProgress` is supported as application-scoped Dock/taskbar progress. Values are `0..1`; `null` clears progress.
 - `setBadgeCount` and `setBadgeText` are partial: macOS is supported; Linux and Windows are not wired in the current host adapter.
-- `setMenu` is currently marked unsupported by the public capability metadata. The Rust host validates and routes the call, but macOS dock menu installation still requires a native delegate bridge.
-- `setJumpList` is unsupported. The Rust host validates and routes the call, then fails closed until the Windows taskbar adapter exists.
+- `setMenu` and `setJumpList` are non-callable capability facts. macOS dock menu installation still requires a native delegate bridge, and jump lists require a Windows taskbar adapter; until those land the methods cannot be invoked.
 
 ## Related
 

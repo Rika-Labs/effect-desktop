@@ -10,27 +10,34 @@ effect_version: 4
 
 `NativeNetwork` declares permission-gated native transport helpers for HTTP fetches, uploads, WebSocket connections, and localhost URL construction. It is the transport surface; policy decisions such as allow/deny rules still belong in `EgressPolicy`.
 
-The public service is Layer-first and test-substitutable. The TypeScript service validates Schema contracts before transport, checks `native.invoke` permissions before client side effects, registers long-lived WebSocket handles with `ResourceRegistry`, and exposes typed `NativeNetwork.Event` progress/lifecycle events. The memory client proves success, denial, unsupported, host failure, malformed input rejection, and WebSocket cleanup without real network I/O.
+The public service is Layer-first and test-substitutable. The TypeScript service validates Schema contracts before transport, checks `native.invoke` permissions before client side effects, and exposes typed `NativeNetwork.Event` progress/lifecycle events. The transport methods (`fetch`, `upload`, `connectWebSocket`, `closeWebSocket`, `localhostUrl`) are currently non-callable capability facts; only `isSupported` and the event stream are invocable.
 
 ## Methods
 
-| Method             | Payload                            | Success                  |
-| ------------------ | ---------------------------------- | ------------------------ |
-| `fetch`            | `{ url, method, headers?, body? }` | fetch result             |
-| `upload`           | `{ url, body, method?, ... }`      | upload result            |
-| `connectWebSocket` | `{ url, protocols? }`              | WebSocket snapshot       |
-| `closeWebSocket`   | `{ socket }`                       | WebSocket snapshot       |
-| `localhostUrl`     | `{ port, path?, secure? }`         | localhost URL result     |
-| `isSupported`      | `void`                             | `{ supported, reason? }` |
-| `events`           | `void`                             | stream of events         |
+The surface exposes only the genuinely callable methods below.
 
-`fetch` accepts HTTP(S) URLs and methods `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, and `HEAD`. `GET` requests must omit `body`. `upload` accepts HTTP(S) URLs, a string body, and optional `POST`, `PUT`, or `PATCH`. `connectWebSocket` accepts only `ws` and `wss` URLs. `localhostUrl` accepts ports from 1 through 65535 and absolute paths without traversal.
+| Method        | Payload | Success                  |
+| ------------- | ------- | ------------------------ |
+| `isSupported` | `void`  | `{ supported, reason? }` |
+| `events`      | `void`  | stream of events         |
 
-WebSocket connections are long-lived resources. Closing the owner scope closes the socket through the same typed `closeWebSocket` client path used by explicit close calls.
+## Capability facts (non-callable)
+
+`fetch`, `upload`, `connectWebSocket`, `closeWebSocket`, and `localhostUrl` are **not callable**. They are advertised in the native capability manifest as capability facts with `support.status: "unsupported"`, so callers can discover the intended contract, but the surface does not register them as invocable RPCs.
+
+| Capability fact    | Intended payload                   | Status        |
+| ------------------ | ---------------------------------- | ------------- |
+| `fetch`            | `{ url, method, headers?, body? }` | `unsupported` |
+| `upload`           | `{ url, body, method?, ... }`      | `unsupported` |
+| `connectWebSocket` | `{ url, protocols? }`              | `unsupported` |
+| `closeWebSocket`   | `{ socket }`                       | `unsupported` |
+| `localhostUrl`     | `{ port, path?, secure? }`         | `unsupported` |
+
+The intended contract: `fetch` accepts HTTP(S) URLs and methods `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, and `HEAD`, and `GET` requests must omit `body`. `upload` accepts HTTP(S) URLs, a string body, and optional `POST`, `PUT`, or `PATCH`. `connectWebSocket` accepts only `ws` and `wss` URLs. `localhostUrl` accepts ports from 1 through 65535 and absolute paths without traversal. These constraints describe the intended contract; the methods cannot currently be invoked.
 
 ## Support
 
-The Rust host routes the methods and validates payloads, but it does not yet provide a portable native HTTP/WebSocket transport adapter. Host requests therefore fail closed with typed `Unsupported` after validation.
+The host does not yet provide a portable native HTTP/WebSocket transport adapter. Because those methods are not implemented, they are published as non-callable capability facts with `support.status: "unsupported"` rather than registered as invocable RPCs.
 
 | Platform | Status        | Reason                            |
 | -------- | ------------- | --------------------------------- |
@@ -38,7 +45,7 @@ The Rust host routes the methods and validates payloads, but it does not yet pro
 | Windows  | `unsupported` | `host-native-network-unavailable` |
 | Linux    | `unsupported` | `host-native-network-unavailable` |
 
-`isSupported` returns `{ supported: false, reason: "host-native-network-unavailable" }` from the host. Use `makeNativeNetworkMemoryClient()` for deterministic transport and cancellation tests; use `makeNativeNetworkUnsupportedClient()` for the typed unsupported path.
+`isSupported` returns `{ supported: false, reason: "host-native-network-unavailable" }` from the host. Use `makeNativeNetworkMemoryClient()` for deterministic `isSupported` and event tests; use `makeNativeNetworkUnsupportedClient()` for the typed unsupported path.
 
 ## Related
 

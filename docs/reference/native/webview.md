@@ -50,12 +50,11 @@ before a native popup is created and emits the same event with a popup-policy
 reason. `openExternal` approval is still modeled as policy denial rather than
 automatic delegation to `Shell.openExternal`.
 
-Subframe identity has a validation-first contract, but is not host-backed today.
-`listFrames`, `postToFrame`, and `WebView.FrameEvent` are Schema-typed and
-permission-gated. The host validates WebView and frame handles before returning
-typed unsupported with `host-frame-routing-unavailable`. The current Wry-backed
-host path does not provide portable stable frame identifiers across macOS,
-Windows, and Linux, so no frame handles are created yet.
+Subframe identity is not host-backed today. `listFrames` and `postToFrame` are
+non-callable capability facts advertised with `host-frame-routing-unavailable`;
+`WebView.FrameEvent` is Schema-typed but has no host adapter. The current
+Wry-backed host path does not provide portable stable frame identifiers across
+macOS, Windows, and Linux, so no frame handles are created yet.
 
 Runtime event coverage is partial. `onRuntimeEvent` exposes host-observed page
 load and drag/drop events through `WebView.RuntimeEvent`; events are ordered by
@@ -72,34 +71,31 @@ validation-first unsupported until profile-bound WebViews can route provider
 download callbacks through retained native resources.
 
 Request and response interception are also separate from `WebView`.
-`WebRequest` exposes ordered `onBeforeRequest`, `onHeadersReceived`,
-`removeListener`, and event contracts scoped to `SessionProfileHandle`.
-Interceptors register as ResourceRegistry resources and emit ordered lifecycle
-events. The host adapter is validation-first unsupported until profile-bound
+`WebRequest` defines ordered `onBeforeRequest`, `onHeadersReceived`,
+`removeListener`, and event contracts scoped to `SessionProfileHandle`. Those
+interception methods are non-callable capability facts until profile-bound
 WebViews can route provider request and response callbacks through retained
 native resources.
 
-`setAudioMuted` and `respondToPermission` are permission-gated and
-handle-validated, but return typed unsupported. `setAudioMuted` uses
-`host-runtime-media-control-unavailable`; `respondToPermission` uses
-`host-permission-request-routing-unavailable`. Keeping the permission response
-route explicit gives permission decisions an auditable path before native prompt
-routing exists.
+`setAudioMuted` and `respondToPermission` are non-callable capability facts.
+`setAudioMuted` is advertised with `host-runtime-media-control-unavailable`;
+`respondToPermission` with `host-permission-request-routing-unavailable`.
+Keeping the permission response capability explicit documents the intended
+permission-decision path before native prompt routing exists.
 
 Document controls are partially host-backed for child WebViews. `print` and
 `setZoom` route through the retained Wry WebView resource. `captureScreenshot`,
-`printToPdf`, `findInPage`, and `setUserAgent` are permission-gated and
-handle-validated, but return typed unsupported because Wry exposes no portable
-public screenshot, PDF export, find-in-page, or runtime user-agent setter. Wry
-supports user-agent policy at WebView creation time; Effect Desktop does not
-pretend that is a runtime mutation.
+`printToPdf`, `findInPage`, and `setUserAgent` are non-callable capability facts
+because Wry exposes no portable public screenshot, PDF export, find-in-page, or
+runtime user-agent setter. Wry supports user-agent policy at WebView creation
+time; Effect Desktop does not pretend that is a runtime mutation.
 
 Inspection controls are partially host-backed for child WebViews.
 `openDevTools` and `closeDevTools` route through the retained Wry WebView in
 debug builds. Production builds return typed unsupported unless the host is
 compiled with a devtools-enabled WebView provider. `attachDebugger` is a
-permission-gated, validation-first unsupported route because Wry exposes no
-portable debugger protocol attachment API.
+non-callable capability fact because Wry exposes no portable debugger protocol
+attachment API.
 
 Preload isolation is create-time and host-backed for child WebViews.
 `WebView.create` accepts an optional `isolation.exposedApis` manifest. The host
@@ -157,32 +153,41 @@ import { Native, WebView, WebViewError, WebViewRpcs } from "@effect-desktop/nati
 
 ## Methods
 
-| Method                | Payload                                     | Success                  |
-| --------------------- | ------------------------------------------- | ------------------------ |
-| `create`              | `{ window, url, originPolicy, isolation? }` | webview handle           |
-| `loadRoute`           | `{ webview, route }`                        | `void`                   |
-| `loadUrl`             | `{ webview, url }`                          | `void`                   |
-| `reload`              | `{ webview }`                               | `void`                   |
-| `stop`                | `{ webview }`                               | `void`                   |
-| `goBack`              | `{ webview }`                               | `void`                   |
-| `goForward`           | `{ webview }`                               | `void`                   |
-| `getNavigationState`  | `{ webview }`                               | navigation state         |
-| `captureScreenshot`   | `{ webview }`                               | screenshot data          |
-| `print`               | `{ webview }`                               | `void`                   |
-| `printToPdf`          | `{ webview }`                               | PDF bytes                |
-| `findInPage`          | `{ webview, query }`                        | match counts             |
-| `setZoom`             | `{ webview, zoom }`                         | `void`                   |
-| `setUserAgent`        | `{ webview, userAgent }`                    | `void`                   |
-| `setAudioMuted`       | `{ webview, muted }`                        | `void`                   |
-| `respondToPermission` | `{ webview, requestId, decision }`          | `void`                   |
-| `listFrames`          | `{ webview }`                               | frame list               |
-| `postToFrame`         | `{ webview, frame, payload }`               | `void`                   |
-| `openDevTools`        | `{ webview }`                               | `void`                   |
-| `closeDevTools`       | `{ webview }`                               | `void`                   |
-| `attachDebugger`      | `{ webview }`                               | `void`                   |
-| `setNavigationPolicy` | `{ webview, policy }`                       | `void`                   |
-| `capability`          | `{ name, platform?, mode? }`                | `{ supported: boolean }` |
-| `destroy`             | `{ webview }`                               | `void`                   |
+The callable RPCs on this surface are:
+
+| Method                | Payload                                     | Success          |
+| --------------------- | ------------------------------------------- | ---------------- |
+| `create`              | `{ window, url, originPolicy, isolation? }` | webview handle   |
+| `loadRoute`           | `{ webview, route }`                        | `void`           |
+| `loadUrl`             | `{ webview, url }`                          | `void`           |
+| `reload`              | `{ webview }`                               | `void`           |
+| `stop`                | `{ webview }`                               | `void`           |
+| `goBack`              | `{ webview }`                               | `void`           |
+| `goForward`           | `{ webview }`                               | `void`           |
+| `getNavigationState`  | `{ webview }`                               | navigation state |
+| `print`               | `{ webview }`                               | `void`           |
+| `setZoom`             | `{ webview, zoom }`                         | `void`           |
+| `openDevTools`        | `{ webview }`                               | `void`           |
+| `closeDevTools`       | `{ webview }`                               | `void`           |
+| `setNavigationPolicy` | `{ webview, policy }`                       | `void`           |
+| `destroy`             | `{ webview }`                               | `void`           |
+
+## Capability facts (non-callable)
+
+The following are not callable RPCs. They are advertised in the native capability manifest as capability facts with `support.status: "unsupported"`, but no host adapter can be invoked. They describe intended contracts until their host adapters land.
+
+| Capability fact       | Intended payload                   | Unsupported reason                            |
+| --------------------- | ---------------------------------- | --------------------------------------------- |
+| `captureScreenshot`   | `{ webview }`                      | `host-document-output-unavailable`            |
+| `printToPdf`          | `{ webview }`                      | `host-document-output-unavailable`            |
+| `findInPage`          | `{ webview, query }`               | `host-document-output-unavailable`            |
+| `setUserAgent`        | `{ webview, userAgent }`           | `host-user-agent-runtime-unavailable`         |
+| `setAudioMuted`       | `{ webview, muted }`               | `host-runtime-media-control-unavailable`      |
+| `respondToPermission` | `{ webview, requestId, decision }` | `host-permission-request-routing-unavailable` |
+| `listFrames`          | `{ webview }`                      | `host-frame-routing-unavailable`              |
+| `postToFrame`         | `{ webview, frame, payload }`      | `host-frame-routing-unavailable`              |
+| `attachDebugger`      | `{ webview }`                      | `host-debugger-protocol-unavailable`          |
+| `capability`          | `{ name, platform?, mode? }`       | `host-adapter-unimplemented`                  |
 
 ## App composition
 
@@ -237,24 +242,22 @@ Create-time preload isolation is host-backed through Wry initialization-script
 and IPC hooks, and reports through the typed `WebView.ApiCall` stream.
 Runtime events are partially host-backed through Wry page-load and drag/drop
 callbacks and report through `WebView.RuntimeEvent`.
-Frame routing is validation-first unsupported. `listFrames`, `postToFrame`, and
-`WebView.FrameEvent` define the public shape, but the host returns
-`host-frame-routing-unavailable` until a provider can create stable frame
-handles and route messages below the top frame.
-`print` and `setZoom` are host-backed through Wry. `captureScreenshot`,
-`printToPdf`, and `findInPage` remain typed unsupported with
-`host-document-output-unavailable`; `setUserAgent` remains typed unsupported
-with `host-user-agent-runtime-unavailable`. `setAudioMuted` and
-`respondToPermission` remain typed unsupported with
-`host-runtime-media-control-unavailable` and
-`host-permission-request-routing-unavailable`.
+`print` and `setZoom` are host-backed through Wry.
 `openDevTools` and `closeDevTools` are host-backed in debug builds only.
-`attachDebugger` remains typed unsupported with
-`host-debugger-protocol-unavailable` because the current Wry provider does not
-offer a portable debugger attach contract.
-`capability` remains a validation-first unsupported route until its own host
-adapter lands. `webViewCapability(...)` remains a local platform and
-runtime-mode feature helper; it does not grant permission.
+
+`captureScreenshot`, `printToPdf`, `findInPage`, `setUserAgent`,
+`setAudioMuted`, `respondToPermission`, `listFrames`, `postToFrame`,
+`attachDebugger`, and `capability` are non-callable capability facts. They are
+advertised in the native capability manifest with `support.status:
+"unsupported"` — `host-document-output-unavailable` for the document-output
+methods, `host-user-agent-runtime-unavailable` for `setUserAgent`,
+`host-runtime-media-control-unavailable` for `setAudioMuted`,
+`host-permission-request-routing-unavailable` for `respondToPermission`,
+`host-frame-routing-unavailable` for the frame methods,
+`host-debugger-protocol-unavailable` for `attachDebugger`, and
+`host-adapter-unimplemented` for `capability` — but none can be invoked.
+`webViewCapability(...)` remains a local platform and runtime-mode feature
+helper; it does not grant permission.
 Request/response interception is also not part of this surface yet; it requires
 a separate native host adapter.
 Proxy/auth/certificate hooks are likewise absent from the current host-backed

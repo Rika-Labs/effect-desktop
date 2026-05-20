@@ -8,19 +8,22 @@ effect_version: 4
 
 # `CookieStore`
 
-`CookieStore` exposes cookie read, write, remove, and event operations scoped to an explicit `SessionProfileHandle`. The profile handle is the partition identity; cookie calls do not use global browser state in the public contract.
+`CookieStore` describes cookie read, write, remove, and event operations scoped to an explicit `SessionProfileHandle`. The profile handle is the partition identity; cookie calls do not use global browser state in the public contract. The get, set, and remove operations are declared as capability facts but are not callable in this build; `isSupported` and the `CookieStore.Event` stream are the genuinely callable surface.
 
-The public service is Layer-first and test-substitutable. The TypeScript service validates Schema contracts before transport, checks `native.invoke` permissions before client side effects, and exposes `CookieStore.Event` as a typed stream. The memory client proves partition isolation by storing cookies under `profile.id`.
+The public service is Layer-first and test-substitutable. The TypeScript service exposes `CookieStore.Event` as a typed stream. The memory client proves partition isolation by storing cookies under `profile.id`.
 
 ## Methods
 
 | Method        | Payload                         | Success                  |
 | ------------- | ------------------------------- | ------------------------ |
-| `get`         | `{ profile, url, name? }`       | `{ cookies }`            |
-| `set`         | `{ profile, url, cookie }`      | `void`                   |
-| `remove`      | `{ profile, url, name }`        | `void`                   |
 | `isSupported` | `void`                          | `{ supported, reason? }` |
 | `events`      | optional `SessionProfileHandle` | stream of events         |
+
+## Capability facts (non-callable)
+
+`get`, `set`, and `remove` are advertised in the native capability manifest as capability facts with `support.status: "unsupported"` (reason `host-cookie-store-unavailable`). They are not invocable RPCs: the surface registers no handlers or client methods for them. They exist only so the manifest can describe the intended cookie read, write, and remove operations and so permission tooling can reason about the `native.invoke` authority they would require.
+
+When cookie-store support lands, `get` would accept `{ profile, url, name? }` and return `{ cookies }`, `set` would accept `{ profile, url, cookie }`, and `remove` would accept `{ profile, url, name }`. `url` must be absolute `http` or `https` and cookie paths must start with `/`.
 
 ## Cookie Shape
 
@@ -35,11 +38,9 @@ Cookies are plain data:
 - optional `sameSite`: `"lax"`, `"strict"`, or `"none"`
 - optional `expiresAt`
 
-`url` must be absolute `http` or `https`. Cookie paths must start with `/`.
-
 ## Support
 
-The Rust host routes the methods and validates payloads, but it does not yet bind `SessionProfileHandle` to Wry `WebContext` cookie stores. Host requests therefore fail closed with typed `Unsupported` after validation.
+The host does not yet bind `SessionProfileHandle` to Wry `WebContext` cookie stores, so the get, set, and remove methods are demoted to non-callable capability facts rather than routed RPCs.
 
 | Platform | Status        | Reason                          |
 | -------- | ------------- | ------------------------------- |

@@ -14,13 +14,22 @@ The public service is Layer-first and test-substitutable. The TypeScript service
 
 ## Methods
 
-| Method          | Payload                                 | Success                    |
-| --------------- | --------------------------------------- | -------------------------- |
-| `request`       | `{ profile, kind, origin, requestId? }` | `{ requestId, status }`    |
-| `decide`        | `{ profile, requestId, kind, origin }`  | decision record            |
-| `listDecisions` | `{ profile, kind?, origin? }`           | `{ decisions }`            |
-| `isSupported`   | `void`                                  | `{ supported, reason? }`   |
-| `events`        | optional `SessionProfileHandle`         | stream of request/decision |
+The surface exposes only the genuinely callable methods below.
+
+| Method        | Payload                         | Success                    |
+| ------------- | ------------------------------- | -------------------------- |
+| `isSupported` | `void`                          | `{ supported, reason? }`   |
+| `events`      | optional `SessionProfileHandle` | stream of request/decision |
+
+## Capability facts (non-callable)
+
+`request`, `decide`, and `listDecisions` are **not callable**. They are advertised in the native capability manifest as capability facts with `support.status: "unsupported"`, so callers can discover the intended contract, but the surface does not register them as invocable RPCs.
+
+| Capability fact | Intended payload                        | Status        |
+| --------------- | --------------------------------------- | ------------- |
+| `request`       | `{ profile, kind, origin, requestId? }` | `unsupported` |
+| `decide`        | `{ profile, requestId, kind, origin }`  | `unsupported` |
+| `listDecisions` | `{ profile, kind?, origin? }`           | `unsupported` |
 
 ## Permission Kinds
 
@@ -36,7 +45,7 @@ The public service is Layer-first and test-substitutable. The TypeScript service
 
 ## Support
 
-The Rust host routes the methods and validates payloads, but it does not yet receive portable browser permission callbacks from profile-bound WebViews. Host requests therefore fail closed with typed `Unsupported` after validation.
+The host does not yet receive portable browser permission callbacks from profile-bound WebViews. Because those methods are not implemented, they are published as non-callable capability facts with `support.status: "unsupported"` rather than registered as invocable RPCs.
 
 | Platform | Status        | Reason                                |
 | -------- | ------------- | ------------------------------------- |
@@ -44,7 +53,7 @@ The Rust host routes the methods and validates payloads, but it does not yet rec
 | Windows  | `unsupported` | `host-session-permission-unavailable` |
 | Linux    | `unsupported` | `host-session-permission-unavailable` |
 
-`isSupported` returns `{ supported: false, reason: "host-session-permission-unavailable" }` from the host. Use `makeSessionPermissionMemoryClient()` for deterministic success, denial, partitioning, and replay tests; use `makeSessionPermissionUnsupportedClient()` for the typed unsupported path.
+`isSupported` returns `{ supported: false, reason: "host-session-permission-unavailable" }` from the host. Use `makeSessionPermissionMemoryClient()` for deterministic `isSupported` and event tests; use `makeSessionPermissionUnsupportedClient()` for the typed unsupported path.
 
 ## Related
 

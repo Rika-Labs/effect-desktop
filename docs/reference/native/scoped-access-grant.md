@@ -14,13 +14,22 @@ The public service is Layer-first and test-substitutable. The TypeScript service
 
 ## Methods
 
-| Method        | Payload                                | Success                                              |
-| ------------- | -------------------------------------- | ---------------------------------------------------- |
-| `grant`       | `{ actor, scope, grantId?, traceId? }` | `{ grantId, scope, state: "granted" }`               |
-| `resolve`     | `{ grantId, traceId? }`                | `{ grantId, scope, state: "resolved", revalidated }` |
-| `revoke`      | `{ grantId, traceId? }`                | `{ grantId, revoked }`                               |
-| `isSupported` | `void`                                 | `{ supported, reason? }`                             |
-| `events`      | `void`                                 | stream of scoped grant events                        |
+The surface exposes only the genuinely callable methods below.
+
+| Method        | Payload | Success                       |
+| ------------- | ------- | ----------------------------- |
+| `isSupported` | `void`  | `{ supported, reason? }`      |
+| `events`      | `void`  | stream of scoped grant events |
+
+## Capability facts (non-callable)
+
+`grant`, `resolve`, and `revoke` are **not callable**. They are advertised in the native capability manifest as capability facts with `support.status: "unsupported"`, so callers can discover the intended contract, but the surface does not register them as invocable RPCs.
+
+| Capability fact | Intended payload                       | Status        |
+| --------------- | -------------------------------------- | ------------- |
+| `grant`         | `{ actor, scope, grantId?, traceId? }` | `unsupported` |
+| `resolve`       | `{ grantId, traceId? }`                | `unsupported` |
+| `revoke`        | `{ grantId, traceId? }`                | `unsupported` |
 
 ## Scope
 
@@ -30,11 +39,11 @@ The scope is data:
 - `kind`: `"file"` or `"directory"`
 - `access`: `"read"`, `"write"`, or `"read-write"`
 
-`grant` checks `native.invoke` for `ScopedAccessGrant.grant`. It also checks `filesystem.read` for every grant and `filesystem.write` when `access` is `"write"` or `"read-write"`.
+The `grant` capability fact declares `native.invoke` authority for `ScopedAccessGrant.grant`. Its intended contract also checks `filesystem.read` for every grant and `filesystem.write` when `access` is `"write"` or `"read-write"`. These constraints describe the intended contract; the method cannot currently be invoked.
 
 ## Persistence
 
-Persistent grants are valid only after host revalidation. `resolve` rejects a host response with `revalidated: false`; callers must treat that as a failed grant recovery, not as access.
+Persistent grants are valid only after host revalidation. The `resolve` capability fact's intended contract rejects a host response with `revalidated: false`; callers must treat that as a failed grant recovery, not as access. `resolve` is currently a non-callable capability fact.
 
 ## Support
 
@@ -46,11 +55,11 @@ The current Rust host adapter is intentionally fail-closed while OS persistent g
 | Windows  | `unsupported` | `host-adapter-unimplemented` |
 | Linux    | `unsupported` | `host-adapter-unimplemented` |
 
-`isSupported` returns `{ supported: false, reason: "host-adapter-unimplemented" }`. Mutating host requests decode and validate payloads, then return typed `Unsupported`; invalid payloads are rejected before the unsupported response. The bridge-backed `events` stream also fails typed `Unsupported` before opening a host subscription. The memory client still emits deterministic events for service tests.
+`isSupported` returns `{ supported: false, reason: "host-adapter-unimplemented" }`. `grant`, `resolve`, and `revoke` are non-callable capability facts published with `support.status: "unsupported"`, not invocable RPCs. The bridge-backed `events` stream also fails typed `Unsupported` before opening a host subscription. The memory client still emits deterministic events for service tests.
 
 ## Testing
 
-Use `makeScopedAccessGrantMemoryClient()` for deterministic grant, resolve, revoke, and event tests without native prompts. Use `makeScopedAccessGrantUnsupportedClient()` when a test needs the typed unsupported path.
+Use `makeScopedAccessGrantMemoryClient()` for deterministic `isSupported` and event tests without native prompts. Use `makeScopedAccessGrantUnsupportedClient()` when a test needs the typed unsupported path.
 
 ## Related
 

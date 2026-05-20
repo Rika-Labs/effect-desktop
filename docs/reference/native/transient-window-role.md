@@ -2,15 +2,24 @@
 
 Transient window roles describe product-neutral floating windows such as launchers, palettes, popovers, utility panels, and companion windows. The role contract is data: focus, dismissal, z-order, placement, and restoration policy are explicit fields rather than app-specific behavior.
 
-The public service is Layer-first and test-substitutable. It validates Schema contracts before native transport, checks `native.invoke` permissions before host side effects, registers generation-stamped handles with `ResourceRegistry` before asking the host to show a role, and releases the resource on host failure, explicit dismissal, scope close, cancellation, renderer disconnect, or runtime restart through the registry lifecycle.
+The public service is Layer-first and test-substitutable. It checks `native.invoke` permissions before host side effects and exposes platform support through the typed `isSupported` query.
 
 ## Surface
 
-- `TransientWindowRole.open(request)` returns a `ResourceHandle<"transient-window-role", "open">`.
-- `TransientWindowRole.reposition(request)` updates placement for a fresh handle.
-- `TransientWindowRole.dismiss(request)` dismisses a fresh handle and disposes it exactly once.
-- `TransientWindowRole.events()` streams `opened`, `repositioned`, `dismissed`, and `failed` events.
+The only callable RPC on this surface is the support query:
+
 - `TransientWindowRole.isSupported()` reports platform support.
+- `TransientWindowRole.events()` exposes the role lifecycle stream (`opened`, `repositioned`, `dismissed`, `failed`).
+
+## Capability facts (non-callable)
+
+`open`, `reposition`, and `dismiss` are not callable RPCs. They are advertised in the native capability manifest as capability facts with `support.status: "unsupported"` and reason `host-adapter-unimplemented`, but no host adapter can be invoked. They describe the intended role-mutation contract; they cannot be called until a native role adapter exists.
+
+| Capability fact | Intended role                                                 |
+| --------------- | ------------------------------------------------------------- |
+| `open`          | Show a transient role and return a generation-stamped handle. |
+| `reposition`    | Update placement for an open role.                            |
+| `dismiss`       | Dismiss an open role and dispose it exactly once.             |
 
 ## Platform Support
 
@@ -20,13 +29,12 @@ The public service is Layer-first and test-substitutable. It validates Schema co
 | Windows  | `unsupported` | `host-adapter-unimplemented` |
 | Linux    | `unsupported` | `host-adapter-unimplemented` |
 
-Unsupported mutation methods return typed `Unsupported` failures. They do not silently no-op.
-The bridge-backed `TransientWindowRole.Event` stream also fails as typed `Unsupported` before opening
+The bridge-backed `TransientWindowRole.Event` stream fails as typed `Unsupported` before opening
 a host subscription until the native role adapter can publish real role lifecycle events.
 
 ## Diagnostics
 
-Active role resources are visible through `ResourceRegistry.list()` and `ResourceRegistry.observeLifecycle()`. Recent failures are observable through the typed service failure channel and the event stream for substitutable clients.
+Recent failures are observable through the typed service failure channel and the event stream for substitutable clients.
 
 ## Files
 
