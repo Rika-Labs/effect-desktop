@@ -12,7 +12,7 @@ export const writeStdout = (
 ): Effect.Effect<void, StdoutWriteError, never> =>
   Effect.callback((resume) => {
     process.stdout.write(chunk, (error) => {
-      if (error == null) {
+      if (error === undefined || error === null) {
         resume(Effect.void)
       } else {
         resume(Effect.fail(new StdoutWriteError({ cause: error })))
