@@ -272,6 +272,7 @@ export {
 } from "./clipboard.js"
 export {
   ContextMenu,
+  ContextMenuCapabilityFacts,
   ContextMenuClient,
   ContextMenuHandlersLive,
   ContextMenuLive,
@@ -550,6 +551,7 @@ export {
 } from "./transient-window-role.js"
 export {
   ExecutionSandbox,
+  ExecutionSandboxCapabilityFacts,
   ExecutionSandboxClient,
   ExecutionSandboxHandlersLive,
   ExecutionSandboxLive,
@@ -565,11 +567,9 @@ export {
   makeHostExecutionSandboxRpcRuntime,
   type ExecutionSandboxClientApi,
   type ExecutionSandboxError,
-  type ExecutionSandboxMemoryClientOptions,
   type ExecutionSandboxRpc,
   type ExecutionSandboxRpcHandlers,
-  type ExecutionSandboxServiceApi,
-  type ExecutionSandboxServiceOptions
+  type ExecutionSandboxServiceApi
 } from "./execution-sandbox.js"
 export {
   LocalToolRuntime,
@@ -619,6 +619,7 @@ export {
 } from "./transactional-file-mutation.js"
 export {
   ScopedAccessGrant,
+  ScopedAccessGrantCapabilityFacts,
   ScopedAccessGrantClient,
   ScopedAccessGrantHandlersLive,
   ScopedAccessGrantLive,
@@ -634,11 +635,9 @@ export {
   makeScopedAccessGrantUnsupportedClient,
   type ScopedAccessGrantClientApi,
   type ScopedAccessGrantError,
-  type ScopedAccessGrantMemoryClientOptions,
   type ScopedAccessGrantRpc,
   type ScopedAccessGrantRpcHandlers,
-  type ScopedAccessGrantServiceApi,
-  type ScopedAccessGrantServiceOptions
+  type ScopedAccessGrantServiceApi
 } from "./scoped-access-grant.js"
 export {
   SelectionContext,
@@ -797,6 +796,7 @@ export {
   makeNetworkAuthServiceLayer,
   makeNetworkAuthUnsupportedClient,
   NetworkAuth,
+  NetworkAuthCapabilityFacts,
   NetworkAuthClient,
   NetworkAuthHandlersLive,
   NetworkAuthLive,
@@ -806,11 +806,9 @@ export {
   NetworkAuthSurface,
   type NetworkAuthClientApi,
   type NetworkAuthError,
-  type NetworkAuthMemoryClientOptions,
   type NetworkAuthRpc,
   type NetworkAuthRpcHandlers,
-  type NetworkAuthServiceApi,
-  type NetworkAuthServiceOptions
+  type NetworkAuthServiceApi
 } from "./network-auth.js"
 export {
   makeHostWebRequestRpcRuntime,

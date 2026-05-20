@@ -501,7 +501,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "ContextMenu.buildFromTemplate",
@@ -529,7 +529,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "ContextMenu.show",
@@ -557,7 +557,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "CookieStore.get",
@@ -1398,7 +1398,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "ExecutionSandbox.destroy",
@@ -1426,7 +1426,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "ExecutionSandbox.isSupported",
@@ -1464,7 +1464,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "ExtensionConfig.isSupported",
@@ -2225,7 +2225,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "NetworkAuth.handleCertificate",
@@ -2253,7 +2253,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "NetworkAuth.isSupported",
@@ -2291,7 +2291,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "Notification.close",
@@ -2857,7 +2857,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "ScopedAccessGrant.isSupported",
@@ -2895,7 +2895,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "ScopedAccessGrant.revoke",
@@ -2923,7 +2923,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "Screen.getDisplays",
@@ -5257,7 +5257,7 @@
   ],
   "summary": {
     "total": 291,
-    "routed": 277,
+    "routed": 265,
     "missing": 0,
     "supported": 158,
     "partial": 71,

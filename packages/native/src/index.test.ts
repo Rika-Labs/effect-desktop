@@ -142,6 +142,7 @@ import {
   ClipboardMethodNames,
   ClipboardSurface,
   ContextMenu,
+  ContextMenuCapabilityFacts,
   ContextMenuHandlersLive,
   ContextMenuRpcs,
   ContextMenuRpcEvents,
@@ -893,11 +894,9 @@ const expectedMenuMethods: Array<(typeof MenuMethodNames)[number]> = [
   "capability"
 ]
 
-const expectedContextMenuMethods: Array<(typeof ContextMenuMethodNames)[number]> = [
-  "show",
-  "buildFromTemplate",
-  "bindCommand"
-]
+const expectedContextMenuMethods: Array<(typeof ContextMenuMethodNames)[number]> = []
+
+const expectedContextMenuCapabilityFactMethods = ["show", "buildFromTemplate", "bindCommand"]
 
 const expectedDialogMethods: Array<(typeof DialogMethodNames)[number]> = [
   "openFile",
@@ -3866,6 +3865,30 @@ test("ContextMenuRpcs declares the Phase 8 ContextMenu method and event surface"
   expect(Object.keys(ContextMenuRpcEvents)).toEqual(["Activated"])
 })
 
+test("ContextMenu declares show, buildFromTemplate, bindCommand as non-callable capability facts", () => {
+  const factTags = ContextMenuCapabilityFacts.map((fact) => fact.tag).toSorted()
+  expect(factTags).toEqual(
+    expectedContextMenuCapabilityFactMethods.map((method) => `ContextMenu.${method}`).toSorted()
+  )
+  for (const fact of ContextMenuCapabilityFacts) {
+    expect(fact.support.status).toBe("unsupported")
+    expect(fact.capability.kind).toBe("native.invoke")
+  }
+
+  const callableTags = Array.from(ContextMenuRpcs.requests.keys())
+  for (const method of expectedContextMenuCapabilityFactMethods) {
+    expect(callableTags).not.toContain(`ContextMenu.${method}`)
+  }
+
+  const nonCallableTags = ContextMenuSurface.schemaDocs
+    .filter((doc) => !doc.callable)
+    .map((doc) => doc.tag)
+    .toSorted()
+  expect(nonCallableTags).toEqual(
+    expectedContextMenuCapabilityFactMethods.map((method) => `ContextMenu.${method}`).toSorted()
+  )
+})
+
 test("ContextMenu service delegates through a substitutable ContextMenuClient port", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -4000,7 +4023,7 @@ test("ContextMenu bindCommand closes the command listener with its resource scop
     })
   ))
 
-test("ContextMenu bridge client validates window menu inputs and decodes activation events", () =>
+test("ContextMenu bridge client fails demoted methods as Unsupported and decodes activation events", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const requests: HostProtocolRequestEnvelope[] = []
@@ -4013,15 +4036,20 @@ test("ContextMenu bridge client validates window menu inputs and decodes activat
       const result = yield* runScoped(
         Effect.gen(function* () {
           const contextMenu = yield* ContextMenu
-          yield* contextMenu.show({
-            window: windowHandle,
-            template: menuTemplate,
-            position: { x: 12.5, y: 34.25 }
-          })
-          yield* contextMenu.bindCommand("file.open", "app.file.open")
+          const showExit = yield* Effect.exit(
+            contextMenu.show({
+              window: windowHandle,
+              template: menuTemplate,
+              position: { x: 12.5, y: 34.25 }
+            })
+          )
+          const buildExit = yield* Effect.exit(
+            contextMenu.buildFromTemplate({ template: menuTemplate })
+          )
+          const bindExit = yield* Effect.exit(contextMenu.bindCommand("file.open", "app.file.open"))
           const activated = yield* contextMenu.onActivated().pipe(Stream.take(1), Stream.runCollect)
 
-          return { activated }
+          return { activated, bindExit, buildExit, showExit }
         }),
         Layer.mergeAll(
           Layer.provide(ContextMenuLive, makeContextMenuBridgeClientLayer(exchange)),
@@ -4029,6 +4057,9 @@ test("ContextMenu bridge client validates window menu inputs and decodes activat
         )
       )
 
+      expectExitFailure(result.showExit, (error) => hasErrorTag(error, "Unsupported"))
+      expectExitFailure(result.buildExit, (error) => hasErrorTag(error, "Unsupported"))
+      expectExitFailure(result.bindExit, (error) => hasErrorTag(error, "Unsupported"))
       expect(Array.from(result.activated)).toEqual([
         new ContextMenuActivatedEvent({
           itemId: "file.open",
@@ -4036,13 +4067,7 @@ test("ContextMenu bridge client validates window menu inputs and decodes activat
           windowId: "window-1"
         })
       ])
-      expect(requests.map((request) => [request.method, request.payload])).toEqual([
-        [
-          "ContextMenu.show",
-          { window: windowHandle, template: menuTemplate, position: { x: 12.5, y: 34.25 } }
-        ],
-        ["ContextMenu.bindCommand", { itemId: "file.open", commandId: "app.file.open" }]
-      ])
+      expect(requests).toEqual([])
     })
   ))
 
@@ -8060,7 +8085,10 @@ test("native DesktopRpc surfaces derive server, client, test, and metadata layer
           surface: ContextMenuSurface,
           group: ContextMenuRpcs,
           handlers: ContextMenuHandlersLive,
-          tags: Array.from(ContextMenuRpcs.requests.keys())
+          tags: [
+            ...Array.from(ContextMenuRpcs.requests.keys()),
+            ...ContextMenuCapabilityFacts.map((fact) => fact.tag)
+          ]
         },
         {
           name: "CrashReporter",
