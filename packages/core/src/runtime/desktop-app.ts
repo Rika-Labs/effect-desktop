@@ -61,14 +61,14 @@ export interface DesktopRpcRegistration<Rpcs extends Rpc.Any, E = unknown, R = u
   readonly _tag: "DesktopRpcRegistration"
   readonly group: TypedDesktopRpcRegistrationGroup<Rpcs>
   readonly handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>
-  readonly serverLayer: Layer.Layer<never, unknown, unknown>
+  readonly serverLayer: Layer.Layer<never, E, R>
 }
 
 export interface AnyDesktopRpcRegistration<E = unknown, R = unknown> {
   readonly _tag: "DesktopRpcRegistration"
   readonly group: DesktopRpcRegistrationGroup
   readonly handlers: Layer.Layer<never, E, R>
-  readonly serverLayer: Layer.Layer<never, unknown, unknown>
+  readonly serverLayer: Layer.Layer<never, E, R>
 }
 
 export type DesktopRpcsLayer<E = never, RIn = never> = ReadonlyArray<
@@ -779,7 +779,7 @@ const checkWindowRegistrations = (
 
 const buildRegistrations = <RIn, E>(
   rpcs: DesktopConfig<RIn, E>["rpcs"]
-): Effect.Effect<ReadonlyArray<AnyDesktopRpcRegistration>, never, never> =>
+): Effect.Effect<ReadonlyArray<AnyDesktopRpcRegistration<E, RIn>>, never, never> =>
   Effect.succeed(rpcs ?? [])
 
 const buildNativeSelection = <RIn, E>(
@@ -797,7 +797,7 @@ const buildPermissions = <RIn>(
 
 const buildWorkflows = <RIn, E>(
   workflows: DesktopConfig<RIn, E>["workflows"]
-): Effect.Effect<ReadonlyArray<AnyDesktopWorkflowRegistration>, never, never> =>
+): Effect.Effect<ReadonlyArray<DesktopWorkflowRegistration<E, RIn>>, never, never> =>
   Effect.succeed(workflows ?? [])
 
 const buildProviders = <RIn, E>(
@@ -807,7 +807,7 @@ const buildProviders = <RIn, E>(
 
 const nativeRpcRegistrationsSync = (
   registrations: ReadonlyArray<AnyDesktopNativeRegistration>
-): ReadonlyArray<AnyDesktopRpcRegistration> =>
+): ReadonlyArray<AnyDesktopRpcRegistration<unknown, unknown>> =>
   Object.freeze(registrations.flatMap((registration) => registration.serverLayer))
 
 export const layer = <RIn = never, E = never>(
@@ -908,8 +908,8 @@ const makeRuntimeGraph = <RIn, E>(
   provider: DesktopRuntimeProviderDescriptor,
   webviewProvider: DesktopWebViewProviderDescriptor,
   nativeRegistrations: ReadonlyArray<AnyDesktopNativeRegistration>,
-  registrations: ReadonlyArray<AnyDesktopRpcRegistration>,
-  workflows: ReadonlyArray<AnyDesktopWorkflowRegistration>
+  registrations: ReadonlyArray<AnyDesktopRpcRegistration<unknown, unknown>>,
+  workflows: ReadonlyArray<unknown>
 ): DesktopRuntimeGraph => {
   const selected = Object.freeze({
     runtime: provider.id,
@@ -1106,7 +1106,10 @@ const buildSpine = <RIn, E>(
       const nativeSelection = yield* buildNativeSelection(config.native)
       const nativeRegistrations = nativeSelection.registrations
       const nativeRpcRegistrations = nativeRpcRegistrationsSync(nativeRegistrations)
-      const registrations = [...appRegistrations, ...nativeRpcRegistrations]
+      const registrations: ReadonlyArray<AnyDesktopRpcRegistration<E, RIn>> = [
+        ...appRegistrations,
+        ...(nativeRpcRegistrations as ReadonlyArray<AnyDesktopRpcRegistration<E, RIn>>)
+      ]
       const explicitPermissions = yield* buildPermissions(config.permissions)
       const permissions = [...nativeSelection.permissions, ...explicitPermissions]
       const workflowLayers = yield* buildWorkflows(config.workflows)
@@ -1365,9 +1368,16 @@ const mergeLayerArray = <E, R>(
 const bindRpcGroup = <Rpcs extends Rpc.Any, E, R>(
   group: RpcGroup.RpcGroup<Rpcs>,
   handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>
-) => Layer.provide(RpcServer.layer(group.middleware(PermissionInterceptor)), handlers)
+): Layer.Layer<never, E, R> =>
+  Layer.provide(RpcServer.layer(group.middleware(PermissionInterceptor)), handlers) as Layer.Layer<
+    never,
+    E,
+    R
+  >
 
-const bindRegistration = (registration: AnyDesktopRpcRegistration) => registration.serverLayer
+const bindRegistration = <E, R>(
+  registration: AnyDesktopRpcRegistration<E, R>
+): Layer.Layer<never, E, R> => registration.serverLayer
 
 function graphNode(
   id: string,
