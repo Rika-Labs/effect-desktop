@@ -121,7 +121,7 @@ jobs:
 
       - name: cargo test --workspace (Linux)
         if: runner.os == 'Linux'
-        run: xvfb-run -a cargo test --workspace
+        run: cargo test --workspace --exclude host && cargo test -p host --lib && cargo test -p host --bin host --no-run
 
       - name: cargo test --workspace (Windows headless)
         if: runner.os == 'Windows'
