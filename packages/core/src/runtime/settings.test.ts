@@ -573,21 +573,25 @@ describe("Settings", () => {
       )
     ))
 
-  test("Settings.memory provides in-memory Settings", () => {
-    const program = Effect.gen(function* () {
-      const settings = yield* Settings
-      yield* settings.set("key", UserName, "value")
-      return yield* settings.get("key", UserName)
-    })
+  test("Settings.memory provides in-memory Settings", () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const program = Effect.gen(function* () {
+          const settings = yield* Settings
+          yield* settings.set("key", UserName, "value")
+          return yield* settings.get("key", UserName)
+        })
 
-    const memoryRuntime = ManagedRuntime.make(Settings.memory())
-    return memoryRuntime
-      .runPromise(program)
-      .then((result) => {
+        const memoryRuntime = ManagedRuntime.make(Settings.memory())
+        let result: Option.Option<string>
+        try {
+          result = yield* Effect.promise(() => memoryRuntime.runPromise(program))
+        } finally {
+          yield* Effect.promise(() => memoryRuntime.dispose())
+        }
         expect(Option.getOrUndefined(result)).toBe("value")
       })
-      .finally(() => memoryRuntime.dispose())
-  })
+    ))
 })
 
 const makeFixture = (

@@ -70,9 +70,7 @@ export const LayerMatrix = Object.freeze({
       Effect.gen(function* () {
         const scope = yield* Effect.scope
         const context = yield* Layer.buildWithScope(layer, scope)
-        const fiber = yield* Effect.forkScoped(
-          Effect.provide(body, context)
-        )
+        const fiber = yield* Effect.forkScoped(Effect.provide(body, context))
         yield* Effect.yieldNow
         yield* Fiber.interrupt(fiber)
         return yield* Fiber.await(fiber)

@@ -5997,42 +5997,39 @@ test("desktop publish rejects invalid publish timestamps before writing manifest
     })
   ))
 
-test("desktop publish canonical bytes ignore object insertion order", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const manifest = {
-        signature: "ed25519:signature",
-        version: "1.0.0",
-        schemaVersion: 1,
-        publishedAt: "2026-05-06T00:00:00.000Z",
-        keyVersion: 2,
-        channel: "stable",
-        artifacts: [
-          {
-            signature: "ed25519:artifact",
-            sha256: "0".repeat(64),
-            sizeBytes: 1,
-            url: "https://updates.example.invalid/app.dmg",
-            kind: "dmg",
-            platform: "macos-arm64"
-          }
-        ],
-        appId: "dev.effect-desktop.inspector"
+test("desktop publish canonical bytes ignore object insertion order", () => {
+  const manifest = {
+    signature: "ed25519:signature",
+    version: "1.0.0",
+    schemaVersion: 1,
+    publishedAt: "2026-05-06T00:00:00.000Z",
+    keyVersion: 2,
+    channel: "stable",
+    artifacts: [
+      {
+        signature: "ed25519:artifact",
+        sha256: "0".repeat(64),
+        sizeBytes: 1,
+        url: "https://updates.example.invalid/app.dmg",
+        kind: "dmg",
+        platform: "macos-arm64"
       }
-      const reordered = {
-        appId: manifest.appId,
-        artifacts: manifest.artifacts,
-        channel: manifest.channel,
-        keyVersion: manifest.keyVersion,
-        publishedAt: manifest.publishedAt,
-        schemaVersion: manifest.schemaVersion,
-        version: manifest.version,
-        signature: manifest.signature
-      }
+    ],
+    appId: "dev.effect-desktop.inspector"
+  }
+  const reordered = {
+    appId: manifest.appId,
+    artifacts: manifest.artifacts,
+    channel: manifest.channel,
+    keyVersion: manifest.keyVersion,
+    publishedAt: manifest.publishedAt,
+    schemaVersion: manifest.schemaVersion,
+    version: manifest.version,
+    signature: manifest.signature
+  }
 
-      expect(canonicalUpdateManifestBytes(manifest)).toBe(canonicalUpdateManifestBytes(reordered))
-    })
-  ))
+  expect(canonicalUpdateManifestBytes(manifest)).toBe(canonicalUpdateManifestBytes(reordered))
+})
 
 test("desktop publish encodes artifact URLs for query-string feed URLs", () =>
   Effect.runPromise(

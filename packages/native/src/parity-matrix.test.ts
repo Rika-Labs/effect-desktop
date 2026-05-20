@@ -384,7 +384,7 @@ const runScoped = <A, E, ELayer, R>(
     const runtime = ManagedRuntime.make(layer)
     const result = yield* Effect.promise(() => runtime.runPromise(effect))
     yield* Effect.promise(() => runtime.dispose())
-    return result as A
+    return result
   })
 
 const runScopedExit = <A, E, ELayer, R>(
@@ -395,5 +395,5 @@ const runScopedExit = <A, E, ELayer, R>(
     const runtime = ManagedRuntime.make(layer)
     const result = yield* Effect.promise(() => runtime.runPromiseExit(effect))
     yield* Effect.promise(() => runtime.dispose())
-    return result as Exit.Exit<A, E | ELayer>
+    return result
   })

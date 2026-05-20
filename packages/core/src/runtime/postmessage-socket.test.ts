@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Deferred, Effect, Exit, Layer, ManagedRuntime } from "effect"
+import { Deferred, Effect, Layer, ManagedRuntime } from "effect"
 import { Socket } from "effect/unstable/socket"
 import { layerPostMessageSocket } from "./postmessage-socket.js"
 
@@ -138,5 +138,5 @@ const runScoped = <A, E, R, LE>(
     const runtime = ManagedRuntime.make(layer)
     const exit = yield* Effect.promise(() => runtime.runPromiseExit(effect))
     yield* Effect.promise(() => runtime.dispose())
-    return yield* exit as Exit.Exit<A, E | LE>
+    return yield* exit
   })

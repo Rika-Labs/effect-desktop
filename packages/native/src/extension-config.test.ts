@@ -718,8 +718,14 @@ const runScoped = <A, E, R>(
   })
 
 const serialize = (value: unknown): string => {
-  if (value === null || value === undefined) return String(value)
-  if (typeof value !== "object") return String(value)
+  if (value === null) return "null"
+  if (value === undefined) return "undefined"
+  if (typeof value === "string") return value
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+    return value.toString()
+  }
+  if (typeof value === "symbol") return value.toString()
+  if (typeof value === "function") return value.toString()
   if (value instanceof Uint8Array) return Array.from(value).join(",")
   if (Array.isArray(value)) return `[${value.map(serialize).join(",")}]`
   const entries = Object.entries(value as Record<string, unknown>)
