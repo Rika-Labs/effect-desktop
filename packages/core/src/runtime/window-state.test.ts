@@ -116,7 +116,8 @@ test("WindowState default path rejects bundle ids with path traversal", () =>
           "C:escape",
           "com..example"
         ]) {
-          expect(() => defaultWindowStatePath(bundleId)).toThrow(WindowStateInvalidArgumentError)
+          const pathExit = yield* Effect.exit(defaultWindowStatePath(bundleId))
+          expectInvalidBundleId(pathExit, "defaultWindowStatePath")
           const exit = yield* Effect.exit(makeWindowState("main", { bundleId }))
           expectInvalidBundleId(exit, "WindowState.make")
         }
@@ -125,12 +126,15 @@ test("WindowState default path rejects bundle ids with path traversal", () =>
     )
   ))
 
-test("WindowState default path accepts bundle ids as namespaces", () => {
-  const path = defaultWindowStatePath("com.example.effect-desktop")
+test("WindowState default path accepts bundle ids as namespaces", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const path = yield* defaultWindowStatePath("com.example.effect-desktop")
 
-  expect(path).toContain("com.example.effect-desktop")
-  expect(path.endsWith("window-state.json")).toBe(true)
-})
+      expect(path).toContain("com.example.effect-desktop")
+      expect(path.endsWith("window-state.json")).toBe(true)
+    })
+  ))
 
 test("WindowState clear removes the current window only", () =>
   Effect.runPromise(
