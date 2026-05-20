@@ -1,373 +1,118 @@
 import { expect, test } from "bun:test"
-import { type BridgeClientExchange, HostProtocolInternalError } from "@effect-desktop/bridge"
-import {
-  type AuditEvent,
-  makePermissionRegistry,
-  makeResourceRegistry,
-  P
-} from "@effect-desktop/core"
-import { Cause, Effect, Exit, type Layer, ManagedRuntime, Option, Stream } from "effect"
+import { type BridgeClientExchange } from "@effect-desktop/bridge"
+import { Cause, Effect, Exit, type Layer, ManagedRuntime, Stream } from "effect"
 
+import { makeNativeCapabilityManifest } from "./capabilities.js"
 import {
-  TransientWindowRole,
-  TransientWindowRoleClient,
   makeTransientWindowRoleBridgeClientLayer,
   makeTransientWindowRoleMemoryClient,
   makeTransientWindowRoleServiceLayer,
   makeTransientWindowRoleUnsupportedClient,
-  type TransientWindowRoleClientApi
+  TransientWindowRole,
+  TransientWindowRoleCapabilityFacts,
+  TransientWindowRoleClient,
+  TransientWindowRoleRpcs,
+  TransientWindowRoleSurface
 } from "./transient-window-role.js"
-import {
-  TransientWindowRoleActor,
-  TransientWindowRoleOpenRequest,
-  TransientWindowRolePlacement,
-  TransientWindowRolePolicy
-} from "./contracts/transient-window-role.js"
 
-test("TransientWindowRole opens generation-stamped scoped handles", () =>
+const UnsupportedMethods = ["open", "reposition", "dismiss"] as const
+
+test("TransientWindowRole exposes only isSupported as a callable RPC", () => {
+  const callableTags = Array.from(TransientWindowRoleRpcs.requests.keys()).toSorted()
+  expect(callableTags).toEqual(["TransientWindowRole.isSupported"])
+  for (const method of UnsupportedMethods) {
+    expect(callableTags).not.toContain(`TransientWindowRole.${method}`)
+  }
+})
+
+test("TransientWindowRole declares open/reposition/dismiss as non-callable capability facts", () => {
+  const factTags = TransientWindowRoleCapabilityFacts.map((fact) => fact.tag).toSorted()
+  expect(factTags).toEqual(
+    UnsupportedMethods.map((method) => `TransientWindowRole.${method}`).toSorted()
+  )
+  for (const fact of TransientWindowRoleCapabilityFacts) {
+    expect(fact.support.status).toBe("unsupported")
+  }
+})
+
+test("TransientWindowRole capability facts surface in the manifest and stay non-callable", () =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const rows: AuditEvent[] = []
-      const { permissions, resources } = yield* configuredRuntime(rows)
-      const client = yield* makeTransientWindowRoleMemoryClient()
+      const manifest = yield* makeNativeCapabilityManifest([
+        { schemaDocs: TransientWindowRoleSurface.schemaDocs }
+      ])
+      const byTag = new Map(manifest.map((fact) => [fact.tag, fact] as const))
 
+      for (const method of UnsupportedMethods) {
+        const fact = byTag.get(`TransientWindowRole.${method}`)
+        expect(fact).toBeDefined()
+        expect(fact?.support.status).toBe("unsupported")
+      }
+
+      const callableTags = TransientWindowRoleSurface.schemaDocs
+        .filter((doc) => doc.callable)
+        .map((doc) => doc.tag)
+      expect(callableTags).toEqual(["TransientWindowRole.isSupported"])
+
+      const nonCallableTags = TransientWindowRoleSurface.schemaDocs
+        .filter((doc) => !doc.callable)
+        .map((doc) => doc.tag)
+        .toSorted()
+      expect(nonCallableTags).toEqual(
+        UnsupportedMethods.map((method) => `TransientWindowRole.${method}`).toSorted()
+      )
+    })
+  ))
+
+test("TransientWindowRole isSupported reports supported result through the service", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const client = yield* makeTransientWindowRoleMemoryClient()
       const result = yield* runScoped(
         Effect.gen(function* () {
-          const roles = yield* TransientWindowRole
-          const handle = yield* roles.open(openRequest())
-          const snapshot = yield* resources.list()
-          return { handle, snapshot }
+          const service = yield* TransientWindowRole
+          return yield* service.isSupported()
         }),
-        makeTransientWindowRoleServiceLayer(client, {
-          permissions,
-          resources,
-          audit: memoryAudit(rows)
-        })
+        makeTransientWindowRoleServiceLayer(client)
       )
-
-      expect(result.handle).toMatchObject({
-        kind: "transient-window-role",
-        id: "palette-1",
-        generation: 0,
-        ownerScope: "workspace:workspace-1",
-        state: "open"
-      })
-      expect(result.snapshot.entries).toHaveLength(1)
-      expect(rows.some((row) => row.outcome === "opened")).toBe(true)
+      expect(result.supported).toBe(true)
     })
   ))
 
-test("TransientWindowRole rejects malformed input before client side effects", () =>
+test("TransientWindowRole unsupported client reports the host-adapter-unimplemented reason", () =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const { permissions, resources } = yield* configuredRuntime([])
-      const baseClient = yield* makeTransientWindowRoleMemoryClient()
-      let calls = 0
-      const client: TransientWindowRoleClientApi = {
-        ...baseClient,
-        open: (input) =>
-          Effect.sync(() => {
-            calls += 1
-          }).pipe(Effect.andThen(baseClient.open(input)))
-      }
-
-      const exit = yield* runScoped(
-        Effect.gen(function* () {
-          const roles = yield* TransientWindowRole
-          return yield* Effect.exit(
-            roles.open({
-              actor: actor(),
-              roleId: "bad",
-              policy: {
-                role: "palette",
-                focus: "take-focus",
-                dismissal: "escape",
-                zOrder: "floating",
-                placement: { kind: "point" },
-                restoration: "restore-focus"
-              }
-            })
-          )
-        }),
-        makeTransientWindowRoleServiceLayer(client, { permissions, resources })
-      )
-
-      expect(calls).toBe(0)
-      expectExitFailure(exit, (error) => {
-        expect(error).toMatchObject({
-          tag: "InvalidArgument",
-          operation: "TransientWindowRole.open"
-        })
-      })
-    })
-  ))
-
-test("TransientWindowRole rejects placement variants before client side effects", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const { permissions, resources } = yield* configuredRuntime([])
-      const baseClient = yield* makeTransientWindowRoleMemoryClient()
-      let calls = 0
-      const client: TransientWindowRoleClientApi = {
-        ...baseClient,
-        open: (input) =>
-          Effect.sync(() => {
-            calls += 1
-          }).pipe(Effect.andThen(baseClient.open(input)))
-      }
-
-      const exit = yield* runScoped(
-        Effect.gen(function* () {
-          const roles = yield* TransientWindowRole
-          return yield* Effect.exit(
-            roles.open({
-              actor: actor(),
-              roleId: "bad",
-              policy: {
-                role: "palette",
-                focus: "take-focus",
-                dismissal: "escape",
-                zOrder: "floating",
-                placement: { kind: "owner-relative", point: { x: 1, y: 1 } },
-                restoration: "restore-focus"
-              }
-            })
-          )
-        }),
-        makeTransientWindowRoleServiceLayer(client, { permissions, resources })
-      )
-
-      expect(calls).toBe(0)
-      expectExitFailure(exit, (error) => {
-        expect(error).toMatchObject({
-          tag: "InvalidArgument",
-          operation: "TransientWindowRole.open"
-        })
-      })
-    })
-  ))
-
-test("TransientWindowRole denies before resource registration and client calls", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const rows: AuditEvent[] = []
-      const permissions = yield* makePermissionRegistry()
-      const resources = yield* makeResourceRegistry()
-      const baseClient = yield* makeTransientWindowRoleMemoryClient()
-      let calls = 0
-      const client: TransientWindowRoleClientApi = {
-        ...baseClient,
-        open: (input) =>
-          Effect.sync(() => {
-            calls += 1
-          }).pipe(Effect.andThen(baseClient.open(input)))
-      }
-
-      const exit = yield* runScoped(
-        Effect.gen(function* () {
-          const roles = yield* TransientWindowRole
-          return yield* Effect.exit(roles.open(openRequest()))
-        }),
-        makeTransientWindowRoleServiceLayer(client, {
-          permissions,
-          resources,
-          audit: memoryAudit(rows)
-        })
-      )
-
-      const snapshot = yield* resources.list()
-      expect(calls).toBe(0)
-      expect(snapshot.entries).toHaveLength(0)
-      expect(rows.some((row) => row.kind === "permission-denied")).toBe(true)
-      expectExitFailure(exit, (error) => {
-        expect(error).toMatchObject({
-          tag: "PermissionDenied",
-          operation: "TransientWindowRole.open"
-        })
-      })
-    })
-  ))
-
-test("TransientWindowRole cleans registered resource on host failure", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const { permissions, resources } = yield* configuredRuntime([])
-      const failure = internalFailure("host failed", "TransientWindowRole.open")
-      const client = yield* makeTransientWindowRoleMemoryClient({ failure: { open: failure } })
-
-      const exit = yield* runScoped(
-        Effect.gen(function* () {
-          const roles = yield* TransientWindowRole
-          return yield* Effect.exit(roles.open(openRequest()))
-        }),
-        makeTransientWindowRoleServiceLayer(client, { permissions, resources })
-      )
-
-      const snapshot = yield* resources.list()
-      expect(snapshot.entries).toHaveLength(0)
-      expectExitFailure(exit, (error) => {
-        expect(error).toMatchObject({
-          tag: "Internal",
-          operation: "TransientWindowRole.open"
-        })
-      })
-    })
-  ))
-
-test("TransientWindowRole dismiss disposes exactly once", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const { permissions, resources } = yield* configuredRuntime([])
-      const baseClient = yield* makeTransientWindowRoleMemoryClient()
-      let dismissCalls = 0
-      const client: TransientWindowRoleClientApi = {
-        ...baseClient,
-        dismiss: (input) =>
-          Effect.sync(() => {
-            dismissCalls += 1
-          }).pipe(Effect.andThen(baseClient.dismiss(input)))
-      }
-
+      const client = makeTransientWindowRoleUnsupportedClient()
       const result = yield* runScoped(
         Effect.gen(function* () {
-          const roles = yield* TransientWindowRole
-          const handle = yield* roles.open(openRequest())
-          yield* roles.dismiss({ actor: actor(), handle })
-          const stale = yield* Effect.exit(roles.dismiss({ actor: actor(), handle }))
-          const snapshot = yield* resources.list()
-          return { stale, snapshot }
+          const service = yield* TransientWindowRole
+          return yield* service.isSupported()
         }),
-        makeTransientWindowRoleServiceLayer(client, { permissions, resources })
+        makeTransientWindowRoleServiceLayer(client)
       )
-
-      expect(result.snapshot.entries).toHaveLength(0)
-      expect(dismissCalls).toBe(1)
-      expectExitFailure(result.stale, (error) => {
-        expect(error).toMatchObject({
-          tag: "InvalidArgument",
-          operation: "TransientWindowRole.dismiss"
-        })
-      })
+      expect(result.supported).toBe(false)
+      expect(result.reason).toBe("host-adapter-unimplemented")
     })
   ))
 
-test("TransientWindowRole surfaces dismiss host failures without local disposal", () =>
+test("TransientWindowRole unsupported client fails the event stream as unsupported", () =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const { permissions, resources } = yield* configuredRuntime([])
-      const failure = internalFailure("host failed", "TransientWindowRole.dismiss")
-      const client = yield* makeTransientWindowRoleMemoryClient({ failure: { dismiss: failure } })
-
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const roles = yield* TransientWindowRole
-          const handle = yield* roles.open(openRequest())
-          const exit = yield* Effect.exit(roles.dismiss({ actor: actor(), handle }))
-          const snapshot = yield* resources.list()
-          return { exit, snapshot }
-        }),
-        makeTransientWindowRoleServiceLayer(client, { permissions, resources })
-      )
-
-      expect(result.snapshot.entries).toHaveLength(1)
-      expectExitFailure(result.exit, (error) => {
-        expect(error).toMatchObject({
-          tag: "Internal",
-          operation: "TransientWindowRole.dismiss"
-        })
-      })
-    })
-  ))
-
-test("TransientWindowRole rejects handles owned by a different actor", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const { permissions, resources } = yield* configuredRuntime([])
-      const client = yield* makeTransientWindowRoleMemoryClient()
-
+      const client = makeTransientWindowRoleUnsupportedClient()
       const exit = yield* runScoped(
         Effect.gen(function* () {
-          const roles = yield* TransientWindowRole
-          const handle = yield* roles.open(openRequest())
-          return yield* Effect.exit(
-            roles.dismiss({
-              actor: new TransientWindowRoleActor({ kind: "workspace", id: "other-workspace" }),
-              handle
-            })
-          )
+          const service = yield* TransientWindowRole
+          return yield* Effect.exit(service.events().pipe(Stream.take(1), Stream.runCollect))
         }),
-        makeTransientWindowRoleServiceLayer(client, { permissions, resources })
-      )
-
-      expectExitFailure(exit, (error) => {
-        expect(error).toMatchObject({
-          tag: "InvalidArgument",
-          operation: "TransientWindowRole.dismiss"
-        })
-      })
-    })
-  ))
-
-test("TransientWindowRole closes scoped resources through ResourceRegistry", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const { permissions, resources } = yield* configuredRuntime([])
-      const client = yield* makeTransientWindowRoleMemoryClient()
-
-      yield* runScoped(
-        Effect.gen(function* () {
-          const roles = yield* TransientWindowRole
-          yield* roles.open(openRequest())
-          yield* resources.closeScope("workspace:workspace-1")
-        }),
-        makeTransientWindowRoleServiceLayer(client, { permissions, resources })
-      )
-
-      const snapshot = yield* resources.list()
-      expect(snapshot.entries).toHaveLength(0)
-    })
-  ))
-
-test("TransientWindowRole unsupported client fails as typed unsupported", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const { permissions, resources } = yield* configuredRuntime([])
-
-      const exit = yield* runScoped(
-        Effect.gen(function* () {
-          const roles = yield* TransientWindowRole
-          return yield* Effect.exit(roles.open(openRequest()))
-        }),
-        makeTransientWindowRoleServiceLayer(makeTransientWindowRoleUnsupportedClient(), {
-          permissions,
-          resources
-        })
+        makeTransientWindowRoleServiceLayer(client)
       )
 
       expectExitFailure(exit, (error) => {
         expect(error).toMatchObject({
           tag: "Unsupported",
-          operation: "TransientWindowRole.open"
+          reason: "host-adapter-unimplemented",
+          operation: "TransientWindowRole.Event"
         })
-      })
-    })
-  ))
-
-test("TransientWindowRole emits substitutable events", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const client = yield* makeTransientWindowRoleMemoryClient()
-
-      const event = yield* client
-        .open(openRequest())
-        .pipe(
-          Effect.ignore,
-          Effect.andThen(client.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow)))
-        )
-
-      expect(event).toMatchObject({
-        phase: "opened",
-        roleId: "palette-1"
       })
     })
   ))
@@ -402,61 +147,6 @@ test("TransientWindowRole bridge client fails event stream as unsupported before
       expect(subscriptions).toEqual([])
     })
   ))
-
-const configuredRuntime = (rows: AuditEvent[]) =>
-  Effect.gen(function* () {
-    const permissions = yield* makePermissionRegistry()
-    const resources = yield* makeResourceRegistry()
-    yield* Effect.all([
-      permissions.declare(P.nativeInvoke({ primitive: "TransientWindowRole", methods: ["open"] })),
-      permissions.declare(
-        P.nativeInvoke({ primitive: "TransientWindowRole", methods: ["reposition"] })
-      ),
-      permissions.declare(
-        P.nativeInvoke({ primitive: "TransientWindowRole", methods: ["dismiss"] })
-      )
-    ])
-    rows.length = 0
-    return { permissions, resources }
-  })
-
-const memoryAudit = (rows: AuditEvent[]) => ({
-  emit: (event: AuditEvent) =>
-    Effect.sync(() => {
-      rows.push(event)
-    }),
-  observe: () => Stream.fromIterable(rows)
-})
-
-const internalFailure = (message: string, operation: string) =>
-  new HostProtocolInternalError({
-    tag: "Internal",
-    message,
-    operation,
-    recoverable: false
-  })
-
-const actor = () => new TransientWindowRoleActor({ kind: "workspace", id: "workspace-1" })
-
-const policy = () =>
-  new TransientWindowRolePolicy({
-    role: "palette",
-    focus: "take-focus",
-    dismissal: "escape",
-    zOrder: "floating",
-    placement: new TransientWindowRolePlacement({
-      kind: "point",
-      point: { x: 20, y: 40 }
-    }),
-    restoration: "restore-focus"
-  })
-
-const openRequest = () =>
-  new TransientWindowRoleOpenRequest({
-    actor: actor(),
-    roleId: "palette-1",
-    policy: policy()
-  })
 
 const runScoped = <A, E, R>(
   effect: Effect.Effect<A, E, R>,

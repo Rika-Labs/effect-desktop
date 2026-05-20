@@ -528,6 +528,7 @@ export {
   makeTransientWindowRoleServiceLayer,
   makeTransientWindowRoleUnsupportedClient,
   TransientWindowRole,
+  TransientWindowRoleCapabilityFacts,
   TransientWindowRoleClient,
   TransientWindowRoleHandlersLive,
   TransientWindowRoleLive,
@@ -537,11 +538,9 @@ export {
   TransientWindowRoleSurface,
   type TransientWindowRoleClientApi,
   type TransientWindowRoleError,
-  type TransientWindowRoleMemoryClientOptions,
   type TransientWindowRoleRpc,
   type TransientWindowRoleRpcHandlers,
-  type TransientWindowRoleServiceApi,
-  type TransientWindowRoleServiceOptions
+  type TransientWindowRoleServiceApi
 } from "./transient-window-role.js"
 export {
   ExecutionSandbox,
@@ -657,6 +656,7 @@ export {
 } from "./selection-context.js"
 export {
   FocusedApplicationContext,
+  FocusedApplicationContextCapabilityFacts,
   FocusedApplicationContextClient,
   FocusedApplicationContextHandlersLive,
   FocusedApplicationContextLive,
@@ -811,23 +811,19 @@ export {
   makeWebRequestServiceLayer,
   makeWebRequestUnsupportedClient,
   WebRequest,
+  WebRequestCapabilityFacts,
   WebRequestClient,
   WebRequestHandlersLive,
   WebRequestLive,
   WebRequestMethodNames,
-  WebRequestOnBeforeRequest,
-  WebRequestOnHeadersReceived,
-  WebRequestRemoveListener,
   WebRequestRpcEvents,
   WebRequestRpcs,
   WebRequestSurface,
   type WebRequestClientApi,
   type WebRequestError,
-  type WebRequestMemoryClientOptions,
   type WebRequestRpc,
   type WebRequestRpcHandlers,
-  type WebRequestServiceApi,
-  type WebRequestServiceOptions
+  type WebRequestServiceApi
 } from "./web-request.js"
 export {
   Notification,

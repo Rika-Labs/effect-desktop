@@ -1630,7 +1630,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "FocusedApplicationContext.watch",
@@ -1658,7 +1658,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "GlobalShortcut.isRegistered",
@@ -3511,7 +3511,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "TransientWindowRole.isSupported",
@@ -3549,7 +3549,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "TransientWindowRole.reposition",
@@ -3577,7 +3577,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "Tray.create",
@@ -3950,7 +3950,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "WebRequest.onHeadersReceived",
@@ -3978,7 +3978,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "WebRequest.removeListener",
@@ -4006,7 +4006,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "WebView.attachDebugger",
@@ -5257,7 +5257,7 @@
   ],
   "summary": {
     "total": 291,
-    "routed": 250,
+    "routed": 242,
     "missing": 0,
     "supported": 158,
     "partial": 71,

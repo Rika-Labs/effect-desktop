@@ -2,8 +2,7 @@
 
 use host_protocol::{
     FocusedApplicationContextActorPayload, FocusedApplicationContextSnapshotPayload,
-    FocusedApplicationContextSnapshotResultPayload, FocusedApplicationContextStopWatchingPayload,
-    FocusedApplicationContextSupportedPayload, FocusedApplicationContextWatchPayload,
+    FocusedApplicationContextSnapshotResultPayload, FocusedApplicationContextSupportedPayload,
     FocusedApplicationMetadataPayload, HostProtocolError,
 };
 use serde::{de::DeserializeOwned, Serialize};
@@ -27,61 +26,6 @@ pub(crate) fn snapshot(payload: Option<Value>) -> Result<Option<Value>, HostProt
         focused_application_snapshot(host_protocol::FOCUSED_APPLICATION_CONTEXT_SNAPSHOT_METHOD)?,
         host_protocol::FOCUSED_APPLICATION_CONTEXT_SNAPSHOT_METHOD,
     )
-}
-
-pub(crate) fn watch(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
-    let input = decode_payload::<FocusedApplicationContextWatchPayload>(
-        payload,
-        host_protocol::FOCUSED_APPLICATION_CONTEXT_WATCH_METHOD,
-    )?;
-    validate_actor(
-        input.actor(),
-        host_protocol::FOCUSED_APPLICATION_CONTEXT_WATCH_METHOD,
-    )?;
-    if let Some(watch_id) = input.watch_id() {
-        validate_non_empty(
-            "watchId",
-            watch_id,
-            host_protocol::FOCUSED_APPLICATION_CONTEXT_WATCH_METHOD,
-        )?;
-    }
-    if let Some(owner_scope) = input.owner_scope() {
-        validate_non_empty(
-            "ownerScope",
-            owner_scope,
-            host_protocol::FOCUSED_APPLICATION_CONTEXT_WATCH_METHOD,
-        )?;
-    }
-    validate_trace_id(
-        input.trace_id(),
-        host_protocol::FOCUSED_APPLICATION_CONTEXT_WATCH_METHOD,
-    )?;
-    Err(unsupported(
-        host_protocol::FOCUSED_APPLICATION_CONTEXT_WATCH_METHOD,
-    ))
-}
-
-pub(crate) fn stop_watching(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
-    let input = decode_payload::<FocusedApplicationContextStopWatchingPayload>(
-        payload,
-        host_protocol::FOCUSED_APPLICATION_CONTEXT_STOP_WATCHING_METHOD,
-    )?;
-    validate_actor(
-        input.actor(),
-        host_protocol::FOCUSED_APPLICATION_CONTEXT_STOP_WATCHING_METHOD,
-    )?;
-    validate_non_empty(
-        "watchId",
-        input.watch_id(),
-        host_protocol::FOCUSED_APPLICATION_CONTEXT_STOP_WATCHING_METHOD,
-    )?;
-    validate_trace_id(
-        input.trace_id(),
-        host_protocol::FOCUSED_APPLICATION_CONTEXT_STOP_WATCHING_METHOD,
-    )?;
-    Err(unsupported(
-        host_protocol::FOCUSED_APPLICATION_CONTEXT_STOP_WATCHING_METHOD,
-    ))
 }
 
 pub(crate) fn is_supported() -> Result<Option<Value>, HostProtocolError> {
@@ -180,6 +124,7 @@ fn validate_no_nul(
     Ok(())
 }
 
+#[cfg(not(all(target_os = "macos", not(test))))]
 fn unsupported(operation: &'static str) -> HostProtocolError {
     HostProtocolError::unsupported(
         host_protocol::FOCUSED_APPLICATION_CONTEXT_UNSUPPORTED_REASON,
@@ -406,31 +351,6 @@ mod tests {
         });
 
         let error = snapshot(Some(invalid)).expect_err("invalid input should fail");
-
-        assert!(matches!(error, HostProtocolError::InvalidArgument { .. }));
-    }
-
-    #[test]
-    fn watch_rejects_blank_owner_scope_before_unsupported() {
-        let invalid = json!({
-            "actor": { "kind": "workspace", "id": "workspace-1" },
-            "watchId": "watch-1",
-            "ownerScope": " "
-        });
-
-        let error = watch(Some(invalid)).expect_err("invalid input should fail");
-
-        assert!(matches!(error, HostProtocolError::InvalidArgument { .. }));
-    }
-
-    #[test]
-    fn stop_watching_rejects_blank_watch_id_before_unsupported() {
-        let invalid = json!({
-            "actor": { "kind": "workspace", "id": "workspace-1" },
-            "watchId": " "
-        });
-
-        let error = stop_watching(Some(invalid)).expect_err("invalid input should fail");
 
         assert!(matches!(error, HostProtocolError::InvalidArgument { .. }));
     }

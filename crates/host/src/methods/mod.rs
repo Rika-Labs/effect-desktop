@@ -797,14 +797,6 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Payload(focused_application_context::snapshot),
     ),
     route(
-        host_protocol::FOCUSED_APPLICATION_CONTEXT_WATCH_METHOD,
-        HostMethodDispatcher::Payload(focused_application_context::watch),
-    ),
-    route(
-        host_protocol::FOCUSED_APPLICATION_CONTEXT_STOP_WATCHING_METHOD,
-        HostMethodDispatcher::Payload(focused_application_context::stop_watching),
-    ),
-    route(
         host_protocol::FOCUSED_APPLICATION_CONTEXT_IS_SUPPORTED_METHOD,
         HostMethodDispatcher::Empty(focused_application_context::is_supported),
     ),
@@ -823,18 +815,6 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     route(
         host_protocol::DISPLAY_CAPTURE_IS_SUPPORTED_METHOD,
         HostMethodDispatcher::Empty(display_capture::is_supported),
-    ),
-    route(
-        host_protocol::TRANSIENT_WINDOW_ROLE_OPEN_METHOD,
-        HostMethodDispatcher::Payload(transient_window_role::open),
-    ),
-    route(
-        host_protocol::TRANSIENT_WINDOW_ROLE_REPOSITION_METHOD,
-        HostMethodDispatcher::Payload(transient_window_role::reposition),
-    ),
-    route(
-        host_protocol::TRANSIENT_WINDOW_ROLE_DISMISS_METHOD,
-        HostMethodDispatcher::Payload(transient_window_role::dismiss),
     ),
     route(
         host_protocol::TRANSIENT_WINDOW_ROLE_IS_SUPPORTED_METHOD,
@@ -1191,18 +1171,6 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     route(
         host_protocol::NETWORK_AUTH_IS_SUPPORTED_METHOD,
         HostMethodDispatcher::Payload(network_auth::is_supported),
-    ),
-    route(
-        host_protocol::WEB_REQUEST_ON_BEFORE_REQUEST_METHOD,
-        HostMethodDispatcher::Payload(web_request::on_before_request),
-    ),
-    route(
-        host_protocol::WEB_REQUEST_ON_HEADERS_RECEIVED_METHOD,
-        HostMethodDispatcher::Payload(web_request::on_headers_received),
-    ),
-    route(
-        host_protocol::WEB_REQUEST_REMOVE_LISTENER_METHOD,
-        HostMethodDispatcher::Payload(web_request::remove_listener),
     ),
     route(
         host_protocol::WEB_REQUEST_IS_SUPPORTED_METHOD,
@@ -2266,59 +2234,6 @@ mod tests {
                 error: None,
             }
         );
-    }
-
-    #[test]
-    fn transient_window_role_mutations_dispatch_through_router() {
-        let cases = [
-            (
-                "request-transient-window-role-open",
-                host_protocol::TRANSIENT_WINDOW_ROLE_OPEN_METHOD,
-                serde_json::json!({
-                    "actor": { "kind": "workspace", "id": "workspace-1" },
-                    "roleId": "palette-1",
-                    "policy": {
-                        "role": "palette",
-                        "focus": "take-focus",
-                        "dismissal": "escape",
-                        "zOrder": "floating",
-                        "placement": {
-                            "kind": "point",
-                            "point": { "x": 20.0, "y": 40.0 }
-                        },
-                        "restoration": "restore-focus"
-                    }
-                }),
-            ),
-            (
-                "request-transient-window-role-reposition",
-                host_protocol::TRANSIENT_WINDOW_ROLE_REPOSITION_METHOD,
-                serde_json::json!({
-                    "actor": { "kind": "workspace", "id": "workspace-1" },
-                    "handle": transient_window_role_handle(),
-                    "placement": { "kind": "centered" }
-                }),
-            ),
-            (
-                "request-transient-window-role-dismiss",
-                host_protocol::TRANSIENT_WINDOW_ROLE_DISMISS_METHOD,
-                serde_json::json!({
-                    "actor": { "kind": "workspace", "id": "workspace-1" },
-                    "handle": transient_window_role_handle()
-                }),
-            ),
-        ];
-
-        for (id, method, payload) in cases {
-            let response = test_router()
-                .dispatch_at(request_with_payload(id, method, payload), 1710000000106)
-                .expect("transient window role mutation request should return response");
-
-            let HostProtocolEnvelope::Response { error, .. } = response else {
-                panic!("transient window role mutation should return response");
-            };
-            assert!(matches!(error, Some(HostProtocolError::Unsupported { .. })));
-        }
     }
 
     #[test]
@@ -7166,16 +7081,6 @@ mod tests {
         let start = declaration.find('"')? + 1;
         let end = declaration[start..].find('"')? + start;
         Some(declaration[start..end].to_string())
-    }
-
-    fn transient_window_role_handle() -> serde_json::Value {
-        serde_json::json!({
-            "kind": "transient-window-role",
-            "id": "palette-1",
-            "generation": 0,
-            "ownerScope": "workspace:workspace-1",
-            "state": "open"
-        })
     }
 
     fn egress_policy_decision_id(response: &HostProtocolEnvelope) -> String {
