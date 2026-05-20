@@ -130,6 +130,7 @@ pub(crate) fn apply_window_builder_polish(
     platform::apply_window_builder_polish(builder, polish)
 }
 
+#[cfg(target_os = "macos")]
 pub(crate) fn apply_window_parent(
     builder: WindowBuilder,
     parent: &Window,
@@ -204,7 +205,7 @@ pub(crate) fn set_application_menu(template: Value) -> std::result::Result<(), H
     platform::set_application_menu(template)
 }
 
-#[cfg_attr(test, allow(dead_code))]
+#[cfg(all(target_os = "macos", not(test)))]
 pub(crate) fn clear_application_menu() -> std::result::Result<(), HostProtocolError> {
     platform::clear_application_menu()
 }
@@ -218,6 +219,7 @@ pub(crate) struct MacosScreenWorkArea {
 }
 
 impl MacosScreenWorkArea {
+    #[cfg(target_os = "macos")]
     fn new(x: f64, y: f64, width: f64, height: f64) -> Self {
         Self {
             x,
@@ -660,16 +662,6 @@ mod platform {
         builder
     }
 
-    pub(super) fn apply_window_parent(
-        _builder: WindowBuilder,
-        _parent: &Window,
-    ) -> std::result::Result<WindowBuilder, HostProtocolError> {
-        Err(HostProtocolError::unsupported(
-            "window parent ownership is not implemented for this host platform",
-            host_protocol::WINDOW_CREATE_METHOD,
-        ))
-    }
-
     pub(super) fn apply_window_polish(
         _window: &Window,
         _polish: Option<&MacosWindowPolish>,
@@ -760,13 +752,6 @@ mod platform {
         Err(HostProtocolError::unsupported(
             "application menus are macOS-only in the host adapter",
             host_protocol::MENU_SET_APPLICATION_MENU_METHOD,
-        ))
-    }
-
-    pub(super) fn clear_application_menu() -> std::result::Result<(), HostProtocolError> {
-        Err(HostProtocolError::unsupported(
-            "application menus are macOS-only in the host adapter",
-            host_protocol::MENU_CLEAR_METHOD,
         ))
     }
 

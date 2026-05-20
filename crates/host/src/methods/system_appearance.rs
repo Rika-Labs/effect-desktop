@@ -2,9 +2,11 @@
 // Host method adapters return the canonical HostProtocolError enum from the
 // wire contract. Boxing that error here would obscure the protocol surface.
 
+#[cfg(any(test, target_os = "macos", target_os = "windows"))]
+use host_protocol::SystemAppearanceChangedPayload;
 use host_protocol::{
     HostProtocolEnvelope, HostProtocolError, SystemAppearanceAccentColorPayload,
-    SystemAppearanceBooleanPayload, SystemAppearanceChangedPayload, SystemAppearanceColorPayload,
+    SystemAppearanceBooleanPayload, SystemAppearanceColorPayload,
     SystemAppearanceIsSupportedPayload, SystemAppearanceMethodPayload, SystemAppearanceModePayload,
     SystemAppearanceResultPayload, SystemAppearanceSupportedPayload,
 };

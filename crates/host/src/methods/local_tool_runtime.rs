@@ -1584,12 +1584,14 @@ fn merged_environment(
     env.into_iter().collect()
 }
 
+#[cfg(not(windows))]
 fn apply_stdio(command: &mut Command, stdio: &host_protocol::LocalToolRuntimeStdioPolicyPayload) {
     command.stdin(Stdio::null());
     command.stdout(stdio_for_mode(stdio.stdout()));
     command.stderr(stdio_for_mode(stdio.stderr()));
 }
 
+#[cfg(not(windows))]
 fn stdio_for_mode(mode: LocalToolRuntimeStdioMode) -> Stdio {
     match mode {
         LocalToolRuntimeStdioMode::Capture => Stdio::piped(),

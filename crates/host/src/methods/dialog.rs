@@ -430,6 +430,7 @@ fn confirm_with(
     )
 }
 
+#[cfg(not(target_os = "linux"))]
 fn apply_file_dialog_options<T>(mut dialog: rfd::FileDialog, input: &T) -> rfd::FileDialog
 where
     T: FileDialogOptions,
@@ -458,6 +459,7 @@ where
     dialog
 }
 
+#[cfg(not(target_os = "linux"))]
 fn apply_message_dialog_options(
     mut dialog: rfd::MessageDialog,
     input: &DialogMessagePayload,
@@ -471,6 +473,7 @@ fn apply_message_dialog_options(
     dialog
 }
 
+#[cfg(not(target_os = "linux"))]
 fn apply_confirm_dialog_options(
     mut dialog: rfd::MessageDialog,
     input: &DialogConfirmPayload,
@@ -537,6 +540,7 @@ fn description(message: &str, detail: Option<&str>) -> String {
     }
 }
 
+#[cfg(not(target_os = "linux"))]
 fn message_level(level: DialogLevelPayload) -> rfd::MessageLevel {
     match level {
         DialogLevelPayload::Info => rfd::MessageLevel::Info,
