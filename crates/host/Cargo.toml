@@ -47,7 +47,7 @@ notify-rust = "4.17.0"
 block2.workspace = true
 core-foundation = "0.10.1"
 keyring = { version = "3.6.3", default-features = false, features = ["apple-native"] }
-muda = "0.19.1"
+muda = "0.19.2"
 objc2.workspace = true
 objc2-app-kit.workspace = true
 objc2-foundation.workspace = true
