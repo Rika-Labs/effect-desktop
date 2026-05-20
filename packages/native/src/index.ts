@@ -233,6 +233,7 @@ export {
 } from "./parity-matrix.js"
 export {
   BrowsingData,
+  BrowsingDataCapabilityFacts,
   BrowsingDataClient,
   BrowsingDataHandlersLive,
   BrowsingDataLive,
@@ -248,11 +249,9 @@ export {
   makeHostBrowsingDataRpcRuntime,
   type BrowsingDataClientApi,
   type BrowsingDataError,
-  type BrowsingDataMemoryClientOptions,
   type BrowsingDataRpc,
   type BrowsingDataRpcHandlers,
-  type BrowsingDataServiceApi,
-  type BrowsingDataServiceOptions
+  type BrowsingDataServiceApi
 } from "./browsing-data.js"
 export {
   Clipboard,
@@ -291,6 +290,7 @@ export {
 } from "./context-menu.js"
 export {
   CookieStore,
+  CookieStoreCapabilityFacts,
   CookieStoreClient,
   CookieStoreHandlersLive,
   CookieStoreLive,
@@ -306,11 +306,9 @@ export {
   makeHostCookieStoreRpcRuntime,
   type CookieStoreClientApi,
   type CookieStoreError,
-  type CookieStoreMemoryClientOptions,
   type CookieStoreRpc,
   type CookieStoreRpcHandlers,
-  type CookieStoreServiceApi,
-  type CookieStoreServiceOptions
+  type CookieStoreServiceApi
 } from "./cookie-store.js"
 export {
   CrashReporter,
@@ -751,6 +749,7 @@ export {
 } from "./dock.js"
 export {
   GlobalShortcut,
+  GlobalShortcutCapabilityFacts,
   GlobalShortcutClient,
   GlobalShortcutHandlersLive,
   GlobalShortcutLive,

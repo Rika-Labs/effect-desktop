@@ -327,7 +327,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "BrowsingData.estimate",
@@ -355,7 +355,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "BrowsingData.isSupported",
@@ -393,7 +393,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "Clipboard.clear",
@@ -585,7 +585,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "CookieStore.isSupported",
@@ -623,7 +623,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "CookieStore.set",
@@ -651,7 +651,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "CrashReporter.flush",
@@ -1706,7 +1706,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "GlobalShortcut.unregister",
@@ -1734,7 +1734,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "GlobalShortcut.unregisterAll",
@@ -1762,7 +1762,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "Job.fail",
@@ -5257,7 +5257,7 @@
   ],
   "summary": {
     "total": 291,
-    "routed": 286,
+    "routed": 277,
     "missing": 0,
     "supported": 158,
     "partial": 71,

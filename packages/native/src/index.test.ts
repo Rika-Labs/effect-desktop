@@ -175,6 +175,7 @@ import {
   ExecutionSandboxLive,
   ExecutionSandboxSurface,
   GlobalShortcut,
+  GlobalShortcutCapabilityFacts,
   GlobalShortcutHandlersLive,
   GlobalShortcutRpcs,
   GlobalShortcutRpcEvents,
@@ -348,10 +349,7 @@ import { makeContextMenuBridgeClientLayer } from "./context-menu.js"
 import { makeCrashReporterBridgeClientLayer } from "./crash-reporter.js"
 import { makeDialogBridgeClientLayer, makeHostDialogRpcRuntime } from "./dialog.js"
 import { makeDockBridgeClientLayer, makeHostDockRpcRuntime } from "./dock.js"
-import {
-  makeGlobalShortcutBridgeClientLayer,
-  makeHostGlobalShortcutRpcRuntime
-} from "./global-shortcut.js"
+import { makeGlobalShortcutBridgeClientLayer } from "./global-shortcut.js"
 import { makeMenuBridgeClientLayer } from "./menu.js"
 import {
   makeHostNativeFileSystemRpcRuntime,
@@ -920,12 +918,11 @@ const expectedDockMethods: Array<(typeof DockMethodNames)[number]> = [
 ]
 
 const expectedGlobalShortcutMethods: Array<(typeof GlobalShortcutMethodNames)[number]> = [
-  "register",
-  "unregister",
-  "unregisterAll",
   "isRegistered",
   "isSupported"
 ]
+
+const expectedGlobalShortcutCapabilityFactMethods = ["register", "unregister", "unregisterAll"]
 
 const expectedClipboardMethods: Array<(typeof ClipboardMethodNames)[number]> = [
   "readText",
@@ -8091,7 +8088,10 @@ test("native DesktopRpc surfaces derive server, client, test, and metadata layer
           surface: GlobalShortcutSurface,
           group: GlobalShortcutRpcs,
           handlers: GlobalShortcutHandlersLive,
-          tags: Array.from(GlobalShortcutRpcs.requests.keys())
+          tags: [
+            ...Array.from(GlobalShortcutRpcs.requests.keys()),
+            ...GlobalShortcutCapabilityFacts.map((fact) => fact.tag)
+          ]
         },
         {
           name: "Menu",
@@ -8197,8 +8197,9 @@ test("native DesktopRpc surfaces derive server, client, test, and metadata layer
         expect(Layer.isLayer(surface.clientLayer)).toBe(true)
         expect(Layer.isLayer(surface.testClientLayer)).toBe(true)
         expect(surface.schemaDocs.map((doc) => doc.tag)).toEqual(Array.from(tags))
-        expect(surface.schemaDocs.map((doc) => Option.getOrUndefined(doc.error))).toEqual(
-          tags.map(() => HostProtocolErrorSchema)
+        const callableDocs = surface.schemaDocs.filter((doc) => doc.callable)
+        expect(callableDocs.map((doc) => Option.getOrUndefined(doc.error))).toEqual(
+          callableDocs.map(() => HostProtocolErrorSchema)
         )
       }
     })
@@ -9482,6 +9483,33 @@ test("GlobalShortcutRpcs declares the Phase 8 GlobalShortcut method and event su
   expect(Object.keys(GlobalShortcutRpcEvents)).toEqual(["Pressed"])
 })
 
+test("GlobalShortcut declares register, unregister, unregisterAll as non-callable capability facts", () => {
+  const factTags = GlobalShortcutCapabilityFacts.map((fact) => fact.tag).toSorted()
+  expect(factTags).toEqual(
+    expectedGlobalShortcutCapabilityFactMethods
+      .map((method) => `GlobalShortcut.${method}`)
+      .toSorted()
+  )
+  for (const fact of GlobalShortcutCapabilityFacts) {
+    expect(fact.support.status).toBe("unsupported")
+  }
+
+  const callableTags = Array.from(GlobalShortcutRpcs.requests.keys())
+  for (const method of expectedGlobalShortcutCapabilityFactMethods) {
+    expect(callableTags).not.toContain(`GlobalShortcut.${method}`)
+  }
+
+  const nonCallableTags = GlobalShortcutSurface.schemaDocs
+    .filter((doc) => !doc.callable)
+    .map((doc) => doc.tag)
+    .toSorted()
+  expect(nonCallableTags).toEqual(
+    expectedGlobalShortcutCapabilityFactMethods
+      .map((method) => `GlobalShortcut.${method}`)
+      .toSorted()
+  )
+})
+
 test("GlobalShortcut service delegates through a substitutable GlobalShortcutClient port", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -9537,19 +9565,29 @@ test("GlobalShortcut bridge client sends typed host envelopes and decodes presse
         Effect.gen(function* () {
           const shortcuts = yield* GlobalShortcut
           const supported = yield* shortcuts.isSupported()
-          yield* shortcuts.register("CmdOrCtrl+K", windowHandle)
           const registered = yield* shortcuts.isRegistered("CmdOrCtrl+K")
           const pressed = yield* shortcuts.onPressed().pipe(Stream.take(1), Stream.runCollect)
-          yield* shortcuts.unregister("CmdOrCtrl+K")
-          yield* shortcuts.unregisterAll()
+          const registerExit = yield* Effect.exit(shortcuts.register("CmdOrCtrl+K", windowHandle))
+          const unregisterExit = yield* Effect.exit(shortcuts.unregister("CmdOrCtrl+K"))
+          const unregisterAllExit = yield* Effect.exit(shortcuts.unregisterAll())
 
-          return { pressed, registered, supported }
+          return {
+            pressed,
+            registered,
+            registerExit,
+            supported,
+            unregisterAllExit,
+            unregisterExit
+          }
         }),
         Layer.provide(GlobalShortcutLive, makeGlobalShortcutBridgeClientLayer(exchange))
       )
 
       expect(result.supported).toEqual(new GlobalShortcutSupportedResult({ supported: true }))
       expect(result.registered).toBe(true)
+      expectExitFailure(result.registerExit, (error) => hasErrorTag(error, "Unsupported"))
+      expectExitFailure(result.unregisterExit, (error) => hasErrorTag(error, "Unsupported"))
+      expectExitFailure(result.unregisterAllExit, (error) => hasErrorTag(error, "Unsupported"))
       expect(Array.from(result.pressed)).toEqual([
         new GlobalShortcutPressedEvent({
           accelerator: "CmdOrCtrl+K",
@@ -9558,10 +9596,7 @@ test("GlobalShortcut bridge client sends typed host envelopes and decodes presse
       ])
       expect(requests.map((request) => [request.method, request.payload])).toEqual([
         ["GlobalShortcut.isSupported", null],
-        ["GlobalShortcut.register", { accelerator: "CmdOrCtrl+K", registrarWindow: windowHandle }],
-        ["GlobalShortcut.isRegistered", { accelerator: "CmdOrCtrl+K" }],
-        ["GlobalShortcut.unregister", { accelerator: "CmdOrCtrl+K" }],
-        ["GlobalShortcut.unregisterAll", null]
+        ["GlobalShortcut.isRegistered", { accelerator: "CmdOrCtrl+K" }]
       ])
     })
   ))
@@ -9697,56 +9732,16 @@ test("GlobalShortcut bridge client rejects empty and NUL-bearing accelerators as
     })
   ))
 
-test("native host RPC runtime denies protected GlobalShortcut calls before handlers run", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const calls: string[] = []
-      const runtime = makeHostGlobalShortcutRpcRuntime(
-        {
-          "GlobalShortcut.register": (input) =>
-            Effect.sync(() => {
-              calls.push(`register:${input.accelerator}:${input.registrarWindow.id}`)
-            }),
-          "GlobalShortcut.unregister": (input) =>
-            Effect.sync(() => {
-              calls.push(`unregister:${input.accelerator}`)
-            }),
-          "GlobalShortcut.unregisterAll": () =>
-            Effect.sync(() => {
-              calls.push("unregisterAll")
-            }),
-          "GlobalShortcut.isRegistered": (input) =>
-            Effect.sync(() => {
-              calls.push(`isRegistered:${input.accelerator}`)
-              return new GlobalShortcutRegisteredResult({ registered: true })
-            }),
-          "GlobalShortcut.isSupported": () =>
-            Effect.succeed(new GlobalShortcutSupportedResult({ supported: true }))
-        },
-        { originAuth: RendererOriginAuth.unsafeDisabledForTests }
-      )
+test("GlobalShortcut capability facts carry the protected nativeInvoke capability", () => {
+  const factsByTag = new Map(GlobalShortcutCapabilityFacts.map((fact) => [fact.tag, fact] as const))
 
-      const response = yield* runScoped(
-        runtime.dispatch(
-          new HostProtocolRequestEnvelope({
-            kind: "request",
-            id: "global-shortcut-denied",
-            method: "GlobalShortcut.register",
-            timestamp: 1710000000000,
-            traceId: "trace-global-shortcut-denied",
-            payload: { accelerator: "CmdOrCtrl+K", registrarWindow: windowHandle }
-          })
-        ),
-        Layer.effect(PermissionRegistry, makePermissionRegistry())
-      )
-
-      expect(response.kind).toBe("failure")
-      if (response.kind === "failure") {
-        expect(hasErrorTag(response.error, "PermissionDenied")).toBe(true)
-      }
-      expect(calls).toEqual([])
-    })
-  ))
+  for (const method of expectedGlobalShortcutCapabilityFactMethods) {
+    const fact = factsByTag.get(`GlobalShortcut.${method}`)
+    expect(fact).toBeDefined()
+    expect(fact!.capability.kind).toBe("native.invoke")
+    expect(fact!.support.status).toBe("unsupported")
+  }
+})
 
 test("GlobalShortcut bindCommand invokes CommandRegistry for matching registrar events, keeps listening after command failure, and unregisters on scope close", () =>
   Effect.runPromise(

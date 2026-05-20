@@ -51,10 +51,6 @@ pub(crate) fn global_shortcut_is_supported() -> Result<Option<Value>, HostProtoc
     Ok(Some(global_shortcut_support_payload()))
 }
 
-pub(crate) fn unsupported_global_shortcut(operation: &'static str) -> HostProtocolError {
-    HostProtocolError::unsupported(global_shortcut_unsupported_reason(), operation)
-}
-
 pub(crate) fn global_shortcut_is_registered() -> Result<Option<Value>, HostProtocolError> {
     Ok(Some(json!({ "registered": false })))
 }
@@ -196,19 +192,6 @@ fn global_shortcut_support_payload() -> Value {
         "supported": false,
         "reason": HOST_ADAPTER_UNIMPLEMENTED_REASON
     })
-}
-
-#[cfg(target_os = "linux")]
-fn global_shortcut_unsupported_reason() -> &'static str {
-    match LinuxSession::detect() {
-        LinuxSession::Wayland => WAYLAND_GLOBAL_SHORTCUT_REASON,
-        LinuxSession::X11 | LinuxSession::Unknown => HOST_ADAPTER_UNIMPLEMENTED_REASON,
-    }
-}
-
-#[cfg(not(target_os = "linux"))]
-fn global_shortcut_unsupported_reason() -> &'static str {
-    HOST_ADAPTER_UNIMPLEMENTED_REASON
 }
 
 #[cfg(target_os = "macos")]

@@ -195,7 +195,6 @@ enum HostMethodDispatcher {
     TrayCreate(TrayCreateHandler),
     EventfulPayload(EventfulPayloadHandler),
     WindowDestroy,
-    UnsupportedGlobalShortcut,
     EgressRecord,
     RealtimeMedia(RealtimeMediaHandler),
     ExtensionConfig(ExtensionConfigHandler),
@@ -472,18 +471,6 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     route(
         host_protocol::DOCK_IS_SUPPORTED_METHOD,
         HostMethodDispatcher::Payload(linux::dock_is_supported),
-    ),
-    route(
-        host_protocol::GLOBAL_SHORTCUT_REGISTER_METHOD,
-        HostMethodDispatcher::UnsupportedGlobalShortcut,
-    ),
-    route(
-        host_protocol::GLOBAL_SHORTCUT_UNREGISTER_METHOD,
-        HostMethodDispatcher::UnsupportedGlobalShortcut,
-    ),
-    route(
-        host_protocol::GLOBAL_SHORTCUT_UNREGISTER_ALL_METHOD,
-        HostMethodDispatcher::UnsupportedGlobalShortcut,
     ),
     route(
         host_protocol::GLOBAL_SHORTCUT_IS_REGISTERED_METHOD,
@@ -1250,32 +1237,8 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Payload(session_profile::is_supported),
     ),
     route(
-        host_protocol::COOKIE_STORE_GET_METHOD,
-        HostMethodDispatcher::Payload(cookie_store::get),
-    ),
-    route(
-        host_protocol::COOKIE_STORE_SET_METHOD,
-        HostMethodDispatcher::Payload(cookie_store::set),
-    ),
-    route(
-        host_protocol::COOKIE_STORE_REMOVE_METHOD,
-        HostMethodDispatcher::Payload(cookie_store::remove),
-    ),
-    route(
         host_protocol::COOKIE_STORE_IS_SUPPORTED_METHOD,
         HostMethodDispatcher::Payload(cookie_store::is_supported),
-    ),
-    route(
-        host_protocol::BROWSING_DATA_CLEAR_METHOD,
-        HostMethodDispatcher::Payload(browsing_data::clear),
-    ),
-    route(
-        host_protocol::BROWSING_DATA_ESTIMATE_METHOD,
-        HostMethodDispatcher::Payload(browsing_data::estimate),
-    ),
-    route(
-        host_protocol::BROWSING_DATA_LIST_TYPES_METHOD,
-        HostMethodDispatcher::Payload(browsing_data::list_types),
     ),
     route(
         host_protocol::BROWSING_DATA_IS_SUPPORTED_METHOD,
@@ -1382,7 +1345,7 @@ impl HostMethodRegistry {
                 Some(HostProtocolError::method_not_found(request.method)),
             );
         };
-        route.dispatcher.dispatch(router, route.method, request)
+        route.dispatcher.dispatch(router, request)
     }
 
     #[cfg(test)]
@@ -1395,7 +1358,6 @@ impl HostMethodDispatcher {
     fn dispatch(
         &self,
         router: &HostMethodRouter,
-        method: &'static str,
         request: HostDispatchRequest,
     ) -> Vec<HostProtocolEnvelope> {
         match self {
@@ -1471,12 +1433,6 @@ impl HostMethodDispatcher {
                 }
                 dispatch_result_frame(request.id, request.timestamp, request.trace_id, result)
             }
-            Self::UnsupportedGlobalShortcut => dispatch_result_frame(
-                request.id,
-                request.timestamp,
-                request.trace_id,
-                Err(linux::unsupported_global_shortcut(method)),
-            ),
             Self::EgressRecord => dispatch_egress_record(request),
             Self::RealtimeMedia(handler) => router.dispatch_realtime_media_session(
                 RealtimeMediaDispatch {

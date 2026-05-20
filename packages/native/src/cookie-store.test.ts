@@ -1,177 +1,94 @@
 import { expect, test } from "bun:test"
-import { makeHostProtocolInternalError } from "@effect-desktop/bridge"
-import { makePermissionRegistry, makeResourceId, P } from "@effect-desktop/core"
-import { Cause, Effect, Exit, type Layer, ManagedRuntime, Option, Stream } from "effect"
+import { Effect, type Layer, ManagedRuntime } from "effect"
 
+import { makeNativeCapabilityManifest } from "./capabilities.js"
 import {
   CookieStore,
-  CookieStoreCookie,
+  CookieStoreCapabilityFacts,
+  CookieStoreRpcs,
+  CookieStoreSurface,
   makeCookieStoreMemoryClient,
   makeCookieStoreServiceLayer,
-  makeCookieStoreUnsupportedClient,
-  type CookieStoreClientApi
+  makeCookieStoreUnsupportedClient
 } from "./cookie-store.js"
-import type { SessionProfileHandle } from "./contracts/session-profile.js"
 
-test("CookieStore reads, writes, removes, and watches cookies per session profile", () =>
+const UnsupportedMethods = ["get", "set", "remove"] as const
+
+test("CookieStore exposes only isSupported as a callable RPC", () => {
+  const callableTags = Array.from(CookieStoreRpcs.requests.keys()).toSorted()
+  expect(callableTags).toEqual(["CookieStore.isSupported"])
+  for (const method of UnsupportedMethods) {
+    expect(callableTags).not.toContain(`CookieStore.${method}`)
+  }
+})
+
+test("CookieStore isSupported reports supported result through the service", () =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const permissions = yield* configuredPermissions()
       const client = yield* makeCookieStoreMemoryClient()
-
       const result = yield* runScoped(
         Effect.gen(function* () {
           const store = yield* CookieStore
-          yield* store.set(profileA, "https://example.test/account", cookie("token", "a"))
-          yield* store.set(profileB, "https://example.test/account", cookie("token", "b"))
-          const first = yield* store.get(profileA, "https://example.test/account")
-          yield* store.remove(profileA, "https://example.test/account", "token")
-          const afterRemove = yield* store.get(profileA, "https://example.test/account")
-          const otherProfile = yield* store.get(profileB, "https://example.test/account")
-          const event = yield* store
-            .events(profileA)
-            .pipe(Stream.runHead, Effect.map(Option.getOrThrow))
-          return { afterRemove, event, first, otherProfile }
+          return yield* store.isSupported()
         }),
-        makeCookieStoreServiceLayer(client, { permissions })
+        makeCookieStoreServiceLayer(client)
       )
-
-      expect(result.first.cookies.map((row) => row.value)).toEqual(["a"])
-      expect(result.afterRemove.cookies).toEqual([])
-      expect(result.otherProfile.cookies.map((row) => row.value)).toEqual(["b"])
-      expect(result.event.profile.id).toBe(profileA.id)
-      expect(result.event.phase).toBe("set")
+      expect(result.supported).toBe(true)
     })
   ))
 
-test("CookieStore denies before host side effects", () =>
+test("CookieStore unsupported client reports the host-unavailable reason", () =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const permissions = yield* makePermissionRegistry()
-      const baseClient = yield* makeCookieStoreMemoryClient()
-      let calls = 0
-      const client: CookieStoreClientApi = {
-        ...baseClient,
-        get: (input) =>
-          Effect.sync(() => {
-            calls += 1
-          }).pipe(Effect.andThen(baseClient.get(input)))
+      const client = makeCookieStoreUnsupportedClient()
+      const result = yield* runScoped(
+        Effect.gen(function* () {
+          const store = yield* CookieStore
+          return yield* store.isSupported()
+        }),
+        makeCookieStoreServiceLayer(client)
+      )
+      expect(result.supported).toBe(false)
+      expect(result.reason).toBe("host-cookie-store-unavailable")
+    })
+  ))
+
+test("CookieStore declares the 3 unsupported methods as non-callable capability facts", () => {
+  const factTags = CookieStoreCapabilityFacts.map((fact) => fact.tag).toSorted()
+  expect(factTags).toEqual(UnsupportedMethods.map((method) => `CookieStore.${method}`).toSorted())
+  for (const fact of CookieStoreCapabilityFacts) {
+    expect(fact.support.status).toBe("unsupported")
+  }
+})
+
+test("CookieStore capability facts surface in the manifest and stay non-callable", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const manifest = yield* makeNativeCapabilityManifest([
+        { schemaDocs: CookieStoreSurface.schemaDocs }
+      ])
+      const byTag = new Map(manifest.map((fact) => [fact.tag, fact] as const))
+
+      for (const method of UnsupportedMethods) {
+        const fact = byTag.get(`CookieStore.${method}`)
+        expect(fact).toBeDefined()
+        expect(fact?.support.status).toBe("unsupported")
       }
 
-      const exit = yield* runScoped(
-        Effect.gen(function* () {
-          const store = yield* CookieStore
-          return yield* Effect.exit(store.get(profileA, "https://example.test/account"))
-        }),
-        makeCookieStoreServiceLayer(client, { permissions })
-      )
+      const callableFactTags = CookieStoreSurface.schemaDocs
+        .filter((doc) => doc.callable)
+        .map((doc) => doc.tag)
+      expect(callableFactTags).toEqual(["CookieStore.isSupported"])
 
-      expect(calls).toBe(0)
-      expectExitFailure(exit, (error) => {
-        expect(error).toMatchObject({ tag: "PermissionDenied", operation: "CookieStore.get" })
-      })
+      const nonCallableTags = CookieStoreSurface.schemaDocs
+        .filter((doc) => !doc.callable)
+        .map((doc) => doc.tag)
+        .toSorted()
+      expect(nonCallableTags).toEqual(
+        UnsupportedMethods.map((method) => `CookieStore.${method}`).toSorted()
+      )
     })
   ))
-
-test("CookieStore surfaces unsupported and host failures as typed failures", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const permissions = yield* configuredPermissions()
-      const unsupported = makeCookieStoreUnsupportedClient()
-      const failing = yield* makeCookieStoreMemoryClient({
-        failure: { get: makeHostProtocolInternalError("host failed", "CookieStore.get") }
-      })
-
-      const unsupportedExit = yield* runScoped(
-        Effect.gen(function* () {
-          const store = yield* CookieStore
-          return yield* Effect.exit(store.get(profileA, "https://example.test/account"))
-        }),
-        makeCookieStoreServiceLayer(unsupported, { permissions })
-      )
-      const failureExit = yield* runScoped(
-        Effect.gen(function* () {
-          const store = yield* CookieStore
-          return yield* Effect.exit(store.get(profileA, "https://example.test/account"))
-        }),
-        makeCookieStoreServiceLayer(failing, { permissions })
-      )
-
-      expectExitFailure(unsupportedExit, (error) => {
-        expect(error).toMatchObject({ tag: "Unsupported", operation: "CookieStore.get" })
-      })
-      expectExitFailure(failureExit, (error) => {
-        expect(error).toMatchObject({ tag: "Internal", operation: "CookieStore.get" })
-      })
-    })
-  ))
-
-test("CookieStore rejects malformed input before client work", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const permissions = yield* configuredPermissions()
-      const baseClient = yield* makeCookieStoreMemoryClient()
-      let calls = 0
-      const client: CookieStoreClientApi = {
-        ...baseClient,
-        set: (input) =>
-          Effect.sync(() => {
-            calls += 1
-          }).pipe(Effect.andThen(baseClient.set(input)))
-      }
-
-      const exit = yield* runScoped(
-        Effect.gen(function* () {
-          const store = yield* CookieStore
-          return yield* Effect.exit(store.set(profileA, "file:///tmp/cookie", cookie("token", "a")))
-        }),
-        makeCookieStoreServiceLayer(client, { permissions })
-      )
-
-      expect(calls).toBe(0)
-      expectExitFailure(exit, (error) => {
-        expect(error).toMatchObject({ tag: "InvalidArgument", operation: "CookieStore.set" })
-      })
-    })
-  ))
-
-const profileA: SessionProfileHandle = {
-  kind: "session-profile",
-  id: makeResourceId("session-profile:workspace-a"),
-  generation: 0,
-  ownerScope: "workspace:a",
-  state: "open"
-}
-
-const profileB: SessionProfileHandle = {
-  kind: "session-profile",
-  id: makeResourceId("session-profile:workspace-b"),
-  generation: 0,
-  ownerScope: "workspace:b",
-  state: "open"
-}
-
-const cookie = (name: string, value: string): CookieStoreCookie =>
-  new CookieStoreCookie({
-    name,
-    value,
-    domain: "example.test",
-    path: "/",
-    secure: true,
-    httpOnly: true,
-    sameSite: "lax"
-  })
-
-const configuredPermissions = () =>
-  Effect.gen(function* () {
-    const permissions = yield* makePermissionRegistry()
-    yield* Effect.all([
-      permissions.declare(P.nativeInvoke({ primitive: "CookieStore", methods: ["get"] })),
-      permissions.declare(P.nativeInvoke({ primitive: "CookieStore", methods: ["set"] })),
-      permissions.declare(P.nativeInvoke({ primitive: "CookieStore", methods: ["remove"] }))
-    ])
-    return permissions
-  })
 
 const runScoped = <A, E, R>(
   effect: Effect.Effect<A, E, R>,
@@ -183,13 +100,3 @@ const runScoped = <A, E, R>(
     yield* Effect.promise(() => runtime.dispose())
     return result
   })
-
-const expectExitFailure = <A>(
-  exit: Exit.Exit<A, unknown>,
-  assert: (error: unknown) => void
-): void => {
-  expect(Exit.isFailure(exit)).toBe(true)
-  if (Exit.isFailure(exit)) {
-    assert(Cause.squash(exit.cause))
-  }
-}
