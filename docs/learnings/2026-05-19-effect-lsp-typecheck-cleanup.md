@@ -19,7 +19,7 @@ suppression directives anywhere. Workspace lint and format are fully clean.
   `Schema.fromJsonString` for JSON fixtures, module-scoped monotonic counters in
   place of `crypto.randomUUID`.
 - **Service keys** promoted to the fully-qualified
-  `@effect-desktop/core/<module-path>/<ServiceName>` form the `deterministicKeys`
+  `@orika/core/<module-path>/<ServiceName>` form the `deterministicKeys`
   rule expects. Tag identity is by class reference, so this is metadata-only.
 - **Native-Error subclasses** in `transport.ts` (`FrameTooLargeError`,
   `FrameTruncatedError`, `InvalidFrameLimitError`, `JsonRpcFrame*`) converted to

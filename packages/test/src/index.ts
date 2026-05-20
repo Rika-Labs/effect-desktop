@@ -83,7 +83,7 @@ import {
   type HostProtocolStreamEnvelope,
   type HostWindowClient,
   type WindowCreateInput
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import {
   ResourceRegistry,
   Filesystem,
@@ -130,7 +130,7 @@ import {
   type SecretsSafeStorageApi,
   type TelemetryInvalidArgumentError,
   type TelemetryOptions
-} from "@effect-desktop/core"
+} from "@orika/core"
 
 const PathRuntime = ManagedRuntime.make(Path.layer)
 const PathService = PathRuntime.runSync(Path.Path.asEffect())
@@ -195,9 +195,7 @@ export interface MockHostApi {
   readonly windows: () => ReadonlyMap<string, WindowCreateInput>
 }
 
-export class MockHost extends Context.Service<MockHost, MockHostApi>()(
-  "@effect-desktop/test/MockHost"
-) {}
+export class MockHost extends Context.Service<MockHost, MockHostApi>()("@orika/test/MockHost") {}
 
 const currentTimeMillis = (now: (() => number) | undefined): Effect.Effect<number, never, never> =>
   now === undefined ? Clock.currentTimeMillis : Effect.sync(now)
@@ -328,7 +326,7 @@ export interface MockBridgeApi {
 }
 
 export class MockBridge extends Context.Service<MockBridge, MockBridgeApi>()(
-  "@effect-desktop/test/MockBridge"
+  "@orika/test/MockBridge"
 ) {}
 
 export interface MockBridgeOptions {

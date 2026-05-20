@@ -97,7 +97,7 @@ describe("workspaces", () => {
   })
 })
 
-describe("@effect-desktop/cli package manifest", () => {
+describe("@orika/cli package manifest", () => {
   const cli = readPackageJson(join(REPO_ROOT, "packages", "cli", "package.json"))
 
   test("bin points at the checked-in executable entrypoint", () => {
@@ -105,8 +105,8 @@ describe("@effect-desktop/cli package manifest", () => {
   })
 
   test("workspace manifest keeps first-party dependencies linked in-repo", () => {
-    expect(cli.dependencies?.["@effect-desktop/bridge"]).toBe("workspace:*")
-    expect(cli.dependencies?.["@effect-desktop/config"]).toBe("workspace:*")
+    expect(cli.dependencies?.["@orika/bridge"]).toBe("workspace:*")
+    expect(cli.dependencies?.["@orika/config"]).toBe("workspace:*")
   })
 })
 

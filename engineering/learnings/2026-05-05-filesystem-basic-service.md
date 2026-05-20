@@ -10,7 +10,7 @@ pr: https://github.com/Rika-Labs/effect-desktop/pull/201
 
 ## What we set out to do
 
-Phase 11 needed the first `Filesystem` service surface in `@effect-desktop/core`: `read`, `write`, `stat`, `mkdir`, and `remove` as Effect operations with schema-validated inputs, trace spans, and structured `HostProtocolError` failures. The issue deliberately left capability checks, symlink policy, watchers, and atomic writes to sibling issues so this step could establish the basic service boundary without solving the whole filesystem model at once.
+Phase 11 needed the first `Filesystem` service surface in `@orika/core`: `read`, `write`, `stat`, `mkdir`, and `remove` as Effect operations with schema-validated inputs, trace spans, and structured `HostProtocolError` failures. The issue deliberately left capability checks, symlink policy, watchers, and atomic writes to sibling issues so this step could establish the basic service boundary without solving the whole filesystem model at once.
 
 ## What actually ended up working
 

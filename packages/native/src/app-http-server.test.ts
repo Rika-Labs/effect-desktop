@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { CspPolicy } from "@effect-desktop/config"
+import { CspPolicy } from "@orika/config"
 import { Clock, Effect, Fiber, Layer, ManagedRuntime, Schema, Stream } from "effect"
 import { HttpClientRequest, HttpRouter, HttpServer, HttpServerRequest } from "effect/unstable/http"
 
@@ -384,7 +384,7 @@ test("AppAssetRoutes exposes generated OpenAPI", () =>
         const spec = decodeOpenApiSpec(yield* Effect.promise(() => response.json()))
 
         expect(response.status).toBe(200)
-        expect(spec.info.title).toBe("Effect Desktop Local API")
+        expect(spec.info.title).toBe("ORIKA Local API")
         expect(spec.paths["/*"]?.get.operationId).toBe("asset")
       } finally {
         yield* Effect.promise(() => dispose())
@@ -401,7 +401,7 @@ test("AppAssetRoutes exposes Scalar documentation", () =>
         const body = yield* Effect.promise(() => response.text())
 
         expect(response.status).toBe(200)
-        expect(body).toContain("Effect Desktop Local API")
+        expect(body).toContain("ORIKA Local API")
         expect(body).toContain('"openapi":"3.1.0"')
       } finally {
         yield* Effect.promise(() => dispose())

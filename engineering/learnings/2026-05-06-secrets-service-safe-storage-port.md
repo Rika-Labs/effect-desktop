@@ -16,7 +16,7 @@ Issue #12 asked for a core `Secrets` service that makes credential storage as ch
 
 The service landed as a core-owned Effect facade with `set`, `get`, `delete`, and `list`. It validates app id, namespace, and key before side effects; derives storage keys as `appId/namespace/key`; denies missing `secrets.read` or `secrets.write` namespace grants before touching storage; maps missing keys and unavailable storage into typed errors; emits `secret accessed` audit rows without secret bytes; and keeps returned bytes inside a redacted `SecretValue`.
 
-The important architecture shift was replacing a direct `@effect-desktop/core -> @effect-desktop/native` import with a local `SecretsSafeStorage` port. Native SafeStorage can back the port, but core does not depend outward on the native package.
+The important architecture shift was replacing a direct `@orika/core -> @orika/native` import with a local `SecretsSafeStorage` port. Native SafeStorage can back the port, but core does not depend outward on the native package.
 
 ```mermaid
 flowchart TD
@@ -31,7 +31,7 @@ flowchart TD
 
 ## What surfaced in review
 
-There were no PR review comments. Local verification surfaced the critical finding: adding `@effect-desktop/native` as a dependency of `@effect-desktop/core` created a Turbo package cycle because native already depends on core. The fix changed the implementation boundary, not just the package file.
+There were no PR review comments. Local verification surfaced the critical finding: adding `@orika/native` as a dependency of `@orika/core` created a Turbo package cycle because native already depends on core. The fix changed the implementation boundary, not just the package file.
 
 ## First-principles postmortem
 
@@ -54,6 +54,6 @@ Treat Turbo cycle failures as design feedback, not build-system noise.
 
 ## AGENTS.md amendment candidate (if any)
 
-Core services that depend on native capability must define a core-owned port instead of importing `@effect-desktop/native`. Why: direct imports create package cycles and move runtime policy toward host adapters.
+Core services that depend on native capability must define a core-owned port instead of importing `@orika/native`. Why: direct imports create package cycles and move runtime policy toward host adapters.
 
 This is a proposal. Review and edit AGENTS.md yourself if you want to adopt it - `/learn` never auto-edits AGENTS.md.

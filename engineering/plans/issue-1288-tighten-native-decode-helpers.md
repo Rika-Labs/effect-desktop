@@ -112,7 +112,7 @@ Focused:
 
 ```bash
 rg "Schema\\.Schema<unknown>|Schema\\.Schema<A>|as Effect\\.Effect<.*never>|decodeUnknownEffect\\([^\\n]+\\).*as Effect\\.Effect" packages/native/src -g'*.ts' -g'!index.test.ts' -g'!updater-workflow.ts'
-bun run typecheck --filter=@effect-desktop/native --filter=@effect-desktop/bridge --filter=@effect-desktop/core --force
+bun run typecheck --filter=@orika/native --filter=@orika/bridge --filter=@orika/core --force
 bun test packages/native/src/index.test.ts packages/native/src/protocol.test.ts packages/native/src/window.test.ts packages/native/src/capabilities.test.ts
 bun run desktop check --api
 ```

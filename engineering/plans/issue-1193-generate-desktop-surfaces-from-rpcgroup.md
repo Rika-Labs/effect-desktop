@@ -24,8 +24,8 @@ with bridge DSL metadata and still builds bridge clients through `Client({ Scree
 - `packages/native/src/index.ts` - remove the public `ScreenRpcClient` export if no longer needed.
 - `packages/native/src/index.test.ts` - assert the pure group, generated surface, mapped client
   layer, and bridge client behavior.
-- `api/snapshots/@effect-desktop__bridge.snapshot.json` and
-  `api/snapshots/@effect-desktop__native.snapshot.json` - update public API snapshots.
+- `api/snapshots/@orika__bridge.snapshot.json` and
+  `api/snapshots/@orika__native.snapshot.json` - update public API snapshots.
 
 ## Thin wrappers in scope
 

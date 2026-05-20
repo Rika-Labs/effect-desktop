@@ -2,14 +2,14 @@ import {
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolPermissionDeniedError,
   type HostProtocolError
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import {
   PermissionActor,
   PermissionContext,
   PermissionRegistry,
   type NormalizedCapability as NormalizedCapabilityType,
   type PermissionRegistryError
-} from "@effect-desktop/core"
+} from "@orika/core"
 import { Effect, Layer } from "effect"
 import { HttpRouter } from "effect/unstable/http"
 import {
@@ -39,7 +39,7 @@ export class DesktopHttpPermission extends HttpApiMiddleware.Service<
   {
     requires: PermissionRegistry
   }
->()("@effect-desktop/native/DesktopHttpPermission", {
+>()("@orika/native/DesktopHttpPermission", {
   error: DesktopHttpError
 }) {}
 
@@ -93,7 +93,7 @@ export class DesktopHttpApi extends HttpApi.make("DesktopHttpApi")
   .add(DesktopWindowApiGroup)
   .annotateMerge(
     OpenApi.annotations({
-      title: "Effect Desktop HTTP API",
+      title: "ORIKA HTTP API",
       description: "Loopback-only schema-first desktop APIs backed by Effect services."
     })
   ) {}

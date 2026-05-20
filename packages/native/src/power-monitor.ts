@@ -7,8 +7,8 @@ import {
   makeHostProtocolInvalidOutputError,
   RpcGroup,
   type HostProtocolError
-} from "@effect-desktop/bridge"
-import { type PermissionRegistry, type DesktopRpcClient } from "@effect-desktop/core"
+} from "@orika/bridge"
+import { type PermissionRegistry, type DesktopRpcClient } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
@@ -85,7 +85,7 @@ export interface PowerMonitorClientApi {
 export class PowerMonitorClient extends Context.Service<
   PowerMonitorClient,
   PowerMonitorClientApi
->()("@effect-desktop/native/PowerMonitorClient") {}
+>()("@orika/native/PowerMonitorClient") {}
 
 export interface PowerMonitorServiceApi extends Omit<PowerMonitorClientApi, "isSupported"> {
   readonly isSupported: (
@@ -94,7 +94,7 @@ export interface PowerMonitorServiceApi extends Omit<PowerMonitorClientApi, "isS
 }
 
 export class PowerMonitor extends Context.Service<PowerMonitor, PowerMonitorServiceApi>()(
-  "@effect-desktop/native/PowerMonitor"
+  "@orika/native/PowerMonitor"
 ) {
   static readonly layer = Layer.effect(PowerMonitor)(
     Effect.gen(function* () {

@@ -20,7 +20,7 @@ import {
   ClipboardTest,
   makeTestWindowClient,
   makeMemorySecretsSafeStorage
-} from "@effect-desktop/test"
+} from "@orika/test"
 ```
 
 ## Available layers

@@ -173,7 +173,7 @@ export const runSemverGuard = (
 
 export const formatSemverGuardReport = (report: SemverGuardReport): string =>
   [
-    "Effect Desktop semver",
+    "ORIKA semver",
     `status            ${report.passed ? "passed" : "failed"}`,
     `release           ${report.release}`,
     `kind              ${report.releaseKind}`,

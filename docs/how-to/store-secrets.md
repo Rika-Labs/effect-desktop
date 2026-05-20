@@ -17,7 +17,7 @@ Current host status: native `SafeStorage` only routes availability probing. Secr
 At app init:
 
 ```ts
-import { PermissionRegistry } from "@effect-desktop/core"
+import { PermissionRegistry } from "@orika/core"
 
 const permissions = yield * PermissionRegistry
 yield *
@@ -38,7 +38,7 @@ Without these declarations, `Secrets.get` and `Secrets.set` for the `tokens` nam
 
 ```ts
 import { Effect } from "effect"
-import { Secrets, makeSecretBytesFromUtf8 } from "@effect-desktop/core"
+import { Secrets, makeSecretBytesFromUtf8 } from "@orika/core"
 
 const program = Effect.gen(function* () {
   const secrets = yield* Secrets
@@ -53,7 +53,7 @@ const program = Effect.gen(function* () {
 
 ```ts
 import { Redacted } from "effect"
-import { wipeSecretBytes } from "@effect-desktop/core"
+import { wipeSecretBytes } from "@orika/core"
 
 const program = Effect.gen(function* () {
   const secrets = yield* Secrets

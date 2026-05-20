@@ -10,11 +10,11 @@ effect_version: 4
 
 > Full references: [`reference/services/settings.md`](reference/services/settings.md), [`reference/services/secrets.md`](reference/services/secrets.md), [`reference/services/sqlite.md`](reference/services/sqlite.md), [`reference/platform-browser.md`](reference/platform-browser.md).
 
-Effect Desktop has separate storage surfaces for renderer persistence, runtime settings, secrets, SQLite, and event logs.
+ORIKA has separate storage surfaces for renderer persistence, runtime settings, secrets, SQLite, and event logs.
 
 ## Runtime storage
 
-`@effect-desktop/core` exports:
+`@orika/core` exports:
 
 - `Settings` for typed runtime settings.
 - `Secrets` and safe-storage helpers for secret material.
@@ -23,7 +23,7 @@ Effect Desktop has separate storage surfaces for renderer persistence, runtime s
 
 ## Renderer storage
 
-`@effect-desktop/platform-browser` exports browser persistence helpers, IndexedDB helpers, SQLite WASM layers (`RendererSqliteWorkerLive`), and PGlite layers (`RendererPgliteLive`).
+`@orika/platform-browser` exports browser persistence helpers, IndexedDB helpers, SQLite WASM layers (`RendererSqliteWorkerLive`), and PGlite layers (`RendererPgliteLive`).
 
 These renderer-side layers are not native browsing-data controls. Effect
 Desktop does not yet expose a host-backed API to clear WebView cache, cookies,

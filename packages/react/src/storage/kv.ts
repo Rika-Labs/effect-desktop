@@ -1,1 +1,1 @@
-export * from "@effect-desktop/platform-browser/storage/kv"
+export * from "@orika/platform-browser/storage/kv"

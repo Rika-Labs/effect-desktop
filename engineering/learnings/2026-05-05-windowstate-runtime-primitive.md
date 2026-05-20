@@ -1,12 +1,12 @@
 ---
 date: 2026-05-05
 type: in-flight-feature
-topic: WindowState runtime primitive (@effect-desktop/core): persist size/position/zoom per window id
+topic: WindowState runtime primitive (@orika/core): persist size/position/zoom per window id
 issue: https://github.com/Rika-Labs/effect-desktop/issues/132
 pr: https://github.com/Rika-Labs/effect-desktop/pull/177
 ---
 
-# WindowState runtime primitive (@effect-desktop/core): persist size/position/zoom per window id
+# WindowState runtime primitive (@orika/core): persist size/position/zoom per window id
 
 ## What we set out to do
 

@@ -15,7 +15,7 @@ You'll build a small notes application that:
 - Renders a list and an editor in React using the framework's hooks.
 - Handles failures as typed values rather than thrown exceptions.
 
-By the end, you'll understand how every Effect Desktop app is shaped — contracts, services, layers, renderer hooks — and you'll have running code you can extend.
+By the end, you'll understand how every ORIKA app is shaped — contracts, services, layers, renderer hooks — and you'll have running code you can extend.
 
 > **Prerequisites:** you completed [Install](../start/install.md) and ran the [first app](../start/first-app.md). You don't need prior Effect experience; this tutorial introduces the few primitives you'll touch.
 
@@ -87,7 +87,7 @@ Create `apps/inspector/src/notes/handlers.ts`:
 
 ```ts
 import { Effect, Layer, Schema } from "effect"
-import { SqlClient, SqlClientLive } from "@effect-desktop/core"
+import { SqlClient, SqlClientLive } from "@orika/core"
 import { NotesRpcs, Note, NoteNotFound } from "./contracts.js"
 
 const NoteSchema = Schema.Array(Note)
@@ -164,7 +164,7 @@ What's happening here:
 Edit the inspector's manifest (or your own app's equivalent). Find where `Desktop.make({ ... })` is called, and add `NotesRpcs` and `NotesHandlersLive` to the `rpcs` array:
 
 ```ts
-import { Desktop } from "@effect-desktop/core"
+import { Desktop } from "@orika/core"
 import { NotesRpcs } from "./notes/contracts.js"
 import { NotesHandlersLive } from "./notes/handlers.js"
 // ... your other imports
@@ -189,7 +189,7 @@ Create `apps/inspector/src/notes/NotesPanel.tsx`:
 
 ```tsx
 import { useState } from "react"
-import { ReactDesktop } from "@effect-desktop/react"
+import { ReactDesktop } from "@orika/react"
 import { Manifest } from "../manifest.js"
 import { NotesRpcs } from "./contracts.js"
 

@@ -8,7 +8,7 @@ effect_version: 4
 
 # Install
 
-Effect Desktop is a Bun + Rust monorepo. There is no published npm package yet, so you develop **against this repository directly**.
+ORIKA is a Bun + Rust monorepo. There is no published npm package yet, so you develop **against this repository directly**.
 
 ## Requirements
 
@@ -55,17 +55,17 @@ If any of those fail on a clean clone, file an issue — it is not your machine.
 
 ## What you just installed
 
-A fifteen-package TypeScript workspace plus Rust crates:
+A thirteen-package TypeScript workspace plus Rust crates:
 
-| Layer             | Packages                                                                                                                                         |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Public framework  | `@effect-desktop/core`, `@effect-desktop/native`, `@effect-desktop/bridge`, `@effect-desktop/config`                                             |
-| Renderer adapters | `@effect-desktop/react`, `@effect-desktop/solid`, `@effect-desktop/vue`, `@effect-desktop/next`, `@effect-desktop/astro`, `@effect-desktop/vite` |
-| Renderer runtime  | `@effect-desktop/platform-browser`                                                                                                               |
-| Tooling           | `@effect-desktop/cli`, `@effect-desktop/test`, `@effect-desktop/devtools`                                                                        |
-| Native (Rust)     | `host`, `host-protocol`, `native-pty`, `native-updater`                                                                                          |
+| Layer             | Packages                                                                   |
+| ----------------- | -------------------------------------------------------------------------- |
+| Public framework  | `@orika/core`, `@orika/native`, `@orika/bridge`, `@orika/config`           |
+| Renderer adapters | `@orika/react`, `@orika/solid`, `@orika/vue`, `@orika/next`, `@orika/vite` |
+| Renderer runtime  | `@orika/platform-browser`                                                  |
+| Tooling           | `@orika/cli`, `@orika/test`, `@orika/devtools`                             |
+| Native (Rust)     | `host`, `host-protocol`, `native-pty`, `native-updater`                    |
 
-The only checked-in app is [`apps/inspector`](../../apps/inspector) — a Vite + React renderer for live and recorded framework sessions. There are **no scaffolders** today; building an app means writing one against `@effect-desktop/core` and friends. The next page does that in five minutes.
+The only checked-in app is [`apps/inspector`](../../apps/inspector) — a Vite + React renderer for live and recorded framework sessions. There are **no scaffolders** today; building an app means writing one against `@orika/core` and friends. The next page does that in five minutes.
 
 ## Next
 

@@ -6,7 +6,7 @@ import {
   HostProtocolRequestEnvelope,
   type HostProtocolRequestEnvelope as HostProtocolRequestEnvelopeShape,
   RendererOriginAuth
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import {
   type AuditEvent,
   type AuditEventsApi,
@@ -15,7 +15,7 @@ import {
   makeResourceRegistry,
   PermissionRegistry,
   P
-} from "@effect-desktop/core"
+} from "@orika/core"
 import { Cause, Effect, Exit, Layer, Stream } from "effect"
 import * as EventJournal from "effect/unstable/eventlog/EventJournal"
 

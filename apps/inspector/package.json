@@ -1,7 +1,7 @@
 {
-  "name": "@effect-desktop/inspector",
+  "name": "@orika/inspector",
   "private": true,
-  "description": "Standalone Inspector app for live and recorded Effect Desktop sessions.",
+  "description": "Standalone Inspector app for live and recorded ORIKA sessions.",
   "license": "MIT OR Apache-2.0",
   "author": "Rika Labs, LLC",
   "repository": {
@@ -23,8 +23,8 @@
     "lint": "oxlint . --ignore-pattern 'dist/**'"
   },
   "dependencies": {
-    "@effect-desktop/core": "workspace:*",
-    "@effect-desktop/devtools": "workspace:*",
+    "@orika/core": "workspace:*",
+    "@orika/devtools": "workspace:*",
     "effect": "4.0.0-beta.60",
     "react": "^19.2.3",
     "react-dom": "^19.2.3"

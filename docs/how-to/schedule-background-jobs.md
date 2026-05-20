@@ -8,7 +8,7 @@ effect_version: 4
 
 # How to schedule background work
 
-Effect Desktop has three runtime primitives for background work, each with a different shape.
+ORIKA has three runtime primitives for background work, each with a different shape.
 
 ## Pick the right primitive
 

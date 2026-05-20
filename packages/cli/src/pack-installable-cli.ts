@@ -94,7 +94,7 @@ const rewriteLocalPackageDependencies = (
     const packageJson = yield* readJson<PackageJson>(fs, packagePath)
     const dependencies = { ...packageJson.dependencies }
     for (const localName of PACKAGE_NAMES) {
-      const dependencyName = `@effect-desktop/${localName}`
+      const dependencyName = `@orika/${localName}`
       if (dependencies[dependencyName] === "workspace:*") {
         dependencies[dependencyName] = `file:../${localName}`
       }

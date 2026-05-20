@@ -8,7 +8,7 @@ effect_version: 4
 
 # Testability
 
-A framework that is hard to test produces apps that are hard to test. Effect Desktop's design treats testability as a property of the public surface, not a CI-time afterthought.
+A framework that is hard to test produces apps that are hard to test. ORIKA's design treats testability as a property of the public surface, not a CI-time afterthought.
 
 ## Three properties that make tests easy
 
@@ -20,11 +20,11 @@ Together, these turn most desktop tests into ordinary unit tests. No real OS, no
 
 ## The headless runtime
 
-`@effect-desktop/test` exports `HeadlessRuntime`, which composes the most common test layers into one:
+`@orika/test` exports `HeadlessRuntime`, which composes the most common test layers into one:
 
 ```ts
 import { Effect } from "effect"
-import { HeadlessRuntime } from "@effect-desktop/test"
+import { HeadlessRuntime } from "@orika/test"
 
 await HeadlessRuntime.run(
   Effect.gen(function* () {
@@ -67,7 +67,7 @@ A typical handler test:
 
 ```ts
 import { Effect } from "effect"
-import { HeadlessRuntime } from "@effect-desktop/test"
+import { HeadlessRuntime } from "@orika/test"
 import { MyAppHandlersLive } from "../src/handlers.js"
 import { SaveNote } from "../src/contracts.js"
 
@@ -86,8 +86,8 @@ A renderer test (with React Testing Library):
 
 ```tsx
 import { render, screen, fireEvent } from "@testing-library/react"
-import { ReactDesktop } from "@effect-desktop/react"
-import { makeMockBridge } from "@effect-desktop/test"
+import { ReactDesktop } from "@orika/react"
+import { makeMockBridge } from "@orika/test"
 import { Manifest, AppRpcs } from "../src/manifest.js"
 
 const bridge = makeMockBridge({
@@ -117,7 +117,7 @@ Because the framework provides faked versions, you don't write:
 - A mock secret store.
 - A mock approval prompt.
 
-If you find yourself writing one, look first at `@effect-desktop/test`'s exports. If the framework doesn't provide one for the shape you need, that is a missing piece worth filing as an issue.
+If you find yourself writing one, look first at `@orika/test`'s exports. If the framework doesn't provide one for the shape you need, that is a missing piece worth filing as an issue.
 
 ## Related
 

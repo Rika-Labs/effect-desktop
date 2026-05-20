@@ -23,7 +23,7 @@ Delete the bespoke RPC implementation. Adopt `effect/unstable/rpc` as the bridge
 - The runtime mounts `RpcServer.layer` over a `DesktopProtocolAdapter` — a thin adapter that satisfies `effect/unstable/rpc`'s `Protocol` interface while encoding the host protocol envelope (origin token, window ID, trace ID, request ID).
 - The renderer holds a typed `RpcClient.make(group)` consuming the same protocol.
 - The host protocol envelope schema (`HostProtocolRequestEnvelope`, response, stream frame) becomes the sole wire-format truth. Only the adapter reads or writes it.
-- Re-export `RpcGroup`, `Rpc`, `RpcClient`, `RpcServer`, and `RpcSerialization` from `@effect-desktop/core` so contract authors have one import root.
+- Re-export `RpcGroup`, `Rpc`, `RpcClient`, `RpcServer`, and `RpcSerialization` from `@orika/core` so contract authors have one import root.
 - No transitional contract shim is kept before v1.0. The only contract value is a `RpcGroup`.
 
 Cross-links: [ADR-0006](adr-0006-socket-transport.md) (transport the Protocol adapter sits on), [ADR-0007](adr-0007-opentelemetry.md) (spans emitted per RPC call), [ADR-0018](adr-0018-cluster-multi-window.md) (cluster entities communicate over the same RPC groups).
@@ -61,5 +61,5 @@ A `Schema.TaggedRequest` defined in shared code round-trips renderer to runtime 
 
 1. Keep the host envelope modules that own desktop protocol concerns.
 2. Make `RpcGroup` the only contract model at the app, bridge, and native boundaries.
-3. Add re-exports of `RpcGroup`, `Rpc`, `RpcClient`, `RpcServer` from `@effect-desktop/core`.
+3. Add re-exports of `RpcGroup`, `Rpc`, `RpcClient`, `RpcServer` from `@orika/core`.
 4. Delete pre-release contract shims instead of deprecating them.

@@ -51,7 +51,7 @@ Cross-links: [ADR-0003](adr-0003-sql-effect-unstable-sql.md) (optional SQL journ
 
 **Neutral**
 
-- `TestClock`-backed test helpers for `DurableClock.sleep` and `DurableDeferred` are a required companion (see `@effect-desktop/test` planning).
+- `TestClock`-backed test helpers for `DurableClock.sleep` and `DurableDeferred` are a required companion (see `@orika/test` planning).
 
 ## Validation
 

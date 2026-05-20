@@ -13,7 +13,7 @@ Spawns and supervises long-lived companion processes — language servers, sync 
 ## Import
 
 ```ts
-import { Sidecar, type SidecarApi, type SidecarHandle } from "@effect-desktop/core"
+import { Sidecar, type SidecarApi, type SidecarHandle } from "@orika/core"
 ```
 
 ## API

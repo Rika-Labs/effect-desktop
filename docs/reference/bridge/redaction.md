@@ -13,10 +13,10 @@ The bridge runs every outgoing payload through `RedactionFilter` before encoding
 ## Import
 
 ```ts
-import { RedactionFilter, redact } from "@effect-desktop/bridge"
+import { RedactionFilter, redact } from "@orika/bridge"
 ```
 
-(Also re-exported as `Desktop.RedactionFilter` and `Desktop.redact` from `@effect-desktop/core`.)
+(Also re-exported as `Desktop.RedactionFilter` and `Desktop.redact` from `@orika/core`.)
 
 ## How matching works
 

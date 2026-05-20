@@ -1,5 +1,5 @@
-import type { HostProtocolInvalidArgumentError } from "@effect-desktop/bridge"
-import { makeHostProtocolInvalidArgumentError } from "@effect-desktop/bridge"
+import type { HostProtocolInvalidArgumentError } from "@orika/bridge"
+import { makeHostProtocolInvalidArgumentError } from "@orika/bridge"
 import {
   Context,
   Data,
@@ -104,7 +104,7 @@ export const makeSidecar = (
   )
 
 export class Sidecar extends Context.Service<Sidecar, SidecarApi>()(
-  "@effect-desktop/core/runtime/sidecar"
+  "@orika/core/runtime/sidecar"
 ) {}
 
 export const SidecarLive = Layer.effect(

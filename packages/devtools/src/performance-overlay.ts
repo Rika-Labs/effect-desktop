@@ -4,7 +4,7 @@ import {
   type InspectorSafetySummary,
   Telemetry,
   type TelemetryHistogramSnapshot
-} from "@effect-desktop/core"
+} from "@orika/core"
 import { Context, Effect, Layer, Option, Schedule, Stream } from "effect"
 
 import { positiveFrameInterval } from "./panel-options.js"
@@ -54,7 +54,7 @@ export interface PerformanceOverlayOptions {
 export class PerformanceOverlay extends Context.Service<
   PerformanceOverlay,
   PerformanceOverlayApi
->()("@effect-desktop/devtools/performance-overlay/PerformanceOverlay") {}
+>()("@orika/devtools/performance-overlay/PerformanceOverlay") {}
 
 export const PerformanceOverlayLive = (
   options: PerformanceOverlayOptions = {}

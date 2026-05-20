@@ -16,9 +16,9 @@ Current host status: menu, context-menu, and global-shortcut command binding is 
 
 ## Public surface
 
-`@effect-desktop/core` exports `CommandRegistry`, command snapshot types, invocation records, registration errors, and observation streams.
+`@orika/core` exports `CommandRegistry`, command snapshot types, invocation records, registration errors, and observation streams.
 
-`@effect-desktop/devtools` exports `CommandsDevtools` and `CommandsDevtoolsLive` for listing commands and observing invocations.
+`@orika/devtools` exports `CommandsDevtools` and `CommandsDevtoolsLive` for listing commands and observing invocations.
 
 ## Verify Command Exports
 

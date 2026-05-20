@@ -5,7 +5,7 @@ import {
   runRendererStream,
   type DesktopStreamOptions,
   type FrameworkRuntime
-} from "@effect-desktop/core/renderer"
+} from "@orika/core/renderer"
 import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Stream, SubscriptionRef } from "effect"
 import { AsyncResult } from "effect/unstable/reactivity"
 import { useEffect, useMemo, useRef, useState, type DependencyList } from "react"

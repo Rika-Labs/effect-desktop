@@ -32,7 +32,7 @@ Two windows in the same app share global services — `Settings`, `Secrets`, `Te
 Update your `Desktop.make` call to declare two windows:
 
 ```ts
-import { Desktop } from "@effect-desktop/core"
+import { Desktop } from "@orika/core"
 import { NotesRpcs } from "./notes/contracts.js"
 import { NotesHandlersLive } from "./notes/handlers.js"
 
@@ -90,7 +90,7 @@ You don't write a finalizer; the framework owns the per-window scope.
 In your `NotesPanel.tsx`, replace the inline textarea with a button that opens a compose window. Add the React import:
 
 ```tsx
-import { useCreateWindowMutation } from "@effect-desktop/react"
+import { useCreateWindowMutation } from "@orika/react"
 ```
 
 Inside the component:
@@ -117,8 +117,8 @@ The compose window needs its own renderer entry. In `apps/inspector/src/notes/Co
 
 ```tsx
 import { useState } from "react"
-import { ReactDesktop } from "@effect-desktop/react"
-import { useCloseCurrentWindowMutation } from "@effect-desktop/react"
+import { ReactDesktop } from "@orika/react"
+import { useCloseCurrentWindowMutation } from "@orika/react"
 import { Manifest } from "../manifest.js"
 import { NotesRpcs } from "./contracts.js"
 
@@ -172,7 +172,7 @@ You did not write any of that.
 How the renderer decides which panel to render is up to your renderer setup. The simplest pattern: read the window id from the `useCurrentWindow` hook and switch on it.
 
 ```tsx
-import { useCurrentWindowId } from "@effect-desktop/react"
+import { useCurrentWindowId } from "@orika/react"
 
 export function App() {
   const windowId = useCurrentWindowId()

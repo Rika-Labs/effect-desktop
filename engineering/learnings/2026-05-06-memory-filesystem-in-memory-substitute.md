@@ -14,7 +14,7 @@ Issue #37 asked for a deterministic in-memory `Filesystem` substitute that could
 
 ## What actually ended up working
 
-The winning shape was to put only the storage tree and watcher fanout in `@effect-desktop/test`, then run that adapter through the production `makeFilesystem(...)` service. That kept validation, permissions, symlink escape checks, watcher resource registration, and typed error mapping in one production-owned path. The final API exposes `makeMemoryFilesystem(registry, options)` and `MemoryFilesystem.layer(options)` with seedable directories, files, symlinks, permissions, and deterministic time.
+The winning shape was to put only the storage tree and watcher fanout in `@orika/test`, then run that adapter through the production `makeFilesystem(...)` service. That kept validation, permissions, symlink escape checks, watcher resource registration, and typed error mapping in one production-owned path. The final API exposes `makeMemoryFilesystem(registry, options)` and `MemoryFilesystem.layer(options)` with seedable directories, files, symlinks, permissions, and deterministic time.
 
 ```mermaid
 flowchart LR

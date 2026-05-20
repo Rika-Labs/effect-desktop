@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { encodeFrame, FrameDecoder } from "@effect-desktop/core/runtime/transport"
+import { encodeFrame, FrameDecoder } from "@orika/core/runtime/transport"
 import { type Cause, Deferred, Effect, Layer, Queue, Schedule, Schema, Sink, Stream } from "effect"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 import { makeHmrController, type ViteDevRuntimeServer } from "./hmr-controller.js"

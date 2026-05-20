@@ -23,7 +23,7 @@ PTY is the exception. `effect/unstable/process` does not expose a PTY primitive;
 Delete `packages/core/src/runtime/{filesystem,process,worker,path}.ts`. Add `@effect/platform-bun` and provide `BunContext.layer` from the runtime spine.
 
 - Every internal use of filesystem, process, worker, path, and terminal imports from `@effect/platform` tags.
-- Re-export `FileSystem`, `Path`, `Command`, `Worker`, and `Terminal` from `@effect-desktop/core`.
+- Re-export `FileSystem`, `Path`, `Command`, `Worker`, and `Terminal` from `@orika/core`.
 - PTY is retained temporarily as a documented transitional service (`PtyService`) with a tag-based contract. It will be replaced or contributed upstream when `effect/unstable/process` covers the PTY surface.
 - The SQLite driver layer (`@effect/sql-sqlite-bun`, T02) and the HTTP server (`BunHttpServer`, T11) both declare `@effect/platform-bun` as a peer dependency and receive `BunContext.layer` from the spine.
 
@@ -63,5 +63,5 @@ Cross-links: [ADR-0003](adr-0003-sql-effect-unstable-sql.md) (SqlClient driver u
 1. Delete `packages/core/src/runtime/{filesystem,process,worker,path}.ts`.
 2. Add `@effect/platform-bun` to `packages/core`.
 3. Provide `BunContext.layer` at the runtime spine entry point.
-4. Add re-exports of platform tags from `@effect-desktop/core`.
+4. Add re-exports of platform tags from `@orika/core`.
 5. Audit PTY against `effect/unstable/process`; document the upstream contribution plan if no primitive exists.

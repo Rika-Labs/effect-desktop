@@ -7,7 +7,7 @@ import {
   HostProtocolPermissionDeniedError,
   HostProtocolResourceBusyError,
   HostProtocolStaleHandleError
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import { BunServices } from "@effect/platform-bun"
 import {
   Cause,

@@ -88,7 +88,7 @@ Schema parse failures into host-protocol errors without asserting away schema re
   protocol error decode assertions.
 - `packages/bridge/src/contracts.test.ts` - keep type-level bridge contract tests aligned with the
   stricter codec contract.
-- `api/snapshots/@effect-desktop__bridge.snapshot.json` - update the public API snapshot for the
+- `api/snapshots/@orika__bridge.snapshot.json` - update the public API snapshot for the
   stricter bridge contract types.
 
 ## Architecture Debt Sweep
@@ -126,7 +126,7 @@ Focused:
 
 ```bash
 rg "Schema\\.Schema<unknown>|as Effect\\.Effect<.*never>|decodeUnknownEffect\\([^\\n]+\\).*as Effect\\.Effect|encodeUnknownEffect\\([^\\n]+\\).*as Effect\\.Effect|encodeEffect\\([^\\n]+\\).*as Effect\\.Effect" packages/bridge/src -g'*.ts'
-bun run typecheck --filter=@effect-desktop/bridge --filter=@effect-desktop/core --filter=@effect-desktop/native --force
+bun run typecheck --filter=@orika/bridge --filter=@orika/core --filter=@orika/native --force
 bun test packages/bridge/src/contracts.test.ts
 bun test packages/bridge/src/client.test.ts packages/bridge/src/handlers.test.ts packages/bridge/src/events.test.ts packages/bridge/src/streams.test.ts packages/bridge/src/protocol.rpc.test.ts
 bun packages/cli/src/bin.ts check --api --write

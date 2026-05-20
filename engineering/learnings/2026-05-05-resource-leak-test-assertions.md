@@ -10,11 +10,11 @@ pr: https://github.com/Rika-Labs/effect-desktop/pull/166
 
 ## What we set out to do
 
-The issue asked for a test harness leak gate: tests should fail when non-app resource handles remain open, and the failure should name the leaked handle, its scope, and the originating test. The narrow implementation target was `@effect-desktop/test`, backed by the core `ResourceRegistry`.
+The issue asked for a test harness leak gate: tests should fail when non-app resource handles remain open, and the failure should name the leaked handle, its scope, and the originating test. The narrow implementation target was `@orika/test`, backed by the core `ResourceRegistry`.
 
 ## What actually ended up working
 
-The shipped surface keeps leak detection in `@effect-desktop/test` and consumes the public `@effect-desktop/core` registry API. `assertNoOpenResources` reads `ResourceRegistry` from the Effect environment; `assertNoOpenResourcesIn` accepts an explicit registry for tests; `installResourceLeakDetection` wires the same assertion into Bun `afterEach`; and `toHaveNoLeakedHandles` renders the same report for snapshot assertions. The core package now exports the registry from its public barrel so the test package does not depend on private source paths.
+The shipped surface keeps leak detection in `@orika/test` and consumes the public `@orika/core` registry API. `assertNoOpenResources` reads `ResourceRegistry` from the Effect environment; `assertNoOpenResourcesIn` accepts an explicit registry for tests; `installResourceLeakDetection` wires the same assertion into Bun `afterEach`; and `toHaveNoLeakedHandles` renders the same report for snapshot assertions. The core package now exports the registry from its public barrel so the test package does not depend on private source paths.
 
 ```mermaid
 flowchart TD

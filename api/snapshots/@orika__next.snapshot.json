@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "packageName": "@effect-desktop/next",
+  "packageName": "@orika/next",
   "entrypoint": "src/index.ts",
   "symbols": [
     {

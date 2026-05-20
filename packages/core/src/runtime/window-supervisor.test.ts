@@ -2,11 +2,7 @@ import { expect, test } from "bun:test"
 import { tmpdir } from "node:os"
 import { pathToFileURL } from "node:url"
 import { BunServices } from "@effect/platform-bun"
-import {
-  WindowBoundsPayload,
-  type HostWindowClient,
-  type WindowCreateInput
-} from "@effect-desktop/bridge"
+import { WindowBoundsPayload, type HostWindowClient, type WindowCreateInput } from "@orika/bridge"
 import { Cause, ConfigProvider, Effect, Exit, Layer, ManagedRuntime, Schema, Stream } from "effect"
 import * as FileSystem from "effect/FileSystem"
 import * as Path from "effect/Path"

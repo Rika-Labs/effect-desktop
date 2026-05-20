@@ -7,8 +7,8 @@ import {
   rpcCapability,
   rpcEndpointKind,
   rpcSupport
-} from "@effect-desktop/bridge"
-import { P } from "@effect-desktop/core"
+} from "@orika/bridge"
+import { P } from "@orika/core"
 import { Context, Effect, type Layer, ManagedRuntime, Option, Schema, Stream } from "effect"
 import { RpcGroup } from "effect/unstable/rpc"
 
@@ -98,7 +98,7 @@ test("NativeSurface bridgeClientLayer passes exchange to event-aware mapped clie
       }
 
       class ExampleClient extends Context.Service<ExampleClient, ExampleClientApi>()(
-        "@effect-desktop/native/native-surface.test/ExampleClient"
+        "@orika/native/native-surface.test/ExampleClient"
       ) {}
 
       const ExampleSurface = NativeSurface.make("Example", ExampleGroup, {

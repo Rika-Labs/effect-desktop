@@ -1,5 +1,5 @@
-import type { CommandRegistryError } from "@effect-desktop/core"
-import type { HostProtocolError } from "@effect-desktop/bridge"
+import type { CommandRegistryError } from "@orika/core"
+import type { HostProtocolError } from "@orika/bridge"
 import { Predicate } from "effect"
 
 export interface CommandBindingWarningError {

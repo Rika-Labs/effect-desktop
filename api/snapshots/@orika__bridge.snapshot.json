@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "packageName": "@effect-desktop/bridge",
+  "packageName": "@orika/bridge",
   "entrypoint": "src/index.ts",
   "symbols": [
     {

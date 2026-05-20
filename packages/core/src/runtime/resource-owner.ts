@@ -24,7 +24,7 @@ export class ResourceOwnerInvalidArgumentError extends Data.TaggedError("Invalid
 }> {}
 
 export class ResourceOwner extends Context.Service<ResourceOwner, ResourceOwnerApi>()(
-  "@effect-desktop/core/runtime/resource-owner/ResourceOwner"
+  "@orika/core/runtime/resource-owner/ResourceOwner"
 ) {
   static app(appId: string): Layer.Layer<ResourceOwner, ResourceOwnerInvalidArgumentError> {
     return Layer.effect(ResourceOwner, makeAppResourceOwner(appId))

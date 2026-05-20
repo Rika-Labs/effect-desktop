@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "packageName": "@effect-desktop/platform-browser",
+  "packageName": "@orika/platform-browser",
   "entrypoint": "src/index.ts",
   "symbols": [
     {

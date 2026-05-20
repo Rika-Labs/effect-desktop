@@ -13,8 +13,8 @@ Implemented package-run staging state in `packages/cli/src/package-pipeline.ts` 
 
 - `bun test packages/cli/src/index.test.ts -t "desktop package stages macOS app bundle before explicit"`
 - `bun test packages/cli/src/index.test.ts -t "desktop package"`
-- `bun run typecheck --filter=@effect-desktop/cli`
-- `bun run lint --filter=@effect-desktop/cli`
+- `bun run typecheck --filter=@orika/cli`
+- `bun run lint --filter=@orika/cli`
 - `bun install --frozen-lockfile`
 - `bun run check`
 - `bun run typecheck`

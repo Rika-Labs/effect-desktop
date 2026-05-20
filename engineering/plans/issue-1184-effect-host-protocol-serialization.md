@@ -9,7 +9,7 @@
 - `decodeResponseFrame` calls fatal UTF-8 decode, `JSON.parse(...)`, trace-id repair, and
   `decodeHostProtocolEnvelope(...)` inline.
 
-The schema source of truth already exists in `@effect-desktop/bridge`:
+The schema source of truth already exists in `@orika/bridge`:
 
 - `HostProtocolEnvelope` is a `Schema.Union`.
 - `decodeHostProtocolEnvelope(...)` and `encodeHostProtocolEnvelope(...)` apply strict schema
@@ -61,7 +61,7 @@ The current wire format stays byte-for-byte JSON inside existing length-prefixed
 - `packages/core/src/runtime/host-client.test.ts`
   - Add or retain coverage proving invalid UTF-8, malformed JSON, semantic mismatch, and missing
     trace-id repair still behave the same.
-- `api/snapshots/@effect-desktop__bridge.snapshot.json`
+- `api/snapshots/@orika__bridge.snapshot.json`
   - Update for any new public codec exports.
 - `engineering/roadmap/layer-first-issue-order.md`
   - Mark #1184 implemented after validation.
@@ -73,8 +73,8 @@ The current wire format stays byte-for-byte JSON inside existing length-prefixed
 Focused:
 
 - `bun test packages/bridge/src/index.test.ts packages/core/src/runtime/host-client.test.ts`
-- `bun run --filter @effect-desktop/bridge typecheck`
-- `bun run --filter @effect-desktop/core typecheck`
+- `bun run --filter @orika/bridge typecheck`
+- `bun run --filter @orika/core typecheck`
 - `bun run desktop check --api --write`
 - `bun run desktop check --api`
 

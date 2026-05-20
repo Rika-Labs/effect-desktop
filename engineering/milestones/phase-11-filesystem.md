@@ -30,7 +30,7 @@ cross-platform desktop polish, and a reusable in-memory filesystem test harness.
 
 ## Public APIs
 
-`@effect-desktop/core` exports:
+`@orika/core` exports:
 
 - `Filesystem` / `FilesystemLive` / `makeFilesystem` for typed
   `read/write/writeAtomic/stat/mkdir/remove/realpath/watch` operations.
@@ -99,7 +99,7 @@ Specialized Phase 11 evidence:
 Milestone: Phase 11 - Filesystem
 Files changed: core Filesystem service, adapter, tests, public export, and Phase
 11 learning records.
-Public APIs added: @effect-desktop/core Filesystem, FilesystemLive,
+Public APIs added: @orika/core Filesystem, FilesystemLive,
 makeFilesystem, FilesystemApi, FilesystemAdapter, FilesystemPermissionPolicy,
 FilesystemStatResult, and FilesystemEvent.
 Tests added: Filesystem runtime tests for basic operations, watcher lifecycle,

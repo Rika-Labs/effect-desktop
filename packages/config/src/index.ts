@@ -807,16 +807,14 @@ const isProductionCheckFile = (value: unknown): value is ProductionCheckFile =>
 
 const rendererBackendImportRule: Rule = ({ rendererFiles }) =>
   rendererFiles.flatMap((file) =>
-    scanLines(
-      file,
-      /from\s+["']@effect-desktop\/(core|native)["']|from\s+["']\.\.?\/.*runtime/u
-    ).map((location) =>
-      violation({
-        rule: "renderer-backend-import",
-        location,
-        message: "renderer code imports backend-only modules",
-        fix: "Use generated renderer clients instead of importing runtime or native modules."
-      })
+    scanLines(file, /from\s+["']@orika\/(core|native)["']|from\s+["']\.\.?\/.*runtime/u).map(
+      (location) =>
+        violation({
+          rule: "renderer-backend-import",
+          location,
+          message: "renderer code imports backend-only modules",
+          fix: "Use generated renderer clients instead of importing runtime or native modules."
+        })
     )
   )
 
@@ -1158,7 +1156,7 @@ const scanLines = (
     )
 
 const BRIDGE_BARREL_IMPORT_PATTERN =
-  /import\s+(?:type\s+)?(?:(?:[^{}\n]+,\s*)?\{(?<names>[^}]*)\}|(?<namespace>\*\s+as\s+[A-Za-z_$][\w$]*))\s+from\s+["']@effect-desktop\/bridge["']/u
+  /import\s+(?:type\s+)?(?:(?:[^{}\n]+,\s*)?\{(?<names>[^}]*)\}|(?<namespace>\*\s+as\s+[A-Za-z_$][\w$]*))\s+from\s+["']@orika\/bridge["']/u
 
 const scanForbiddenBridgeProtocolImports = (
   file: ProductionCheckFile
@@ -1166,12 +1164,12 @@ const scanForbiddenBridgeProtocolImports = (
   maskComments(file.content)
     .split("\n")
     .flatMap((line, index) => {
-      if (/@effect-desktop\/bridge\/protocol/u.test(line)) {
+      if (/@orika\/bridge\/protocol/u.test(line)) {
         return [
           new ProductionCheckLocation({
             path: file.path,
             line: index + 1,
-            column: Math.max(1, line.search(/@effect-desktop\/bridge\/protocol/u) + 1)
+            column: Math.max(1, line.search(/@orika\/bridge\/protocol/u) + 1)
           })
         ]
       }
@@ -1189,7 +1187,7 @@ const scanForbiddenBridgeProtocolImports = (
         new ProductionCheckLocation({
           path: file.path,
           line: index + 1,
-          column: Math.max(1, line.search(/@effect-desktop\/bridge/u) + 1)
+          column: Math.max(1, line.search(/@orika\/bridge/u) + 1)
         })
       ]
     })

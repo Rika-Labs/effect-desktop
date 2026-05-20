@@ -14096,11 +14096,11 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&AppMetadataInfoPayload::new(
                 "dev.effect-desktop.test",
-                "Effect Desktop Test",
+                "ORIKA Test",
                 "0.0.0"
             ))
             .expect("app metadata info should encode"),
-            r#"{"id":"dev.effect-desktop.test","name":"Effect Desktop Test","version":"0.0.0"}"#
+            r#"{"id":"dev.effect-desktop.test","name":"ORIKA Test","version":"0.0.0"}"#
         );
         assert_eq!(
             serde_json::to_string(&AppMetadataPathsPayload::new(

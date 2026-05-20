@@ -25,7 +25,7 @@ import {
   unsafeSecretBytes,
   wipeSecretBytes,
   makeSecrets
-} from "@effect-desktop/core"
+} from "@orika/core"
 ```
 
 ## API
@@ -76,7 +76,7 @@ wipeSecretBytes(bytes)
 
 ## Test layer
 
-`makeMemorySecretsSafeStorage(options)` from `@effect-desktop/test`.
+`makeMemorySecretsSafeStorage(options)` from `@orika/test`.
 
 ## Related
 

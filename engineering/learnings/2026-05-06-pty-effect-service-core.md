@@ -1,16 +1,16 @@
 ---
 date: 2026-05-06
 type: in-flight-feature
-topic: PTY Effect service in @effect-desktop/core
+topic: PTY Effect service in @orika/core
 issue: https://github.com/Rika-Labs/effect-desktop/issues/125
 pr: https://github.com/Rika-Labs/effect-desktop/pull/211
 ---
 
-# PTY Effect service in @effect-desktop/core
+# PTY Effect service in @orika/core
 
 ## What we set out to do
 
-Issue #125 asked for a typed `PTY` Effect service in `@effect-desktop/core` with schema-validated open/write/resize/kill operations, `Stream.Stream<Uint8Array>` output, `onExit`, permission checks, and resource registration. The planned architecture routed app code through the PTY service to host/native PTY methods backed by `crates/native-pty`, while keeping the handle bound to `ResourceRegistry` scope lifetime.
+Issue #125 asked for a typed `PTY` Effect service in `@orika/core` with schema-validated open/write/resize/kill operations, `Stream.Stream<Uint8Array>` output, `onExit`, permission checks, and resource registration. The planned architecture routed app code through the PTY service to host/native PTY methods backed by `crates/native-pty`, while keeping the handle bound to `ResourceRegistry` scope lifetime.
 
 ## What actually ended up working
 

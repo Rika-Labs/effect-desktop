@@ -55,7 +55,7 @@ export const makeReleaseToolRunner = (): Effect.Effect<
   })
 
 export class ReleaseToolRunner extends Context.Service<ReleaseToolRunner, ReleaseToolRunnerApi>()(
-  "@effect-desktop/cli/ReleaseToolRunner"
+  "@orika/cli/ReleaseToolRunner"
 ) {}
 
 export const ReleaseToolRunnerLive: Layer.Layer<

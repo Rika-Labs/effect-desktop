@@ -20,7 +20,7 @@ I am trading a small literal union duplicated at the SDK and bridge boundary for
 - known macOS vibrancy material names accepted by the host;
 - finite traffic-light coordinates greater than or equal to zero.
 
-`WindowCreatePayload` in `@effect-desktop/bridge` mirrors the chrome contract because it is the lower request-construction boundary. This avoids a split where SDK callers are protected but direct bridge callers can still emit impossible host envelopes.
+`WindowCreatePayload` in `@orika/bridge` mirrors the chrome contract because it is the lower request-construction boundary. This avoids a split where SDK callers are protected but direct bridge callers can still emit impossible host envelopes.
 
 ```mermaid
 flowchart LR

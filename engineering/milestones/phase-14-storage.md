@@ -46,7 +46,7 @@ resource registration.
 
 ## Public APIs
 
-`@effect-desktop/core` exports:
+`@orika/core` exports:
 
 - `SqlClient` / `SqlClientLive` / `SqlModel` / `SqliteClient` for runtime
   SQLite backed by Effect SQL.
@@ -127,7 +127,7 @@ Specialized Phase 14 evidence:
 Milestone: Phase 14 - Storage
 Files changed: core SQLite, Settings, EventLog, Transport, and WindowState
 services; tests; public exports; and Phase 14 learning records.
-Public APIs added at phase close: @effect-desktop/core SQLite, Settings,
+Public APIs added at phase close: @orika/core SQLite, Settings,
 EventLog, Transport, WindowState services and their store/connection/framing/
 state helper types. The local SQLite and EventLog wrappers were later removed
 in favor of Effect SQL and direct `effect/unstable/eventlog` imports.

@@ -2,7 +2,7 @@ import {
   InspectorSafetyPolicy,
   type InspectorSafetyPolicyApi,
   type InspectorSafetySummary
-} from "@effect-desktop/core"
+} from "@orika/core"
 import { Context, Effect, Layer, Logger, LogLevel, Option, Ref, Schedule, Stream } from "effect"
 
 import { positiveFrameInterval, positiveRowLimit } from "./panel-options.js"
@@ -39,7 +39,7 @@ export interface LogsPanelOptions {
 }
 
 export class LogsPanel extends Context.Service<LogsPanel, LogsPanelApi>()(
-  "@effect-desktop/devtools/logs-panel/LogsPanel"
+  "@orika/devtools/logs-panel/LogsPanel"
 ) {}
 
 export const LogsPanelLive = (

@@ -14,7 +14,7 @@ import {
 import { EventJournal } from "effect/unstable/eventlog"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 
-import { RpcCapability } from "@effect-desktop/bridge"
+import { RpcCapability } from "@orika/bridge"
 import { AuditEvent, type AuditEventsApi } from "./audit-events.js"
 import {
   CommandRegistryCommandAlreadyRegisteredError,

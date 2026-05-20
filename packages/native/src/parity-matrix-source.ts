@@ -44,13 +44,14 @@ export const routedHostMethodsFromSource = (
 
 export const formatNativeParityMatrixMarkdown = (matrix: NativeParityMatrixDocument): string => {
   const tableRows = [
-    ["Surface", "Method", "Support", "Host method", "Host router"],
+    ["Surface", "Method", "Support", "Host method", "Host router", "Release"],
     ...matrix.rows.map((row) => [
       `\`${row.surface}\``,
       `\`${row.method}\``,
       `\`${row.support.status}\``,
       `\`${row.hostMethod ?? row.tag}\``,
-      `\`${row.hostStatus}\``
+      `\`${row.hostStatus}\``,
+      releaseCell(row.release)
     ])
   ]
   const widths =
@@ -73,6 +74,9 @@ export const formatNativeParityMatrixMarkdown = (matrix: NativeParityMatrixDocum
     `- Total declared native methods: ${matrix.summary.total}`,
     `- Routed by the Rust host: ${matrix.summary.routed}`,
     `- Missing from the Rust host dispatch registry: ${matrix.summary.missing}`,
+    `- Release-complete rows: ${matrix.summary.releaseComplete}`,
+    `- Rows tracked by release issues: ${matrix.summary.releaseTracked}`,
+    `- Rows missing release tracking: ${matrix.summary.releaseUntracked}`,
     "",
     "The machine-readable matrix lives in [`parity-matrix.json`](parity-matrix.json).",
     "",
@@ -105,3 +109,13 @@ const hostDispatchSource = (routerSource: string): string => {
 
 const tableLine = (row: readonly string[], widths: readonly number[]): string =>
   `| ${row.map((cell, index) => cell.padEnd(widths[index] ?? cell.length)).join(" | ")} |`
+
+const releaseCell = (release: NativeParityMatrixRowType["release"]): string => {
+  if (release.status === "complete") {
+    return "`complete`"
+  }
+  if (release.status === "tracked") {
+    return `[#${release.issue}](${release.url})`
+  }
+  return "`untracked`"
+}

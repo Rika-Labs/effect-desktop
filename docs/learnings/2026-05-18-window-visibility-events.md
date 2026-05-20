@@ -26,6 +26,6 @@ No wrapper was removed. The changed code extends the existing
 Schema/RPC/Layer/native boundary and Rust event-loop adapter; it does not add a
 parallel abstraction over Effect.
 
-Remaining #1342 debt: Effect Desktop still does not expose a portable `blur`
+Remaining #1342 debt: ORIKA still does not expose a portable `blur`
 command or a separate OS close-request veto/confirm lifecycle distinct from
 `destroy`.

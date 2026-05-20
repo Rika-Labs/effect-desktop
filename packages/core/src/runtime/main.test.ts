@@ -23,7 +23,7 @@ import {
   HOST_VERSION_METHOD,
   WINDOW_CREATE_METHOD,
   WINDOW_DESTROY_METHOD
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import packageJson from "../../package.json" with { type: "json" }
 import {
   APP_EXPORT_ENV,

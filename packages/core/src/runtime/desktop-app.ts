@@ -19,7 +19,7 @@ import type { SqlClient } from "effect/unstable/sql/SqlClient"
 import type { SqlError } from "effect/unstable/sql/SqlError"
 import { WorkflowEngine } from "effect/unstable/workflow"
 
-import { rpcCapability } from "@effect-desktop/bridge"
+import { rpcCapability } from "@orika/bridge"
 
 import { DesktopLoggerLayer } from "./logger.js"
 import {
@@ -334,11 +334,11 @@ export interface DesktopAppApi {
 }
 
 export class DesktopApp extends Context.Service<DesktopApp, DesktopAppApi>()(
-  "@effect-desktop/core/runtime/desktop-app/DesktopApp"
+  "@orika/core/runtime/desktop-app/DesktopApp"
 ) {}
 
 export class DesktopRuntime extends Context.Service<DesktopRuntime, DesktopRuntimeApi>()(
-  "@effect-desktop/core/runtime/desktop-app/DesktopRuntime"
+  "@orika/core/runtime/desktop-app/DesktopRuntime"
 ) {}
 
 const TelemetryLive: Layer.Layer<Telemetry, never, never> = Layer.effect(Telemetry)(
@@ -515,7 +515,7 @@ const webviewProvider = (
 const RuntimeProviders = [
   lazyRuntimeProvider({
     id: "bun" as const,
-    budget: providerBudget("bun", "@effect/platform-bun", "@effect-desktop/core/providers/bun"),
+    budget: providerBudget("bun", "@effect/platform-bun", "@orika/core/providers/bun"),
     layer: Effect.tryPromise({
       try: () => import("../providers/bun.js").then((mod) => mod.BunRuntimeProviderLayer),
       catch: (cause) => runtimeProviderLoadError("bun", cause)
@@ -524,7 +524,7 @@ const RuntimeProviders = [
   }),
   lazyRuntimeProvider({
     id: "node" as const,
-    budget: providerBudget("node", "@effect/platform-node", "@effect-desktop/core/providers/node"),
+    budget: providerBudget("node", "@effect/platform-node", "@orika/core/providers/node"),
     layer: Effect.tryPromise({
       try: () => import("../providers/node.js").then((mod) => mod.NodeRuntimeProviderLayer),
       catch: (cause) => runtimeProviderLoadError("node", cause)
@@ -533,7 +533,7 @@ const RuntimeProviders = [
   }),
   lazyRuntimeProvider({
     id: "test" as const,
-    budget: providerBudget("test", "@effect-desktop/core", "@effect-desktop/core/providers/test"),
+    budget: providerBudget("test", "@orika/core", "@orika/core/providers/test"),
     layer: Effect.tryPromise({
       try: () => import("../providers/test.js").then((mod) => mod.TestRuntimeProviderLayer),
       catch: (cause) => runtimeProviderLoadError("test", cause)

@@ -19,7 +19,7 @@ import {
   runHeadless,
   assertNoOpenResourcesIn,
   installResourceLeakDetection
-} from "@effect-desktop/test"
+} from "@orika/test"
 ```
 
 ## `HeadlessRuntime.layer(options)`

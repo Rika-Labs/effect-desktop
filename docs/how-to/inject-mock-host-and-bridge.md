@@ -16,7 +16,7 @@ effect_version: 4
 
 ```ts
 import { Effect, Layer } from "effect"
-import { MockHostLive } from "@effect-desktop/test"
+import { MockHostLive } from "@orika/test"
 
 const program = Effect.gen(function* () {
   // ... your handler-side effect
@@ -41,7 +41,7 @@ After running, you can read the recorded calls (`MockHost.calls`) to assert what
 `makeMockBridge(options)` returns a `BridgeClientExchange` you can pin responses on. It enforces the contract — wrong-shape pins fail at decode time.
 
 ```ts
-import { makeMockBridge } from "@effect-desktop/test"
+import { makeMockBridge } from "@orika/test"
 
 const bridge = makeMockBridge({
   pin: [
@@ -66,12 +66,12 @@ After running, `bridge.callLog` contains the recorded calls with `{ method, payl
 
 ## When to use one vs. the other
 
-| Goal                                       | Use                                                       |
-| ------------------------------------------ | --------------------------------------------------------- |
-| Test a handler against a fake host         | `MockHostLive`                                            |
-| Test a renderer against fake RPC responses | `makeMockBridge`                                          |
-| Test the full handler + bridge round-trip  | `HeadlessRuntime.layer` (bundles both)                    |
-| Test the bridge framing itself             | Construct envelopes directly via `@effect-desktop/bridge` |
+| Goal                                       | Use                                              |
+| ------------------------------------------ | ------------------------------------------------ |
+| Test a handler against a fake host         | `MockHostLive`                                   |
+| Test a renderer against fake RPC responses | `makeMockBridge`                                 |
+| Test the full handler + bridge round-trip  | `HeadlessRuntime.layer` (bundles both)           |
+| Test the bridge framing itself             | Construct envelopes directly via `@orika/bridge` |
 
 ## Recording assertions
 

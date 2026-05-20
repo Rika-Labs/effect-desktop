@@ -33,7 +33,7 @@ const SINGLE_INSTANCE_LOCK_SMOKE_TEST_ARG: &str = "--single-instance-lock-smoke-
 const WINDOW_SMOKE_TEST_ENV: &str = "EFFECT_DESKTOP_WINDOW_SMOKE_TEST";
 const STARTUP_WINDOWS_ENV: &str = "EFFECT_DESKTOP_STARTUP_WINDOWS";
 const WINDOW_SMOKE_TEST_STARTUP_WINDOWS: &str =
-    r#"{"smoke":{"title":"Effect Desktop Smoke Test","width":800,"height":600}}"#;
+    r#"{"smoke":{"title":"ORIKA Smoke Test","width":800,"height":600}}"#;
 const SOURCE_RUNTIME_ENTRY: &str = "src/runtime/main.ts";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -359,8 +359,7 @@ mod tests {
             "window smoke runtime config should set {WINDOW_SMOKE_TEST_ENV}: {config_debug}"
         );
         assert!(
-            config_debug.contains(STARTUP_WINDOWS_ENV)
-                && config_debug.contains("Effect Desktop Smoke Test"),
+            config_debug.contains(STARTUP_WINDOWS_ENV) && config_debug.contains("ORIKA Smoke Test"),
             "window smoke runtime config should declare startup windows: {config_debug}"
         );
     }
@@ -378,8 +377,7 @@ mod tests {
             "resident smoke runtime config should set {WINDOW_SMOKE_TEST_ENV}: {config_debug}"
         );
         assert!(
-            config_debug.contains(STARTUP_WINDOWS_ENV)
-                && config_debug.contains("Effect Desktop Smoke Test"),
+            config_debug.contains(STARTUP_WINDOWS_ENV) && config_debug.contains("ORIKA Smoke Test"),
             "resident smoke runtime config should declare startup windows: {config_debug}"
         );
     }
@@ -396,8 +394,7 @@ mod tests {
             "app quit smoke runtime config should set {WINDOW_SMOKE_TEST_ENV}: {config_debug}"
         );
         assert!(
-            config_debug.contains(STARTUP_WINDOWS_ENV)
-                && config_debug.contains("Effect Desktop Smoke Test"),
+            config_debug.contains(STARTUP_WINDOWS_ENV) && config_debug.contains("ORIKA Smoke Test"),
             "app quit smoke runtime config should declare startup windows: {config_debug}"
         );
     }
@@ -414,8 +411,7 @@ mod tests {
             "app focus smoke runtime config should set {WINDOW_SMOKE_TEST_ENV}: {config_debug}"
         );
         assert!(
-            config_debug.contains(STARTUP_WINDOWS_ENV)
-                && config_debug.contains("Effect Desktop Smoke Test"),
+            config_debug.contains(STARTUP_WINDOWS_ENV) && config_debug.contains("ORIKA Smoke Test"),
             "app focus smoke runtime config should declare startup windows: {config_debug}"
         );
     }
@@ -432,8 +428,7 @@ mod tests {
             "app restart smoke runtime config should set {WINDOW_SMOKE_TEST_ENV}: {config_debug}"
         );
         assert!(
-            config_debug.contains(STARTUP_WINDOWS_ENV)
-                && config_debug.contains("Effect Desktop Smoke Test"),
+            config_debug.contains(STARTUP_WINDOWS_ENV) && config_debug.contains("ORIKA Smoke Test"),
             "app restart smoke runtime config should declare startup windows: {config_debug}"
         );
     }

@@ -13,7 +13,7 @@ Two fakes. `MockHost` replaces the Rust host. `MockBridge` replaces the bridge e
 ## MockHost
 
 ```ts
-import { MockHostLive, MockHost } from "@effect-desktop/test"
+import { MockHostLive, MockHost } from "@orika/test"
 
 const layer = MockHostLive({
   version: { protocol: 1, app: "0.1.0" },
@@ -28,7 +28,7 @@ After running, inspect `MockHost.calls` to assert what the handler did.
 ## MockBridge
 
 ```ts
-import { makeMockBridge } from "@effect-desktop/test"
+import { makeMockBridge } from "@orika/test"
 
 const bridge = makeMockBridge({
   pin: [

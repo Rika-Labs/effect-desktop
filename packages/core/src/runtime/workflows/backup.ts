@@ -25,7 +25,7 @@ export interface BackupConfig {
 }
 
 export class BackupConfigService extends Context.Service<BackupConfigService, BackupConfig>()(
-  "@effect-desktop/core/runtime/workflows/backup/BackupConfigService"
+  "@orika/core/runtime/workflows/backup/BackupConfigService"
 ) {}
 
 const BackupResultSchema = Schema.Struct({

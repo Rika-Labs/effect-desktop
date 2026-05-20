@@ -8,12 +8,12 @@ effect_version: 4
 
 # Devtools
 
-`@effect-desktop/devtools` exposes the runtime inspector — a panel-based UI that observes resources, events, telemetry, layer graph, workflows, and persistence without granting raw authority.
+`@orika/devtools` exposes the runtime inspector — a panel-based UI that observes resources, events, telemetry, layer graph, workflows, and persistence without granting raw authority.
 
 ## Import
 
 ```ts
-import { DevtoolsShell, DevtoolsSnapshotClient } from "@effect-desktop/devtools"
+import { DevtoolsShell, DevtoolsSnapshotClient } from "@orika/devtools"
 ```
 
 ## `DevtoolsShell`
@@ -52,7 +52,7 @@ The shell ships with these live panels:
 
 ## Test variants
 
-Each panel has a corresponding test layer (under `@effect-desktop/devtools/testing`) that runs the panel's render logic against deterministic snapshots — useful for snapshot tests of devtools UI.
+Each panel has a corresponding test layer (under `@orika/devtools/testing`) that runs the panel's render logic against deterministic snapshots — useful for snapshot tests of devtools UI.
 
 ## Safety
 

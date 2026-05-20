@@ -41,7 +41,7 @@ If you've set release-related environment variables (`APPLE_ID`, `WINDOWS_CERT_T
 ## Reading the output
 
 ```
-Effect Desktop doctor
+ORIKA doctor
 platform          darwin-arm64
 ci                no
 result            ok
@@ -64,7 +64,7 @@ Each row maps to one probe. `missing` probes fail the gate with a non-zero exit.
 
 ```ts
 import { Effect } from "effect"
-import { runDesktopDoctor, runDoctorCommand } from "@effect-desktop/cli"
+import { runDesktopDoctor, runDoctorCommand } from "@orika/cli"
 
 const report = await Effect.runPromise(
   runDesktopDoctor({

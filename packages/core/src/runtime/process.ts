@@ -9,7 +9,7 @@ import {
   type HostProtocolError,
   type HostProtocolErrorTag,
   type HostProtocolInvalidArgumentError
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import {
   Cause,
   Clock,
@@ -367,7 +367,7 @@ export const makeProcess = (
   })
 
 export class Process extends Context.Service<Process, ProcessApi>()(
-  "@effect-desktop/core/runtime/process"
+  "@orika/core/runtime/process"
 ) {}
 
 export const ProcessLive = Layer.effect(

@@ -14,5 +14,5 @@ Verification:
 
 - `bun test packages/cli/src/index.test.ts -t "desktop notarize rejects artifact file names outside the metadata directory"`
 - `bun test packages/cli/src/index.test.ts -t "desktop notarize"`
-- `bun run typecheck --filter=@effect-desktop/cli`
-- `bun run lint --filter=@effect-desktop/cli`
+- `bun run typecheck --filter=@orika/cli`
+- `bun run lint --filter=@orika/cli`

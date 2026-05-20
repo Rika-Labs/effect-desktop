@@ -669,7 +669,7 @@ export const makeResourceRegistry = (
   Effect.map(makeResourceRegistryInstance(options), (instance) => instance.api)
 
 export class ResourceRegistry extends Context.Service<ResourceRegistry, ResourceRegistryApi>()(
-  "@effect-desktop/core/runtime/resources/ResourceRegistry"
+  "@orika/core/runtime/resources/ResourceRegistry"
 ) {}
 
 export const ResourceRegistryLive = Layer.effect(ResourceRegistry)(

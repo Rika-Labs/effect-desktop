@@ -15,7 +15,7 @@ import {
   makeHostProtocolInvalidOutputError,
   type RpcCapabilityMetadata,
   RpcGroup
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import {
   type AuditEventsApi,
   type DesktopRpcClient,
@@ -29,7 +29,7 @@ import {
   type PermissionRegistryApi,
   type PermissionRegistryError,
   permissionAuditEvent
-} from "@effect-desktop/core"
+} from "@orika/core"
 import { Clock, Context, Effect, Layer, PubSub, Ref, Schema, Stream } from "effect"
 
 import {
@@ -145,7 +145,7 @@ export interface DisplayCaptureClientApi {
 export class DisplayCaptureClient extends Context.Service<
   DisplayCaptureClient,
   DisplayCaptureClientApi
->()("@effect-desktop/native/DisplayCaptureClient") {}
+>()("@orika/native/DisplayCaptureClient") {}
 
 export interface DisplayCaptureServiceApi extends DisplayCaptureClientApi {}
 
@@ -159,7 +159,7 @@ export interface DisplayCaptureGrantAuthorityApi {
 export class DisplayCaptureGrantAuthority extends Context.Service<
   DisplayCaptureGrantAuthority,
   DisplayCaptureGrantAuthorityApi
->()("@effect-desktop/native/DisplayCaptureGrantAuthority") {}
+>()("@orika/native/DisplayCaptureGrantAuthority") {}
 
 export interface DisplayCaptureServiceOptions {
   readonly permissions: PermissionRegistryApi
@@ -170,7 +170,7 @@ export interface DisplayCaptureServiceOptions {
 }
 
 export class DisplayCapture extends Context.Service<DisplayCapture, DisplayCaptureServiceApi>()(
-  "@effect-desktop/native/DisplayCapture"
+  "@orika/native/DisplayCapture"
 ) {
   static readonly layer = Layer.effect(DisplayCapture)(
     Effect.gen(function* () {

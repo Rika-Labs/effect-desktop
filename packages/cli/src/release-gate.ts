@@ -225,7 +225,7 @@ export const runReleaseGate = (
 
 export const formatReleaseGateReport = (report: ReleaseGateReport): string =>
   [
-    "Effect Desktop release gates",
+    "ORIKA release gates",
     `status            ${report.passed ? "passed" : "failed"}`,
     `gates             ${report.gates.length}`,
     ...report.gates.map((gate) => `${gate.id.padEnd(22)} ${gate.kind}`),

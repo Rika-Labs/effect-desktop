@@ -14,7 +14,7 @@ Issue #806 showed that `Window.create` accepted impossible chrome values and sti
 
 ## What actually ended up working
 
-The final implementation tightened the existing schemas instead of adding a separate validator. `WindowCreateInput` in `@effect-desktop/native` now rejects empty supplied titles, unsupported vibrancy materials, and negative traffic-light coordinates. `WindowCreatePayload` in `@effect-desktop/bridge` mirrors the same runtime contract so direct bridge callers cannot bypass the SDK boundary. The tests assert both failure and non-transport by checking that the host exchange records no request for malformed chrome.
+The final implementation tightened the existing schemas instead of adding a separate validator. `WindowCreateInput` in `@orika/native` now rejects empty supplied titles, unsupported vibrancy materials, and negative traffic-light coordinates. `WindowCreatePayload` in `@orika/bridge` mirrors the same runtime contract so direct bridge callers cannot bypass the SDK boundary. The tests assert both failure and non-transport by checking that the host exchange records no request for malformed chrome.
 
 ```mermaid
 flowchart LR

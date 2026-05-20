@@ -10,15 +10,15 @@ pr: https://github.com/Rika-Labs/effect-desktop/pull/180
 
 ## What we set out to do
 
-The issue required `templates/basic-react-tailwind` to become a real first-experience renderer template: Vite, React 19, Tailwind 4, public `@effect-desktop/*` imports only, a valid config, README, and a smoke path that exercises one typed desktop call.
+The issue required `templates/basic-react-tailwind` to become a real first-experience renderer template: Vite, React 19, Tailwind 4, public `@orika/*` imports only, a valid config, README, and a smoke path that exercises one typed desktop call.
 
 ## What actually ended up working
 
-The template landed as a workspace package with its own Vite/Tailwind setup, `desktop.config.ts`, React source, README, and tests. The design had to add a narrow `@effect-desktop/react` public surface earlier than the next sub-issue, because a public-only template cannot honestly import `DesktopProvider`, `useDesktop`, or `useWindow` from a stub package. The shipped React surface is intentionally value-oriented: missing provider state returns `Option.none()` instead of throwing.
+The template landed as a workspace package with its own Vite/Tailwind setup, `desktop.config.ts`, React source, README, and tests. The design had to add a narrow `@orika/react` public surface earlier than the next sub-issue, because a public-only template cannot honestly import `DesktopProvider`, `useDesktop`, or `useWindow` from a stub package. The shipped React surface is intentionally value-oriented: missing provider state returns `Option.none()` instead of throwing.
 
 ```mermaid
 flowchart LR
-  Template["templates/basic-react-tailwind"] --> ReactPkg["@effect-desktop/react"]
+  Template["templates/basic-react-tailwind"] --> ReactPkg["@orika/react"]
   ReactPkg --> Provider["DesktopProvider"]
   Provider --> Hooks["useDesktop / useWindow"]
   Hooks --> EffectCall["Window.create Effect"]

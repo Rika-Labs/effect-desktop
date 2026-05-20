@@ -2,7 +2,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { unlink } from "node:fs/promises"
 
-import { DesktopDurations, DesktopSchedules } from "@effect-desktop/core"
+import { DesktopDurations, DesktopSchedules } from "@orika/core"
 import { Cause, Effect, Schema } from "effect"
 import { HttpClient as HttpClientNs } from "effect/unstable/http"
 import { Activity, DurableClock, DurableDeferred, Workflow } from "effect/unstable/workflow"

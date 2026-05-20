@@ -55,7 +55,7 @@ Focused:
 
 ```bash
 bun test packages/core/src/runtime/window-supervisor.test.ts packages/core/src/runtime/main.test.ts
-bun run typecheck --filter=@effect-desktop/core
+bun run typecheck --filter=@orika/core
 bun packages/cli/src/bin.ts check --api
 ```
 

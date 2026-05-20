@@ -21,7 +21,7 @@ import {
   type TraceSpan,
   type MetricSnapshot,
   makeTelemetry
-} from "@effect-desktop/core"
+} from "@orika/core"
 ```
 
 ## API

@@ -8,7 +8,7 @@ effect_version: 4
 
 # Provider and context
 
-`@effect-desktop/react` exposes the renderer adapter — a manifest-driven typed client provider plus the hooks that consume it.
+`@orika/react` exposes the renderer adapter — a manifest-driven typed client provider plus the hooks that consume it.
 
 ## Import
 
@@ -22,7 +22,7 @@ import {
   createUnavailableDesktopClient,
   type DesktopClient,
   type DesktopRuntimeContext
-} from "@effect-desktop/react"
+} from "@orika/react"
 ```
 
 ## `ReactDesktop.from(manifest, options?)`

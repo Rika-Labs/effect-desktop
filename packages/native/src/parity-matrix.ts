@@ -1,4 +1,4 @@
-import { type DesktopNativeLayer } from "@effect-desktop/core"
+import { type DesktopNativeLayer } from "@orika/core"
 import { Context, Effect, Layer } from "effect"
 
 import {
@@ -8,6 +8,7 @@ import {
   NativeParityMatrixResult,
   NativeParityMatrixRow,
   NativeParityMatrixSummary,
+  type NativeParityReleaseDispositionType,
   type NativeParityCapabilityKind,
   type NativeParityMatrixResultType,
   type NativeParityMatrixRowType
@@ -51,7 +52,7 @@ export interface NativeHostMethodInventoryApi {
 export class NativeHostMethodInventory extends Context.Service<
   NativeHostMethodInventory,
   NativeHostMethodInventoryApi
->()("@effect-desktop/native/parity-matrix/NativeHostMethodInventory") {}
+>()("@orika/native/parity-matrix/NativeHostMethodInventory") {}
 
 export interface NativeParityMatrixApi {
   readonly generate: Effect.Effect<NativeParityMatrixResultType, NativeParityMatrixError, never>
@@ -65,7 +66,7 @@ export interface NativeParityMatrixApi {
 export class NativeParityMatrix extends Context.Service<
   NativeParityMatrix,
   NativeParityMatrixApi
->()("@effect-desktop/native/parity-matrix/NativeParityMatrix") {}
+>()("@orika/native/parity-matrix/NativeParityMatrix") {}
 
 export const makeNativeHostMethodInventoryLayer = (
   methods: Iterable<string>
@@ -134,7 +135,10 @@ const matrixFromManifest = (
       missing: current.missing + (row.hostStatus === "missing" ? 1 : 0),
       supported: current.supported + (row.support.status === "supported" ? 1 : 0),
       partial: current.partial + (row.support.status === "partial" ? 1 : 0),
-      unsupported: current.unsupported + (row.support.status === "unsupported" ? 1 : 0)
+      unsupported: current.unsupported + (row.support.status === "unsupported" ? 1 : 0),
+      releaseComplete: current.releaseComplete + (row.release.status === "complete" ? 1 : 0),
+      releaseTracked: current.releaseTracked + (row.release.status === "tracked" ? 1 : 0),
+      releaseUntracked: current.releaseUntracked + (row.release.status === "untracked" ? 1 : 0)
     }),
     {
       total: 0,
@@ -142,7 +146,10 @@ const matrixFromManifest = (
       missing: 0,
       supported: 0,
       partial: 0,
-      unsupported: 0
+      unsupported: 0,
+      releaseComplete: 0,
+      releaseTracked: 0,
+      releaseUntracked: 0
     }
   )
 
@@ -173,8 +180,96 @@ const rowFromFact = (
     capability: nativeParityCapabilityKind(fact.capability.kind),
     support: fact.support,
     hostStatus,
+    release: releaseDispositionFor(surface, fact.support.status),
     ...(hostMethod === fact.tag ? {} : { hostMethod })
   })
+}
+
+const releaseIssueBySurface = new Map<string, { readonly issue: number; readonly url: string }>(
+  [
+    "BrowsingData",
+    "CookieStore",
+    "SessionPermission",
+    "SessionProfile",
+    "WebRequest",
+    "WebView"
+  ].map((surface) => [
+    surface,
+    { issue: 1439, url: "https://github.com/Rika-Labs/effect-desktop/issues/1439" }
+  ])
+)
+
+for (const surface of ["Download", "NativeNetwork", "NetworkAuth"]) {
+  releaseIssueBySurface.set(surface, {
+    issue: 1440,
+    url: "https://github.com/Rika-Labs/effect-desktop/issues/1440"
+  })
+}
+
+for (const surface of ["ContextMenu", "Dock", "GlobalShortcut", "Menu"]) {
+  releaseIssueBySurface.set(surface, {
+    issue: 1441,
+    url: "https://github.com/Rika-Labs/effect-desktop/issues/1441"
+  })
+}
+
+for (const surface of ["Dialog", "Notification", "Shell", "Tray", "Window"]) {
+  releaseIssueBySurface.set(surface, {
+    issue: 1442,
+    url: "https://github.com/Rika-Labs/effect-desktop/issues/1442"
+  })
+}
+
+for (const surface of [
+  "Association",
+  "FocusedApplicationContext",
+  "RecentDocuments",
+  "ScopedAccessGrant",
+  "SelectionContext",
+  "TransientWindowRole"
+]) {
+  releaseIssueBySurface.set(surface, {
+    issue: 1443,
+    url: "https://github.com/Rika-Labs/effect-desktop/issues/1443"
+  })
+}
+
+for (const surface of ["EgressPolicy", "ExecutionSandbox"]) {
+  releaseIssueBySurface.set(surface, {
+    issue: 1444,
+    url: "https://github.com/Rika-Labs/effect-desktop/issues/1444"
+  })
+}
+
+for (const surface of [
+  "CrashReporter",
+  "DisplayCapture",
+  "PowerMonitor",
+  "RealtimeMediaSession",
+  "SystemAppearance",
+  "Updater"
+]) {
+  releaseIssueBySurface.set(surface, {
+    issue: 1445,
+    url: "https://github.com/Rika-Labs/effect-desktop/issues/1445"
+  })
+}
+
+const releaseDispositionFor = (
+  surface: string,
+  supportStatus: NativeCapabilityFact["support"]["status"]
+): NativeParityReleaseDispositionType => {
+  if (supportStatus === "supported") {
+    return { status: "complete" }
+  }
+  const issue = releaseIssueBySurface.get(surface)
+  if (issue !== undefined) {
+    return { status: "tracked", ...issue }
+  }
+  return {
+    status: "untracked",
+    reason: `partial or unsupported native surface ${surface} has no release issue`
+  }
 }
 
 const hostMethodForNativeTag = (tag: string): string => {

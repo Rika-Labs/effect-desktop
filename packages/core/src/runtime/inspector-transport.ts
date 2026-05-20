@@ -237,7 +237,7 @@ export const makeInspectorTransport = (
 export class InspectorTransport extends Context.Service<
   InspectorTransport,
   InspectorTransportApi
->()("@effect-desktop/core/runtime/inspector-transport/InspectorTransport", {
+>()("@orika/core/runtime/inspector-transport/InspectorTransport", {
   make: makeInspectorTransport()
 }) {}
 

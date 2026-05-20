@@ -4,7 +4,7 @@ import {
   HostProtocolPermissionDeniedError,
   type HostProtocolError,
   type SecretBytes
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import { Context, Data, Effect, Layer, Option, Schema } from "effect"
 
 import { emitAuditEvent, secretsAuditEvent, type AuditEventsApi } from "./audit-events.js"
@@ -19,7 +19,7 @@ export {
   unsafeSecretBytes,
   wipeSecretBytes,
   type SecretBytes
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 
 export class SecretsNamespaceInput extends Schema.Class<SecretsNamespaceInput>(
   "SecretsNamespaceInput"
@@ -112,7 +112,7 @@ export interface SecretsSafeStorageApi {
 export class SecretsSafeStorage extends Context.Service<
   SecretsSafeStorage,
   SecretsSafeStorageApi
->()("@effect-desktop/core/runtime/secrets/SecretsSafeStorage") {}
+>()("@orika/core/runtime/secrets/SecretsSafeStorage") {}
 
 export interface SecretsPermissionPolicy {
   readonly read?: readonly string[]
@@ -272,7 +272,7 @@ export const makeSecrets = (
   })
 
 export class Secrets extends Context.Service<Secrets, SecretsApi>()(
-  "@effect-desktop/core/runtime/secrets"
+  "@orika/core/runtime/secrets"
 ) {}
 
 export const SecretsLayer = (

@@ -14,7 +14,7 @@ The goal was to bind runtime service handlers to API contracts so service implem
 
 ## What actually ended up working
 
-`Handlers(...layers)` now builds a frozen runtime dispatcher in `@effect-desktop/bridge` and is exported as `Desktop.Handlers`. The binder reads each contract layer, constructs a method table, decodes request payloads through the input schema, runs the Effect handler, encodes successful outputs, and encodes contract failures into `{ kind: "failure", error }`. Host protocol defects such as unknown methods, malformed inputs, malformed outputs, and malformed contract errors remain typed `HostProtocolError` failures.
+`Handlers(...layers)` now builds a frozen runtime dispatcher in `@orika/bridge` and is exported as `Desktop.Handlers`. The binder reads each contract layer, constructs a method table, decodes request payloads through the input schema, runs the Effect handler, encodes successful outputs, and encodes contract failures into `{ kind: "failure", error }`. Host protocol defects such as unknown methods, malformed inputs, malformed outputs, and malformed contract errors remain typed `HostProtocolError` failures.
 
 ```mermaid
 flowchart TD

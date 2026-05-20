@@ -407,9 +407,7 @@ export const makeWorker = (
     } satisfies WorkerApi)
   })
 
-export class Worker extends Context.Service<Worker, WorkerApi>()(
-  "@effect-desktop/core/runtime/worker"
-) {}
+export class Worker extends Context.Service<Worker, WorkerApi>()("@orika/core/runtime/worker") {}
 
 export const WorkerLive = Layer.effect(
   Worker,

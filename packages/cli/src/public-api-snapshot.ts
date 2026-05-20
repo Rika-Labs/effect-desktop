@@ -131,7 +131,7 @@ export const runPublicApiCheck = (
 
 export const formatPublicApiReport = (report: PublicApiSnapshotReport): string => {
   const lines = [
-    "Effect Desktop public API",
+    "ORIKA public API",
     `status            ${report.passed ? "passed" : "failed"}`,
     `mode              ${report.updated ? "write" : "check"}`,
     `packages          ${report.packages.length}`,

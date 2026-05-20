@@ -1,11 +1,7 @@
 import { dirname, isAbsolute, join, relative, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
-import {
-  DesktopSchedules,
-  LayerGraphSnapshot,
-  NativeParityMatrixResult
-} from "@effect-desktop/core"
+import { DesktopSchedules, LayerGraphSnapshot, NativeParityMatrixResult } from "@orika/core"
 import { Context, Data, Effect, Option, Result, Schema } from "effect"
 
 import { ReleaseFileSystem, runReleaseFileSystem } from "./release-file-system.js"
@@ -261,7 +257,7 @@ const missingCommand = (invocation: DoctorCommandInvocation, message: string): D
 
 export const formatDoctorReport = (report: DesktopDoctorReport): string =>
   [
-    "Effect Desktop doctor",
+    "ORIKA doctor",
     `platform          ${report.platform}-${report.arch}`,
     `ci                ${report.ci ? "yes" : "no"}`,
     `result            ${report.passed ? "ok" : "missing required components"}`,
@@ -348,7 +344,7 @@ const probePlatformSdk = (
         component: "platform-sdk",
         platform: options.platform,
         message: `unsupported platform ${options.platform}`,
-        remediation: "Use macOS, Windows, or Linux for Effect Desktop builds.",
+        remediation: "Use macOS, Windows, or Linux for ORIKA builds.",
         installHint: "Run on a supported build host.",
         docsUrl: DOCS_URL
       })
@@ -414,7 +410,7 @@ const probePackageManagerState = (
           component: "package.json",
           platform: options.platform,
           message: "package.json is missing or unreadable",
-          remediation: "Run doctor from an Effect Desktop workspace root.",
+          remediation: "Run doctor from an ORIKA workspace root.",
           installHint: "cd <workspace>",
           docsUrl: DOCS_URL
         })

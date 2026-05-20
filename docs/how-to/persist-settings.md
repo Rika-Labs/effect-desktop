@@ -14,7 +14,7 @@ effect_version: 4
 
 ```ts
 import { Effect, Schema } from "effect"
-import { Settings } from "@effect-desktop/core"
+import { Settings } from "@orika/core"
 
 const program = Effect.gen(function* () {
   const store = yield* Settings

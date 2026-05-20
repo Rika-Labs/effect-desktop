@@ -1,5 +1,5 @@
-import { isDesktopStreamOptions } from "@effect-desktop/core/renderer"
-import type { FrameworkRuntime } from "@effect-desktop/core/renderer"
+import { isDesktopStreamOptions } from "@orika/core/renderer"
+import type { FrameworkRuntime } from "@orika/core/renderer"
 import { Effect, Stream } from "effect"
 import type { AsyncResult } from "effect/unstable/reactivity"
 import { useMemo } from "react"

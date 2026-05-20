@@ -11,7 +11,7 @@ import {
   makeHostProtocolInvalidArgumentError,
   type RpcCapabilityMetadata,
   RpcGroup
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import {
   type AuditEventsApi,
   CommandRegistry,
@@ -30,7 +30,7 @@ import {
   permissionAuditEvent,
   ResourceRegistry,
   type ResourceRegistryApi
-} from "@effect-desktop/core"
+} from "@orika/core"
 import { Clock, Context, Effect, Layer, PubSub, Ref, Schema, Stream } from "effect"
 
 import {
@@ -129,7 +129,7 @@ export interface ActivationRegistryClientApi {
 export class ActivationRegistryClient extends Context.Service<
   ActivationRegistryClient,
   ActivationRegistryClientApi
->()("@effect-desktop/native/activation-registry/ActivationRegistryClient") {}
+>()("@orika/native/activation-registry/ActivationRegistryClient") {}
 
 export interface ActivationRegistryServiceApi {
   readonly registerSurface: (
@@ -161,7 +161,7 @@ interface ActivationSurfaceState {
 export class ActivationRegistry extends Context.Service<
   ActivationRegistry,
   ActivationRegistryServiceApi
->()("@effect-desktop/native/activation-registry/ActivationRegistry") {
+>()("@orika/native/activation-registry/ActivationRegistry") {
   static readonly layer = Layer.effect(ActivationRegistry)(
     Effect.gen(function* () {
       const client = yield* ActivationRegistryClient

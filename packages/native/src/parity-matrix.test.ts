@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
-import type { RpcCapabilityMetadata, RpcSupportMetadata } from "@effect-desktop/bridge"
-import { type DesktopNativeLayer, type DesktopRpcSchemaDoc } from "@effect-desktop/core"
+import type { RpcCapabilityMetadata, RpcSupportMetadata } from "@orika/bridge"
+import { type DesktopNativeLayer, type DesktopRpcSchemaDoc } from "@orika/core"
 import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Schema } from "effect"
 
 import {
@@ -52,10 +52,12 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
       expect(result.summary.total).toBeGreaterThan(0)
       expect(result.summary.routed).toBeGreaterThan(0)
       expect(result.summary.missing).toBe(0)
+      expect(result.summary.releaseUntracked).toBe(0)
 
       expect(result.rows.find((row) => row.tag === "Window.create")).toMatchObject({
         hostStatus: "routed",
-        support: { status: "supported" }
+        support: { status: "supported" },
+        release: { status: "complete" }
       })
       expect(result.rows.find((row) => row.tag === "App.focus")).toMatchObject({
         hostStatus: "routed",
@@ -107,7 +109,12 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
       })
       expect(result.rows.find((row) => row.tag === "ContextMenu.show")).toMatchObject({
         hostStatus: "capability-fact",
-        support: { status: "unsupported", reason: "host-adapter-unimplemented" }
+        support: { status: "unsupported", reason: "host-adapter-unimplemented" },
+        release: {
+          status: "tracked",
+          issue: 1441,
+          url: "https://github.com/Rika-Labs/effect-desktop/issues/1441"
+        }
       })
       expect(result.rows.find((row) => row.tag === "SafeStorage.isAvailable")).toMatchObject({
         hostStatus: "routed",
@@ -119,7 +126,12 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
       })
       expect(result.rows.find((row) => row.tag === "Updater.check")).toMatchObject({
         hostStatus: "routed",
-        support: { status: "partial", reason: "signed-manifest-check-only" }
+        support: { status: "partial", reason: "signed-manifest-check-only" },
+        release: {
+          status: "tracked",
+          issue: 1445,
+          url: "https://github.com/Rika-Labs/effect-desktop/issues/1445"
+        }
       })
       expect(result.rows.find((row) => row.tag === "Updater.download")).toMatchObject({
         hostStatus: "routed",
@@ -170,6 +182,24 @@ test("NativeParityMatrix does not mark missing host methods as supported", () =>
       )
 
       expect(falseSupportedRows).toEqual([])
+    })
+  ))
+
+test("NativeParityMatrix tracks every partial or unsupported release row", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const result = yield* buildNativeParityMatrix()
+      const untrackedRows = result.rows.filter((row) => row.release.status === "untracked")
+      const untrackedIncompleteRows = result.rows.filter(
+        (row) => row.support.status !== "supported" && row.release.status !== "tracked"
+      )
+
+      expect(untrackedRows).toEqual([])
+      expect(untrackedIncompleteRows).toEqual([])
+      expect(result.summary.releaseTracked).toBe(
+        result.summary.partial + result.summary.unsupported
+      )
+      expect(result.summary.releaseComplete).toBe(result.summary.supported)
     })
   ))
 
@@ -235,10 +265,19 @@ test("NativeParityMatrix keeps unsupported declarations visible", () =>
           support: {
             status: "unsupported",
             reason: "host adapter unavailable"
+          },
+          release: {
+            status: "untracked",
+            reason: "partial or unsupported native surface Example has no release issue"
           }
         })
       ])
-      expect(result.summary).toMatchObject({ total: 1, missing: 1, unsupported: 1 })
+      expect(result.summary).toMatchObject({
+        total: 1,
+        missing: 1,
+        unsupported: 1,
+        releaseUntracked: 1
+      })
     })
   ))
 

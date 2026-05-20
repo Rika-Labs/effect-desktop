@@ -15,7 +15,7 @@ Windows are scoped resources owned by the host. The renderer requests one throug
 In your `Desktop.make`:
 
 ```ts
-import { Desktop } from "@effect-desktop/core"
+import { Desktop } from "@orika/core"
 
 export const App = Desktop.make({
   id: "dev.example.app",
@@ -31,7 +31,7 @@ export const App = Desktop.make({
 ## 2. Open from the renderer
 
 ```tsx
-import { useCreateWindowMutation } from "@effect-desktop/react"
+import { useCreateWindowMutation } from "@orika/react"
 
 function OpenPrefsButton() {
   const createWindow = useCreateWindowMutation()
@@ -51,7 +51,7 @@ function OpenPrefsButton() {
 ## 3. Close from the renderer
 
 ```tsx
-import { useCloseCurrentWindowMutation } from "@effect-desktop/react"
+import { useCloseCurrentWindowMutation } from "@orika/react"
 
 function CloseButton() {
   const close = useCloseCurrentWindowMutation()
@@ -68,7 +68,7 @@ To close a different window by handle, use `useCloseWindowMutation` and pass the
 Each window opens its own renderer with an id. Read it with `useCurrentWindowId`:
 
 ```tsx
-import { useCurrentWindowId } from "@effect-desktop/react"
+import { useCurrentWindowId } from "@orika/react"
 
 export function App() {
   const id = useCurrentWindowId()

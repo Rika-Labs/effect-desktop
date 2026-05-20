@@ -16,7 +16,7 @@ pr: https://github.com/Rika-Labs/effect-desktop/pull/708
 
 Implementation matched the architecture exactly for the production path: an 8-line guard at `process.ts:140` using `!Number.isFinite(v) || v <= 0`, with `Effect.fail(makeHostProtocolInvalidArgumentError("gracefulShutdownMs", "must be a finite positive number", "Process.make"))`. `ProcessLive` kept `Effect.orDie`; `ProcessLayer` propagated `HostProtocolInvalidArgumentError`. The API snapshot was updated as a separate `chore(api):` commit per the snapshot-freeze rule.
 
-The architecture's `makeMockProcess` recommendation did NOT survive review. `/code-review` caught that the "mirrors ProcessLive's treatment" rationale was illusory: `ProcessLive` calls `makeProcess(registry)` with no options (provably valid defaults), but `makeMockProcess` exposes `gracefulShutdownMs` to test authors via `MockProcessOptions`. The address commit dropped `orDie` and propagated the typed error through four callers (`makeMockProcess` → `MockProcessLive` → `HeadlessRuntimeLive` → `makeHeadlessRuntimeContext`), widening their error unions and updating the @effect-desktop/test API snapshot.
+The architecture's `makeMockProcess` recommendation did NOT survive review. `/code-review` caught that the "mirrors ProcessLive's treatment" rationale was illusory: `ProcessLive` calls `makeProcess(registry)` with no options (provably valid defaults), but `makeMockProcess` exposes `gracefulShutdownMs` to test authors via `MockProcessOptions`. The address commit dropped `orDie` and propagated the typed error through four callers (`makeMockProcess` → `MockProcessLive` → `HeadlessRuntimeLive` → `makeHeadlessRuntimeContext`), widening their error unions and updating the @orika/test API snapshot.
 
 ```mermaid
 flowchart LR

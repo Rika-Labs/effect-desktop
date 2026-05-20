@@ -22,7 +22,7 @@ If you're trying to learn the framework, start with [Tutorials](../tutorials/). 
 - [Devtools](devtools.md) — inspector shell and panels
 - [Platform browser](platform-browser.md) — IndexedDB, SQLite WASM, PGlite renderer layers
 
-## Runtime services — `@effect-desktop/core`
+## Runtime services — `@orika/core`
 
 - [`PermissionRegistry`](services/permission-registry.md)
 - [`ApprovalBroker`](services/approval-broker.md)
@@ -42,7 +42,7 @@ If you're trying to learn the framework, start with [Tutorials](../tutorials/). 
 - [`WindowState`](services/window-state.md)
 - [`ProviderRegistry`](services/provider-registry.md)
 
-## Native RPC groups — `@effect-desktop/native`
+## Native RPC groups — `@orika/native`
 
 - [Native parity matrix](native/parity-matrix.md) — generated TypeScript surface to Rust host router parity
 - [App](native/app.md) · [AttachmentIntake](native/attachment-intake.md) · [Clipboard](native/clipboard.md) · [ContextMenu](native/context-menu.md) · [CrashReporter](native/crash-reporter.md) · [DiagnosticsBundle](native/diagnostics-bundle.md) · [DisplayCapture](native/display-capture.md) · [Dialog](native/dialog.md)
@@ -50,7 +50,7 @@ If you're trying to learn the framework, start with [Tutorials](../tutorials/). 
 - [PowerMonitor](native/power-monitor.md) · [Protocol](native/protocol.md) · [RealtimeMediaSession](native/realtime-media-session.md) · [ResidentLifecycle](native/resident-lifecycle.md) · [SafeStorage](native/safe-storage.md) · [ScopedAccessGrant](native/scoped-access-grant.md) · [Screen](native/screen.md) · [SelectionContext](native/selection-context.md) · [Shell](native/shell.md)
 - [SystemAppearance](native/system-appearance.md) · [Tray](native/tray.md) · [Updater](native/updater.md) · [WebView](native/webview.md) · [Window](native/window.md)
 
-## React hooks — `@effect-desktop/react`
+## React hooks — `@orika/react`
 
 - [Provider and context](react/provider-and-context.md)
 - [Mutations](react/mutations.md)
@@ -61,14 +61,14 @@ If you're trying to learn the framework, start with [Tutorials](../tutorials/). 
 - [Atoms](react/atoms.md)
 - [Native hooks](react/native-hooks.md)
 
-## Bridge — `@effect-desktop/bridge`
+## Bridge — `@orika/bridge`
 
 - [Host protocol](bridge/host-protocol.md)
 - [Envelopes and framing](bridge/envelopes-and-framing.md)
 - [Streams and cancellation](bridge/streams-and-cancellation.md)
 - [Redaction](bridge/redaction.md)
 
-## Test — `@effect-desktop/test`
+## Test — `@orika/test`
 
 - [Headless runtime](test/headless-runtime.md)
 - [Mock host and bridge](test/mock-host-and-bridge.md)

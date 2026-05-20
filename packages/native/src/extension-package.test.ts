@@ -5,14 +5,14 @@ import {
   type HostProtocolEventEnvelope,
   type HostProtocolRequestEnvelope,
   makeHostProtocolInternalError
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import {
   type AuditEvent,
   type AuditEventsApi,
   makePermissionRegistry,
   P,
   PermissionActor
-} from "@effect-desktop/core"
+} from "@orika/core"
 import { Cause, Effect, Exit, type Layer, ManagedRuntime, Stream } from "effect"
 
 import {

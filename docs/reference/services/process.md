@@ -22,7 +22,7 @@ import {
   type ProcessBudgetPolicy,
   type ProcessPermissionPolicy,
   makeProcess
-} from "@effect-desktop/core"
+} from "@orika/core"
 ```
 
 ## API
@@ -72,7 +72,7 @@ Failures arrive as `HostProtocolError` on the operation that produced them. Non-
 
 ## Test layer
 
-`MockProcess.layer(options)` from `@effect-desktop/test`.
+`MockProcess.layer(options)` from `@orika/test`.
 
 ## Related
 

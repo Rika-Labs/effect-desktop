@@ -10,7 +10,7 @@ import {
   type ResourceHandle,
   type ResourceId,
   type ResourceRegistry
-} from "@effect-desktop/core"
+} from "@orika/core"
 import {
   type BridgeClientExchange,
   type BridgeClientOptions,
@@ -23,7 +23,7 @@ import {
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
@@ -148,7 +148,7 @@ export interface MenuClientApi {
 }
 
 export class MenuClient extends Context.Service<MenuClient, MenuClientApi>()(
-  "@effect-desktop/native/MenuClient"
+  "@orika/native/MenuClient"
 ) {}
 
 export interface MenuServiceApi extends Omit<MenuClientApi, "bindCommand" | "capability"> {
@@ -166,7 +166,7 @@ export interface MenuServiceApi extends Omit<MenuClientApi, "bindCommand" | "cap
   ) => Effect.Effect<boolean, MenuError, never>
 }
 
-export class Menu extends Context.Service<Menu, MenuServiceApi>()("@effect-desktop/native/Menu") {
+export class Menu extends Context.Service<Menu, MenuServiceApi>()("@orika/native/Menu") {
   static readonly layer = Layer.effect(Menu)(
     Effect.gen(function* () {
       const client = yield* MenuClient

@@ -24,7 +24,7 @@ import {
   type PowerState,
   type PowerEvent,
   type DisplaysResult
-} from "@effect-desktop/react"
+} from "@orika/react"
 ```
 
 ## `useTheme(onAppearanceChanged)` → `ThemeState`

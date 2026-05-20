@@ -14,7 +14,7 @@ Issue #45 asked for `desktop check --production` to fail on the fixed §14.6 pro
 
 ## What actually ended up working
 
-The shipped shape matches the issue architecture: `@effect-desktop/config` owns a closed production rule set, typed reports, and acknowledgement handling; `@effect-desktop/cli` is a thin Effect adapter that loads config and optional renderer scan input, runs the checker, formats the report, and exits non-zero on failures. The main implementation shift is that CLI argument parsing became part of the security boundary: missing explicit path values are now usage errors, and absolute paths are resolved with platform-aware `node:path` APIs.
+The shipped shape matches the issue architecture: `@orika/config` owns a closed production rule set, typed reports, and acknowledgement handling; `@orika/cli` is a thin Effect adapter that loads config and optional renderer scan input, runs the checker, formats the report, and exits non-zero on failures. The main implementation shift is that CLI argument parsing became part of the security boundary: missing explicit path values are now usage errors, and absolute paths are resolved with platform-aware `node:path` APIs.
 
 ```mermaid
 flowchart LR

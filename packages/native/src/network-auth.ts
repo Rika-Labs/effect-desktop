@@ -6,8 +6,8 @@ import {
   type HostProtocolError,
   HostProtocolUnsupportedError,
   RpcGroup
-} from "@effect-desktop/bridge"
-import { type DesktopRpcClient, P, type PermissionRegistry } from "@effect-desktop/core"
+} from "@orika/bridge"
+import { type DesktopRpcClient, P, type PermissionRegistry } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NetworkAuthEvent, NetworkAuthSupportedResult } from "./contracts/network-auth.js"
@@ -71,7 +71,7 @@ export interface NetworkAuthClientApi {
 }
 
 export class NetworkAuthClient extends Context.Service<NetworkAuthClient, NetworkAuthClientApi>()(
-  "@effect-desktop/native/NetworkAuthClient"
+  "@orika/native/NetworkAuthClient"
 ) {}
 
 export interface NetworkAuthServiceApi {
@@ -82,7 +82,7 @@ export interface NetworkAuthServiceApi {
 }
 
 export class NetworkAuth extends Context.Service<NetworkAuth, NetworkAuthServiceApi>()(
-  "@effect-desktop/native/NetworkAuth"
+  "@orika/native/NetworkAuth"
 ) {
   static readonly layer = Layer.effect(NetworkAuth)(
     Effect.gen(function* () {

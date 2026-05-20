@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "packageName": "@effect-desktop/test",
+  "packageName": "@orika/test",
   "entrypoint": "src/index.ts",
   "symbols": [
     {
@@ -211,7 +211,7 @@
     {
       "name": "MockBridge",
       "kind": "class",
-      "signature": "export class MockBridge extends Context.Service<MockBridge, MockBridgeApi>()( \"@effect-desktop/test/MockBridge\" ) {}"
+      "signature": "export class MockBridge extends Context.Service<MockBridge, MockBridgeApi>()( \"@orika/test/MockBridge\" ) {}"
     },
     {
       "name": "MockBridgeApi",
@@ -236,7 +236,7 @@
     {
       "name": "MockHost",
       "kind": "class",
-      "signature": "export class MockHost extends Context.Service<MockHost, MockHostApi>()( \"@effect-desktop/test/MockHost\" ) {}"
+      "signature": "export class MockHost extends Context.Service<MockHost, MockHostApi>()(\"@orika/test/MockHost\") {}"
     },
     {
       "name": "MockHostApi",
@@ -406,7 +406,7 @@
     {
       "name": "TestWindowState",
       "kind": "class",
-      "signature": "export class TestWindowState extends Context.Service<TestWindowState, TestWindowStateApi>()( \"@effect-desktop/test/native/TestWindowState\" ) {}"
+      "signature": "export class TestWindowState extends Context.Service<TestWindowState, TestWindowStateApi>()( \"@orika/test/native/TestWindowState\" ) {}"
     },
     {
       "name": "TestWindowStateApi",

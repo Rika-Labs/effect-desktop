@@ -13,7 +13,7 @@ effect_version: 4
 ## Import
 
 ```ts
-import { WindowPersistence, WindowPersistenceLive } from "@effect-desktop/native"
+import { WindowPersistence, WindowPersistenceLive } from "@orika/native"
 ```
 
 ## API

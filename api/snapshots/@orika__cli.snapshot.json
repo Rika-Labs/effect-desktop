@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "packageName": "@effect-desktop/cli",
+  "packageName": "@orika/cli",
   "entrypoint": "src/index.ts",
   "symbols": [
     {
@@ -696,7 +696,7 @@
     {
       "name": "ReleaseToolRunner",
       "kind": "class",
-      "signature": "export class ReleaseToolRunner extends Context.Service<ReleaseToolRunner, ReleaseToolRunnerApi>()( \"@effect-desktop/cli/ReleaseToolRunner\" ) {}"
+      "signature": "export class ReleaseToolRunner extends Context.Service<ReleaseToolRunner, ReleaseToolRunnerApi>()( \"@orika/cli/ReleaseToolRunner\" ) {}"
     },
     {
       "name": "ReleaseToolRunnerApi",
@@ -726,7 +726,7 @@
     {
       "name": "ReleaseWorkflowServices",
       "kind": "class",
-      "signature": "export class ReleaseWorkflowServices extends Context.Service< ReleaseWorkflowServices, ReleaseWorkflowApi >()(\"@effect-desktop/cli/ReleaseWorkflowServices\") {}"
+      "signature": "export class ReleaseWorkflowServices extends Context.Service< ReleaseWorkflowServices, ReleaseWorkflowApi >()(\"@orika/cli/ReleaseWorkflowServices\") {}"
     },
     {
       "name": "ReproCheckError",

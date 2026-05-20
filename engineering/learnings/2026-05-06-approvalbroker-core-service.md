@@ -9,7 +9,7 @@ approve-all path, typed failures, and audit output.
 
 ## Shipped
 
-`@effect-desktop/core` now exports `ApprovalBroker`, `makeApprovalBroker`,
+`@orika/core` now exports `ApprovalBroker`, `makeApprovalBroker`,
 `ApprovalRequest`, `ApprovalOutcome`, and typed broker errors. `ask(request)`
 validates inputs through Effect Schema, emits `approval requested`, coalesces
 identical `(operation, actor, resource)` requests, queues distinct requests per

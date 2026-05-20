@@ -21,9 +21,9 @@ Five steps from a freshly installed workspace to a typed RPC call returning to a
 ## Renderer call shape
 
 ```tsx
-import { Desktop } from "@effect-desktop/core"
-import { WindowRpcs } from "@effect-desktop/native"
-import { ReactDesktop } from "@effect-desktop/react"
+import { Desktop } from "@orika/core"
+import { WindowRpcs } from "@orika/native"
+import { ReactDesktop } from "@orika/react"
 import { App } from "./app"
 
 const DesktopApp = ReactDesktop.from(Desktop.manifest(App))

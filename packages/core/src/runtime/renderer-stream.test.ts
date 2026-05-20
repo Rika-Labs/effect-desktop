@@ -19,7 +19,7 @@ import {
 } from "./renderer-stream.js"
 
 class RuntimeValue extends Context.Service<RuntimeValue, { readonly value: string }>()(
-  "@effect-desktop/core/runtime/renderer-stream.test/RuntimeValue"
+  "@orika/core/runtime/renderer-stream.test/RuntimeValue"
 ) {}
 
 class ConditionNotMet extends Schema.TaggedErrorClass<ConditionNotMet>()("ConditionNotMet", {}) {}

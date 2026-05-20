@@ -4,8 +4,8 @@ import {
   renderCspPolicy,
   type CspNonce,
   type CspPolicy
-} from "@effect-desktop/config"
-import { cspInspectorEvent, type CspInspectorEvent } from "@effect-desktop/core"
+} from "@orika/config"
+import { cspInspectorEvent, type CspInspectorEvent } from "@orika/core"
 import { Clock, Context, Data, Effect, Layer, Option, PubSub, Schema, Scope, Stream } from "effect"
 import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http"
 import {
@@ -117,7 +117,7 @@ export interface AppAssetResolverApi {
 }
 
 export class AppAssetResolver extends Context.Service<AppAssetResolver, AppAssetResolverApi>()(
-  "@effect-desktop/native/AppAssetResolver"
+  "@orika/native/AppAssetResolver"
 ) {}
 
 export interface AppCspPolicyApi {
@@ -125,7 +125,7 @@ export interface AppCspPolicyApi {
 }
 
 export class AppCspPolicy extends Context.Service<AppCspPolicy, AppCspPolicyApi>()(
-  "@effect-desktop/native/AppCspPolicy"
+  "@orika/native/AppCspPolicy"
 ) {}
 
 export interface AppCspInspectorApi {
@@ -134,7 +134,7 @@ export interface AppCspInspectorApi {
 }
 
 export class AppCspInspector extends Context.Service<AppCspInspector, AppCspInspectorApi>()(
-  "@effect-desktop/native/AppCspInspector",
+  "@orika/native/AppCspInspector",
   {
     make: Effect.succeed({
       emit: () => Effect.void,
@@ -155,7 +155,7 @@ export interface AppHttpServerApi {
 }
 
 export class AppHttpServer extends Context.Service<AppHttpServer, AppHttpServerApi>()(
-  "@effect-desktop/native/AppHttpServer"
+  "@orika/native/AppHttpServer"
 ) {}
 
 const AppAssetHeaders = Schema.Struct({
@@ -183,7 +183,7 @@ export class DesktopLocalApi extends HttpApi.make("DesktopLocalApi")
   .add(AppAssetApiGroup)
   .annotateMerge(
     OpenApi.annotations({
-      title: "Effect Desktop Local API",
+      title: "ORIKA Local API",
       description: "Loopback-only local HTTP surfaces exposed by the desktop runtime."
     })
   ) {}

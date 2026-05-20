@@ -21,7 +21,7 @@ import {
   useCloseWindowMutation,
   windows,
   currentWindow
-} from "@effect-desktop/react"
+} from "@orika/react"
 ```
 
 ## `useCurrentWindow()`

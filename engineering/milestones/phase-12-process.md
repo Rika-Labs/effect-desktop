@@ -31,7 +31,7 @@ snapshot documentation.
 
 ## Public APIs
 
-`@effect-desktop/core` exports:
+`@orika/core` exports:
 
 - `Process` / `ProcessLive` / `ProcessLayer` / `makeProcess` for typed process
   spawn operations.
@@ -89,7 +89,7 @@ Specialized Phase 12 evidence:
 Milestone: Phase 12 - Process
 Files changed: core Process service, adapter, tests, public export, and Phase 12
 learning records.
-Public APIs added: @effect-desktop/core Process, ProcessLive, ProcessLayer,
+Public APIs added: @orika/core Process, ProcessLive, ProcessLayer,
 makeProcess, ProcessApi, ProcessHandle, ProcessAdapter, ProcessChild,
 ProcessOptions, ProcessPermissionPolicy, ProcessBudgetPolicy, ProcessExitStatus,
 and ProcessSignalInput.

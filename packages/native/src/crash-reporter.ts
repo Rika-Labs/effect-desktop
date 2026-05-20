@@ -11,7 +11,7 @@ import {
   redactForJson,
   RpcGroup,
   type HostProtocolError
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import {
   type AuditEventsApi,
   PermissionRegistry,
@@ -24,7 +24,7 @@ import {
   PermissionDeniedError,
   permissionAuditEvent,
   type DesktopRpcClient
-} from "@effect-desktop/core"
+} from "@orika/core"
 import { Clock, Context, Effect, Layer, Ref, Schema } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
@@ -126,7 +126,7 @@ export interface CrashReporterClientApi {
 export class CrashReporterClient extends Context.Service<
   CrashReporterClient,
   CrashReporterClientApi
->()("@effect-desktop/native/CrashReporterClient") {}
+>()("@orika/native/CrashReporterClient") {}
 
 export type CrashReporterServiceApi = CrashReporterClientApi
 
@@ -136,7 +136,7 @@ export interface CrashReporterServiceOptions {
 }
 
 export class CrashReporter extends Context.Service<CrashReporter, CrashReporterServiceApi>()(
-  "@effect-desktop/native/CrashReporter"
+  "@orika/native/CrashReporter"
 ) {
   static readonly layer = Layer.effect(CrashReporter)(
     Effect.gen(function* () {

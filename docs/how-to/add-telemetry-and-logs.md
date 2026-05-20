@@ -65,7 +65,7 @@ Devtools' logs panel renders these live. `observeLogs()`, `observeTraces()`, `ob
 ## 5. Configure bounds
 
 ```ts
-import { makeTelemetry } from "@effect-desktop/core"
+import { makeTelemetry } from "@orika/core"
 
 const TelemetryLive = makeTelemetry({
   logRingSize: 5000,

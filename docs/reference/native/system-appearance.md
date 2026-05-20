@@ -76,7 +76,7 @@ event subscription.
 
 ## React hook
 
-`useTheme()` and `useThemeMode()` from `@effect-desktop/react` consume the
+`useTheme()` and `useThemeMode()` from `@orika/react` consume the
 TypeScript appearance stream. Native appearance events are host-backed on macOS
 and Windows and fail as typed unsupported on Linux.
 

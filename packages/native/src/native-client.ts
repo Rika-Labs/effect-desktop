@@ -3,7 +3,7 @@ import {
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import { Effect, Schema } from "effect"
 
 export const StrictNativeParseOptions = { onExcessProperty: "error" } as const

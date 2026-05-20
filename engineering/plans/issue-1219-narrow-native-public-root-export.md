@@ -2,9 +2,9 @@
 
 ## Decision
 
-Make `@effect-desktop/native` a stable native service barrel, move schema-coded payload
-contracts to `@effect-desktop/native/contracts`, keep the protocol adapter intentionally
-reachable through `@effect-desktop/native/protocol`, and leave implementation-only modules
+Make `@orika/native` a stable native service barrel, move schema-coded payload
+contracts to `@orika/native/contracts`, keep the protocol adapter intentionally
+reachable through `@orika/native/protocol`, and leave implementation-only modules
 unexported from package exports.
 
 ## Problem
@@ -19,8 +19,8 @@ live layers, RPC groups, bridge-client layer constructors, service-layer constru
 clients, public typed service errors, and ergonomic service API types from the package root.
 
 What should be true: schema classes and payload/result/event contracts are imported from
-`@effect-desktop/native/contracts`; protocol-specific bridge helpers are imported from
-`@effect-desktop/native/protocol`; implementation helpers such as app event routing, app HTTP
+`@orika/native/contracts`; protocol-specific bridge helpers are imported from
+`@orika/native/protocol`; implementation helpers such as app event routing, app HTTP
 server, crash-report workflow, and updater workflow are not externally exported package paths.
 
 ## Files to change
@@ -31,8 +31,8 @@ server, crash-report workflow, and updater workflow are not externally exported 
 - `packages/native/src/index.test.ts` — add package-surface regression tests and move contract
   schema imports to the contracts subpath.
 - `packages/test/src/native.ts` and renderer packages/templates — move native contract type
-  imports to `@effect-desktop/native/contracts`.
-- `api/snapshots/@effect-desktop__native.snapshot.json` — record the intentional root surface
+  imports to `@orika/native/contracts`.
+- `api/snapshots/@orika__native.snapshot.json` — record the intentional root surface
   reduction.
 - `engineering/roadmap/layer-first-issue-order.md` — record completion progress for #1205, #1178, and
   #1219.
@@ -40,13 +40,13 @@ server, crash-report workflow, and updater workflow are not externally exported 
 
 ## Test-first plan
 
-1. Add failing tests that import `@effect-desktop/native` and assert contract-only symbols such as
+1. Add failing tests that import `@orika/native` and assert contract-only symbols such as
    `WindowCreateInput`, implementation-only symbols such as `AppEventRouter`, and workflow symbols
    such as `UpdaterWorkflow` are absent from the root.
-2. Add failing tests that import `@effect-desktop/native/contracts` and prove representative
+2. Add failing tests that import `@orika/native/contracts` and prove representative
    contracts such as `WindowCreateInput`, `ClipboardText`, and `DialogOpenResult` resolve.
 3. Add failing tests that package-export resolution rejects implementation-only subpaths such as
-   `@effect-desktop/native/app-http-server`.
+   `@orika/native/app-http-server`.
 4. Add package exports for `./contracts` and `./protocol`.
 5. Replace the root wildcard barrel with explicit named exports for stable native services.
 6. Move package consumers that need schema payload/result/event types to the contracts subpath.
@@ -59,7 +59,7 @@ server, crash-report workflow, and updater workflow are not externally exported 
   wildcard exports.
 - Protocol remains explicit because bridge/runtime code legitimately depends on it.
 - No native service behavior changes.
-- Any snapshot churn outside `@effect-desktop/native` is investigated before commit.
+- Any snapshot churn outside `@orika/native` is investigated before commit.
 
 ## Risks
 

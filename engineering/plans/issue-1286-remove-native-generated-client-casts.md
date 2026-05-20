@@ -88,7 +88,7 @@ Focused:
 
 ```bash
 rg "as unknown as .*GeneratedClient|Effect\\.map\\(\\(client\\) => client as unknown as|GeneratedClient" packages/native/src -g'*.ts'
-bun run typecheck --filter=@effect-desktop/native --filter=@effect-desktop/core --filter=@effect-desktop/bridge --force
+bun run typecheck --filter=@orika/native --filter=@orika/core --filter=@orika/bridge --force
 bun test packages/native/src/index.test.ts packages/native/src/window.test.ts packages/native/src/protocol.test.ts
 bun test packages/core/src/index.test.ts packages/bridge/src/client.test.ts packages/bridge/src/protocol.rpc.test.ts
 bun test packages/core/src/runtime/resources.test.ts

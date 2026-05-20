@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto"
 
 import { Clock, Context, Data, Deferred, Effect, Option, PubSub, Ref, Schema, Stream } from "effect"
 
-import { makeSecretString } from "@effect-desktop/bridge"
+import { makeSecretString } from "@orika/bridge"
 
 import { emitAuditEvent, permissionAuditEvent, type AuditEventsApi } from "./audit-events.js"
 import {
@@ -341,7 +341,7 @@ export const makePermissionRegistry = (
 export class PermissionRegistry extends Context.Service<
   PermissionRegistry,
   PermissionRegistryApi
->()("@effect-desktop/core/runtime/permission-registry/PermissionRegistry", {
+>()("@orika/core/runtime/permission-registry/PermissionRegistry", {
   make: makePermissionRegistry()
 }) {}
 

@@ -2,7 +2,7 @@
 
 ## Current state
 
-`packages/create-effect-desktop/src/index.ts` always pins `effect`, rewrites first-party
+`packages/create-orika/src/index.ts` always pins `effect`, rewrites first-party
 workspace dependencies, and adds optional dependencies for selected scaffold features.
 
 The `includeCluster` option still adds `@effect/cluster`, even though the repo's cluster
@@ -21,9 +21,9 @@ a feature selector/stub marker. This issue only removes the incorrect package de
 
 ## Files
 
-- `packages/create-effect-desktop/src/index.ts`
+- `packages/create-orika/src/index.ts`
   - Remove the `@effect/cluster` dependency insertion from the `includeCluster` branch.
-- `packages/create-effect-desktop/src/index.test.ts`
+- `packages/create-orika/src/index.test.ts`
   - Update optional dependency coverage so `includeCluster` asserts `effect` remains
     pinned and `@effect/cluster` is absent.
   - Add a generated cluster manifest regression assertion for the canonical
@@ -35,8 +35,8 @@ a feature selector/stub marker. This issue only removes the incorrect package de
 
 ## Tests
 
-- `bun test packages/create-effect-desktop/src/index.test.ts`
-- `bun run --filter create-effect-desktop typecheck`
+- `bun test packages/create-orika/src/index.test.ts`
+- `bun run --filter create-orika typecheck`
 - `bun run check`
 - `bun run typecheck`
 - `bun test`

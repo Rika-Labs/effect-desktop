@@ -1,4 +1,4 @@
-# @effect-desktop/cli
+# @orika/cli
 
 > **Status:** Incremental implementation. The check, build, package, sign, notarize, publish, release, and doctor commands are active. See `engineering/SPEC.md`.
 
@@ -26,7 +26,7 @@ See `engineering/SPEC.md` for the package's normative non-goals.
 
 ```ts
 import { Effect } from "effect"
-import { runCli } from "@effect-desktop/cli"
+import { runCli } from "@orika/cli"
 
 await Effect.runPromise(
   runCli({
@@ -58,4 +58,4 @@ bun run typecheck
 
 ## Internal architecture
 
-The build command depends on `@effect-desktop/bridge` for the protocol version embedded in `bridge-manifest.json`, on `@effect-desktop/config` for production-check support, and on `effect` for typed command, file, and configuration failures. The package depends on `@effect/platform-bun` so live CLI entrypoints and repo packing scripts can provide Effect's filesystem, stdio, terminal, and child-process services at the process edge. The public API snapshot command uses the TypeScript compiler API at runtime, so `typescript` is a CLI runtime dependency rather than only a repo dev dependency. The package command owns the platform tool flags for `hdiutil`, `ditto`, WiX, `appimagetool`, `dpkg-deb`, and `rpmbuild` behind an injectable command runner so tests can verify artifact metadata without requiring every platform tool locally. The sign command owns `codesign`, `signtool`, `powershell Unblock-File`, and `gpg` invocation shape behind the same runner boundary. The notarize command owns `notarytool`, `stapler`, and `spctl` invocation shape and treats `stapler validate` exit codes as lifecycle state rather than thrown control flow. The publish command owns canonical update-manifest JSON and Ed25519 signing while `crates/native-updater` owns client-side verification. The release workflow owns only desktop release ordering policy; resumable phases are plain Effect Workflow activities over the existing package, sign, notarize, and publish modules. The reproducibility check composes existing runners instead of duplicating artifact production.
+The build command depends on `@orika/bridge` for the protocol version embedded in `bridge-manifest.json`, on `@orika/config` for production-check support, and on `effect` for typed command, file, and configuration failures. The package depends on `@effect/platform-bun` so live CLI entrypoints and repo packing scripts can provide Effect's filesystem, stdio, terminal, and child-process services at the process edge. The public API snapshot command uses the TypeScript compiler API at runtime, so `typescript` is a CLI runtime dependency rather than only a repo dev dependency. The package command owns the platform tool flags for `hdiutil`, `ditto`, WiX, `appimagetool`, `dpkg-deb`, and `rpmbuild` behind an injectable command runner so tests can verify artifact metadata without requiring every platform tool locally. The sign command owns `codesign`, `signtool`, `powershell Unblock-File`, and `gpg` invocation shape behind the same runner boundary. The notarize command owns `notarytool`, `stapler`, and `spctl` invocation shape and treats `stapler validate` exit codes as lifecycle state rather than thrown control flow. The publish command owns canonical update-manifest JSON and Ed25519 signing while `crates/native-updater` owns client-side verification. The release workflow owns only desktop release ordering policy; resumable phases are plain Effect Workflow activities over the existing package, sign, notarize, and publish modules. The reproducibility check composes existing runners instead of duplicating artifact production.

@@ -14,7 +14,7 @@ Windows are native resources owned by the host and described to the runtime thro
 
 ## Public surface
 
-`@effect-desktop/native` exports:
+`@orika/native` exports:
 
 - `WindowRpcs` — canonical renderer-callable RPC group.
 - `WindowSupportedRpcs` — host-backed supported slice.
@@ -29,7 +29,7 @@ Windows are native resources owned by the host and described to the runtime thro
 The supported methods include creation, lookup, visibility, bounds, state, attention, progress, and close. Renderer code uses React helpers:
 
 ```tsx
-import { useCreateWindowMutation } from "@effect-desktop/react"
+import { useCreateWindowMutation } from "@orika/react"
 
 export function NewWindowButton() {
   const createWindow = useCreateWindowMutation()

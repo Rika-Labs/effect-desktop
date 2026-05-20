@@ -4,8 +4,8 @@ import { pathToFileURL } from "node:url"
 
 import { Data, Effect, Schema } from "effect"
 
-import { makeSecretString, unsafeSecretString } from "@effect-desktop/bridge"
-import { decodeDesktopConfig } from "@effect-desktop/config"
+import { makeSecretString, unsafeSecretString } from "@orika/bridge"
+import { decodeDesktopConfig } from "@orika/config"
 
 import {
   ReleaseFileSystem,

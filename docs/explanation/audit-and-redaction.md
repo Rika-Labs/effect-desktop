@@ -69,7 +69,7 @@ But you cannot turn redaction _off_ at the audit layer. It runs before every eve
 You usually do nothing. The framework writes the events; the redaction filter scrubs the details; the event log persists them. You consume the audit trail when:
 
 - **Debugging.** Devtools' event-log panel shows you the recent audit history.
-- **Testing.** `assertAuditedThat(registry, kind, predicate)` (in `@effect-desktop/test`) lets you assert events were emitted with the shape you expect.
+- **Testing.** `assertAuditedThat(registry, kind, predicate)` (in `@orika/test`) lets you assert events were emitted with the shape you expect.
 - **Compliance.** If you ship something audit-relevant — say, an installer for an enterprise — you can export the log and prove behavior.
 
 ## When to add custom audit

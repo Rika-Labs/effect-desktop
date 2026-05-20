@@ -1,10 +1,10 @@
-# @effect-desktop/react
+# @orika/react
 
-React adapter for app-scoped Effect Desktop RPC groups.
+React adapter for app-scoped ORIKA RPC groups.
 
 ## Purpose
 
-`@effect-desktop/react` turns a `Desktop.manifest(App)` value and an imported Effect
+`@orika/react` turns a `Desktop.manifest(App)` value and an imported Effect
 `RpcGroup` into React hooks. The app contract stays in Effect RPC, the host owns the
 transport, and React owns component state and cleanup.
 
@@ -42,8 +42,8 @@ transport and the adapter derives clients from the manifest.
 ## Usage
 
 ```tsx
-import { Desktop } from "@effect-desktop/core"
-import { ReactDesktop } from "@effect-desktop/react"
+import { Desktop } from "@orika/core"
+import { ReactDesktop } from "@orika/react"
 import { App, NotesRpcs } from "./desktop"
 
 const NotesDesktop = ReactDesktop.from(Desktop.manifest(App))

@@ -34,7 +34,7 @@ I am trading a small amount of manifest duplication for command honesty at every
 
 ## Architecture
 
-Expose `desktop` as an explicit package script at project roots that are meant to run the framework command. The repo root script delegates to the checked-in CLI bin source. The template script delegates to the installed `desktop` bin supplied by the explicit `@effect-desktop/cli` dependency, so generated app users do not need to know the monorepo source path.
+Expose `desktop` as an explicit package script at project roots that are meant to run the framework command. The repo root script delegates to the checked-in CLI bin source. The template script delegates to the installed `desktop` bin supplied by the explicit `@orika/cli` dependency, so generated app users do not need to know the monorepo source path.
 
 Add one command-resolution smoke that launches the documented root command through Bun instead of calling `runCli` directly. Keep deeper CLI behavior tests on `runCli`, because this issue is about command discovery before startup, not command semantics after startup.
 
@@ -72,7 +72,7 @@ flowchart LR
 
 ## Non-goals
 
-- Fixing standalone `@effect-desktop/cli` installability from `file:` dependencies (#769).
+- Fixing standalone `@orika/cli` installability from `file:` dependencies (#769).
 - Rewriting publish manifests or package dependency specs.
 - Implementing missing CLI subcommands.
 

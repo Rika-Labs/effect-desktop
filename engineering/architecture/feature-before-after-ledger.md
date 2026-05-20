@@ -11,7 +11,7 @@ Canonical after-shape:
 
 ```ts
 // Effectful capability
-export class Thing extends Context.Service<Thing, ThingApi>()("@effect-desktop/<area>/Thing") {}
+export class Thing extends Context.Service<Thing, ThingApi>()("@orika/<area>/Thing") {}
 export const ThingLive = Layer.effect(Thing)(makeThing())
 export const ThingTest = Layer.succeed(Thing)(makeTestThing())
 

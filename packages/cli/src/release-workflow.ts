@@ -61,7 +61,7 @@ export interface ReleaseWorkflowApi {
 export class ReleaseWorkflowServices extends Context.Service<
   ReleaseWorkflowServices,
   ReleaseWorkflowApi
->()("@effect-desktop/cli/ReleaseWorkflowServices") {}
+>()("@orika/cli/ReleaseWorkflowServices") {}
 
 export const ReleaseWorkflow = Workflow.make({
   name: "DesktopRelease",

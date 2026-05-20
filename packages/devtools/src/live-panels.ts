@@ -13,7 +13,7 @@ import {
   type ResourceEntry,
   type InspectorSafetyPolicyApi,
   type InspectorSafetySummary
-} from "@effect-desktop/core"
+} from "@orika/core"
 import { Clock, Context, Effect, Layer, Match, Option, Schedule, Stream } from "effect"
 
 import { positiveFrameInterval, positiveRowLimit } from "./panel-options.js"
@@ -91,7 +91,7 @@ export interface LiveRuntimePanelsOptions {
 }
 
 export class LiveRuntimePanels extends Context.Service<LiveRuntimePanels, LiveRuntimePanelsApi>()(
-  "@effect-desktop/devtools/live-panels/LiveRuntimePanels"
+  "@orika/devtools/live-panels/LiveRuntimePanels"
 ) {}
 
 export const LiveRuntimePanelsLive = (

@@ -1,11 +1,6 @@
 import { expect, test } from "bun:test"
-import { type BridgeClientExchange, makeHostProtocolInternalError } from "@effect-desktop/bridge"
-import {
-  type AuditEvent,
-  makePermissionRegistry,
-  makeResourceRegistry,
-  P
-} from "@effect-desktop/core"
+import { type BridgeClientExchange, makeHostProtocolInternalError } from "@orika/bridge"
+import { type AuditEvent, makePermissionRegistry, makeResourceRegistry, P } from "@orika/core"
 import { Cause, Effect, Exit, type Layer, ManagedRuntime, Stream } from "effect"
 
 import { makeNativeCapabilityManifest } from "./capabilities.js"

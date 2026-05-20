@@ -229,7 +229,7 @@
         },
         {
           "number": 84,
-          "title": "Headless harness in @effect-desktop/test: drive the runtime in CI without a window or WebView",
+          "title": "Headless harness in @orika/test: drive the runtime in CI without a window or WebView",
           "url": "https://github.com/Rika-Labs/effect-desktop/issues/84",
           "completed": false,
           "labels": ["area:testing"]
@@ -319,7 +319,7 @@
       "issues": [
         {
           "number": 130,
-          "title": "Window service definition in @effect-desktop/native + matching contract in packages/bridge",
+          "title": "Window service definition in @orika/native + matching contract in packages/bridge",
           "url": "https://github.com/Rika-Labs/effect-desktop/issues/130",
           "completed": false,
           "labels": ["area:native-svc"]
@@ -333,7 +333,7 @@
         },
         {
           "number": 132,
-          "title": "WindowState runtime primitive (@effect-desktop/core): persist size/position/zoom per window id",
+          "title": "WindowState runtime primitive (@orika/core): persist size/position/zoom per window id",
           "url": "https://github.com/Rika-Labs/effect-desktop/issues/132",
           "completed": false,
           "labels": ["area:native-svc"]
@@ -378,7 +378,7 @@
         },
         {
           "number": 143,
-          "title": "DesktopProvider, useDesktop, useDesktopStream, useResource, useWindow in @effect-desktop/react",
+          "title": "DesktopProvider, useDesktop, useDesktopStream, useResource, useWindow in @orika/react",
           "url": "https://github.com/Rika-Labs/effect-desktop/issues/143",
           "completed": false,
           "labels": ["area:renderer"]
@@ -707,7 +707,7 @@
         },
         {
           "number": 125,
-          "title": "PTY Effect service in @effect-desktop/core — open, write, resize, output stream, kill",
+          "title": "PTY Effect service in @orika/core — open, write, resize, output stream, kill",
           "url": "https://github.com/Rika-Labs/effect-desktop/issues/125",
           "completed": false,
           "labels": ["area:rust", "area:runtime-svc"]

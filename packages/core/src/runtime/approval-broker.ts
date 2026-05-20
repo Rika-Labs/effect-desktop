@@ -212,7 +212,7 @@ export const makeApprovalBroker = (
   }).pipe(Effect.withSpan("ApprovalBroker.make"))
 
 export class ApprovalBroker extends Context.Service<ApprovalBroker, ApprovalBrokerApi>()(
-  "@effect-desktop/core/runtime/approval-broker/ApprovalBroker",
+  "@orika/core/runtime/approval-broker/ApprovalBroker",
   {
     make: Effect.fail(
       new ApprovalBrokerInvalidArgumentError({

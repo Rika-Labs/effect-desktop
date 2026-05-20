@@ -24,7 +24,7 @@ data is redacted, truncated, sampled out, or disabled.
 
 ## Target Shape
 
-- Add a canonical `InspectorSafetyPolicy` service in `@effect-desktop/core`.
+- Add a canonical `InspectorSafetyPolicy` service in `@orika/core`.
 - Extend the shared redaction primitive with evidence-producing helpers so
   bridge, telemetry, and devtools share one redaction matcher instead of
   duplicating secret heuristics.

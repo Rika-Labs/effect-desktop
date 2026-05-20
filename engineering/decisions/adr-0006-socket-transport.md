@@ -26,7 +26,7 @@ Delete the bespoke transport. Adopt `effect/unstable/socket` for renderer–runt
   - A **postMessage Socket adapter** that maps the WebView postMessage channel onto a `Socket`.
 - Both adapters expose the standard `Socket` shape and satisfy `effect/unstable/rpc`'s `Protocol` interface.
 - Host protocol envelope encode/decode lives only inside the adapter. Everything above the adapter sees standard `Socket` and `Protocol` semantics.
-- Re-export `Socket` and `Socket.make` from `@effect-desktop/core`.
+- Re-export `Socket` and `Socket.make` from `@orika/core`.
 - Framing (length-prefix or JSON-RPC) comes from `effect/unstable/socket`, not hand-rolled code.
 
 Cross-links: [ADR-0002](adr-0002-rpc-effect-unstable-rpc.md) (RpcServer mounts over the Protocol this adapter exposes), [ADR-0018](adr-0018-cluster-multi-window.md) (WebViewRunner uses the postMessage adapter as its transport).
@@ -65,5 +65,5 @@ A `Schema.TaggedRequest` round-trips renderer to runtime over the postMessage ad
 1. Delete `packages/core/src/runtime/transport.ts`.
 2. Add `effect/unstable/socket` to `packages/core`.
 3. Write `StdioSocketAdapter` and `PostMessageSocketAdapter`.
-4. Add re-exports of `Socket` from `@effect-desktop/core`.
+4. Add re-exports of `Socket` from `@orika/core`.
 5. Mount adapters in the spine layer; confirm T01's `RpcServer.layer` and `RpcClient.make` resolve without additional glue.

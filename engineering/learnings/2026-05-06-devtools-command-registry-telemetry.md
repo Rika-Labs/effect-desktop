@@ -14,7 +14,7 @@ The issue wanted command debugging to stop depending on ad hoc logs. A developer
 
 ## What actually ended up working
 
-The shipped shape puts the command read model in `CommandRegistry`, not in devtools. `CommandRegistry.invoke` now records a `CommandInvocationRecord` for success and typed failure paths, updates each registered command snapshot with invocation count, last invocation, and last error, and publishes a live `observeInvocations()` stream. `@effect-desktop/devtools` exposes `CommandsDevtools` as a thin read-only projection over that registry. The architecture shifted from a literal panel/transport implementation to a Phase 17 service projection because the devtools package is still pre-transport, while the registry already owns the source of truth.
+The shipped shape puts the command read model in `CommandRegistry`, not in devtools. `CommandRegistry.invoke` now records a `CommandInvocationRecord` for success and typed failure paths, updates each registered command snapshot with invocation count, last invocation, and last error, and publishes a live `observeInvocations()` stream. `@orika/devtools` exposes `CommandsDevtools` as a thin read-only projection over that registry. The architecture shifted from a literal panel/transport implementation to a Phase 17 service projection because the devtools package is still pre-transport, while the registry already owns the source of truth.
 
 ```mermaid
 flowchart LR

@@ -8,7 +8,7 @@ effect_version: 4
 
 # Tutorial 03 — Stream from the runtime
 
-Some operations don't fit a single request/response. Importing 10,000 records, watching a directory, tailing a process, running a multi-step build — these emit progress over time, possibly fail partway, and need to be cancellable. Effect Desktop's answer is **streams** as a first-class RPC kind, layered on Effect's `Stream` and `Scope` primitives.
+Some operations don't fit a single request/response. Importing 10,000 records, watching a directory, tailing a process, running a multi-step build — these emit progress over time, possibly fail partway, and need to be cancellable. ORIKA's answer is **streams** as a first-class RPC kind, layered on Effect's `Stream` and `Scope` primitives.
 
 In this tutorial you'll add an "import notes from a folder" feature that:
 
@@ -61,7 +61,7 @@ Add to `apps/inspector/src/notes/handlers.ts`:
 
 ```ts
 import { Effect, Stream } from "effect"
-import { Filesystem, SqlClient } from "@effect-desktop/core"
+import { Filesystem, SqlClient } from "@orika/core"
 import { ImportProgress } from "./contracts.js"
 
 // Inside the handlers map returned by NotesRpcs.toLayer:
@@ -130,7 +130,7 @@ Create `apps/inspector/src/notes/ImportPanel.tsx`:
 
 ```tsx
 import { useState } from "react"
-import { ReactDesktop } from "@effect-desktop/react"
+import { ReactDesktop } from "@orika/react"
 import { Manifest } from "../manifest.js"
 import { NotesRpcs } from "./contracts.js"
 
@@ -195,7 +195,7 @@ Three things to notice:
 `Filesystem.readDirectory` requires a declared root permission. At app startup (or in your manifest), declare which directory the import is allowed to read:
 
 ```ts
-import { PermissionRegistry } from "@effect-desktop/core"
+import { PermissionRegistry } from "@orika/core"
 
 // During app init
 const permissions = yield * PermissionRegistry

@@ -9,7 +9,7 @@
 
 - Added root `package.json#scripts.desktop` so `bun desktop ...` resolves from the repo root.
 - Kept `packages/cli/src/bin.ts` as the single CLI process entrypoint and made the file executable to match its package-bin shebang contract.
-- Added `templates/basic-react-tailwind/package.json#scripts.desktop` and an explicit template dependency on `@effect-desktop/cli` so generated app manifests carry the documented command shape.
+- Added `templates/basic-react-tailwind/package.json#scripts.desktop` and an explicit template dependency on `@orika/cli` so generated app manifests carry the documented command shape.
 - Added a repo-shape smoke that runs `bun desktop` and asserts Bun does not fail with `Script not found "desktop"`.
 - Added a template package assertion for the documented command and CLI dependency.
 

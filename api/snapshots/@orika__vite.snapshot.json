@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "packageName": "@effect-desktop/vite",
+  "packageName": "@orika/vite",
   "entrypoint": "src/index.ts",
   "symbols": [
     {

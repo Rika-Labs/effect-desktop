@@ -36,7 +36,7 @@ hardware-backed attestation, and platform-specific libsecret/keychain polish.
 
 ## Public APIs
 
-`@effect-desktop/core` exports:
+`@orika/core` exports:
 
 - `Secrets` / `SecretsLayer` / `makeSecrets` for namespaced secret
   `set/get/delete/list`.
@@ -48,7 +48,7 @@ hardware-backed attestation, and platform-specific libsecret/keychain polish.
 - `runSecretsMigration` for first-launch plaintext Settings migration.
 - `RedactionFilter` and `redact` re-exported from the bridge.
 
-`@effect-desktop/test` exports `makeMemorySecretsSafeStorage` for deterministic
+`@orika/test` exports `makeMemorySecretsSafeStorage` for deterministic
 Secrets tests.
 
 ## Acceptance criteria
@@ -123,9 +123,9 @@ Milestone: Phase 15 - Secrets
 Files changed: core Secrets service and migration; bridge redaction primitive;
 CrashReporter/bridge emission redaction wiring; test package memory secrets
 adapter; Phase 15 learning records.
-Public APIs added: @effect-desktop/core Secrets, SecretBytes helpers,
+Public APIs added: @orika/core Secrets, SecretBytes helpers,
 SecretsSafeStorage port/layer helpers, runSecretsMigration, RedactionFilter
-re-export; @effect-desktop/test makeMemorySecretsSafeStorage.
+re-export; @orika/test makeMemorySecretsSafeStorage.
 Tests added: Secrets runtime tests; redaction filter and emission-boundary tests;
 legacy secrets migration tests; memory secrets mock tests.
 Validation commands run: bun install --frozen-lockfile; bun run check; bun run

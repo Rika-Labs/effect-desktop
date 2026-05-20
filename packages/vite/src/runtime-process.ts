@@ -1,7 +1,4 @@
-import {
-  makeFramedSocketConnection,
-  type TransportError
-} from "@effect-desktop/core/runtime/transport"
+import { makeFramedSocketConnection, type TransportError } from "@orika/core/runtime/transport"
 import { Effect, Exit, Scope, Stream } from "effect"
 import type { PlatformError } from "effect/PlatformError"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"

@@ -602,7 +602,7 @@ The root `package.json` must declare Bun workspaces and shared scripts.
 
 ```json
 {
-  "name": "effect-desktop-repo",
+  "name": "orika-repo",
   "private": true,
   "packageManager": "bun@latest",
   "workspaces": ["apps/*", "packages/*"],
@@ -686,7 +686,7 @@ Do not let packages import via deep relative paths across package boundaries. Us
 Allowed:
 
 ```ts
-import { Desktop } from "@effect-desktop/core"
+import { Desktop } from "@orika/core"
 ```
 
 Not allowed:
@@ -706,14 +706,14 @@ The package architecture must stay small and intentional. Packages should be gro
 The initial public package set is:
 
 ```txt
-@effect-desktop/core
-@effect-desktop/bridge
-@effect-desktop/native
-@effect-desktop/react
-@effect-desktop/cli
-@effect-desktop/devtools
-@effect-desktop/test
-@effect-desktop/config
+@orika/core
+@orika/bridge
+@orika/native
+@orika/react
+@orika/cli
+@orika/devtools
+@orika/test
+@orika/config
 ```
 
 ## 6.1 `packages/core`
@@ -1044,7 +1044,7 @@ Every native primitive defined in §11 has exactly one TypeScript binding here. 
 
 ## 6.9 Scaffolding package
 
-There is no scaffolding package. The repository does not ship `create-effect-desktop`.
+There is no scaffolding package. The repository does not ship `create-orika`.
 
 ### Required exports
 
@@ -1059,44 +1059,44 @@ None.
 
 Every primitive in §11 (native) and §12 (runtime) maps to exactly one package and (where relevant) exactly one Rust crate. A primitive without a row here cannot ship.
 
-| Primitive            | TypeScript package       | Rust crate                              | Category |
-| -------------------- | ------------------------ | --------------------------------------- | -------- |
-| `App`                | `@effect-desktop/native` | `crates/host`                           | native   |
-| `Window`             | `@effect-desktop/native` | `crates/host`                           | native   |
-| `WebView`            | `@effect-desktop/native` | `crates/host`                           | native   |
-| `Menu`               | `@effect-desktop/native` | `crates/host`                           | native   |
-| `ContextMenu`        | `@effect-desktop/native` | `crates/host`                           | native   |
-| `Tray`               | `@effect-desktop/native` | `crates/host`                           | native   |
-| `Dialog`             | `@effect-desktop/native` | `crates/host`                           | native   |
-| `Clipboard`          | `@effect-desktop/native` | `crates/host`                           | native   |
-| `Notification`       | `@effect-desktop/native` | `crates/host`                           | native   |
-| `Shell`              | `@effect-desktop/native` | `crates/host`                           | native   |
-| `Screen`             | `@effect-desktop/native` | `crates/host`                           | native   |
-| `GlobalShortcut`     | `@effect-desktop/native` | `crates/host`                           | native   |
-| `Protocol`           | `@effect-desktop/native` | `crates/host`                           | native   |
-| `SafeStorage`        | `@effect-desktop/native` | `crates/host`                           | native   |
-| `Path`               | `@effect-desktop/native` | `crates/host`                           | native   |
-| `Updater`            | `@effect-desktop/native` | `crates/host` + `crates/native-updater` | native   |
-| `CrashReporter`      | `@effect-desktop/native` | `crates/host`                           | native   |
-| `PowerMonitor`       | `@effect-desktop/native` | `crates/host`                           | native   |
-| `SystemAppearance`   | `@effect-desktop/native` | `crates/host`                           | native   |
-| `Dock`               | `@effect-desktop/native` | `crates/host`                           | native   |
-| `Filesystem`         | `@effect-desktop/core`   | —                                       | runtime  |
-| `Process`            | `@effect-desktop/core`   | —                                       | runtime  |
-| `PTY`                | `@effect-desktop/core`   | `crates/native-pty`                     | runtime  |
-| `Worker`             | `@effect-desktop/core`   | —                                       | runtime  |
-| `Job`                | `@effect-desktop/core`   | —                                       | runtime  |
-| `SqlClientLive`      | `@effect-desktop/core`   | —                                       | runtime  |
-| `Settings`           | `@effect-desktop/core`   | —                                       | runtime  |
-| `Secrets`            | `@effect-desktop/core`   | `crates/host` (SafeStorage backend)     | runtime  |
-| `EventLog`           | `@effect-desktop/core`   | —                                       | runtime  |
-| `Transport`          | `@effect-desktop/core`   | —                                       | runtime  |
-| `CommandRegistry`    | `@effect-desktop/core`   | —                                       | runtime  |
-| `ApprovalBroker`     | `@effect-desktop/core`   | `crates/host` (UI surface)              | runtime  |
-| `PermissionRegistry` | `@effect-desktop/core`   | —                                       | runtime  |
-| `ResourceRegistry`   | `@effect-desktop/core`   | —                                       | runtime  |
-| `Telemetry`          | `@effect-desktop/core`   | —                                       | runtime  |
-| `WindowState`        | `@effect-desktop/core`   | —                                       | runtime  |
+| Primitive            | TypeScript package | Rust crate                              | Category |
+| -------------------- | ------------------ | --------------------------------------- | -------- |
+| `App`                | `@orika/native`    | `crates/host`                           | native   |
+| `Window`             | `@orika/native`    | `crates/host`                           | native   |
+| `WebView`            | `@orika/native`    | `crates/host`                           | native   |
+| `Menu`               | `@orika/native`    | `crates/host`                           | native   |
+| `ContextMenu`        | `@orika/native`    | `crates/host`                           | native   |
+| `Tray`               | `@orika/native`    | `crates/host`                           | native   |
+| `Dialog`             | `@orika/native`    | `crates/host`                           | native   |
+| `Clipboard`          | `@orika/native`    | `crates/host`                           | native   |
+| `Notification`       | `@orika/native`    | `crates/host`                           | native   |
+| `Shell`              | `@orika/native`    | `crates/host`                           | native   |
+| `Screen`             | `@orika/native`    | `crates/host`                           | native   |
+| `GlobalShortcut`     | `@orika/native`    | `crates/host`                           | native   |
+| `Protocol`           | `@orika/native`    | `crates/host`                           | native   |
+| `SafeStorage`        | `@orika/native`    | `crates/host`                           | native   |
+| `Path`               | `@orika/native`    | `crates/host`                           | native   |
+| `Updater`            | `@orika/native`    | `crates/host` + `crates/native-updater` | native   |
+| `CrashReporter`      | `@orika/native`    | `crates/host`                           | native   |
+| `PowerMonitor`       | `@orika/native`    | `crates/host`                           | native   |
+| `SystemAppearance`   | `@orika/native`    | `crates/host`                           | native   |
+| `Dock`               | `@orika/native`    | `crates/host`                           | native   |
+| `Filesystem`         | `@orika/core`      | —                                       | runtime  |
+| `Process`            | `@orika/core`      | —                                       | runtime  |
+| `PTY`                | `@orika/core`      | `crates/native-pty`                     | runtime  |
+| `Worker`             | `@orika/core`      | —                                       | runtime  |
+| `Job`                | `@orika/core`      | —                                       | runtime  |
+| `SqlClientLive`      | `@orika/core`      | —                                       | runtime  |
+| `Settings`           | `@orika/core`      | —                                       | runtime  |
+| `Secrets`            | `@orika/core`      | `crates/host` (SafeStorage backend)     | runtime  |
+| `EventLog`           | `@orika/core`      | —                                       | runtime  |
+| `Transport`          | `@orika/core`      | —                                       | runtime  |
+| `CommandRegistry`    | `@orika/core`      | —                                       | runtime  |
+| `ApprovalBroker`     | `@orika/core`      | `crates/host` (UI surface)              | runtime  |
+| `PermissionRegistry` | `@orika/core`      | —                                       | runtime  |
+| `ResourceRegistry`   | `@orika/core`      | —                                       | runtime  |
+| `Telemetry`          | `@orika/core`      | —                                       | runtime  |
+| `WindowState`        | `@orika/core`      | —                                       | runtime  |
 
 A package may not export a primitive whose row says it lives elsewhere. A new primitive must add a row here in the same PR that introduces it.
 
@@ -1759,7 +1759,7 @@ A private low-level bridge may exist internally for generated clients, but appli
 ```ts
 import { Schema } from "effect"
 import { Rpc } from "effect/unstable/rpc"
-import { Desktop } from "@effect-desktop/core"
+import { Desktop } from "@orika/core"
 
 export const ProjectOpen = Rpc.make("project.open", {
   payload: Schema.Struct({ path: Schema.String }),
@@ -3685,7 +3685,7 @@ type StaleHandle = {
 }
 ```
 
-Renderer-side helpers in `@effect-desktop/react` automatically discard handles after observing the resource's `Closed` event so user code never re-presents a stale handle. User code that has cached a handle past its `Closed` event observes `StaleHandle` on the next call and is expected to re-acquire.
+Renderer-side helpers in `@orika/react` automatically discard handles after observing the resource's `Closed` event so user code never re-presents a stale handle. User code that has cached a handle past its `Closed` event observes `StaleHandle` on the next call and is expected to re-acquire.
 
 `generation` is bumped only when the resource kind opts in to `id` reuse (e.g., for resumable streams declared `idempotent: true`). For most kinds (windows, processes, PTYs) the `id` is consumed permanently on disposal and any future use returns `StaleHandle` with `actualGeneration = -1`.
 
@@ -4169,7 +4169,7 @@ Normative schema fields:
 Profile merge order is fixed: framework defaults → shared config → app config → selected `env[profile]` → explicit CLI flags. Arrays replace by default; `protocols`, `build.targets`, and redaction patterns may opt into append semantics by using `merge: "append"` in the shared config helper.
 
 ```ts
-import { defineDesktopConfig } from "@effect-desktop/config"
+import { defineDesktopConfig } from "@orika/config"
 
 export default defineDesktopConfig({
   app: {
@@ -4363,7 +4363,7 @@ Future examples are validation assets. They must not become product demos with a
 ## 18.1 Application entry
 
 ```ts
-import { Desktop } from "@effect-desktop/core"
+import { Desktop } from "@orika/core"
 import { MainWindow } from "./windows/main"
 import { AppLive } from "./services"
 
@@ -4419,7 +4419,7 @@ Requirements:
 
 ```ts
 import { Schema } from "effect"
-import { Desktop } from "@effect-desktop/core"
+import { Desktop } from "@orika/core"
 
 export class Project extends Schema.Class<Project>("Project")({
   id: Schema.String,
@@ -4517,7 +4517,7 @@ Requirements:
 ## 18.5 Renderer usage
 
 ```ts
-import { desktop } from "@effect-desktop/react/client"
+import { desktop } from "@orika/react/client"
 
 const projects = await desktop.project.list()
 const project = await desktop.project.open({ path })
@@ -5425,7 +5425,7 @@ If this milestone touches packaging, native host behavior, security, or producti
 
 - `Desktop.Resources` registry with `list`, `get`, `dispose`, `observe`, `assertNoLeaks` (per §13.2–§13.6);
 - `ResourceHandle` shape with `(kind, id: UUIDv7, generation, ownerScope)` and `StaleHandle` typed error (per §13.7);
-- headless test harness in `@effect-desktop/test`: a `runHeadless(layer)` that runs the runtime against a mock host that records protocol calls and replays canned responses.
+- headless test harness in `@orika/test`: a `runHeadless(layer)` that runs the runtime against a mock host that records protocol calls and replays canned responses.
 
 ### Non-goals
 
@@ -5449,8 +5449,8 @@ C.62 (StaleHandle), C.76 (Resource scope-disposal order), C.75 (Headless harness
 
 ```bash
 bun run typecheck
-bun test --workspace=@effect-desktop/test
-bun test --workspace=@effect-desktop/core --grep="Resource"
+bun test --workspace=@orika/test
+bun test --workspace=@orika/core --grep="Resource"
 cargo check --workspace
 cargo test --workspace
 ```
@@ -6755,7 +6755,7 @@ A phase whose completion report omits any required Appendix C row, or attaches e
 ## A.1 Package README template
 
 ```md
-# @effect-desktop/<package>
+# @orika/<package>
 
 ## Purpose
 
@@ -11088,7 +11088,7 @@ A cancelled bridge call interrupts the handler Effect within 50 ms (signal) and 
 
 ## C.75 Headless harness runs
 
-The headless test harness in `@effect-desktop/test` runs the smoke suite without opening a real window in under 5 s on `macos-arm64` baseline hardware. Test: `tests/test-harness/headless-smoke.test.ts`.
+The headless test harness in `@orika/test` runs the smoke suite without opening a real window in under 5 s on `macos-arm64` baseline hardware. Test: `tests/test-harness/headless-smoke.test.ts`.
 
 ## C.76 Resource scope-disposal order
 

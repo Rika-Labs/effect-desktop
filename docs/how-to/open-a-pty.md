@@ -13,7 +13,7 @@ A PTY (pseudo-terminal) is what you want when you need an interactive shell or a
 ## 1. Declare permission
 
 ```ts
-import { PermissionRegistry } from "@effect-desktop/core"
+import { PermissionRegistry } from "@orika/core"
 
 const permissions = yield * PermissionRegistry
 yield *
@@ -29,7 +29,7 @@ PTY uses the same `process.spawn` capability as `Process` — the command is che
 
 ```ts
 import { Effect, Stream } from "effect"
-import { PTY } from "@effect-desktop/core"
+import { PTY } from "@orika/core"
 
 const program = Effect.gen(function* () {
   const pty = yield* PTY
@@ -83,7 +83,7 @@ yield * session.kill()
 
 ## Adapter substitution
 
-`PTY` accepts a substitutable adapter. Production uses the native PTY backend (`crates/native-pty`). Tests use `MockPTY` from `@effect-desktop/test`, which records open/write/resize/signal/close calls and returns deterministic output.
+`PTY` accepts a substitutable adapter. Production uses the native PTY backend (`crates/native-pty`). Tests use `MockPTY` from `@orika/test`, which records open/write/resize/signal/close calls and returns deterministic output.
 
 ## Related
 

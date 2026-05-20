@@ -8,11 +8,11 @@ effect_version: 4
 
 # Platform browser
 
-`@effect-desktop/platform-browser` exposes Effect layers for renderer-side persistence — IndexedDB, SQLite WASM (in a Web Worker), and PGlite.
+`@orika/platform-browser` exposes Effect layers for renderer-side persistence — IndexedDB, SQLite WASM (in a Web Worker), and PGlite.
 
 This package does not clear native WebView browsing data. Cache, cookies, local
 storage, IndexedDB, and history remain under the host WebView data store, and
-Effect Desktop does not yet expose a profile/session-partitioned clearing API.
+ORIKA does not yet expose a profile/session-partitioned clearing API.
 It also does not provide native cookie read, write, remove, or watch behavior.
 
 ## Import
@@ -23,7 +23,7 @@ import {
   RendererSqliteWorkerLive,
   RendererPgliteLive,
   BrowserContext
-} from "@effect-desktop/platform-browser"
+} from "@orika/platform-browser"
 ```
 
 ## SQLite WASM
@@ -35,7 +35,7 @@ import {
 ```ts
 import { Effect, Layer } from "effect"
 import { SqlClient } from "@effect/sql-sqlite-wasm"
-import { RendererSqliteWorkerLive } from "@effect-desktop/platform-browser"
+import { RendererSqliteWorkerLive } from "@orika/platform-browser"
 
 const SqliteLive = RendererSqliteWorkerLive({ filename: "renderer.sqlite" })
 
@@ -68,7 +68,7 @@ Re-exports from `@effect/platform-browser`:
 For typed IndexedDB tables:
 
 ```ts
-import { IndexedDb, IndexedDbTable } from "@effect-desktop/platform-browser"
+import { IndexedDb, IndexedDbTable } from "@orika/platform-browser"
 
 const NotesTable = IndexedDbTable.makeTableSchema("notes", { keyPath: "id" })
 

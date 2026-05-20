@@ -20,7 +20,7 @@ import {
   type ApprovalResolution,
   type ApprovalPromptPort,
   ApprovalBrokerError
-} from "@effect-desktop/core"
+} from "@orika/core"
 ```
 
 ## API

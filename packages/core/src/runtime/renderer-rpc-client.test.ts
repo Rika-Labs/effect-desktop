@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { HostProtocolResponseEnvelope, type HostProtocolEnvelope } from "@effect-desktop/bridge"
+import { HostProtocolResponseEnvelope, type HostProtocolEnvelope } from "@orika/bridge"
 import {
   Clock,
   Deferred,

@@ -14,9 +14,9 @@ Devtools expose runtime state without granting raw authority. They are safe to i
 
 ## Public surface
 
-`@effect-desktop/core` exports inspector events, telemetry, safety policies, observability, and inspector transport primitives.
+`@orika/core` exports inspector events, telemetry, safety policies, observability, and inspector transport primitives.
 
-`@effect-desktop/devtools` exports:
+`@orika/devtools` exports:
 
 - `DevtoolsShell`.
 - Live panels for diagnostics, event logs, workflows, reactivity, persistence, logs, cluster, layer graph, and embedded inspector views.

@@ -1,4 +1,4 @@
-# @effect-desktop/devtools
+# @orika/devtools
 
 > **Status:** Phase 19 runtime inspector projections. See `engineering/SPEC.md`.
 
@@ -48,7 +48,7 @@ Runtime inspector projections for framework primitives: windows, bridge calls, s
 - When enabled, it writes a fresh 256-bit token to the state directory with mode `0600`, binds a loopback listener, and opens the shell window through an explicit port.
 - `disable` closes the listener and removes the token; re-enabling requires another `start` call.
 
-The package depends on `@effect-desktop/core` because runtime services are the source of truth for observed state. Keeping the projection in devtools thin avoids a second command, resource, permission, or process read model.
+The package depends on `@orika/core` because runtime services are the source of truth for observed state. Keeping the projection in devtools thin avoids a second command, resource, permission, or process read model.
 
 ## Non-goals
 
@@ -57,7 +57,7 @@ See `engineering/SPEC.md` for the package's normative non-goals.
 ## Usage
 
 ```ts
-import { CommandsDevtools } from "@effect-desktop/devtools"
+import { CommandsDevtools } from "@orika/devtools"
 import { Effect } from "effect"
 
 const rows = await Effect.runPromise(

@@ -71,15 +71,15 @@ export type WithRpcSupport<R extends RpcAny, Support extends RpcSupportMetadata>
 class RpcEndpointKindAnnotation extends Context.Service<
   RpcEndpointKindAnnotation,
   RpcEndpointKind
->()("@effect-desktop/bridge/rpc-endpoint/RpcEndpointKindAnnotation") {}
+>()("@orika/bridge/rpc-endpoint/RpcEndpointKindAnnotation") {}
 
 class RpcCapabilityAnnotation extends Context.Service<
   RpcCapabilityAnnotation,
   RpcCapabilityMetadata
->()("@effect-desktop/bridge/rpc-endpoint/RpcCapabilityAnnotation") {}
+>()("@orika/bridge/rpc-endpoint/RpcCapabilityAnnotation") {}
 
 class RpcSupportAnnotation extends Context.Service<RpcSupportAnnotation, RpcSupportMetadata>()(
-  "@effect-desktop/bridge/rpc-endpoint/RpcSupportAnnotation"
+  "@orika/bridge/rpc-endpoint/RpcSupportAnnotation"
 ) {}
 
 export const RpcEndpoint = Object.freeze({

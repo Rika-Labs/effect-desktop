@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { type BridgeClientExchange } from "@effect-desktop/bridge"
+import { type BridgeClientExchange } from "@orika/bridge"
 import { Effect, type Layer, ManagedRuntime, Stream } from "effect"
 
 import { makeNativeCapabilityManifest } from "./capabilities.js"

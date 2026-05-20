@@ -7,8 +7,8 @@ import {
   makeHostProtocolInvalidOutputError,
   RpcGroup,
   type HostProtocolError
-} from "@effect-desktop/bridge"
-import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
+} from "@orika/bridge"
+import { type PermissionRegistry, P, type DesktopRpcClient } from "@orika/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
@@ -151,7 +151,7 @@ export interface ClipboardClientApi {
 }
 
 export class ClipboardClient extends Context.Service<ClipboardClient, ClipboardClientApi>()(
-  "@effect-desktop/native/ClipboardClient"
+  "@orika/native/ClipboardClient"
 ) {}
 
 export interface ClipboardServiceApi {
@@ -168,7 +168,7 @@ export interface ClipboardServiceApi {
 }
 
 export class Clipboard extends Context.Service<Clipboard, ClipboardServiceApi>()(
-  "@effect-desktop/native/Clipboard"
+  "@orika/native/Clipboard"
 ) {
   static readonly layer = Layer.effect(Clipboard)(
     Effect.gen(function* () {

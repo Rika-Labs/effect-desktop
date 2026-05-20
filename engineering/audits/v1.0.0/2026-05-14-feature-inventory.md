@@ -81,15 +81,15 @@ Each is its own `RpcGroup`, registered via `Desktop.rpc`:
 
 ## Renderer adapters
 
-- `@effect-desktop/react` — `ReactDesktop.from`, `useDesktop`, `useQuery`, `useMutation`, `useStream`, native hooks, atoms
-- `@effect-desktop/solid` — same shape
-- `@effect-desktop/vue` — same shape
-- `@effect-desktop/next` — Next.js client-boundary wrapper
-- `@effect-desktop/astro` — Astro island wrapper
-- `@effect-desktop/vite` — dev plugin
-- `@effect-desktop/platform-browser` — shared browser layer
+- `@orika/react` — `ReactDesktop.from`, `useDesktop`, `useQuery`, `useMutation`, `useStream`, native hooks, atoms
+- `@orika/solid` — same shape
+- `@orika/vue` — same shape
+- `@orika/next` — Next.js client-boundary wrapper
+- `@orika/astro` — Astro island wrapper
+- `@orika/vite` — dev plugin
+- `@orika/platform-browser` — shared browser layer
 
-**Worth a human pass:** Cross-framework consistency. Solid / Vue / React all expose `useDesktop` — does the test surface (`@effect-desktop/test` + `RpcTest`) work uniformly across them?
+**Worth a human pass:** Cross-framework consistency. Solid / Vue / React all expose `useDesktop` — does the test surface (`@orika/test` + `RpcTest`) work uniformly across them?
 
 ## Workflows & background
 
@@ -118,11 +118,11 @@ Each is its own `RpcGroup`, registered via `Desktop.rpc`:
 - `desktop doctor` — environment diagnostics
 - `desktop check --api` / `--docs` / `--release` / `--repro` / `--a11y` / `--semver` — release gates
 - `desktop dev` — dev loop
-- Config: `@effect-desktop/config` — layered TOML / JSON resolution
+- Config: `@orika/config` — layered TOML / JSON resolution
 
 ## Testing
 
-- `@effect-desktop/test` — test layer helpers
+- `@orika/test` — test layer helpers
 - `RpcTest.makeClient` — deterministic client against a handler layer
 - `inject-mock-host-and-bridge` how-to
 - Provider-conformance tests — per-runtime budget assertions

@@ -13,7 +13,7 @@ effect_version: 4
 ## Import
 
 ```ts
-import { Desktop } from "@effect-desktop/core"
+import { Desktop } from "@orika/core"
 const Rpc = Desktop.Rpc
 ```
 

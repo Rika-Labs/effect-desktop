@@ -3,8 +3,8 @@ import {
   type BridgeClientResponse,
   HostProtocolEventEnvelope,
   type HostProtocolRequestEnvelope
-} from "@effect-desktop/bridge"
-import { AuditEvent, type AuditEventsApi } from "@effect-desktop/core"
+} from "@orika/bridge"
+import { AuditEvent, type AuditEventsApi } from "@orika/core"
 import { Cause, Effect, Exit, Layer, ManagedRuntime, Stream } from "effect"
 import { expect, test } from "bun:test"
 

@@ -6,7 +6,7 @@ macOS-only polish is currently described in the public Effect contracts and spec
 
 ## Game board
 
-- Players: macOS app users, app authors using `@effect-desktop/native`, host maintainers, reviewers, CI.
+- Players: macOS app users, app authors using `@orika/native`, host maintainers, reviewers, CI.
 - Incentives: app authors want platform polish without app-local AppKit calls; maintainers want one host-owned OS boundary; reviewers need typed evidence instead of visual claims.
 - Information asymmetries: TypeScript callers can see Effect contracts, but only the Rust host knows whether AppKit applied a visual effect, Dock badge, or menu.
 - Bad equilibrium: every app hand-rolls AppKit integration or the framework advertises Appendix K support while silently no-oping.

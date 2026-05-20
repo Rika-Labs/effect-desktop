@@ -4,7 +4,7 @@ import {
   type ResourceId,
   type ResourceKind,
   type ScopeId
-} from "@effect-desktop/core"
+} from "@orika/core"
 import { Effect, Exit, Option, Scope, Stream } from "effect"
 
 export interface ScopedCommandBindingOptions<Kind extends ResourceKind, Event, RegisterE> {

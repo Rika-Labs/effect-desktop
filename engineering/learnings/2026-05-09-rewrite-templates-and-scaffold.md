@@ -10,7 +10,7 @@ pr: https://github.com/Rika-Labs/effect-desktop/pull/1129
 
 ## What we set out to do
 
-Issue #1098 asked the first-run path to stop teaching the pre-v4 surface. The intended shape was a rewritten `basic-react-tailwind` template, a new `todo-sqlite` bridge-crossing app, an optional `multi-window` template gated on the cluster verdict, and a `create-effect-desktop` scaffold CLI that copies templates, accepts storage/workflow/cluster flags, and pins the Effect beta tuple.
+Issue #1098 asked the first-run path to stop teaching the pre-v4 surface. The intended shape was a rewritten `basic-react-tailwind` template, a new `todo-sqlite` bridge-crossing app, an optional `multi-window` template gated on the cluster verdict, and a `create-orika` scaffold CLI that copies templates, accepts storage/workflow/cluster flags, and pins the Effect beta tuple.
 
 ## What actually ended up working
 
@@ -18,7 +18,7 @@ The branch worked after narrowing the shipped promise. The scaffold CLI now vali
 
 ```mermaid
 flowchart LR
-  CLI["create-effect-desktop"] --> Validate["validate flags and target"]
+  CLI["create-orika"] --> Validate["validate flags and target"]
   Validate --> Copy["copy first-party template"]
   Copy --> Manifest["rewrite manifest for standalone install"]
   Manifest --> Basic["basic-react-tailwind"]

@@ -1,6 +1,6 @@
 # Public API Breaking-Change Policy
 
-Effect Desktop treats every package root export as public once v1.0.0 is released.
+ORIKA treats every package root export as public once v1.0.0 is released.
 
 `bun desktop check --api` compares the current root export surface against
 `api/snapshots/*.snapshot.json`. A change is release-blocking unless it is

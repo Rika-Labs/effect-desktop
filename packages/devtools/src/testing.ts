@@ -5,7 +5,7 @@ import {
   InspectorSafetySummary,
   type InspectorSafetyPolicyApi,
   type InspectorSafetyPolicyInvalidArgumentError
-} from "@effect-desktop/core/runtime/inspector-safety-policy"
+} from "@orika/core/runtime/inspector-safety-policy"
 import { Context, Data, Effect, Layer, Option, Queue, Schema, Stream } from "effect"
 
 const encodeJsonString = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
@@ -58,7 +58,7 @@ export interface InspectorTestApi {
 }
 
 export class InspectorTest extends Context.Service<InspectorTest, InspectorTestApi>()(
-  "@effect-desktop/devtools/testing/InspectorTest"
+  "@orika/devtools/testing/InspectorTest"
 ) {}
 
 export interface ReplayTransportApi {
@@ -70,7 +70,7 @@ export interface ReplayTransportApi {
 }
 
 export class ReplayTransport extends Context.Service<ReplayTransport, ReplayTransportApi>()(
-  "@effect-desktop/devtools/testing/ReplayTransport"
+  "@orika/devtools/testing/ReplayTransport"
 ) {}
 
 export interface InspectorTestOptions {

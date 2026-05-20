@@ -23,7 +23,7 @@ export interface DesktopDevtoolsApi {
 }
 
 export class DesktopDevtools extends Context.Service<DesktopDevtools, DesktopDevtoolsApi>()(
-  "@effect-desktop/core/runtime/desktop-devtools/DesktopDevtools"
+  "@orika/core/runtime/desktop-devtools/DesktopDevtools"
 ) {}
 
 export const makeDesktopDevtools = (

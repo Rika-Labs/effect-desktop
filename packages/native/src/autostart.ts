@@ -5,8 +5,8 @@ import {
   type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
   RpcGroup
-} from "@effect-desktop/bridge"
-import { type DesktopRpcClient, type PermissionRegistry, P } from "@effect-desktop/core"
+} from "@orika/bridge"
+import { type DesktopRpcClient, type PermissionRegistry, P } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import {
@@ -74,13 +74,13 @@ export interface AutostartClientApi {
 }
 
 export class AutostartClient extends Context.Service<AutostartClient, AutostartClientApi>()(
-  "@effect-desktop/native/AutostartClient"
+  "@orika/native/AutostartClient"
 ) {}
 
 export type AutostartServiceApi = AutostartClientApi
 
 export class Autostart extends Context.Service<Autostart, AutostartServiceApi>()(
-  "@effect-desktop/native/Autostart"
+  "@orika/native/Autostart"
 ) {
   static readonly layer = Layer.effect(Autostart)(
     Effect.gen(function* () {

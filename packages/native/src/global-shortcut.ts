@@ -10,7 +10,7 @@ import {
   type ResourceHandle,
   type ResourceId,
   type ResourceRegistry
-} from "@effect-desktop/core"
+} from "@orika/core"
 import {
   type BridgeClientExchange,
   type BridgeClientOptions,
@@ -25,7 +25,7 @@ import {
   type RpcSupportMetadata,
   RpcGroup,
   type HostProtocolError
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
@@ -134,7 +134,7 @@ export interface GlobalShortcutClientApi {
 export class GlobalShortcutClient extends Context.Service<
   GlobalShortcutClient,
   GlobalShortcutClientApi
->()("@effect-desktop/native/GlobalShortcutClient") {}
+>()("@orika/native/GlobalShortcutClient") {}
 
 export interface GlobalShortcutServiceApi extends Omit<
   GlobalShortcutClientApi,
@@ -158,7 +158,7 @@ export interface GlobalShortcutServiceApi extends Omit<
 }
 
 export class GlobalShortcut extends Context.Service<GlobalShortcut, GlobalShortcutServiceApi>()(
-  "@effect-desktop/native/GlobalShortcut"
+  "@orika/native/GlobalShortcut"
 ) {
   static readonly layer = Layer.effect(GlobalShortcut)(
     Effect.gen(function* () {

@@ -4,7 +4,7 @@
 
 The contract side is already partially aligned with the issue:
 
-- `RpcSupport` is an Effect RPC annotation exported through `@effect-desktop/bridge`.
+- `RpcSupport` is an Effect RPC annotation exported through `@orika/bridge`.
 - `DesktopRpc.supportedGroup(...)` filters unsupported RPCs from static generated clients.
 - `WindowRpcs` annotates unsupported planned operations, while `WindowSupportedRpcs` exposes
   only implemented methods.
@@ -47,7 +47,7 @@ with `DesktopRpc.supportedGroup`, which already covers that side of the issue.
     unsupported reason as the annotation.
   - Prove unknown tags fail with a typed native capability lookup error.
   - Prove duplicate manifest tags fail rather than silently overwriting support data.
-- `api/snapshots/@effect-desktop__native.snapshot.json`
+- `api/snapshots/@orika__native.snapshot.json`
   - Update after exporting the new public service.
 - `engineering/roadmap/layer-first-issue-order.md`
   - Mark #1194 implemented.
@@ -59,7 +59,7 @@ with `DesktopRpc.supportedGroup`, which already covers that side of the issue.
 Focused:
 
 - `bun test packages/native/src/capabilities.test.ts packages/native/src/index.test.ts`
-- `bun run --filter @effect-desktop/native typecheck`
+- `bun run --filter @orika/native typecheck`
 
 Broad:
 

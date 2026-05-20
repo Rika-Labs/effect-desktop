@@ -13,8 +13,8 @@ App and window menus. The Rust host routes application/window menu installation,
 ## Import
 
 ```ts
-import { Desktop } from "@effect-desktop/core"
-import { Menu, MenuError, MenuRpcs, Native } from "@effect-desktop/native"
+import { Desktop } from "@orika/core"
+import { Menu, MenuError, MenuRpcs, Native } from "@orika/native"
 ```
 
 ## Methods

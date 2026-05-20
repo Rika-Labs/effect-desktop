@@ -16,8 +16,8 @@ Implemented `Window.create` chrome validation in the native SDK and bridge paylo
 - `bun test packages/native/src/index.test.ts -t "Window bridge client rejects invalid chrome inputs"`
 - `bun test packages/native/src/index.test.ts -t "host WindowClient adapter"`
 - `bun test packages/native/src/index.test.ts -t "Window service"`
-- `bun run typecheck --filter=@effect-desktop/native --filter=@effect-desktop/bridge`
-- `bun run lint --filter=@effect-desktop/native --filter=@effect-desktop/bridge`
+- `bun run typecheck --filter=@orika/native --filter=@orika/bridge`
+- `bun run lint --filter=@orika/native --filter=@orika/bridge`
 - `bun install --frozen-lockfile`
 - `bun run check`
 - `bun run typecheck`

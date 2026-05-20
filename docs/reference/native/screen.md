@@ -70,11 +70,11 @@ active GTK backend are excluded.
 
 ## Test layer
 
-`ScreenTest(options)` from `@effect-desktop/test`.
+`ScreenTest(options)` from `@orika/test`.
 
 ## React hooks
 
-`useDisplays()` from `@effect-desktop/react`.
+`useDisplays()` from `@orika/react`.
 
 ## Related
 

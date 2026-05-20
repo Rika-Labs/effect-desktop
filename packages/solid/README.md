@@ -1,10 +1,10 @@
-# @effect-desktop/solid
+# @orika/solid
 
-Solid adapter for app-scoped Effect Desktop RPC groups.
+Solid adapter for app-scoped ORIKA RPC groups.
 
 ## Purpose
 
-`@effect-desktop/solid` turns a `Desktop.manifest(App)` value and an imported Effect
+`@orika/solid` turns a `Desktop.manifest(App)` value and an imported Effect
 `RpcGroup` into Solid primitives. The app contract stays in Effect RPC, the host
 owns the transport, and Solid owns accessors, signals, owners, and cleanup.
 
@@ -35,8 +35,8 @@ applications rely on the host-installed renderer transport.
 ## Usage
 
 ```tsx
-import { Desktop } from "@effect-desktop/core"
-import { SolidDesktop } from "@effect-desktop/solid"
+import { Desktop } from "@orika/core"
+import { SolidDesktop } from "@orika/solid"
 import { App, NotesRpcs } from "./desktop"
 
 const NotesDesktop = SolidDesktop.from(Desktop.manifest(App))

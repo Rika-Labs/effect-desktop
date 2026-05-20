@@ -10,7 +10,7 @@ import {
   type HostProtocolError,
   type RpcCapabilityMetadata,
   RpcGroup
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import {
   type AuditEventsApi,
   type DesktopRpcClient,
@@ -24,7 +24,7 @@ import {
   type PermissionRegistryApi,
   type PermissionRegistryError,
   permissionAuditEvent
-} from "@effect-desktop/core"
+} from "@orika/core"
 import { Clock, Context, Effect, Layer, PubSub, Ref, Schema, Stream } from "effect"
 
 import { subscribeNativeEvent } from "./event-stream.js"
@@ -163,7 +163,7 @@ export interface LocalToolRuntimeClientApi {
 export class LocalToolRuntimeClient extends Context.Service<
   LocalToolRuntimeClient,
   LocalToolRuntimeClientApi
->()("@effect-desktop/native/LocalToolRuntimeClient") {}
+>()("@orika/native/LocalToolRuntimeClient") {}
 
 export interface LocalToolRuntimeServiceApi {
   readonly register: (
@@ -197,7 +197,7 @@ export interface LocalToolRuntimeServiceOptions {
 export class LocalToolRuntime extends Context.Service<
   LocalToolRuntime,
   LocalToolRuntimeServiceApi
->()("@effect-desktop/native/LocalToolRuntime") {
+>()("@orika/native/LocalToolRuntime") {
   static readonly layer = Layer.effect(LocalToolRuntime)(
     Effect.gen(function* () {
       const client = yield* LocalToolRuntimeClient

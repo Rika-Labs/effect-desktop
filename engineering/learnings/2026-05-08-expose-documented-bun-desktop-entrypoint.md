@@ -14,7 +14,7 @@ Issue #770 found that the spec and docs promised `bun desktop ...`, but the repo
 
 ## What actually ended up working
 
-The smallest working shape was to expose `desktop` at each project boundary instead of changing the CLI internals. The repo root script delegates to the checked-in CLI bin source, while the React template declares both a `desktop` script and an explicit `@effect-desktop/cli` dependency so generated manifests carry the installed-bin shape. A repo-shape smoke now launches `bun desktop` and verifies the failure is not Bun command resolution.
+The smallest working shape was to expose `desktop` at each project boundary instead of changing the CLI internals. The repo root script delegates to the checked-in CLI bin source, while the React template declares both a `desktop` script and an explicit `@orika/cli` dependency so generated manifests carry the installed-bin shape. A repo-shape smoke now launches `bun desktop` and verifies the failure is not Bun command resolution.
 
 ```mermaid
 flowchart LR
@@ -26,7 +26,7 @@ flowchart LR
 
 ## What surfaced in review
 
-One review comment was addressed. The architecture artifact initially described the template script as delegating through `bunx --bun @effect-desktop/cli`, but the committed manifest uses `"desktop": "desktop"` plus an explicit CLI dependency. The fix aligned the durable architecture note with the actual installed-bin mechanism.
+One review comment was addressed. The architecture artifact initially described the template script as delegating through `bunx --bun @orika/cli`, but the committed manifest uses `"desktop": "desktop"` plus an explicit CLI dependency. The fix aligned the durable architecture note with the actual installed-bin mechanism.
 
 ## First-principles postmortem
 
