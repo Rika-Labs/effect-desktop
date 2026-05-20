@@ -63,7 +63,7 @@
   "dependencies": {
     "@effect-desktop/bridge": "workspace:*",
     "@effect/opentelemetry": "4.0.0-beta.60",
-    "@effect/platform-bun": "4.0.0-beta.60",
+    "@effect/platform-bun": "4.0.0-beta.69",
     "@effect/platform-node": "4.0.0-beta.60",
     "@effect/sql-sqlite-bun": "4.0.0-beta.60",
     "@opentelemetry/api": "^1.9",
