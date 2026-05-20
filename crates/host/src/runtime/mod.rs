@@ -623,8 +623,37 @@ fn monitor_runtime(
             }
             MonitorNext::Event(RuntimeEvent::StdioError { stream, error }) => {
                 warn!(?stream, error, "runtime stdio error");
-                terminate_runtime_child(child);
-                break;
+
+                match next_stdio_error_terminal_event(&child.events) {
+                    Some(RuntimeEvent::Exited { status }) => {
+                        let Some(next_child) = handle_runtime_exit(
+                            status,
+                            child,
+                            &config,
+                            policy,
+                            &method_router,
+                            &mut completed_restarts,
+                            &shutdown,
+                        ) else {
+                            break;
+                        };
+                        child = next_child;
+                    }
+                    Some(RuntimeEvent::LifecycleError { error }) => {
+                        error!(error, "runtime lifecycle failed after stdio error");
+                        finish_runtime_child(child);
+                        break;
+                    }
+                    Some(event) => {
+                        warn!(?event, "terminating runtime after stdio error");
+                        terminate_runtime_child(child);
+                        break;
+                    }
+                    None => {
+                        terminate_runtime_child(child);
+                        break;
+                    }
+                }
             }
             MonitorNext::Event(RuntimeEvent::LifecycleError { error }) => {
                 error!(error, "runtime lifecycle failed");
@@ -632,58 +661,18 @@ fn monitor_runtime(
                 break;
             }
             MonitorNext::Event(RuntimeEvent::Exited { status }) => {
-                finish_runtime_child(child);
-
-                if status.success() {
-                    debug!(%status, "runtime exited cleanly");
+                let Some(next_child) = handle_runtime_exit(
+                    status,
+                    child,
+                    &config,
+                    policy,
+                    &method_router,
+                    &mut completed_restarts,
+                    &shutdown,
+                ) else {
                     break;
-                }
-
-                if !policy.should_restart(completed_restarts) {
-                    error!(
-                        %status,
-                        profile = policy.profile.as_str(),
-                        completed_restarts,
-                        max_restarts = policy.max_dev_restarts,
-                        "runtime crashed; not restarting"
-                    );
-                    break;
-                }
-
-                completed_restarts += 1;
-                warn!(
-                    %status,
-                    completed_restarts,
-                    max_restarts = policy.max_dev_restarts,
-                    "runtime crashed; restarting in dev profile"
-                );
-
-                child = match spawn_runtime_child(&config, method_router.clone()) {
-                    Ok(child) => child,
-                    Err(error) => {
-                        error!(%error, "failed to restart runtime after crash");
-                        break;
-                    }
                 };
-
-                match await_ready_events_or_shutdown(&child.events, policy.ready_timeout, &shutdown)
-                {
-                    ReadyWait::Ready(Ok(ready)) => {
-                        warn!(
-                            version = ready.version(),
-                            completed_restarts, "runtime restarted and became ready"
-                        );
-                    }
-                    ReadyWait::Ready(Err(error)) => {
-                        error!(%error, "restarted runtime failed before ready");
-                        terminate_runtime_child(child);
-                        break;
-                    }
-                    ReadyWait::Shutdown => {
-                        terminate_runtime_child(child);
-                        break;
-                    }
-                }
+                child = next_child;
             }
             MonitorNext::Shutdown => {
                 terminate_runtime_child(child);
@@ -695,6 +684,74 @@ fn monitor_runtime(
             }
         }
     }
+}
+
+fn handle_runtime_exit(
+    status: ExitStatus,
+    child: RuntimeChild,
+    config: &RuntimeConfig,
+    policy: RestartPolicy,
+    method_router: &methods::HostMethodRouter,
+    completed_restarts: &mut usize,
+    shutdown: &Receiver<MonitorCommand>,
+) -> Option<RuntimeChild> {
+    finish_runtime_child(child);
+
+    if status.success() {
+        debug!(%status, "runtime exited cleanly");
+        return None;
+    }
+
+    if !policy.should_restart(*completed_restarts) {
+        error!(
+            %status,
+            profile = policy.profile.as_str(),
+            completed_restarts = *completed_restarts,
+            max_restarts = policy.max_dev_restarts,
+            "runtime crashed; not restarting"
+        );
+        return None;
+    }
+
+    *completed_restarts += 1;
+    warn!(
+        %status,
+        completed_restarts = *completed_restarts,
+        max_restarts = policy.max_dev_restarts,
+        "runtime crashed; restarting in dev profile"
+    );
+
+    let next_child = match spawn_runtime_child(config, method_router.clone()) {
+        Ok(child) => child,
+        Err(error) => {
+            error!(%error, "failed to restart runtime after crash");
+            return None;
+        }
+    };
+
+    match await_ready_events_or_shutdown(&next_child.events, policy.ready_timeout, shutdown) {
+        ReadyWait::Ready(Ok(ready)) => {
+            warn!(
+                version = ready.version(),
+                completed_restarts = *completed_restarts,
+                "runtime restarted and became ready"
+            );
+            Some(next_child)
+        }
+        ReadyWait::Ready(Err(error)) => {
+            error!(%error, "restarted runtime failed before ready");
+            terminate_runtime_child(next_child);
+            None
+        }
+        ReadyWait::Shutdown => {
+            terminate_runtime_child(next_child);
+            None
+        }
+    }
+}
+
+fn next_stdio_error_terminal_event(events: &Receiver<RuntimeEvent>) -> Option<RuntimeEvent> {
+    events.recv_timeout(MONITOR_POLL_INTERVAL).ok()
 }
 
 enum MonitorNext {
@@ -1819,6 +1876,7 @@ console.log("this is not framed");
                     .expect("host protocol frame should decode"),
             );
         }
+        frames.retain(|frame| !is_power_monitor_event(frame));
 
         assert_eq!(frames.len(), 8);
         assert_extension_config_event(&frames[0], "written", Some(1));
@@ -1944,6 +2002,7 @@ console.log("this is not framed");
                     .expect("host protocol frame should decode"),
             );
         }
+        frames.retain(|frame| !is_power_monitor_event(frame));
 
         assert_eq!(frames.len(), 9);
         assert_extension_package_event(&frames[0], "installed", Some("1.0.0"), Some(1));
@@ -2680,6 +2739,14 @@ console.log("this is not framed");
             Some(revision) => assert_eq!(payload["revision"], revision),
             None => assert!(payload.get("revision").is_none()),
         }
+    }
+
+    fn is_power_monitor_event(frame: &HostProtocolEnvelope) -> bool {
+        matches!(
+            frame,
+            HostProtocolEnvelope::Event { method, .. }
+                if method == host_protocol::POWER_MONITOR_POWER_SOURCE_CHANGED_EVENT
+        )
     }
 
     fn assert_extension_config_response(

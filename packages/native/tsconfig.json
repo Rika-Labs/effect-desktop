@@ -3,7 +3,17 @@
   "compilerOptions": {
     "rootDir": "src",
     "outDir": "dist",
-    "noEmit": true
+    "noEmit": true,
+    "plugins": [
+      {
+        "name": "@effect/language-service",
+        "diagnostics": false,
+        "quickinfo": true,
+        "completions": true,
+        "goto": true,
+        "renames": true
+      }
+    ]
   },
   "include": ["src"]
 }

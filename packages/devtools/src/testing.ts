@@ -275,7 +275,7 @@ const makeInspectorTest = (
     } satisfies InspectorTestApi)
   })
 
-const makeReplayTransport = (session: RecordedSession): ReplayTransportApi =>
+export const makeReplayTransport = (session: RecordedSession): ReplayTransportApi =>
   Object.freeze({
     session: () => Effect.succeed(session),
     frames: () => Stream.fromIterable(session.frames),

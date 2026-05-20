@@ -9,6 +9,7 @@ import {
   Exit,
   FileSystem,
   Layer,
+  ManagedRuntime,
   Option,
   Path,
   Queue,
@@ -130,6 +131,9 @@ import {
   type TelemetryInvalidArgumentError,
   type TelemetryOptions
 } from "@effect-desktop/core"
+
+const PathRuntime = ManagedRuntime.make(Path.layer)
+const PathService = PathRuntime.runSync(Path.Path.asEffect())
 
 export interface LeakDetectionOptions {
   readonly allowedResourceIds?: readonly ResourceId[]
@@ -464,7 +468,7 @@ export const makeMemoryFilesystem = (
     const memory = makeMemoryFilesystemRuntime(options, now)
     return yield* makeFilesystem(registry, owner, memory.options).pipe(
       Effect.provideService(FileSystem.FileSystem, memory.fileSystem),
-      Effect.provide(Path.layer)
+      Effect.provideService(Path.Path, PathService)
     )
   })
 

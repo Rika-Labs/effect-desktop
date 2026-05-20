@@ -824,7 +824,7 @@ export const layer = <RIn = never, E = never>(
 // `buildSpine` genuinely provides a superset of `DesktopRuntimeServices` and
 // requires a subset of `Exclude<RIn, DesktopRuntimeProviderServices | ResourceOwner>`
 // (it also satisfies the core services it composes internally). TypeScript cannot
-// reduce the nested `Exclude<Exclude<RIn, …>, …>` conditional against a generic
+// reduce the nested `Exclude<Exclude<RIn, ...>, ...>` conditional against a generic
 // `RIn`, so the public contract is asserted here once.
 export const runtime = <RIn = never, E = never>(
   config: DesktopConfig<RIn, E>
@@ -832,12 +832,7 @@ export const runtime = <RIn = never, E = never>(
   DesktopRuntimeServices,
   DesktopConfigError | E,
   Exclude<RIn, DesktopRuntimeProviderServices | ResourceOwner>
-> =>
-  buildSpine(config) as Layer.Layer<
-    DesktopRuntimeServices,
-    DesktopConfigError | E,
-    Exclude<RIn, DesktopRuntimeProviderServices | ResourceOwner>
-  >
+> => buildSpine(config) as never
 
 export const DesktopRuntimeLive = runtime
 
@@ -1364,11 +1359,7 @@ const bindRpcGroup = <Rpcs extends Rpc.Any, E, R>(
   group: RpcGroup.RpcGroup<Rpcs>,
   handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>
 ): Layer.Layer<never, E, R> =>
-  Layer.provide(RpcServer.layer(group.middleware(PermissionInterceptor)), handlers) as Layer.Layer<
-    never,
-    E,
-    R
-  >
+  Layer.provide(RpcServer.layer(group.middleware(PermissionInterceptor)), handlers) as never
 
 const bindRegistration = <E, R>(
   registration: AnyDesktopRpcRegistration<E, R>

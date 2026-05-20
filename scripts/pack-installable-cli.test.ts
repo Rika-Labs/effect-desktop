@@ -84,7 +84,7 @@ test("pack-installable-cli emits a workspace-free CLI package installable by a t
       join(appRoot, "node_modules", "@effect-desktop", "cli", "src", "native-parity-matrix.json"),
       "utf8"
     )
-    expect(installedMatrix).toContain('"total": 184')
+    expect(installedMatrix).toContain('"total": 291')
 
     const doctor = Bun.spawn(["bunx", "desktop", "doctor", "--json"], {
       cwd: appRoot,
@@ -100,7 +100,7 @@ test("pack-installable-cli emits a workspace-free CLI package installable by a t
     expect(doctorExitCode, doctorText).toBe(0)
     expect(doctorText).toContain('"name": "native-capabilities"')
     expect(doctorText).toContain(
-      "native capability matrix reports 184 methods, 99 host-routed, 85 missing host routes"
+      "native capability matrix reports 291 methods, 229 host-routed, 0 missing host routes"
     )
   } finally {
     await rm(directory, { recursive: true, force: true })

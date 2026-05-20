@@ -1,5 +1,5 @@
 import { makeInspectorTransport } from "@effect-desktop/core/inspector-transport"
-import { ReplayTransport, ReplayTransportFromSession } from "@effect-desktop/devtools/testing"
+import { makeReplayTransport } from "@effect-desktop/devtools/testing"
 import { Cause, Effect, Exit } from "effect"
 import { StrictMode, useState } from "react"
 import { createRoot } from "react-dom/client"
@@ -34,9 +34,7 @@ const boot = Effect.gen(function* () {
     payload: { provider: "DesktopRuntimeLive", status: "ready" },
     timestampMs: 1_700_000_000_032
   })
-  const replay = yield* Effect.service(ReplayTransport).pipe(
-    Effect.provide(ReplayTransportFromSession(recordedInspectorSession))
-  )
+  const replay = makeReplayTransport(recordedInspectorSession)
   const service = makeInspectorAppForTransports(live, replay, {
     liveLabel: "Sample observed app"
   })

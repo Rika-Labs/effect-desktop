@@ -61,10 +61,9 @@ pub(crate) use job::JOB_ENV_LOCK;
 use crate::{
     linux,
     window::{
-        clear_screen_runtime_event_state, clear_tray_runtime_event_state,
-        clear_webview_runtime_event_state, clear_window_runtime_event_state,
-        install_screen_event_sender, install_webview_event_sender, install_window_event_sender,
-        WindowMethodHandler,
+        clear_screen_runtime_event_state, clear_webview_runtime_event_state,
+        clear_window_runtime_event_state, install_screen_event_sender,
+        install_webview_event_sender, install_window_event_sender, WindowMethodHandler,
     },
 };
 use host_protocol::{HostProtocolEnvelope, HostProtocolError};
@@ -1200,12 +1199,14 @@ impl HostMethodDispatcher {
                     .lock()
                     .ok()
                     .and_then(|sender| sender.clone());
-                dispatch_result_frame(
-                    request.id,
-                    request.timestamp,
-                    request.trace_id,
-                    handler(&*router.window, request.payload, event_sender),
-                )
+                let result = match handler(&*router.window, request.payload, event_sender) {
+                    Ok(payload) => match router.track_runtime_created_tray() {
+                        Some(error) => Err(error),
+                        None => Ok(payload),
+                    },
+                    Err(error) => Err(error),
+                };
+                dispatch_result_frame(request.id, request.timestamp, request.trace_id, result)
             }
             Self::EventfulPayload(handler) => {
                 let event_sender = router
@@ -1392,6 +1393,7 @@ pub(crate) struct HostMethodRouter {
     runtime_event_sender: Arc<Mutex<Option<Sender<HostProtocolEnvelope>>>>,
     runtime_session_failure_sender: Arc<Mutex<Option<Sender<realtime_media_session::SessionKey>>>>,
     local_tool_runtime_ids: Arc<Mutex<HashSet<String>>>,
+    runtime_created_trays: Arc<Mutex<bool>>,
 }
 
 impl HostMethodRouter {
@@ -1401,6 +1403,7 @@ impl HostMethodRouter {
             runtime_event_sender: Arc::new(Mutex::new(None)),
             runtime_session_failure_sender: Arc::new(Mutex::new(None)),
             local_tool_runtime_ids: Arc::new(Mutex::new(HashSet::new())),
+            runtime_created_trays: Arc::new(Mutex::new(false)),
         }
     }
 
@@ -1452,10 +1455,11 @@ impl HostMethodRouter {
         clear_screen_runtime_event_state().map_err(|error| format!("{error:?}"))?;
         clear_window_runtime_event_state().map_err(|error| format!("{error:?}"))?;
         clear_webview_runtime_event_state().map_err(|error| format!("{error:?}"))?;
-        clear_tray_runtime_event_state().map_err(|error| format!("{error:?}"))?;
-        self.window
-            .clear_runtime_trays()
-            .map_err(|error| format!("{error:?}"))?;
+        if self.take_runtime_created_trays()? {
+            self.window
+                .clear_runtime_trays()
+                .map_err(|error| format!("{error:?}"))?;
+        }
         notification::clear_runtime_notifications().map_err(|error| format!("{error:?}"))?;
         realtime_media_session::close_all_sessions("host.runtime.disconnect")
             .map_err(|error| format!("{error:?}"))?;
@@ -1529,6 +1533,27 @@ impl HostMethodRouter {
         };
         runtime_ids.insert(runtime_id);
         None
+    }
+
+    fn track_runtime_created_tray(&self) -> Option<HostProtocolError> {
+        let Ok(mut runtime_created_trays) = self.runtime_created_trays.lock() else {
+            return Some(HostProtocolError::internal(
+                "runtime tray owner lock poisoned",
+                host_protocol::TRAY_CREATE_METHOD,
+            ));
+        };
+        *runtime_created_trays = true;
+        None
+    }
+
+    fn take_runtime_created_trays(&self) -> Result<bool, String> {
+        let mut runtime_created_trays = self
+            .runtime_created_trays
+            .lock()
+            .map_err(|_| "runtime tray owner lock poisoned".to_string())?;
+        let created_trays = *runtime_created_trays;
+        *runtime_created_trays = false;
+        Ok(created_trays)
     }
 
     fn forget_local_tool_runtime(&self, runtime_id: &str) -> Option<HostProtocolError> {

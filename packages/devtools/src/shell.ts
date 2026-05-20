@@ -1,6 +1,4 @@
 import { randomBytes } from "node:crypto"
-import { mkdir, rm, chmod, writeFile } from "node:fs/promises"
-import { dirname, join } from "node:path"
 
 import { makeInspectorSafetyPolicy } from "@effect-desktop/core"
 import { Context, Data, Effect, Layer, Option, Schema } from "effect"
@@ -127,7 +125,7 @@ export const makeDevtoolsShell = (
           yield* assertDevtoolsCapturePolicy(input)
 
           const token = mintToken()
-          const tokenPath = join(input.stateDir, tokenName)
+          const tokenPath = tokenFilePath(input.stateDir, tokenName)
           yield* writeToken(tokenPath, token)
           const listener = yield* transport
             .listen({ host: LoopbackHost, token })
@@ -170,9 +168,7 @@ export const BunLoopbackDevtoolsTransport: DevtoolsLoopbackTransport = Object.fr
         return {
           url: `http://${input.host}:${server.port}`,
           close: Effect.tryPromise({
-            try: async () => {
-              await server.stop(true)
-            },
+            try: () => server.stop(true),
             catch: (cause) =>
               new DevtoolsCleanupError({
                 operation: "Devtools.listen.close",
@@ -238,6 +234,8 @@ const decodeStartInput = (
 
 const mintToken = (): string => randomBytes(TokenBytes).toString("hex")
 
+const tokenFilePath = (stateDir: string, tokenName: string): string => `${stateDir}/${tokenName}`
+
 const rejectUnsafeProductionCapture = (
   input: DevtoolsStartInput
 ): Effect.Effect<void, DevtoolsUnsafeProductionCaptureError, never> =>
@@ -275,11 +273,10 @@ const assertDevtoolsCapturePolicy = (
 
 const writeToken = (path: string, token: string): Effect.Effect<void, DevtoolsTokenError, never> =>
   Effect.tryPromise({
-    try: async () => {
-      await mkdir(dirname(path), { recursive: true })
-      await writeFile(path, token, { mode: TokenFileMode })
-      await chmod(path, TokenFileMode)
-    },
+    try: () =>
+      Bun.write(path, token, { createPath: true, mode: TokenFileMode })
+        .then(() => import("node:fs/promises"))
+        .then((fs) => fs.chmod(path, TokenFileMode)),
     catch: (cause) =>
       new DevtoolsTokenError({
         operation: "Devtools.token.write",
@@ -290,7 +287,7 @@ const writeToken = (path: string, token: string): Effect.Effect<void, DevtoolsTo
 
 const removeToken = (path: string): Effect.Effect<void, DevtoolsTokenError, never> =>
   Effect.tryPromise({
-    try: () => rm(path, { force: true }),
+    try: () => import("node:fs/promises").then((fs) => fs.rm(path, { force: true })),
     catch: (cause) =>
       new DevtoolsTokenError({
         operation: "Devtools.token.remove",
