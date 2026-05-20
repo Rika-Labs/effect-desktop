@@ -65,6 +65,7 @@ fn encode_payload<T: Serialize>(
     })
 }
 
+#[cfg(any(test, target_os = "macos"))]
 fn event_frame<T: Serialize>(
     method: &'static str,
     payload: T,
@@ -83,6 +84,7 @@ fn event_frame<T: Serialize>(
     })
 }
 
+#[cfg(any(test, target_os = "macos"))]
 fn send_event<T: Serialize>(
     sender: &Sender<HostProtocolEnvelope>,
     method: &'static str,
@@ -103,6 +105,7 @@ fn send_event<T: Serialize>(
     }
 }
 
+#[cfg(any(test, target_os = "macos"))]
 fn timestamp_millis(operation: &'static str) -> Result<u64, HostProtocolError> {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

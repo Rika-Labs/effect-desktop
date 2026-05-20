@@ -2466,6 +2466,7 @@ console.log("this is not framed");
         std::env::temp_dir().join(format!("effect-desktop-runtime-{nanos}-{name}"))
     }
 
+    #[cfg(unix)]
     fn write_host_frame<W: std::io::Write>(
         writer: &mut FrameWriter<W>,
         envelope: &HostProtocolEnvelope,
@@ -2528,6 +2529,7 @@ console.log("this is not framed");
         started.elapsed()
     }
 
+    #[cfg(unix)]
     fn is_response_id(frame: &HostProtocolEnvelope, expected: &str) -> bool {
         matches!(
             frame,
@@ -2535,6 +2537,7 @@ console.log("this is not framed");
         )
     }
 
+    #[cfg(unix)]
     fn is_local_tool_runtime_event(frame: &HostProtocolEnvelope, expected_phase: &str) -> bool {
         matches!(
             frame,
@@ -2548,6 +2551,7 @@ console.log("this is not framed");
         )
     }
 
+    #[cfg(unix)]
     fn local_tool_runtime_request(
         id: &str,
         method: &str,
@@ -2564,6 +2568,7 @@ console.log("this is not framed");
         }
     }
 
+    #[cfg(unix)]
     fn local_tool_runtime_register_payload(
         root: &Path,
         runtime_id: &str,

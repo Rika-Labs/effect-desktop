@@ -683,10 +683,15 @@ impl WebViewNavigationStatePayload {
 
 #[derive(Clone, Debug)]
 pub(crate) struct TrayCreateRequest {
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     icon: String,
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     tooltip: Option<String>,
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     title: Option<String>,
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     menu: Option<serde_json::Value>,
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     event_sender: Option<Sender<HostProtocolEnvelope>>,
 }
 
@@ -2766,31 +2771,44 @@ impl TrayCreateRequest {
         menu: Option<serde_json::Value>,
         event_sender: Option<Sender<HostProtocolEnvelope>>,
     ) -> Self {
+        #[cfg(target_os = "linux")]
+        let _ = (icon, tooltip, title, menu, event_sender);
+
         Self {
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
             icon,
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
             tooltip,
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
             title,
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
             menu,
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
             event_sender,
         }
     }
 
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     fn icon(&self) -> &str {
         &self.icon
     }
 
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     fn tooltip(&self) -> Option<&str> {
         self.tooltip.as_deref()
     }
 
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     fn title(&self) -> Option<&str> {
         self.title.as_deref()
     }
 
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     fn menu(&self) -> Option<&serde_json::Value> {
         self.menu.as_ref()
     }
 
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     fn event_sender(&self) -> Option<Sender<HostProtocolEnvelope>> {
         self.event_sender.clone()
     }
@@ -3849,7 +3867,7 @@ impl WindowRegistry {
         #[cfg(target_os = "linux")]
         {
             let _ = request;
-            return Err(unsupported_tray(host_protocol::TRAY_CREATE_METHOD));
+            Err(unsupported_tray(host_protocol::TRAY_CREATE_METHOD))
         }
 
         #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -3920,7 +3938,7 @@ impl WindowRegistry {
         #[cfg(target_os = "linux")]
         {
             let _ = (tray, icon);
-            return Err(unsupported_tray(operation));
+            Err(unsupported_tray(operation))
         }
 
         #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -3945,7 +3963,7 @@ impl WindowRegistry {
         #[cfg(target_os = "linux")]
         {
             let _ = (tray, tooltip);
-            return Err(unsupported_tray(operation));
+            Err(unsupported_tray(operation))
         }
 
         #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -3969,16 +3987,16 @@ impl WindowRegistry {
         #[cfg(target_os = "linux")]
         {
             let _ = (tray, title);
-            return Err(unsupported_tray(operation));
+            Err(unsupported_tray(operation))
         }
 
         #[cfg(target_os = "windows")]
         {
             let _ = (tray, title);
-            return Err(HostProtocolError::unsupported(
+            Err(HostProtocolError::unsupported(
                 "tray title is unsupported on Windows",
                 operation,
-            ));
+            ))
         }
 
         #[cfg(target_os = "macos")]
@@ -4002,7 +4020,7 @@ impl WindowRegistry {
         #[cfg(target_os = "linux")]
         {
             let _ = (tray, menu);
-            return Err(unsupported_tray(operation));
+            Err(unsupported_tray(operation))
         }
 
         #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -4026,7 +4044,7 @@ impl WindowRegistry {
         #[cfg(target_os = "linux")]
         {
             let _ = tray;
-            return Err(unsupported_tray(operation));
+            Err(unsupported_tray(operation))
         }
 
         #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -5754,7 +5772,7 @@ fn apply_window_parent(
 
     #[cfg(windows)]
     {
-        return windows::apply_window_parent(builder, parent);
+        windows::apply_window_parent(builder, parent)
     }
 
     #[cfg(not(any(target_os = "macos", windows)))]

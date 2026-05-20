@@ -301,10 +301,10 @@ fn show_path_in_folder(
 
     #[cfg(target_os = "windows")]
     {
-        return runner(
+        runner(
             shell_command("explorer.exe", [format!("/select,{path}")]),
             host_protocol::SHELL_SHOW_ITEM_IN_FOLDER_METHOD,
-        );
+        )
     }
 
     #[cfg(target_os = "linux")]
@@ -348,10 +348,10 @@ fn trash_filesystem_path(
     {
         let _ = path;
         let _ = runner;
-        return Err(unsupported_with_reason(
+        Err(unsupported_with_reason(
             "windows-trash-unavailable",
             host_protocol::SHELL_TRASH_ITEM_METHOD,
-        ));
+        ))
     }
 
     #[cfg(target_os = "linux")]
@@ -371,7 +371,7 @@ fn shell_open_command(target: &str) -> ShellCommand {
 
     #[cfg(target_os = "windows")]
     {
-        return shell_command("rundll32.exe", ["url.dll,FileProtocolHandler", target]);
+        shell_command("rundll32.exe", ["url.dll,FileProtocolHandler", target])
     }
 
     #[cfg(target_os = "linux")]

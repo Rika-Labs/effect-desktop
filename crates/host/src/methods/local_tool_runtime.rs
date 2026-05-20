@@ -2000,12 +2000,12 @@ fn inheritable_pipe() -> io::Result<(WindowsHandle, WindowsHandle)> {
 
     let mut read = null_mut();
     let mut write = null_mut();
-    let mut security = SECURITY_ATTRIBUTES {
+    let security = SECURITY_ATTRIBUTES {
         nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
         lpSecurityDescriptor: null_mut(),
         bInheritHandle: 1,
     };
-    let created = unsafe { CreatePipe(&mut read, &mut write, &mut security, 0) };
+    let created = unsafe { CreatePipe(&mut read, &mut write, &security, 0) };
     if created == 0 {
         Err(io::Error::last_os_error())
     } else {

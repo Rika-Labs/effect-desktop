@@ -182,6 +182,7 @@ fn encode_payload<T: Serialize>(
     })
 }
 
+#[cfg(any(test, target_os = "macos", target_os = "windows"))]
 fn event_frame(
     snapshot: SystemAppearanceSnapshot,
 ) -> Result<HostProtocolEnvelope, HostProtocolError> {
@@ -207,6 +208,7 @@ fn event_frame(
     })
 }
 
+#[cfg(any(test, target_os = "macos", target_os = "windows"))]
 fn send_snapshot_event(sender: &Sender<HostProtocolEnvelope>, snapshot: SystemAppearanceSnapshot) {
     match event_frame(snapshot) {
         Ok(frame) => {
@@ -220,6 +222,7 @@ fn send_snapshot_event(sender: &Sender<HostProtocolEnvelope>, snapshot: SystemAp
     }
 }
 
+#[cfg(any(test, target_os = "macos", target_os = "windows"))]
 fn timestamp_millis(operation: &'static str) -> Result<u64, HostProtocolError> {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -232,7 +235,7 @@ fn timestamp_millis(operation: &'static str) -> Result<u64, HostProtocolError> {
         })
 }
 
-#[cfg(any(test, not(target_os = "macos")))]
+#[cfg(any(test, not(any(target_os = "macos", target_os = "windows"))))]
 fn unsupported(operation: &'static str) -> HostProtocolError {
     HostProtocolError::unsupported(
         host_protocol::SYSTEM_APPEARANCE_UNSUPPORTED_REASON,
