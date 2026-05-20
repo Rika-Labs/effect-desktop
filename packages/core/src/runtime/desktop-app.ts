@@ -357,13 +357,16 @@ export const WorkflowEngineDurable: DesktopWorkflowEngineLayer<SqlClient, SqlErr
     Layer.provide(ShardingConfig.layer())
   )
 
-const coreServicesLayer: Layer.Layer<never, Config.ConfigError, never> = Layer.mergeAll(
+// A malformed runtime configuration cannot be recovered from at startup, so the
+// `Config.ConfigError` channel on the core services is converted to a defect
+// rather than leaked into the public runtime error type.
+const coreServicesLayer = Layer.mergeAll(
   ResourceRegistryLive,
   Layer.provideMerge(EffectTelemetryRuntimeLive, TelemetryLive),
   Reactivity.layer,
   DesktopLoggerLayer,
   WorkflowEngineMemory
-)
+).pipe(Layer.orDie)
 
 const CoreServiceGraphNodes = Object.freeze([
   graphNode("core:resources", "core-service", "ResourceRegistry", ["ResourceRegistry"], []),
@@ -818,13 +821,23 @@ export const layer = <RIn = never, E = never>(
   Exclude<RIn, DesktopRuntimeProviderServices | ResourceOwner>
 > => runtime(descriptor)
 
+// `buildSpine` genuinely provides a superset of `DesktopRuntimeServices` and
+// requires a subset of `Exclude<RIn, DesktopRuntimeProviderServices | ResourceOwner>`
+// (it also satisfies the core services it composes internally). TypeScript cannot
+// reduce the nested `Exclude<Exclude<RIn, …>, …>` conditional against a generic
+// `RIn`, so the public contract is asserted here once.
 export const runtime = <RIn = never, E = never>(
   config: DesktopConfig<RIn, E>
 ): Layer.Layer<
   DesktopRuntimeServices,
   DesktopConfigError | E,
   Exclude<RIn, DesktopRuntimeProviderServices | ResourceOwner>
-> => buildSpine(config)
+> =>
+  buildSpine(config) as Layer.Layer<
+    DesktopRuntimeServices,
+    DesktopConfigError | E,
+    Exclude<RIn, DesktopRuntimeProviderServices | ResourceOwner>
+  >
 
 export const DesktopRuntimeLive = runtime
 
@@ -1092,13 +1105,7 @@ const decodeRpcCapability = (
   )
 }
 
-const buildSpine = <RIn, E>(
-  config: DesktopConfig<RIn, E>
-): Layer.Layer<
-  DesktopRuntimeServices,
-  E | DesktopConfigError,
-  Exclude<RIn, DesktopRuntimeProviderServices | ResourceOwner>
-> =>
+const buildSpine = <RIn, E>(config: DesktopConfig<RIn, E>) =>
   Layer.unwrap(
     Effect.gen(function* () {
       const providers = yield* buildProviders(config)
@@ -1130,17 +1137,13 @@ const buildSpine = <RIn, E>(
 
       const workflowLayer = mergeLayerArray(workflowLayers)
       const rpcLayer = mergeLayerArray(rpcLayers)
-      const runtimeProviderLayer = yield* providers.runtime.layer
+      const runtimeProviderLayer = (yield* providers.runtime.layer).pipe(Layer.orDie)
       const runtimeBase = Layer.mergeAll(
         runtimeProviderLayer,
         coreServicesLayer,
         makePermissionServicesLayer(config, permissions),
         makeAppResourceOwnerLayer(config.id)
-      ) as Layer.Layer<
-        DesktopRuntimeProviderServices | ResourceOwner,
-        Config.ConfigError | DesktopConfigError,
-        never
-      >
+      )
 
       const desktopAppLayer: Layer.Layer<DesktopApp, never, never> = Layer.effect(DesktopApp)(
         Effect.succeed({
@@ -1166,17 +1169,9 @@ const buildSpine = <RIn, E>(
 
       const dependentLayer = Layer.mergeAll(workflowLayer, rpcLayer).pipe(
         Layer.provideMerge(desktopContextLayer)
-      ) as Layer.Layer<
-        DesktopApp | DesktopRuntime,
-        E,
-        RIn | DesktopRuntimeProviderServices | ResourceOwner
-      >
+      )
 
-      return Layer.provideMerge(dependentLayer, runtimeBase) as Layer.Layer<
-        DesktopRuntimeServices,
-        E | DesktopConfigError,
-        Exclude<RIn, DesktopRuntimeProviderServices | ResourceOwner>
-      >
+      return Layer.provideMerge(dependentLayer, runtimeBase)
     })
   )
 
