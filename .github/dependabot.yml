@@ -2,6 +2,8 @@ version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
+    exclude-paths:
+      - repos/**
     schedule:
       interval: weekly
     commit-message:
@@ -9,6 +11,8 @@ updates:
 
   - package-ecosystem: npm
     directory: /
+    exclude-paths:
+      - repos/**
     schedule:
       interval: weekly
     commit-message:
@@ -28,6 +32,8 @@ updates:
 
   - package-ecosystem: cargo
     directory: /
+    exclude-paths:
+      - repos/**
     schedule:
       interval: weekly
     commit-message:
