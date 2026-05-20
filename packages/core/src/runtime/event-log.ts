@@ -106,7 +106,7 @@ export const makeDesktopEventLog = (
 
     const sanitize = (
       event: DesktopEventLogEvent
-    ): Effect.Effect<DesktopEventLogEvent | undefined> =>
+    ): Effect.Effect<Option.Option<DesktopEventLogEvent>> =>
       inspectorSafety
         .sanitize({
           source: "desktop.event-log",
@@ -115,8 +115,9 @@ export const makeDesktopEventLog = (
         .pipe(
           Effect.flatMap((decision) =>
             Option.isNone(decision.value)
-              ? Effect.succeed(undefined)
+              ? Effect.succeed(Option.none<DesktopEventLogEvent>())
               : Schema.decodeUnknownEffect(DesktopEventLogEvent)(decision.value.value).pipe(
+                  Effect.map(Option.some),
                   Effect.orDie
                 )
           )
@@ -147,15 +148,15 @@ export const makeDesktopEventLog = (
     ): Effect.Effect<void, EventJournal.EventJournalError, never> =>
       Effect.gen(function* () {
         const sanitized = yield* sanitize(event)
-        if (sanitized === undefined) {
+        if (Option.isNone(sanitized)) {
           return
         }
         yield* log.write({
           schema: DesktopEventSchema,
           event: desktopEventLogTag,
-          payload: sanitized
+          payload: sanitized.value
         })
-        yield* publishInspector(sanitized)
+        yield* publishInspector(sanitized.value)
       }).pipe(
         Effect.tapError((error: EventJournal.EventJournalError) =>
           publishInspector(

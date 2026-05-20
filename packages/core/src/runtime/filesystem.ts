@@ -706,18 +706,18 @@ const denyEscapingHardLink = (
     }
 
     const stats = yield* fileSystem.stat(canonicalPath).pipe(
-      Effect.catch((error) => {
-        if (isNotFoundPlatformError(error)) {
-          return Effect.succeed(undefined)
-        }
-        return Effect.fail(mapFilesystemError(error, canonicalPath, operation))
-      })
+      Effect.map(Option.some),
+      Effect.catch((error) =>
+        isNotFoundPlatformError(error)
+          ? Effect.succeed(Option.none<EffectFileSystem.File.Info>())
+          : Effect.fail(mapFilesystemError(error, canonicalPath, operation))
+      )
     )
 
     if (
-      stats !== undefined &&
-      stats.type === "File" &&
-      Option.getOrElse(stats.nlink, () => 1) > 1
+      Option.isSome(stats) &&
+      stats.value.type === "File" &&
+      Option.getOrElse(stats.value.nlink, () => 1) > 1
     ) {
       return yield* Effect.fail(
         makeSymlinkEscapesRootError(requestedPath, canonicalPath, capabilityRoots, operation)
