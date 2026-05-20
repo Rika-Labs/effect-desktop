@@ -505,6 +505,20 @@ impl FileDialogOptions for DialogOpenFilePayload {
     }
 }
 
+impl FileDialogOptions for DialogOpenDirectoryPayload {
+    fn title(&self) -> Option<&str> {
+        self.title()
+    }
+
+    fn default_path(&self) -> Option<&str> {
+        self.default_path()
+    }
+
+    fn filters(&self) -> &[DialogFileFilterPayload] {
+        &[]
+    }
+}
+
 impl FileDialogOptions for DialogSaveFilePayload {
     fn title(&self) -> Option<&str> {
         self.title()

@@ -9,12 +9,11 @@ use host_protocol::{
     AppBeforeQuitEventPayload, DockProgressState, DockSetProgressPayload, HostProtocolEnvelope,
     HostProtocolError, ScreenBoundsPayload, ScreenDisplayPayload,
     ScreenDisplaysChangedEventPayload, ScreenDisplaysResultPayload, ScreenMethodPayload,
-    ScreenPointPayload, ScreenSupportedPayload, TrayActivatedEventPayload, TrayResourcePayload,
-    WindowAttentionType, WindowBoundsEventPayload, WindowBoundsPayload, WindowCreatePayload,
-    WindowCreateResponse, WindowListResponse, WindowLookupResponse, WindowParentResponse,
-    WindowProgressState, WindowRegistryEventPayload, WindowRegistryEventPhase,
-    WindowSetProgressPayload, WindowStateEventPayload, WindowStatePayload, WindowTitleBarStyle,
-    WindowTrafficLights,
+    ScreenPointPayload, ScreenSupportedPayload, TrayResourcePayload, WindowAttentionType,
+    WindowBoundsEventPayload, WindowBoundsPayload, WindowCreatePayload, WindowCreateResponse,
+    WindowListResponse, WindowLookupResponse, WindowParentResponse, WindowProgressState,
+    WindowRegistryEventPayload, WindowRegistryEventPhase, WindowSetProgressPayload,
+    WindowStateEventPayload, WindowStatePayload, WindowTitleBarStyle, WindowTrafficLights,
 };
 use std::{
     cell::RefCell,
@@ -6607,7 +6606,7 @@ fn forward_tray_icon_event(event: tray_icon::TrayIconEvent) {
         Some(sender) => sender,
         None => return,
     };
-    let payload = match serde_json::to_value(TrayActivatedEventPayload::new(tray)) {
+    let payload = match serde_json::to_value(host_protocol::TrayActivatedEventPayload::new(tray)) {
         Ok(payload) => payload,
         Err(error) => {
             warn!(

@@ -347,6 +347,7 @@ fn trash_filesystem_path(
     #[cfg(target_os = "windows")]
     {
         let _ = path;
+        let _ = runner;
         return Err(unsupported_with_reason(
             "windows-trash-unavailable",
             host_protocol::SHELL_TRASH_ITEM_METHOD,
@@ -492,11 +493,12 @@ fn current_platform() -> HostProtocolPlatform {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    use super::execute_shell_command;
     use super::{
-        execute_shell_command, host_unavailable_command_error, is_executable_path, open_external,
-        open_external_with, open_path, shell_command, show_item_in_folder_with, trash_item,
-        trash_item_with, unsupported_command_error, validate_external_url, validate_path,
-        ShellCommand,
+        host_unavailable_command_error, is_executable_path, open_external, open_external_with,
+        open_path, shell_command, show_item_in_folder_with, trash_item, trash_item_with,
+        unsupported_command_error, validate_external_url, validate_path, ShellCommand,
     };
     use host_protocol::{HostProtocolError, ShellOpenExternalPayload};
     use serde_json::json;

@@ -2,6 +2,7 @@
 // Host method adapters return the canonical HostProtocolError enum from the
 // wire contract. Boxing that error here would obscure the protocol surface.
 
+#[cfg(not(windows))]
 use crate::runtime::platform;
 use host_protocol::{
     HostProtocolEnvelope, HostProtocolError, LocalToolRuntimeActorPayload,
@@ -2785,15 +2786,20 @@ fn is_shell_metacharacter(value: char) -> bool {
 mod tests {
     use super::{
         clear_runtime_resources_for_runtime_ids, health, is_supported, register,
-        register_with_event, run, run_with_event_sink, stop, RuntimeEventSink,
-        OWNED_WORKING_DIRECTORY_BASE, OWNED_WORKING_DIRECTORY_MARKER, UNBOUNDED_OS_BUDGET,
+        register_with_event, run, stop, OWNED_WORKING_DIRECTORY_BASE,
+        OWNED_WORKING_DIRECTORY_MARKER, UNBOUNDED_OS_BUDGET,
     };
-    use host_protocol::{HostProtocolEnvelope, HostProtocolError};
+    #[cfg(unix)]
+    use super::{run_with_event_sink, RuntimeEventSink};
+    #[cfg(unix)]
+    use host_protocol::HostProtocolEnvelope;
+    use host_protocol::HostProtocolError;
     use serde_json::json;
+    #[cfg(unix)]
+    use std::sync::mpsc;
     use std::{
         env, fs,
         path::{Path, PathBuf},
-        sync::mpsc,
     };
     use uuid::Uuid;
 

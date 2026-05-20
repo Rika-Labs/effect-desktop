@@ -946,10 +946,8 @@ fn unlock_single_instance_file(file: &File) {
 #[cfg(windows)]
 fn windows_single_instance_lock_overlapped() -> OVERLAPPED {
     let mut overlapped = OVERLAPPED::default();
-    unsafe {
-        overlapped.Anonymous.Anonymous.Offset = 0;
-        overlapped.Anonymous.Anonymous.OffsetHigh = WINDOWS_SINGLE_INSTANCE_LOCK_OFFSET_HIGH;
-    }
+    overlapped.Anonymous.Anonymous.Offset = 0;
+    overlapped.Anonymous.Anonymous.OffsetHigh = WINDOWS_SINGLE_INSTANCE_LOCK_OFFSET_HIGH;
     overlapped
 }
 

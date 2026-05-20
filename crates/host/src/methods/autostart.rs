@@ -8,8 +8,10 @@ use host_protocol::{
 };
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{to_value, Value};
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use std::fs;
 use std::{
-    env, fs,
+    env,
     path::{Path, PathBuf},
     sync::mpsc::Sender,
 };

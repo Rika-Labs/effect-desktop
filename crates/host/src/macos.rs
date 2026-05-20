@@ -651,7 +651,6 @@ mod platform {
 #[cfg(not(target_os = "macos"))]
 mod platform {
     use super::{HostProtocolError, MacosScreenWorkArea, MacosWindowPolish};
-    use host_protocol;
     use tao::{monitor::MonitorHandle, window::Window, window::WindowBuilder};
 
     pub(super) fn apply_window_builder_polish(
