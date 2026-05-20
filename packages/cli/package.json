@@ -37,7 +37,7 @@
     "@effect-desktop/config": "workspace:*",
     "@effect-desktop/core": "workspace:*",
     "@effect/platform-bun": "4.0.0-beta.60",
-    "effect": "4.0.0-beta.60",
+    "effect": "4.0.0-beta.69",
     "typescript": "6.0.3"
   }
 }

@@ -49,7 +49,7 @@
     "@effect/platform-browser": "4.0.0-beta.60",
     "@effect/sql-sqlite-wasm": "4.0.0-beta.66",
     "@effect/wa-sqlite": "^0.1.2",
-    "effect": "4.0.0-beta.60"
+    "effect": "4.0.0-beta.69"
   },
   "devDependencies": {
     "@effect/platform-bun": "4.0.0-beta.60"

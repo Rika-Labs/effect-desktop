@@ -33,7 +33,7 @@
     "@effect-desktop/bridge": "workspace:*",
     "@effect-desktop/core": "workspace:*",
     "@effect/atom-solid": "4.0.0-beta.60",
-    "effect": "4.0.0-beta.60"
+    "effect": "4.0.0-beta.69"
   },
   "peerDependencies": {
     "solid-js": "^1.9.0"
