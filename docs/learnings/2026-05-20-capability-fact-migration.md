@@ -62,8 +62,8 @@ row, **zero are callable**. The unsupported-path gate is closed.
 3. **Demotion cascades into platform dead code.** Removing 10 WebView + 1 Dock
    handlers orphaned 10 `WindowMethodHandler` trait methods, 10 `WindowCommand`
    variants and their match arms, 2 `WindowCommandResponse` variants, 5 request
-   structs, and the `macos.rs` set_dock_menu chain. `cargo check` only _warns_
-   on dead code; `cargo clippy -D warnings` (a release gate) _fails_ — so the
+   structs, and the macOS dock-menu chain. `cargo check` reports dead code as
+   warnings; `cargo clippy -D warnings` (a release gate) fails — so the
    dead window infrastructure had to be pruned, not left.
 
 4. **Parallelise on surface files, serialise on shared files.** ~18 surface
