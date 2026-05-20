@@ -175,25 +175,19 @@ export {
   makeNativeNetworkServiceLayer,
   makeNativeNetworkUnsupportedClient,
   NativeNetwork,
+  NativeNetworkCapabilityFacts,
   NativeNetworkClient,
-  NativeNetworkCloseWebSocket,
-  NativeNetworkConnectWebSocket,
-  NativeNetworkFetch,
   NativeNetworkHandlersLive,
   NativeNetworkLive,
-  NativeNetworkLocalhostUrl,
   NativeNetworkMethodNames,
   NativeNetworkRpcEvents,
   NativeNetworkRpcs,
   NativeNetworkSurface,
-  NativeNetworkUpload,
   type NativeNetworkClientApi,
   type NativeNetworkError,
-  type NativeNetworkMemoryClientOptions,
   type NativeNetworkRpc,
   type NativeNetworkRpcHandlers,
-  type NativeNetworkServiceApi,
-  type NativeNetworkServiceOptions
+  type NativeNetworkServiceApi
 } from "./native-network.js"
 export {
   classifyNativeBoundaryError,
@@ -641,6 +635,7 @@ export {
 } from "./scoped-access-grant.js"
 export {
   SelectionContext,
+  SelectionContextCapabilityFacts,
   SelectionContextClient,
   SelectionContextHandlersLive,
   SelectionContextLive,
@@ -656,11 +651,9 @@ export {
   makeSelectionContextUnsupportedClient,
   type SelectionContextClientApi,
   type SelectionContextError,
-  type SelectionContextMemoryClientOptions,
   type SelectionContextRpc,
   type SelectionContextRpcHandlers,
-  type SelectionContextServiceApi,
-  type SelectionContextServiceOptions
+  type SelectionContextServiceApi
 } from "./selection-context.js"
 export {
   FocusedApplicationContext,
@@ -1089,6 +1082,7 @@ export {
   makeSessionPermissionServiceLayer,
   makeSessionPermissionUnsupportedClient,
   SessionPermission,
+  SessionPermissionCapabilityFacts,
   SessionPermissionClient,
   SessionPermissionHandlersLive,
   SessionPermissionLive,
@@ -1098,11 +1092,9 @@ export {
   SessionPermissionSurface,
   type SessionPermissionClientApi,
   type SessionPermissionError,
-  type SessionPermissionMemoryClientOptions,
   type SessionPermissionRpc,
   type SessionPermissionRpcHandlers,
-  type SessionPermissionServiceApi,
-  type SessionPermissionServiceOptions
+  type SessionPermissionServiceApi
 } from "./session-permission.js"
 export {
   makeHostSessionProfileRpcRuntime,
@@ -1112,6 +1104,7 @@ export {
   makeSessionProfileServiceLayer,
   makeSessionProfileUnsupportedClient,
   SessionProfile,
+  SessionProfileCapabilityFacts,
   SessionProfileClient,
   SessionProfileHandlersLive,
   SessionProfileLive,
@@ -1121,11 +1114,9 @@ export {
   SessionProfileSurface,
   type SessionProfileClientApi,
   type SessionProfileError,
-  type SessionProfileMemoryClientOptions,
   type SessionProfileRpc,
   type SessionProfileRpcHandlers,
-  type SessionProfileServiceApi,
-  type SessionProfileServiceOptions
+  type SessionProfileServiceApi
 } from "./session-profile.js"
 export {
   WebView,

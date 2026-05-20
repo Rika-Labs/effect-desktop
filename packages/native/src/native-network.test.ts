@@ -1,179 +1,100 @@
 import { expect, test } from "bun:test"
-import { makeHostProtocolInternalError } from "@effect-desktop/bridge"
-import { makePermissionRegistry, makeResourceRegistry, P } from "@effect-desktop/core"
-import { Cause, Effect, Exit, type Layer, ManagedRuntime, Stream } from "effect"
+import { Effect, type Layer, ManagedRuntime } from "effect"
 
+import { makeNativeCapabilityManifest } from "./capabilities.js"
 import {
-  NativeNetwork,
   makeNativeNetworkMemoryClient,
   makeNativeNetworkServiceLayer,
   makeNativeNetworkUnsupportedClient,
-  type NativeNetworkClientApi
+  NativeNetwork,
+  NativeNetworkCapabilityFacts,
+  NativeNetworkRpcs,
+  NativeNetworkSurface
 } from "./native-network.js"
 
-test("NativeNetwork fetches, uploads, opens localhost URLs, streams events, and disposes websockets once", () =>
+const UnsupportedMethods = [
+  "fetch",
+  "upload",
+  "connectWebSocket",
+  "closeWebSocket",
+  "localhostUrl"
+] as const
+
+test("NativeNetwork exposes only isSupported as a callable RPC", () => {
+  const callableTags = Array.from(NativeNetworkRpcs.requests.keys()).toSorted()
+  expect(callableTags).toEqual(["NativeNetwork.isSupported"])
+  for (const method of UnsupportedMethods) {
+    expect(callableTags).not.toContain(`NativeNetwork.${method}`)
+  }
+})
+
+test("NativeNetwork isSupported reports supported result through the service", () =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const permissions = yield* configuredPermissions()
-      const resources = yield* makeResourceRegistry()
-      const baseClient = yield* makeNativeNetworkMemoryClient()
-      let closes = 0
-      const client: NativeNetworkClientApi = {
-        ...baseClient,
-        closeWebSocket: (input) =>
-          Effect.sync(() => {
-            closes += 1
-          }).pipe(Effect.andThen(baseClient.closeWebSocket(input)))
-      }
-
+      const client = yield* makeNativeNetworkMemoryClient()
       const result = yield* runScoped(
         Effect.gen(function* () {
           const network = yield* NativeNetwork
-          const fetched = yield* network.fetch("https://example.test/data.json")
-          const uploaded = yield* network.upload("https://example.test/upload", "payload")
-          const socket = yield* network.connectWebSocket("wss://example.test/socket", {
-            ownerScope: "workspace:a",
-            protocols: ["events"]
-          })
-          const localhost = yield* network.localhostUrl(3010, { path: "/health" })
-          const events = yield* network.events().pipe(Stream.take(6), Stream.runCollect)
-          yield* network.closeWebSocket(socket.socket)
-          yield* resources.closeScope("workspace:a")
-          return { events: Array.from(events), fetched, localhost, socket, uploaded }
+          return yield* network.isSupported()
         }),
-        makeNativeNetworkServiceLayer(client, { permissions, resources })
+        makeNativeNetworkServiceLayer(client)
       )
+      expect(result.supported).toBe(true)
+    })
+  ))
 
-      expect(result.fetched.status).toBe(200)
-      expect(result.uploaded.sentBytes).toBe(7)
-      expect(result.socket.state).toBe("open")
-      expect(result.localhost.url).toBe("http://127.0.0.1:3010/health")
-      expect(result.events.map((event) => event.phase)).toEqual([
-        "fetch-started",
-        "fetch-completed",
-        "upload-started",
-        "upload-progress",
-        "upload-completed",
-        "websocket-opened"
+test("NativeNetwork unsupported client reports the host-unavailable reason", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const client = makeNativeNetworkUnsupportedClient()
+      const result = yield* runScoped(
+        Effect.gen(function* () {
+          const network = yield* NativeNetwork
+          return yield* network.isSupported()
+        }),
+        makeNativeNetworkServiceLayer(client)
+      )
+      expect(result.supported).toBe(false)
+      expect(result.reason).toBe("host-native-network-unavailable")
+    })
+  ))
+
+test("NativeNetwork declares the 5 unsupported methods as non-callable capability facts", () => {
+  const factTags = NativeNetworkCapabilityFacts.map((fact) => fact.tag).toSorted()
+  expect(factTags).toEqual(UnsupportedMethods.map((method) => `NativeNetwork.${method}`).toSorted())
+  for (const fact of NativeNetworkCapabilityFacts) {
+    expect(fact.support.status).toBe("unsupported")
+  }
+})
+
+test("NativeNetwork capability facts surface in the manifest and stay non-callable", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const manifest = yield* makeNativeCapabilityManifest([
+        { schemaDocs: NativeNetworkSurface.schemaDocs }
       ])
-      expect(closes).toBe(1)
-    })
-  ))
+      const byTag = new Map(manifest.map((fact) => [fact.tag, fact] as const))
 
-test("NativeNetwork denies before host side effects", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const permissions = yield* makePermissionRegistry()
-      const resources = yield* makeResourceRegistry()
-      const baseClient = yield* makeNativeNetworkMemoryClient()
-      let calls = 0
-      const client: NativeNetworkClientApi = {
-        ...baseClient,
-        fetch: (input) =>
-          Effect.sync(() => {
-            calls += 1
-          }).pipe(Effect.andThen(baseClient.fetch(input)))
+      for (const method of UnsupportedMethods) {
+        const fact = byTag.get(`NativeNetwork.${method}`)
+        expect(fact).toBeDefined()
+        expect(fact?.support.status).toBe("unsupported")
       }
 
-      const exit = yield* runScoped(
-        Effect.gen(function* () {
-          const network = yield* NativeNetwork
-          return yield* Effect.exit(network.fetch("https://example.test/data.json"))
-        }),
-        makeNativeNetworkServiceLayer(client, { permissions, resources })
-      )
+      const callableFactTags = NativeNetworkSurface.schemaDocs
+        .filter((doc) => doc.callable)
+        .map((doc) => doc.tag)
+      expect(callableFactTags).toEqual(["NativeNetwork.isSupported"])
 
-      expect(calls).toBe(0)
-      expectExitFailure(exit, (error) => {
-        expect(error).toMatchObject({ tag: "PermissionDenied", operation: "NativeNetwork.fetch" })
-      })
+      const nonCallableTags = NativeNetworkSurface.schemaDocs
+        .filter((doc) => !doc.callable)
+        .map((doc) => doc.tag)
+        .toSorted()
+      expect(nonCallableTags).toEqual(
+        UnsupportedMethods.map((method) => `NativeNetwork.${method}`).toSorted()
+      )
     })
   ))
-
-test("NativeNetwork surfaces unsupported and host failures as typed failures", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const permissions = yield* configuredPermissions()
-      const resources = yield* makeResourceRegistry()
-      const unsupported = makeNativeNetworkUnsupportedClient()
-      const failing = yield* makeNativeNetworkMemoryClient({
-        failure: {
-          upload: makeHostProtocolInternalError("host failed", "NativeNetwork.upload")
-        }
-      })
-
-      const unsupportedExit = yield* runScoped(
-        Effect.gen(function* () {
-          const network = yield* NativeNetwork
-          return yield* Effect.exit(network.fetch("https://example.test/data.json"))
-        }),
-        makeNativeNetworkServiceLayer(unsupported, { permissions, resources })
-      )
-      const failureExit = yield* runScoped(
-        Effect.gen(function* () {
-          const network = yield* NativeNetwork
-          return yield* Effect.exit(network.upload("https://example.test/upload", "payload"))
-        }),
-        makeNativeNetworkServiceLayer(failing, { permissions, resources })
-      )
-
-      expectExitFailure(unsupportedExit, (error) => {
-        expect(error).toMatchObject({ tag: "Unsupported", operation: "NativeNetwork.fetch" })
-      })
-      expectExitFailure(failureExit, (error) => {
-        expect(error).toMatchObject({ tag: "Internal", operation: "NativeNetwork.upload" })
-      })
-    })
-  ))
-
-test("NativeNetwork rejects malformed inputs before client work", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const permissions = yield* configuredPermissions()
-      const resources = yield* makeResourceRegistry()
-      const baseClient = yield* makeNativeNetworkMemoryClient()
-      let calls = 0
-      const client: NativeNetworkClientApi = {
-        ...baseClient,
-        fetch: (input) =>
-          Effect.sync(() => {
-            calls += 1
-          }).pipe(Effect.andThen(baseClient.fetch(input)))
-      }
-
-      const exit = yield* runScoped(
-        Effect.gen(function* () {
-          const network = yield* NativeNetwork
-          return yield* Effect.exit(
-            network.fetch("https://example.test/data.json", { method: "GET", body: "payload" })
-          )
-        }),
-        makeNativeNetworkServiceLayer(client, { permissions, resources })
-      )
-
-      expect(calls).toBe(0)
-      expectExitFailure(exit, (error) => {
-        expect(error).toMatchObject({ tag: "InvalidArgument", operation: "NativeNetwork.fetch" })
-      })
-    })
-  ))
-
-const configuredPermissions = () =>
-  Effect.gen(function* () {
-    const permissions = yield* makePermissionRegistry()
-    yield* Effect.all([
-      permissions.declare(P.nativeInvoke({ primitive: "NativeNetwork", methods: ["fetch"] })),
-      permissions.declare(P.nativeInvoke({ primitive: "NativeNetwork", methods: ["upload"] })),
-      permissions.declare(
-        P.nativeInvoke({ primitive: "NativeNetwork", methods: ["connectWebSocket"] })
-      ),
-      permissions.declare(
-        P.nativeInvoke({ primitive: "NativeNetwork", methods: ["closeWebSocket"] })
-      ),
-      permissions.declare(P.nativeInvoke({ primitive: "NativeNetwork", methods: ["localhostUrl"] }))
-    ])
-    return permissions
-  })
 
 const runScoped = <A, E, R>(
   effect: Effect.Effect<A, E, R>,
@@ -185,13 +106,3 @@ const runScoped = <A, E, R>(
     yield* Effect.promise(() => runtime.dispose())
     return result
   })
-
-const expectExitFailure = <A>(
-  exit: Exit.Exit<A, unknown>,
-  assert: (error: unknown) => void
-): void => {
-  expect(Exit.isFailure(exit)).toBe(true)
-  if (Exit.isFailure(exit)) {
-    assert(Cause.squash(exit.cause))
-  }
-}

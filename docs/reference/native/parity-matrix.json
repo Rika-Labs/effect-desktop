@@ -2075,7 +2075,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "NativeNetwork.connectWebSocket",
@@ -2103,7 +2103,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "NativeNetwork.fetch",
@@ -2131,7 +2131,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "NativeNetwork.isSupported",
@@ -2169,7 +2169,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "NativeNetwork.upload",
@@ -2197,7 +2197,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "NetworkAuth.handleAuth",
@@ -3001,7 +3001,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "SelectionContext.readSelection",
@@ -3029,7 +3029,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "SelectionContext.stopWatching",
@@ -3057,7 +3057,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "SelectionContext.watchFocus",
@@ -3085,7 +3085,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "SessionPermission.decide",
@@ -3113,7 +3113,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "SessionPermission.isSupported",
@@ -3151,7 +3151,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "SessionPermission.request",
@@ -3179,7 +3179,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "SessionProfile.destroy",
@@ -3207,7 +3207,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "SessionProfile.fromPartition",
@@ -3235,7 +3235,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "SessionProfile.isSupported",
@@ -3273,7 +3273,7 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "capability-fact"
     },
     {
       "tag": "Shell.openExternal",
@@ -5257,7 +5257,7 @@
   ],
   "summary": {
     "total": 291,
-    "routed": 265,
+    "routed": 250,
     "missing": 0,
     "supported": 158,
     "partial": 71,

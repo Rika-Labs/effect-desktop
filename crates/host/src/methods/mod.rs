@@ -789,22 +789,6 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Empty(attachment_intake::is_supported),
     ),
     route(
-        host_protocol::SELECTION_CONTEXT_READ_SELECTION_METHOD,
-        HostMethodDispatcher::Payload(selection_context::read_selection),
-    ),
-    route(
-        host_protocol::SELECTION_CONTEXT_READ_DOCUMENT_METHOD,
-        HostMethodDispatcher::Payload(selection_context::read_document),
-    ),
-    route(
-        host_protocol::SELECTION_CONTEXT_WATCH_FOCUS_METHOD,
-        HostMethodDispatcher::Payload(selection_context::watch_focus),
-    ),
-    route(
-        host_protocol::SELECTION_CONTEXT_STOP_WATCHING_METHOD,
-        HostMethodDispatcher::Payload(selection_context::stop_watching),
-    ),
-    route(
         host_protocol::SELECTION_CONTEXT_IS_SUPPORTED_METHOD,
         HostMethodDispatcher::Empty(selection_context::is_supported),
     ),
@@ -1185,18 +1169,6 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Window(webview::destroy),
     ),
     route(
-        host_protocol::SESSION_PROFILE_FROM_PARTITION_METHOD,
-        HostMethodDispatcher::Payload(session_profile::from_partition),
-    ),
-    route(
-        host_protocol::SESSION_PROFILE_DESTROY_METHOD,
-        HostMethodDispatcher::Payload(session_profile::destroy),
-    ),
-    route(
-        host_protocol::SESSION_PROFILE_LIST_METHOD,
-        HostMethodDispatcher::Payload(session_profile::list),
-    ),
-    route(
         host_protocol::SESSION_PROFILE_IS_SUPPORTED_METHOD,
         HostMethodDispatcher::Payload(session_profile::is_supported),
     ),
@@ -1207,18 +1179,6 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     route(
         host_protocol::BROWSING_DATA_IS_SUPPORTED_METHOD,
         HostMethodDispatcher::Payload(browsing_data::is_supported),
-    ),
-    route(
-        host_protocol::SESSION_PERMISSION_REQUEST_METHOD,
-        HostMethodDispatcher::Payload(session_permission::request),
-    ),
-    route(
-        host_protocol::SESSION_PERMISSION_DECIDE_METHOD,
-        HostMethodDispatcher::Payload(session_permission::decide),
-    ),
-    route(
-        host_protocol::SESSION_PERMISSION_LIST_DECISIONS_METHOD,
-        HostMethodDispatcher::Payload(session_permission::list_decisions),
     ),
     route(
         host_protocol::SESSION_PERMISSION_IS_SUPPORTED_METHOD,
@@ -1247,26 +1207,6 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     route(
         host_protocol::WEB_REQUEST_IS_SUPPORTED_METHOD,
         HostMethodDispatcher::Payload(web_request::is_supported),
-    ),
-    route(
-        host_protocol::NATIVE_NETWORK_FETCH_METHOD,
-        HostMethodDispatcher::Payload(native_network::fetch),
-    ),
-    route(
-        host_protocol::NATIVE_NETWORK_UPLOAD_METHOD,
-        HostMethodDispatcher::Payload(native_network::upload),
-    ),
-    route(
-        host_protocol::NATIVE_NETWORK_CONNECT_WEB_SOCKET_METHOD,
-        HostMethodDispatcher::Payload(native_network::connect_web_socket),
-    ),
-    route(
-        host_protocol::NATIVE_NETWORK_CLOSE_WEB_SOCKET_METHOD,
-        HostMethodDispatcher::Payload(native_network::close_web_socket),
-    ),
-    route(
-        host_protocol::NATIVE_NETWORK_LOCALHOST_URL_METHOD,
-        HostMethodDispatcher::Payload(native_network::localhost_url),
     ),
     route(
         host_protocol::NATIVE_NETWORK_IS_SUPPORTED_METHOD,

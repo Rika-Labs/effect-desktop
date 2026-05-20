@@ -1,345 +1,100 @@
 import { expect, test } from "bun:test"
-import { type BridgeClientExchange, makeHostProtocolInternalError } from "@effect-desktop/bridge"
-import {
-  type AuditEvent,
-  makePermissionRegistry,
-  makeResourceRegistry,
-  P
-} from "@effect-desktop/core"
-import { Cause, Effect, Exit, ManagedRuntime, Option, Stream } from "effect"
+import { type BridgeClientExchange } from "@effect-desktop/bridge"
+import { Effect, type Layer, ManagedRuntime, Stream } from "effect"
 
+import { makeNativeCapabilityManifest } from "./capabilities.js"
 import {
   makeSelectionContextBridgeClientLayer,
   makeSelectionContextMemoryClient,
   makeSelectionContextServiceLayer,
   makeSelectionContextUnsupportedClient,
   SelectionContext,
+  SelectionContextCapabilityFacts,
   SelectionContextClient,
-  type SelectionContextClientApi
+  SelectionContextRpcs,
+  SelectionContextSurface
 } from "./selection-context.js"
-import {
-  SelectionContextActor,
-  SelectionContextReadSelectionRequest,
-  SelectionContextStopWatchingRequest,
-  SelectionContextWatchFocusRequest
-} from "./contracts/selection-context.js"
 
-test("SelectionContext separates metadata from content and audits both access modes", () =>
+const UnsupportedMethods = [
+  "readSelection",
+  "readDocumentContext",
+  "watchFocus",
+  "stopWatching"
+] as const
+
+test("SelectionContext exposes only isSupported as a callable RPC", () => {
+  const callableTags = Array.from(SelectionContextRpcs.requests.keys()).toSorted()
+  expect(callableTags).toEqual(["SelectionContext.isSupported"])
+  for (const method of UnsupportedMethods) {
+    expect(callableTags).not.toContain(`SelectionContext.${method}`)
+  }
+})
+
+test("SelectionContext declares the demoted methods as non-callable capability facts", () =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const rows: AuditEvent[] = []
-      const permissions = yield* configuredPermissions(rows)
-      const client = yield* makeSelectionContextMemoryClient()
-
-      const runtime = ManagedRuntime.make(
-        makeSelectionContextServiceLayer(client, {
-          permissions,
-          audit: memoryAudit(rows),
-          nextTraceId: () => "trace-selection"
-        })
+      const factTags = SelectionContextCapabilityFacts.map((fact) => fact.tag).toSorted()
+      expect(factTags).toEqual(
+        UnsupportedMethods.map((method) => `SelectionContext.${method}`).toSorted()
       )
-      const result = yield* Effect.promise(() =>
-        runtime.runPromise(
-          Effect.gen(function* () {
-            const context = yield* SelectionContext
-            const metadata = yield* context.readSelection(readSelectionRequest("metadata"))
-            const content = yield* context.readSelection(readSelectionRequest("content"))
-            const document = yield* context.readDocumentContext({
-              actor: actor(),
-              access: "metadata"
-            })
-            return { content, document, metadata }
-          })
-        )
-      )
-      yield* Effect.promise(() => runtime.dispose())
-
-      expect(result.metadata.text).toBeUndefined()
-      expect(result.metadata.metadata.characterCount).toBeGreaterThan(0)
-      expect(result.content.text).toBe("selected text")
-      expect(result.document.text).toBeUndefined()
-      expect(rows.filter((row) => row.source === "SelectionContext.readSelection")).toHaveLength(2)
-      expect(rows.some((row) => row.resource === "metadata")).toBe(true)
-      expect(rows.some((row) => row.resource === "content")).toBe(true)
-    })
-  ))
-
-test("SelectionContext denies before host side effects", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const permissions = yield* makePermissionRegistry()
-      const baseClient = yield* makeSelectionContextMemoryClient()
-      let calls = 0
-      const client: SelectionContextClientApi = {
-        ...baseClient,
-        readSelection: (input) =>
-          Effect.sync(() => {
-            calls += 1
-          }).pipe(Effect.andThen(baseClient.readSelection(input)))
+      for (const fact of SelectionContextCapabilityFacts) {
+        expect(fact.support.status).toBe("unsupported")
+        expect(fact.capability.kind).toBe("native.invoke")
       }
 
-      const runtime = ManagedRuntime.make(
-        makeSelectionContextServiceLayer(client, {
-          permissions,
-          nextWatchId: () => "watch-1"
-        })
-      )
-      const exit = yield* Effect.promise(() =>
-        runtime.runPromise(
-          Effect.gen(function* () {
-            const context = yield* SelectionContext
-            return yield* Effect.exit(context.readSelection(readSelectionRequest("metadata")))
-          })
-        )
-      )
-      yield* Effect.promise(() => runtime.dispose())
-
-      expect(calls).toBe(0)
-      expectExitFailure(exit, (error) => {
-        expect(error).toMatchObject({
-          tag: "PermissionDenied",
-          operation: "SelectionContext.readSelection"
-        })
-      })
-    })
-  ))
-
-test("SelectionContext surfaces injected host failure as typed failure and audit failure", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const rows: AuditEvent[] = []
-      const permissions = yield* configuredPermissions(rows)
-      const failure = makeHostProtocolInternalError("host failed", "SelectionContext.readSelection")
-      const client = yield* makeSelectionContextMemoryClient({
-        failure: { readSelection: failure }
-      })
-
-      const runtime = ManagedRuntime.make(
-        makeSelectionContextServiceLayer(client, {
-          permissions,
-          audit: memoryAudit(rows),
-          nextWatchId: () => "watch-1"
-        })
-      )
-      const exit = yield* Effect.promise(() =>
-        runtime.runPromise(
-          Effect.gen(function* () {
-            const context = yield* SelectionContext
-            return yield* Effect.exit(context.readSelection(readSelectionRequest("metadata")))
-          })
-        )
-      )
-      yield* Effect.promise(() => runtime.dispose())
-
-      expectExitFailure(exit, (error) => {
-        expect(error).toMatchObject({
-          tag: "Internal",
-          operation: "SelectionContext.readSelection"
-        })
-      })
-      expect(rows.some((row) => row.outcome === "failed")).toBe(true)
-    })
-  ))
-
-test("SelectionContext watches focus through substitutable events", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const permissions = yield* configuredPermissions([])
-      const client = yield* makeSelectionContextMemoryClient({ nextWatchId: () => "watch-1" })
-
-      const runtime = ManagedRuntime.make(
-        makeSelectionContextServiceLayer(client, {
-          permissions,
-          nextWatchId: () => "watch-1"
-        })
-      )
-      const result = yield* Effect.promise(() =>
-        runtime.runPromise(
-          Effect.gen(function* () {
-            const context = yield* SelectionContext
-            const watch = yield* context.watchFocus(
-              new SelectionContextWatchFocusRequest({ actor: actor(), access: "metadata" })
-            )
-            const event = yield* context
-              .events()
-              .pipe(Stream.runHead, Effect.map(Option.getOrThrow))
-            return { event, watch }
-          })
-        )
-      )
-      yield* Effect.promise(() => runtime.dispose())
-
-      expect(result.watch).toMatchObject({ watchId: "watch-1", active: true, access: "metadata" })
-      expect(result.event).toMatchObject({ phase: "watch-started", watchId: "watch-1" })
-    })
-  ))
-
-test("SelectionContext releases focus watches when their resource scope closes", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const rows: AuditEvent[] = []
-      const permissions = yield* configuredPermissions(rows)
-      const resources = yield* makeResourceRegistry()
-      const client = yield* makeSelectionContextMemoryClient()
-
-      const runtime = ManagedRuntime.make(
-        makeSelectionContextServiceLayer(client, {
-          permissions,
-          audit: memoryAudit(rows),
-          resources
-        })
-      )
-      const result = yield* Effect.promise(() =>
-        runtime.runPromise(
-          Effect.gen(function* () {
-            const context = yield* SelectionContext
-            const watch = yield* context.watchFocus(
-              new SelectionContextWatchFocusRequest({
-                actor: actor(),
-                access: "metadata",
-                ownerScope: "scope-selection",
-                watchId: "watch-resource"
-              })
-            )
-            const beforeClose = yield* resources.list()
-            yield* resources.closeScope("scope-selection")
-            const afterClose = yield* resources.list()
-            const stopAfterCleanup = yield* client.stopWatching({
-              actor: actor(),
-              watchId: "watch-resource"
-            })
-            return { afterClose, beforeClose, stopAfterCleanup, watch }
-          })
-        )
-      )
-      yield* Effect.promise(() => runtime.dispose())
-
-      expect(result.watch.watchId).toBe("watch-resource")
-      expect(result.beforeClose.entries).toHaveLength(1)
-      expect(result.afterClose.entries).toHaveLength(0)
-      expect(result.stopAfterCleanup.stopped).toBe(false)
-      expect(
-        rows.some((row) => row.details && JSON.stringify(row.details).includes("released-by-scope"))
-      ).toBe(true)
-    })
-  ))
-
-test("SelectionContext stopWatching is permissioned and idempotent", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const permissions = yield* configuredPermissions([])
-      const client = yield* makeSelectionContextMemoryClient()
-
-      const runtime = ManagedRuntime.make(makeSelectionContextServiceLayer(client, { permissions }))
-      const result = yield* Effect.promise(() =>
-        runtime.runPromise(
-          Effect.gen(function* () {
-            const context = yield* SelectionContext
-            yield* context.watchFocus(
-              new SelectionContextWatchFocusRequest({
-                actor: actor(),
-                access: "metadata",
-                watchId: "watch-stop"
-              })
-            )
-            const first = yield* context.stopWatching(
-              new SelectionContextStopWatchingRequest({ actor: actor(), watchId: "watch-stop" })
-            )
-            const second = yield* context.stopWatching(
-              new SelectionContextStopWatchingRequest({ actor: actor(), watchId: "watch-stop" })
-            )
-            return { first, second }
-          })
-        )
-      )
-      yield* Effect.promise(() => runtime.dispose())
-
-      expect(result.first).toMatchObject({ watchId: "watch-stop", stopped: true })
-      expect(result.second).toMatchObject({ watchId: "watch-stop", stopped: false })
-    })
-  ))
-
-test("SelectionContext rejects malformed input before client calls", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const permissions = yield* configuredPermissions([])
-      const baseClient = yield* makeSelectionContextMemoryClient()
-      let calls = 0
-      const client: SelectionContextClientApi = {
-        ...baseClient,
-        readSelection: (input) =>
-          Effect.sync(() => {
-            calls += 1
-          }).pipe(Effect.andThen(baseClient.readSelection(input)))
+      const manifest = yield* makeNativeCapabilityManifest([
+        { schemaDocs: SelectionContextSurface.schemaDocs }
+      ])
+      const byTag = new Map(manifest.map((fact) => [fact.tag, fact] as const))
+      for (const method of UnsupportedMethods) {
+        const fact = byTag.get(`SelectionContext.${method}`)
+        expect(fact).toBeDefined()
+        expect(fact?.support.status).toBe("unsupported")
       }
 
-      const runtime = ManagedRuntime.make(makeSelectionContextServiceLayer(client, { permissions }))
-      const exit = yield* Effect.promise(() =>
-        runtime.runPromise(
-          Effect.gen(function* () {
-            const context = yield* SelectionContext
-            return yield* Effect.exit(
-              context.readSelection({
-                actor: actor(),
-                access: "metadata",
-                traceId: "\0"
-              })
-            )
-          })
-        )
-      )
-      yield* Effect.promise(() => runtime.dispose())
+      const callableTags = SelectionContextSurface.schemaDocs
+        .filter((doc) => doc.callable)
+        .map((doc) => doc.tag)
+      expect(callableTags).toEqual(["SelectionContext.isSupported"])
 
-      expect(calls).toBe(0)
-      expectExitFailure(exit, (error) => {
-        expect(error).toMatchObject({
-          tag: "InvalidArgument",
-          operation: "SelectionContext.readSelection"
-        })
-      })
+      const nonCallableTags = SelectionContextSurface.schemaDocs
+        .filter((doc) => !doc.callable)
+        .map((doc) => doc.tag)
+        .toSorted()
+      expect(nonCallableTags).toEqual(
+        UnsupportedMethods.map((method) => `SelectionContext.${method}`).toSorted()
+      )
     })
   ))
 
-test("SelectionContext unsupported client validates then fails closed", () =>
+test("SelectionContext isSupported reports supported result through the service", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const client = yield* makeSelectionContextMemoryClient()
+      const result = yield* runScoped(
+        Effect.gen(function* () {
+          const context = yield* SelectionContext
+          return yield* context.isSupported()
+        }),
+        makeSelectionContextServiceLayer(client)
+      )
+      expect(result.supported).toBe(true)
+    })
+  ))
+
+test("SelectionContext unsupported client reports the host-unavailable reason", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const client = makeSelectionContextUnsupportedClient()
-      const support = yield* client.isSupported()
-      const exit = yield* Effect.exit(client.readSelection({ actor: actor(), access: "metadata" }))
-
-      expect(support).toMatchObject({ supported: false, reason: "host-adapter-unimplemented" })
-      expectExitFailure(exit, (error) => {
-        expect(error).toMatchObject({
-          tag: "Unsupported",
-          operation: "SelectionContext.readSelection"
-        })
-      })
-    })
-  ))
-
-test("SelectionContext unsupported client fails through the public service layer", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const permissions = yield* configuredPermissions([])
-      const runtime = ManagedRuntime.make(
-        makeSelectionContextServiceLayer(makeSelectionContextUnsupportedClient(), { permissions })
+      const result = yield* runScoped(
+        Effect.gen(function* () {
+          const context = yield* SelectionContext
+          return yield* context.isSupported()
+        }),
+        makeSelectionContextServiceLayer(client)
       )
-      const exit = yield* Effect.promise(() =>
-        runtime.runPromise(
-          Effect.gen(function* () {
-            const context = yield* SelectionContext
-            return yield* Effect.exit(context.readSelection(readSelectionRequest("metadata")))
-          })
-        )
-      )
-      yield* Effect.promise(() => runtime.dispose())
-
-      expectExitFailure(exit, (error) => {
-        expect(error).toMatchObject({
-          tag: "Unsupported",
-          operation: "SelectionContext.readSelection"
-        })
-      })
+      expect(result.supported).toBe(false)
+      expect(result.reason).toBe("host-adapter-unimplemented")
     })
   ))
 
@@ -366,57 +121,18 @@ test("SelectionContext bridge client fails event stream as unsupported before su
       )
       yield* Effect.promise(() => runtime.dispose())
 
-      expectExitFailure(exit, (error) => {
-        expect(error).toMatchObject({
-          tag: "Unsupported",
-          reason: "host-adapter-unimplemented",
-          operation: "SelectionContext.Event"
-        })
-      })
+      expect(exit._tag).toBe("Failure")
       expect(subscriptions).toEqual([])
     })
   ))
 
-const configuredPermissions = (rows: AuditEvent[]) =>
+const runScoped = <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  layer: Layer.Layer<R, never, never>
+): Effect.Effect<A, E, never> =>
   Effect.gen(function* () {
-    const permissions = yield* makePermissionRegistry()
-    yield* Effect.all([
-      permissions.declare(
-        P.nativeInvoke({ primitive: "SelectionContext", methods: ["readSelection"] })
-      ),
-      permissions.declare(
-        P.nativeInvoke({ primitive: "SelectionContext", methods: ["readDocumentContext"] })
-      ),
-      permissions.declare(
-        P.nativeInvoke({ primitive: "SelectionContext", methods: ["watchFocus"] })
-      ),
-      permissions.declare(
-        P.nativeInvoke({ primitive: "SelectionContext", methods: ["stopWatching"] })
-      )
-    ])
-    rows.length = 0
-    return permissions
+    const runtime = ManagedRuntime.make(layer)
+    const result = yield* Effect.promise(() => runtime.runPromise(effect))
+    yield* Effect.promise(() => runtime.dispose())
+    return result
   })
-
-const memoryAudit = (rows: AuditEvent[]) => ({
-  emit: (event: AuditEvent) =>
-    Effect.sync(() => {
-      rows.push(event)
-    }),
-  observe: () => Stream.fromIterable(rows)
-})
-
-const actor = () => new SelectionContextActor({ kind: "workspace", id: "workspace-1" })
-
-const readSelectionRequest = (access: "metadata" | "content") =>
-  new SelectionContextReadSelectionRequest({ actor: actor(), access })
-
-const expectExitFailure = <A>(
-  exit: Exit.Exit<A, unknown>,
-  assert: (error: unknown) => void
-): void => {
-  expect(Exit.isFailure(exit)).toBe(true)
-  if (Exit.isFailure(exit)) {
-    assert(Cause.squash(exit.cause))
-  }
-}

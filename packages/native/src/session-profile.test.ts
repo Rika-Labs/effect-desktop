@@ -1,202 +1,146 @@
 import { expect, test } from "bun:test"
-import { makeHostProtocolInternalError } from "@effect-desktop/bridge"
-import { makePermissionRegistry, makeResourceRegistry, P } from "@effect-desktop/core"
-import { Cause, Effect, Exit, type Layer, ManagedRuntime, Option, Stream } from "effect"
+import { type BridgeClientExchange } from "@effect-desktop/bridge"
+import { Cause, Effect, Exit, type Layer, ManagedRuntime, Stream } from "effect"
 
+import { makeNativeCapabilityManifest } from "./capabilities.js"
 import {
+  makeSessionProfileBridgeClientLayer,
   makeSessionProfileMemoryClient,
   makeSessionProfileServiceLayer,
   makeSessionProfileUnsupportedClient,
   SessionProfile,
-  type SessionProfileClientApi
+  SessionProfileCapabilityFacts,
+  SessionProfileClient,
+  SessionProfileRpcs,
+  SessionProfileSurface
 } from "./session-profile.js"
 
-test("SessionProfile creates scoped partition handles and releases them through ResourceRegistry", () =>
+const UnsupportedMethods = ["fromPartition", "destroy", "list"] as const
+
+test("SessionProfile exposes only isSupported as a callable RPC", () => {
+  const callableTags = Array.from(SessionProfileRpcs.requests.keys()).toSorted()
+  expect(callableTags).toEqual(["SessionProfile.isSupported"])
+  for (const method of UnsupportedMethods) {
+    expect(callableTags).not.toContain(`SessionProfile.${method}`)
+  }
+})
+
+test("SessionProfile declares fromPartition/destroy/list as non-callable capability facts", () => {
+  const factTags = SessionProfileCapabilityFacts.map((fact) => fact.tag).toSorted()
+  expect(factTags).toEqual(
+    UnsupportedMethods.map((method) => `SessionProfile.${method}`).toSorted()
+  )
+  for (const fact of SessionProfileCapabilityFacts) {
+    expect(fact.support.status).toBe("unsupported")
+  }
+})
+
+test("SessionProfile capability facts surface in the manifest and stay non-callable", () =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const permissions = yield* configuredPermissions()
-      const resources = yield* makeResourceRegistry()
-      const baseClient = yield* makeSessionProfileMemoryClient()
-      let destroyed = 0
-      const client: SessionProfileClientApi = {
-        ...baseClient,
-        destroy: (input) =>
-          Effect.sync(() => {
-            destroyed += 1
-          }).pipe(Effect.andThen(baseClient.destroy(input)))
+      const manifest = yield* makeNativeCapabilityManifest([
+        { schemaDocs: SessionProfileSurface.schemaDocs }
+      ])
+      const byTag = new Map(manifest.map((fact) => [fact.tag, fact] as const))
+
+      for (const method of UnsupportedMethods) {
+        const fact = byTag.get(`SessionProfile.${method}`)
+        expect(fact).toBeDefined()
+        expect(fact?.support.status).toBe("unsupported")
       }
 
+      const callableTags = SessionProfileSurface.schemaDocs
+        .filter((doc) => doc.callable)
+        .map((doc) => doc.tag)
+      expect(callableTags).toEqual(["SessionProfile.isSupported"])
+
+      const nonCallableTags = SessionProfileSurface.schemaDocs
+        .filter((doc) => !doc.callable)
+        .map((doc) => doc.tag)
+        .toSorted()
+      expect(nonCallableTags).toEqual(
+        UnsupportedMethods.map((method) => `SessionProfile.${method}`).toSorted()
+      )
+    })
+  ))
+
+test("SessionProfile isSupported reports supported result through the service", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const client = yield* makeSessionProfileMemoryClient()
       const result = yield* runScoped(
         Effect.gen(function* () {
-          const profiles = yield* SessionProfile
-          const opened = yield* profiles.fromPartition("workspace-1", { ownerScope: "workspace:1" })
-          const again = yield* profiles.fromPartition("workspace-1", { ownerScope: "workspace:1" })
-          const listed = yield* profiles.list()
-          const event = yield* profiles.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
-          yield* resources.closeScope("workspace:1")
-          return { again, event, listed, opened }
+          const service = yield* SessionProfile
+          return yield* service.isSupported()
         }),
-        makeSessionProfileServiceLayer(client, { permissions, resources })
+        makeSessionProfileServiceLayer(client)
       )
-
-      expect(result.opened).toEqual(result.again)
-      expect(result.opened.kind).toBe("session-profile")
-      expect(result.opened.ownerScope).toBe("workspace:1")
-      expect(result.listed.profiles).toHaveLength(1)
-      expect(result.event.phase).toBe("opened")
-      expect(destroyed).toBe(1)
+      expect(result.supported).toBe(true)
     })
   ))
 
-test("SessionProfile denies before host side effects", () =>
+test("SessionProfile unsupported client reports the host-routing-unavailable reason", () =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const permissions = yield* makePermissionRegistry()
-      const resources = yield* makeResourceRegistry()
-      const baseClient = yield* makeSessionProfileMemoryClient()
-      let calls = 0
-      const client: SessionProfileClientApi = {
-        ...baseClient,
-        fromPartition: (input) =>
-          Effect.sync(() => {
-            calls += 1
-          }).pipe(Effect.andThen(baseClient.fromPartition(input)))
-      }
+      const client = makeSessionProfileUnsupportedClient()
+      const result = yield* runScoped(
+        Effect.gen(function* () {
+          const service = yield* SessionProfile
+          return yield* service.isSupported()
+        }),
+        makeSessionProfileServiceLayer(client)
+      )
+      expect(result.supported).toBe(false)
+      expect(result.reason).toBe("host-session-profile-routing-unavailable")
+    })
+  ))
 
+test("SessionProfile unsupported client fails the event stream as unsupported", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const client = makeSessionProfileUnsupportedClient()
       const exit = yield* runScoped(
         Effect.gen(function* () {
-          const profiles = yield* SessionProfile
-          return yield* Effect.exit(profiles.fromPartition("workspace-1"))
+          const service = yield* SessionProfile
+          return yield* Effect.exit(service.events().pipe(Stream.take(1), Stream.runCollect))
         }),
-        makeSessionProfileServiceLayer(client, { permissions, resources })
+        makeSessionProfileServiceLayer(client)
       )
 
-      expect(calls).toBe(0)
       expectExitFailure(exit, (error) => {
-        expect(error).toMatchObject({
-          tag: "PermissionDenied",
-          operation: "SessionProfile.fromPartition"
-        })
-      })
-    })
-  ))
-
-test("SessionProfile explicit destroy does not run cleanup twice", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const permissions = yield* configuredPermissions()
-      const resources = yield* makeResourceRegistry()
-      const baseClient = yield* makeSessionProfileMemoryClient()
-      let destroyed = 0
-      const client: SessionProfileClientApi = {
-        ...baseClient,
-        destroy: (input) =>
-          Effect.sync(() => {
-            destroyed += 1
-          }).pipe(Effect.andThen(baseClient.destroy(input)))
-      }
-
-      yield* runScoped(
-        Effect.gen(function* () {
-          const profiles = yield* SessionProfile
-          const opened = yield* profiles.fromPartition("workspace-1", { ownerScope: "workspace:1" })
-          yield* profiles.destroy(opened)
-          yield* resources.closeScope("workspace:1")
-        }),
-        makeSessionProfileServiceLayer(client, { permissions, resources })
-      )
-
-      expect(destroyed).toBe(1)
-    })
-  ))
-
-test("SessionProfile surfaces unsupported and host failures as typed failures", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const permissions = yield* configuredPermissions()
-      const resources = yield* makeResourceRegistry()
-      const unsupported = makeSessionProfileUnsupportedClient()
-      const hostFailure = yield* makeSessionProfileMemoryClient({
-        failure: {
-          fromPartition: makeHostProtocolInternalError(
-            "host failed",
-            "SessionProfile.fromPartition"
-          )
-        }
-      })
-
-      const unsupportedExit = yield* runScoped(
-        Effect.gen(function* () {
-          const profiles = yield* SessionProfile
-          return yield* Effect.exit(profiles.fromPartition("workspace-1"))
-        }),
-        makeSessionProfileServiceLayer(unsupported, { permissions, resources })
-      )
-      const failureExit = yield* runScoped(
-        Effect.gen(function* () {
-          const profiles = yield* SessionProfile
-          return yield* Effect.exit(profiles.fromPartition("workspace-2"))
-        }),
-        makeSessionProfileServiceLayer(hostFailure, { permissions, resources })
-      )
-
-      expectExitFailure(unsupportedExit, (error) => {
         expect(error).toMatchObject({
           tag: "Unsupported",
-          operation: "SessionProfile.fromPartition"
+          reason: "host-session-profile-routing-unavailable",
+          operation: "SessionProfile.Event"
         })
-      })
-      expectExitFailure(failureExit, (error) => {
-        expect(error).toMatchObject({ tag: "Internal", operation: "SessionProfile.fromPartition" })
       })
     })
   ))
 
-test("SessionProfile rejects malformed partition before client work", () =>
+test("SessionProfile bridge client subscribes to the host event channel", () =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const permissions = yield* configuredPermissions()
-      const resources = yield* makeResourceRegistry()
-      const baseClient = yield* makeSessionProfileMemoryClient()
-      let calls = 0
-      const client: SessionProfileClientApi = {
-        ...baseClient,
-        fromPartition: (input) =>
-          Effect.sync(() => {
-            calls += 1
-          }).pipe(Effect.andThen(baseClient.fromPartition(input)))
+      const subscriptions: string[] = []
+      const exchange: BridgeClientExchange = {
+        request: () => Effect.die("unexpected request"),
+        subscribe: (method) => {
+          subscriptions.push(method)
+          return Stream.empty
+        }
       }
 
-      const exit = yield* runScoped(
+      const collected = yield* runScoped(
         Effect.gen(function* () {
-          const profiles = yield* SessionProfile
-          return yield* Effect.exit(profiles.fromPartition(""))
+          const client = yield* SessionProfileClient
+          return yield* client.events().pipe(Stream.runCollect)
         }),
-        makeSessionProfileServiceLayer(client, { permissions, resources })
+        makeSessionProfileBridgeClientLayer(exchange)
       )
 
-      expect(calls).toBe(0)
-      expectExitFailure(exit, (error) => {
-        expect(error).toMatchObject({
-          tag: "InvalidArgument",
-          operation: "SessionProfile.fromPartition"
-        })
-      })
+      expect(Array.from(collected)).toEqual([])
+      expect(subscriptions).toEqual(["SessionProfile.Event"])
     })
   ))
-
-const configuredPermissions = () =>
-  Effect.gen(function* () {
-    const permissions = yield* makePermissionRegistry()
-    yield* Effect.all([
-      permissions.declare(
-        P.nativeInvoke({ primitive: "SessionProfile", methods: ["fromPartition"] })
-      ),
-      permissions.declare(P.nativeInvoke({ primitive: "SessionProfile", methods: ["destroy"] })),
-      permissions.declare(P.nativeInvoke({ primitive: "SessionProfile", methods: ["list"] }))
-    ])
-    return permissions
-  })
 
 const runScoped = <A, E, R>(
   effect: Effect.Effect<A, E, R>,
