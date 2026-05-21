@@ -8414,6 +8414,11 @@ test("SystemAppearanceRpcs declares the Phase 8 SystemAppearance method and even
   expect(rpcMethodNames("SystemAppearance", SystemAppearanceRpcs)).toEqual(
     expectedSystemAppearanceMethods
   )
+  expect(
+    SystemAppearanceRpcs.requests.get("SystemAppearance.getAccentColor")!.pipe(rpcSupport)
+  ).toEqual({
+    status: "supported"
+  })
   expect(Object.keys(SystemAppearanceRpcEvents)).toEqual(["AppearanceChanged"])
 })
 

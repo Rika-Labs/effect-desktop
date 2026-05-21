@@ -39,9 +39,9 @@ pub(crate) fn get_accent_color(payload: Option<Value>) -> Result<Option<Value>, 
         host_protocol::SYSTEM_APPEARANCE_GET_ACCENT_COLOR_METHOD,
     )?;
     encode_payload(
-        SystemAppearanceAccentColorPayload::new(
-            snapshot(host_protocol::SYSTEM_APPEARANCE_GET_ACCENT_COLOR_METHOD)?.accent_color,
-        ),
+        SystemAppearanceAccentColorPayload::new(accent_color(
+            host_protocol::SYSTEM_APPEARANCE_GET_ACCENT_COLOR_METHOD,
+        )?),
         host_protocol::SYSTEM_APPEARANCE_GET_ACCENT_COLOR_METHOD,
     )
 }
@@ -248,9 +248,9 @@ fn unsupported(operation: &'static str) -> HostProtocolError {
 fn supports_method(method: SystemAppearanceMethodPayload) -> bool {
     match method {
         SystemAppearanceMethodPayload::GetAppearance
-        | SystemAppearanceMethodPayload::GetAccentColor
         | SystemAppearanceMethodPayload::GetReducedMotion
         | SystemAppearanceMethodPayload::GetReducedTransparency => has_host_snapshot(),
+        SystemAppearanceMethodPayload::GetAccentColor => has_accent_color(),
         SystemAppearanceMethodPayload::OnAppearanceChanged => has_event_stream(),
     }
 }
@@ -263,6 +263,24 @@ fn has_host_snapshot() -> bool {
 #[cfg(not(all(any(target_os = "macos", target_os = "windows"), not(test))))]
 fn has_host_snapshot() -> bool {
     test_snapshot().is_some()
+}
+
+#[cfg(any(
+    test,
+    all(target_os = "linux", not(test)),
+    all(any(target_os = "macos", target_os = "windows"), not(test))
+))]
+fn has_accent_color() -> bool {
+    true
+}
+
+#[cfg(not(any(
+    test,
+    all(target_os = "linux", not(test)),
+    all(any(target_os = "macos", target_os = "windows"), not(test))
+)))]
+fn has_accent_color() -> bool {
+    false
 }
 
 #[cfg(all(any(target_os = "macos", target_os = "windows"), not(test)))]
@@ -291,6 +309,36 @@ fn snapshot(operation: &'static str) -> Result<SystemAppearanceSnapshot, HostPro
     }
 
     #[cfg(not(all(any(target_os = "macos", target_os = "windows"), not(test))))]
+    {
+        Err(unsupported(operation))
+    }
+}
+
+fn accent_color(
+    operation: &'static str,
+) -> Result<Option<SystemAppearanceColorPayload>, HostProtocolError> {
+    if let Some(snapshot) = test_snapshot() {
+        return Ok(snapshot.accent_color);
+    }
+
+    #[cfg(test)]
+    {
+        let _ = operation;
+        Ok(None)
+    }
+
+    #[cfg(all(target_os = "linux", not(test)))]
+    {
+        let _ = operation;
+        Ok(None)
+    }
+
+    #[cfg(all(any(target_os = "macos", target_os = "windows"), not(test)))]
+    {
+        Ok(snapshot(operation)?.accent_color)
+    }
+
+    #[cfg(not(any(test, target_os = "linux", target_os = "macos", target_os = "windows")))]
     {
         Err(unsupported(operation))
     }
@@ -673,6 +721,22 @@ mod tests {
                 host_protocol::SYSTEM_APPEARANCE_GET_APPEARANCE_METHOD,
             )
         );
+    }
+
+    #[test]
+    fn system_appearance_accent_color_defaults_to_null_without_snapshot() {
+        TEST_SYSTEM_APPEARANCE.with(|state| {
+            *state.borrow_mut() = None;
+        });
+
+        assert_eq!(
+            get_accent_color(None).expect("accent color"),
+            Some(json!({ "color": null }))
+        );
+
+        let payload = is_supported(Some(json!({ "method": "getAccentColor" })))
+            .expect("support query should return payload");
+        assert_eq!(payload, Some(json!({ "supported": true })));
     }
 
     #[test]

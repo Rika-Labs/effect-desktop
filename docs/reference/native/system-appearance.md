@@ -11,19 +11,20 @@ effect_version: 4
 Theme and appearance information.
 
 The Rust host system appearance adapter implements read-only snapshot methods
-and appearance-change events on macOS and Windows. Linux remains unsupported.
+and appearance-change events on macOS and Windows. Linux supports nullable
+accent-color reads and leaves the broader snapshot/event surface unsupported.
 The host binary includes a macOS-only `--system-appearance-smoke-test` mode that
 reads the snapshot methods and exits before starting the renderer runtime.
 
 ## Methods
 
-| Method                   | Success                  | Runtime support |
-| ------------------------ | ------------------------ | --------------- |
-| `getAppearance`          | `{ appearance }`         | macOS, Windows  |
-| `getAccentColor`         | `{ color }`              | macOS, Windows  |
-| `getReducedMotion`       | `{ enabled: boolean }`   | macOS, Windows  |
-| `getReducedTransparency` | `{ enabled: boolean }`   | macOS, Windows  |
-| `isSupported`            | `{ supported: boolean }` | supported       |
+| Method                   | Success                  | Runtime support       |
+| ------------------------ | ------------------------ | --------------------- |
+| `getAppearance`          | `{ appearance }`         | macOS, Windows        |
+| `getAccentColor`         | `{ color }`              | macOS, Windows, Linux |
+| `getReducedMotion`       | `{ enabled: boolean }`   | macOS, Windows        |
+| `getReducedTransparency` | `{ enabled: boolean }`   | macOS, Windows        |
+| `isSupported`            | `{ supported: boolean }` | supported             |
 
 `appearance` is `"light"`, `"dark"`, or `"highContrast"`. `color` is either
 `null` or an RGBA object.
@@ -39,6 +40,10 @@ On macOS, `getAppearance` uses accessibility contrast state plus the current
 user's `AppleInterfaceStyle`, `getAccentColor` uses `NSColor.controlAccentColor`,
 and reduced-motion/transparency values come from `NSWorkspace` accessibility
 display options.
+
+On Linux, `getAccentColor` returns `null`. The current GTK3 host dependency
+surface does not expose a stable desktop-wide accent-color setting, and `null`
+is the API's explicit "no accent color" value.
 
 `isSupported` is protected by `native.invoke:SystemAppearance.isSupported`.
 

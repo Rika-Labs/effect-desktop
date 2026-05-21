@@ -63,7 +63,7 @@ export const SystemAppearanceGetAccentColor = NativeSurface.rpc(
       P.nativeInvoke({ primitive: "SystemAppearance", methods: ["getAccentColor"] })
     ),
     endpoint: "mutation",
-    support: SystemAppearanceSnapshotSupport
+    support: NativeSurface.support.supported
   }
 )
 export const SystemAppearanceGetReducedMotion = NativeSurface.rpc(
