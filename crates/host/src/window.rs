@@ -11,15 +11,15 @@ use anyhow::Result;
 use host_protocol::{
     AppBeforeQuitEventPayload, BrowsingDataClearPayload, BrowsingDataClearResultPayload,
     ContextMenuActivatedEventPayload, CookieStoreCookiePayload, CookieStoreGetPayload,
-    CookieStoreGetResultPayload, CookieStoreSameSitePayload, DockProgressState,
-    DockSetProgressPayload, HostProtocolEnvelope, HostProtocolError, ScreenBoundsPayload,
-    ScreenDisplayPayload, ScreenDisplaysChangedEventPayload, ScreenDisplaysResultPayload,
-    ScreenMethodPayload, ScreenPointPayload, ScreenSupportedPayload, SessionProfileResourcePayload,
-    TrayResourcePayload, WindowAttentionType, WindowBoundsEventPayload, WindowBoundsPayload,
-    WindowCreatePayload, WindowCreateResponse, WindowListResponse, WindowLookupResponse,
-    WindowParentResponse, WindowProgressState, WindowRegistryEventPayload,
-    WindowRegistryEventPhase, WindowSetProgressPayload, WindowStateEventPayload,
-    WindowStatePayload, WindowTitleBarStyle, WindowTrafficLights,
+    CookieStoreGetResultPayload, CookieStoreRemovePayload, CookieStoreSameSitePayload,
+    DockProgressState, DockSetProgressPayload, HostProtocolEnvelope, HostProtocolError,
+    ScreenBoundsPayload, ScreenDisplayPayload, ScreenDisplaysChangedEventPayload,
+    ScreenDisplaysResultPayload, ScreenMethodPayload, ScreenPointPayload, ScreenSupportedPayload,
+    SessionProfileResourcePayload, TrayResourcePayload, WindowAttentionType,
+    WindowBoundsEventPayload, WindowBoundsPayload, WindowCreatePayload, WindowCreateResponse,
+    WindowListResponse, WindowLookupResponse, WindowParentResponse, WindowProgressState,
+    WindowRegistryEventPayload, WindowRegistryEventPhase, WindowSetProgressPayload,
+    WindowStateEventPayload, WindowStatePayload, WindowTitleBarStyle, WindowTrafficLights,
 };
 use muda::{
     CheckMenuItem, ContextMenu as MudaContextMenu, Menu, MenuItem, PredefinedMenuItem, Submenu,
@@ -512,6 +512,16 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
         Err(HostProtocolError::unsupported(
             "host-cookie-store-live-webview-required",
             host_protocol::COOKIE_STORE_GET_METHOD,
+        ))
+    }
+
+    fn remove_cookie(
+        &self,
+        _payload: CookieStoreRemovePayload,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            "host-cookie-store-live-webview-required",
+            host_protocol::COOKIE_STORE_REMOVE_METHOD,
         ))
     }
 
@@ -1094,6 +1104,10 @@ enum WindowCommand {
     },
     GetCookies {
         payload: CookieStoreGetPayload,
+        reply: Sender<WindowCommandReply>,
+    },
+    RemoveCookie {
+        payload: CookieStoreRemovePayload,
         reply: Sender<WindowCommandReply>,
     },
     ClearBrowsingData {
@@ -2846,6 +2860,25 @@ impl WindowMethodHandler for WindowMethodPort {
             response => Err(unexpected_webview_response(
                 response,
                 host_protocol::COOKIE_STORE_GET_METHOD,
+            )),
+        }
+    }
+
+    fn remove_cookie(
+        &self,
+        payload: CookieStoreRemovePayload,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::RemoveCookie {
+            payload,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WindowUpdated => Ok(()),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::COOKIE_STORE_REMOVE_METHOD,
             )),
         }
     }
@@ -4706,7 +4739,7 @@ impl WindowRegistry {
             payload.profile(),
             host_protocol::COOKIE_STORE_GET_METHOD,
         )?;
-        let url = parse_cookie_url(payload.url())?;
+        let url = parse_cookie_url(payload.url(), host_protocol::COOKIE_STORE_GET_METHOD)?;
         let resources = self
             .webviews
             .values()
@@ -4734,6 +4767,45 @@ impl WindowRegistry {
             .collect();
 
         Ok(CookieStoreGetResultPayload::new(cookies))
+    }
+
+    fn remove_cookie(
+        &self,
+        payload: CookieStoreRemovePayload,
+    ) -> std::result::Result<(), HostProtocolError> {
+        session_profile::ensure_profile_is_live(
+            payload.profile(),
+            host_protocol::COOKIE_STORE_REMOVE_METHOD,
+        )?;
+        let url = parse_cookie_url(payload.url(), host_protocol::COOKIE_STORE_REMOVE_METHOD)?;
+        let resources = self
+            .webviews
+            .values()
+            .find(|resources| resources.profile_id.as_deref() == Some(payload.profile().id()))
+            .ok_or_else(|| {
+                HostProtocolError::unsupported(
+                    "host-cookie-store-live-webview-required",
+                    host_protocol::COOKIE_STORE_REMOVE_METHOD,
+                )
+            })?;
+        let cookies = webview::cookies_for_url(
+            &resources._webview,
+            payload.url(),
+            host_protocol::COOKIE_STORE_REMOVE_METHOD,
+        )?;
+
+        for cookie in cookies {
+            if cookie.name() == payload.name() && cookie_path_matches_url(cookie.path(), url.path())
+            {
+                webview::delete_cookie(
+                    &resources._webview,
+                    &cookie,
+                    host_protocol::COOKIE_STORE_REMOVE_METHOD,
+                )?;
+            }
+        }
+
+        Ok(())
     }
 
     fn clear_browsing_data(
@@ -5507,6 +5579,13 @@ impl WindowRegistry {
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
             }
+            WindowCommand::RemoveCookie { payload, reply } => {
+                let result = self
+                    .remove_cookie(payload)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
             WindowCommand::ClearBrowsingData { payload, reply } => {
                 let result = self
                     .clear_browsing_data(payload)
@@ -5876,26 +5955,29 @@ fn webview_host_error(error: wry::Error, operation: &'static str) -> HostProtoco
     HostProtocolError::internal(format!("WebView host operation failed: {error}"), operation)
 }
 
-fn parse_cookie_url(url: &str) -> std::result::Result<Url, HostProtocolError> {
+fn parse_cookie_url(
+    url: &str,
+    operation: &'static str,
+) -> std::result::Result<Url, HostProtocolError> {
     let parsed = Url::parse(url).map_err(|error| {
         HostProtocolError::invalid_argument(
             "url",
             format!("must be an absolute HTTP(S) URL: {error}"),
-            host_protocol::COOKIE_STORE_GET_METHOD,
+            operation,
         )
     })?;
     if !matches!(parsed.scheme(), "http" | "https") {
         return Err(HostProtocolError::invalid_argument(
             "url",
             "must use http or https",
-            host_protocol::COOKIE_STORE_GET_METHOD,
+            operation,
         ));
     }
     if parsed.host_str().is_none() {
         return Err(HostProtocolError::invalid_argument(
             "url",
             "must include a host",
-            host_protocol::COOKIE_STORE_GET_METHOD,
+            operation,
         ));
     }
     Ok(parsed)

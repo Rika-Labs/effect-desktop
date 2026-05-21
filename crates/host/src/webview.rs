@@ -310,6 +310,20 @@ pub(crate) fn cookies_for_url(
     })
 }
 
+#[allow(clippy::result_large_err)]
+pub(crate) fn delete_cookie(
+    webview: &HostWebView,
+    cookie: &wry::cookie::Cookie<'_>,
+    operation: &'static str,
+) -> std::result::Result<(), HostProtocolError> {
+    webview.delete_cookie(cookie).map_err(|error| {
+        HostProtocolError::internal(
+            format!("failed to delete WebView cookie: {error}"),
+            operation,
+        )
+    })
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct WebEngineSelection {
     kind: WebEngineKind,

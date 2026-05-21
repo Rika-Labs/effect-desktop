@@ -15,6 +15,8 @@ import {
   CookieStoreGetInput,
   type CookieStoreGetOptions,
   CookieStoreGetResult,
+  CookieStoreRemoveInput,
+  type CookieStoreRemoveOptions,
   CookieStoreSupportedResult
 } from "./contracts/cookie-store.js"
 import type { SessionProfileHandle } from "./contracts/session-profile.js"
@@ -35,7 +37,7 @@ const UnsupportedSupport = NativeSurface.support.unsupported(UnsupportedReason, 
     { platform: "linux", status: "unsupported", reason: UnsupportedReason }
   ]
 })
-const GetSupport = NativeSurface.support.partial(LiveWebViewRequiredReason, {
+const LiveWebViewSupport = NativeSurface.support.partial(LiveWebViewRequiredReason, {
   platforms: [
     { platform: "macos", status: "partial", reason: LiveWebViewRequiredReason },
     { platform: "windows", status: "partial", reason: LiveWebViewRequiredReason },
@@ -52,7 +54,17 @@ export const CookieStoreGet = NativeSurface.rpc(Surface, "get", {
     P.nativeInvoke({ primitive: Surface, methods: ["get"] })
   ),
   endpoint: "query",
-  support: GetSupport
+  support: LiveWebViewSupport
+})
+
+export const CookieStoreRemove = NativeSurface.rpc(Surface, "remove", {
+  payload: CookieStoreRemoveInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: Surface, methods: ["remove"] })
+  ),
+  endpoint: "mutation",
+  support: LiveWebViewSupport
 })
 
 export const CookieStoreIsSupported = NativeSurface.rpc(Surface, "isSupported", {
@@ -63,7 +75,7 @@ export const CookieStoreIsSupported = NativeSurface.rpc(Surface, "isSupported", 
   support: NativeSurface.support.supported
 })
 
-const cookieStoreCapabilityFact = (method: "get" | "set" | "remove") =>
+const cookieStoreCapabilityFact = (method: "set") =>
   NativeSurface.capabilityFact(Surface, method, {
     authority: NativeSurface.authority.custom(
       P.nativeInvoke({ primitive: Surface, methods: [method] })
@@ -71,25 +83,23 @@ const cookieStoreCapabilityFact = (method: "get" | "set" | "remove") =>
     support: UnsupportedSupport
   })
 
-export const CookieStoreCapabilityFacts = Object.freeze([
-  cookieStoreCapabilityFact("set"),
-  cookieStoreCapabilityFact("remove")
-])
+export const CookieStoreCapabilityFacts = Object.freeze([cookieStoreCapabilityFact("set")])
 
 export const CookieStoreRpcEvents = Object.freeze({
   Event: { payload: CookieStoreEvent }
 })
 
-const CookieStoreRpcGroup = RpcGroup.make(CookieStoreGet, CookieStoreIsSupported)
+const CookieStoreRpcGroup = RpcGroup.make(CookieStoreGet, CookieStoreRemove, CookieStoreIsSupported)
 
 export const CookieStoreRpcs: RpcGroup.RpcGroup<CookieStoreRpc> = CookieStoreRpcGroup
 
-export const CookieStoreMethodNames = Object.freeze(["get"] as const)
+export const CookieStoreMethodNames = Object.freeze(["get", "remove"] as const)
 
 export interface CookieStoreClientApi {
   readonly get: (
     input: CookieStoreGetOptions
   ) => Effect.Effect<CookieStoreGetResult, CookieStoreError, never>
+  readonly remove: (input: CookieStoreRemoveOptions) => Effect.Effect<void, CookieStoreError, never>
   readonly isSupported: () => Effect.Effect<CookieStoreSupportedResult, CookieStoreError, never>
   readonly events: (
     profile?: SessionProfileHandle
@@ -104,6 +114,7 @@ export interface CookieStoreServiceApi {
   readonly get: (
     input: CookieStoreGetOptions
   ) => Effect.Effect<CookieStoreGetResult, CookieStoreError, never>
+  readonly remove: (input: CookieStoreRemoveOptions) => Effect.Effect<void, CookieStoreError, never>
   readonly isSupported: () => Effect.Effect<CookieStoreSupportedResult, CookieStoreError, never>
   readonly events: (
     profile?: SessionProfileHandle
@@ -145,6 +156,11 @@ export const CookieStoreHandlersLive = CookieStoreRpcGroup.toLayer({
       const store = yield* CookieStore
       return yield* store.get(input)
     }),
+  "CookieStore.remove": (input) =>
+    Effect.gen(function* () {
+      const store = yield* CookieStore
+      yield* store.remove(input)
+    }),
   "CookieStore.isSupported": () =>
     Effect.gen(function* () {
       const store = yield* CookieStore
@@ -174,6 +190,8 @@ export const makeCookieStoreMemoryClient = (): Effect.Effect<CookieStoreClientAp
         decodeCookieStoreGetInput(input, "CookieStore.get").pipe(
           Effect.map(() => new CookieStoreGetResult({ cookies: [] }))
         ),
+      remove: (input) =>
+        decodeCookieStoreRemoveInput(input, "CookieStore.remove").pipe(Effect.asVoid),
       isSupported: () => Effect.succeed(new CookieStoreSupportedResult({ supported: true })),
       events: () => Stream.empty
     } satisfies CookieStoreClientApi)
@@ -182,6 +200,7 @@ export const makeCookieStoreMemoryClient = (): Effect.Effect<CookieStoreClientAp
 export const makeCookieStoreUnsupportedClient = (): CookieStoreClientApi =>
   Object.freeze({
     get: () => Effect.fail(unsupportedError("CookieStore.get")),
+    remove: () => Effect.fail(unsupportedError("CookieStore.remove")),
     isSupported: () =>
       Effect.succeed(
         new CookieStoreSupportedResult({ supported: false, reason: UnsupportedReason })
@@ -192,6 +211,7 @@ export const makeCookieStoreUnsupportedClient = (): CookieStoreClientApi =>
 const makeCookieStoreService = (client: CookieStoreClientApi): CookieStoreServiceApi =>
   Object.freeze({
     get: (input) => client.get(input),
+    remove: (input) => client.remove(input),
     isSupported: () => client.isSupported(),
     events: (profile) => client.events(profile)
   } satisfies CookieStoreServiceApi)
@@ -207,6 +227,12 @@ const cookieStoreClientFromRpcClient = (
           runCookieStoreRpc(client["CookieStore.get"](decoded), "CookieStore.get")
         )
       ),
+    remove: (input) =>
+      decodeCookieStoreRemoveInput(input, "CookieStore.remove").pipe(
+        Effect.flatMap((decoded) =>
+          runCookieStoreRpc(client["CookieStore.remove"](decoded), "CookieStore.remove")
+        )
+      ),
     isSupported: () =>
       runCookieStoreRpc(client["CookieStore.isSupported"](undefined), "CookieStore.isSupported"),
     events: (profile) =>
@@ -220,6 +246,12 @@ const decodeCookieStoreGetInput = (
   operation: string
 ): Effect.Effect<CookieStoreGetInput, CookieStoreError, never> =>
   decodeNativeInput(CookieStoreGetInput, input, operation)
+
+const decodeCookieStoreRemoveInput = (
+  input: unknown,
+  operation: string
+): Effect.Effect<CookieStoreRemoveInput, CookieStoreError, never> =>
+  decodeNativeInput(CookieStoreRemoveInput, input, operation)
 
 const runCookieStoreRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,

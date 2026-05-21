@@ -309,6 +309,7 @@ pub const SESSION_PROFILE_LIST_METHOD: &str = "SessionProfile.list";
 pub const SESSION_PROFILE_IS_SUPPORTED_METHOD: &str = "SessionProfile.isSupported";
 pub const SESSION_PROFILE_EVENT: &str = "SessionProfile.Event";
 pub const COOKIE_STORE_GET_METHOD: &str = "CookieStore.get";
+pub const COOKIE_STORE_REMOVE_METHOD: &str = "CookieStore.remove";
 pub const COOKIE_STORE_IS_SUPPORTED_METHOD: &str = "CookieStore.isSupported";
 pub const COOKIE_STORE_EVENT: &str = "CookieStore.Event";
 pub const BROWSING_DATA_CLEAR_METHOD: &str = "BrowsingData.clear";
@@ -9881,6 +9882,18 @@ impl CookieStoreRemovePayload {
             name: name.into(),
             trace_id: None,
         }
+    }
+
+    pub fn profile(&self) -> &SessionProfileResourcePayload {
+        &self.profile
+    }
+
+    pub fn url(&self) -> &str {
+        &self.url
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
     }
 }
 

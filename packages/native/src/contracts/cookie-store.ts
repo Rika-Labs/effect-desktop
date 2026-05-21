@@ -58,6 +58,7 @@ export class CookieStoreRemoveInput extends Schema.Class<CookieStoreRemoveInput>
   name: CookieName,
   traceId: Schema.optionalKey(BridgeSafeNonEmptyString)
 }) {}
+export type CookieStoreRemoveOptions = Schema.Schema.Type<typeof CookieStoreRemoveInput>
 
 export class CookieStoreGetResult extends Schema.Class<CookieStoreGetResult>(
   "CookieStoreGetResult"

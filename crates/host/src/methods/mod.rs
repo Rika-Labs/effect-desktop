@@ -1122,6 +1122,10 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Window(cookie_store::get),
     ),
     route(
+        host_protocol::COOKIE_STORE_REMOVE_METHOD,
+        HostMethodDispatcher::Window(cookie_store::remove),
+    ),
+    route(
         host_protocol::COOKIE_STORE_IS_SUPPORTED_METHOD,
         HostMethodDispatcher::Payload(cookie_store::is_supported),
     ),
@@ -3676,6 +3680,48 @@ mod tests {
         assert_eq!(requests.len(), 1);
         assert_eq!(requests[0].url(), "https://example.test/account");
         assert_eq!(requests[0].name(), Some("token"));
+    }
+
+    #[test]
+    fn cookie_store_remove_routes_to_window_handler() {
+        let fake = Arc::new(FakeWindowHandler::default());
+        let router = HostMethodRouter::new(fake.clone());
+        let profile = serde_json::json!({
+            "kind": "session-profile",
+            "id": "session-profile:workspace-1",
+            "generation": 0,
+            "ownerScope": "workspace:1",
+            "state": "open"
+        });
+        let response = router
+            .dispatch_at(
+                request_with_payload(
+                    "request-cookie-store-remove",
+                    host_protocol::COOKIE_STORE_REMOVE_METHOD,
+                    serde_json::json!({
+                        "profile": profile,
+                        "url": "https://example.test/account",
+                        "name": "token"
+                    }),
+                ),
+                1710000000109,
+            )
+            .expect("cookie store remove should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-cookie-store-remove".to_string(),
+                timestamp: 1710000000109,
+                trace_id: "trace-request-cookie-store-remove".to_string(),
+                payload: None,
+                error: None,
+            }
+        );
+        let requests = fake.cookie_removes();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].url(), "https://example.test/account");
+        assert_eq!(requests[0].name(), "token");
     }
 
     #[test]
@@ -7352,6 +7398,7 @@ mod tests {
         dock_badge_labels: Mutex<Vec<Option<String>>>,
         context_menus: Mutex<Vec<ContextMenuShowRequest>>,
         cookie_gets: Mutex<Vec<host_protocol::CookieStoreGetPayload>>,
+        cookie_removes: Mutex<Vec<host_protocol::CookieStoreRemovePayload>>,
     }
 
     impl FakeWindowHandler {
@@ -7387,6 +7434,7 @@ mod tests {
                 dock_badge_labels: Mutex::new(Vec::new()),
                 context_menus: Mutex::new(Vec::new()),
                 cookie_gets: Mutex::new(Vec::new()),
+                cookie_removes: Mutex::new(Vec::new()),
             }
         }
 
@@ -7562,6 +7610,13 @@ mod tests {
             self.cookie_gets
                 .lock()
                 .expect("fake cookie get requests should lock")
+                .clone()
+        }
+
+        fn cookie_removes(&self) -> Vec<host_protocol::CookieStoreRemovePayload> {
+            self.cookie_removes
+                .lock()
+                .expect("fake cookie remove requests should lock")
                 .clone()
         }
     }
@@ -7979,6 +8034,17 @@ mod tests {
                     "/",
                 ),
             ]))
+        }
+
+        fn remove_cookie(
+            &self,
+            payload: host_protocol::CookieStoreRemovePayload,
+        ) -> Result<(), HostProtocolError> {
+            self.cookie_removes
+                .lock()
+                .expect("fake cookie remove requests should lock")
+                .push(payload);
+            Ok(())
         }
 
         fn create_tray(
