@@ -241,6 +241,18 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
           ]
         }
       })
+      expect(result.rows.find((row) => row.tag === "EgressPolicy.isSupported")).toMatchObject({
+        hostStatus: "routed",
+        support: {
+          status: "partial",
+          reason: "host-decision-log-runtime-probed",
+          platforms: [
+            { platform: "macos", status: "partial", reason: "host-decision-log-runtime-probed" },
+            { platform: "windows", status: "partial", reason: "host-decision-log-runtime-probed" },
+            { platform: "linux", status: "partial", reason: "host-decision-log-runtime-probed" }
+          ]
+        }
+      })
       expect(result.rows.find((row) => row.tag === "EgressPolicy.record")).toMatchObject({
         hostStatus: "routed"
       })

@@ -86,6 +86,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const downloadResume = yield* capabilities.support("Download.resume")
       const downloadStart = yield* capabilities.support("Download.start")
       const egressPolicyDecide = yield* capabilities.support("EgressPolicy.decide")
+      const egressPolicyIsSupported = yield* capabilities.support("EgressPolicy.isSupported")
       const crashReporterStart = yield* capabilities.support("CrashReporter.start")
       const crashReporterRecordBreadcrumb = yield* capabilities.support(
         "CrashReporter.recordBreadcrumb"
@@ -219,6 +220,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(downloadResume).toEqual(UnsupportedDownloadSupport)
       expect(downloadStart).toEqual(UnsupportedDownloadSupport)
       expect(egressPolicyDecide).toEqual(RuntimeProbedEgressPolicySupport)
+      expect(egressPolicyIsSupported).toEqual(RuntimeProbedEgressPolicySupport)
       expect(displayCaptureCaptureDisplay).toEqual({
         status: "partial",
         reason: "macos-screencapture-adapter",
