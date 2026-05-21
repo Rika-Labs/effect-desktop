@@ -85,6 +85,7 @@ export const SESSION_PERMISSION_IS_SUPPORTED_METHOD = "SessionPermission.isSuppo
 export const SESSION_PERMISSION_EVENT_METHOD = "SessionPermission.Event"
 export const DOWNLOAD_IS_SUPPORTED_METHOD = "Download.isSupported"
 export const DOWNLOAD_EVENT_METHOD = "Download.Event"
+export const NETWORK_AUTH_SET_PROXY_METHOD = "NetworkAuth.setProxy"
 export const NETWORK_AUTH_IS_SUPPORTED_METHOD = "NetworkAuth.isSupported"
 export const NETWORK_AUTH_EVENT_METHOD = "NetworkAuth.Event"
 export const WEB_REQUEST_IS_SUPPORTED_METHOD = "WebRequest.isSupported"

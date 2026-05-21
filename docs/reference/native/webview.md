@@ -108,9 +108,10 @@ This is not a full isolated-world implementation; platform WebView engines still
 own the native JavaScript context model.
 
 Proxy configuration, HTTP authentication challenges, and certificate decisions
-are also not part of `WebView`. `NetworkAuth` now exposes typed proxy,
-HTTP-auth, certificate-decision, and event contracts scoped to
-`SessionProfileHandle`, but the host adapter is still validation-first
+are also not part of `WebView`. `NetworkAuth` exposes typed proxy, HTTP-auth,
+certificate-decision, and event contracts scoped to `SessionProfileHandle`.
+Proxy policy is applied only when the host creates future profile-bound
+WebViews on supported platforms. HTTP-auth and certificate decisions remain
 unsupported until profile-bound WebViews can route provider network-auth
 callbacks through retained native resources.
 
@@ -260,8 +261,8 @@ methods, `host-user-agent-runtime-unavailable` for `setUserAgent`,
 helper; it does not grant permission.
 Request/response interception is also not part of this surface yet; it requires
 a separate native host adapter.
-Proxy/auth/certificate hooks are likewise absent from the current host-backed
-surface.
+Proxy/auth/certificate hooks are likewise absent from the `WebView` surface;
+use `NetworkAuth.setProxy` for the current future-WebView proxy path.
 
 ## Related
 

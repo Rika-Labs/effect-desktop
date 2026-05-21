@@ -1155,6 +1155,10 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Payload(download::is_supported),
     ),
     route(
+        host_protocol::NETWORK_AUTH_SET_PROXY_METHOD,
+        HostMethodDispatcher::Window(network_auth::set_proxy),
+    ),
+    route(
         host_protocol::NETWORK_AUTH_IS_SUPPORTED_METHOD,
         HostMethodDispatcher::Payload(network_auth::is_supported),
     ),
@@ -3782,6 +3786,63 @@ mod tests {
         assert_eq!(requests[0].url(), "https://example.test/account");
         assert_eq!(requests[0].cookie().name(), "token");
         assert_eq!(requests[0].cookie().path(), "/account");
+    }
+
+    #[test]
+    fn network_auth_set_proxy_routes_to_window_handler() {
+        let fake = Arc::new(FakeWindowHandler::default());
+        let router = HostMethodRouter::new(fake.clone());
+        let profile = serde_json::json!({
+            "kind": "session-profile",
+            "id": "session-profile:workspace-1",
+            "generation": 0,
+            "ownerScope": "workspace:1",
+            "state": "open"
+        });
+        let response = router
+            .dispatch_at(
+                request_with_payload(
+                    "request-network-auth-set-proxy",
+                    host_protocol::NETWORK_AUTH_SET_PROXY_METHOD,
+                    serde_json::json!({
+                        "profile": profile,
+                        "mode": "fixed",
+                        "server": "http://proxy.example.test:8080"
+                    }),
+                ),
+                1710000000111,
+            )
+            .expect("network auth set proxy should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-network-auth-set-proxy".to_string(),
+                timestamp: 1710000000111,
+                trace_id: "trace-request-network-auth-set-proxy".to_string(),
+                payload: Some(serde_json::json!({
+                    "profile": {
+                        "kind": "session-profile",
+                        "id": "session-profile:workspace-1",
+                        "generation": 0,
+                        "ownerScope": "workspace:1",
+                        "state": "open"
+                    },
+                    "mode": "fixed",
+                    "server": "http://proxy.example.test:8080",
+                    "bypass": []
+                })),
+                error: None,
+            }
+        );
+        let requests = fake.network_auth_proxies();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].profile().id(), "session-profile:workspace-1");
+        assert_eq!(
+            requests[0].mode(),
+            host_protocol::NetworkAuthProxyModePayload::Fixed
+        );
+        assert_eq!(requests[0].server(), Some("http://proxy.example.test:8080"));
     }
 
     #[test]
@@ -7460,6 +7521,7 @@ mod tests {
         cookie_gets: Mutex<Vec<host_protocol::CookieStoreGetPayload>>,
         cookie_removes: Mutex<Vec<host_protocol::CookieStoreRemovePayload>>,
         cookie_sets: Mutex<Vec<host_protocol::CookieStoreSetPayload>>,
+        network_auth_proxies: Mutex<Vec<host_protocol::NetworkAuthSetProxyPayload>>,
     }
 
     impl FakeWindowHandler {
@@ -7497,6 +7559,7 @@ mod tests {
                 cookie_gets: Mutex::new(Vec::new()),
                 cookie_removes: Mutex::new(Vec::new()),
                 cookie_sets: Mutex::new(Vec::new()),
+                network_auth_proxies: Mutex::new(Vec::new()),
             }
         }
 
@@ -7686,6 +7749,13 @@ mod tests {
             self.cookie_sets
                 .lock()
                 .expect("fake cookie set requests should lock")
+                .clone()
+        }
+
+        fn network_auth_proxies(&self) -> Vec<host_protocol::NetworkAuthSetProxyPayload> {
+            self.network_auth_proxies
+                .lock()
+                .expect("fake network auth proxy requests should lock")
                 .clone()
         }
     }
@@ -8125,6 +8195,24 @@ mod tests {
                 .expect("fake cookie set requests should lock")
                 .push(payload);
             Ok(())
+        }
+
+        fn set_network_auth_proxy(
+            &self,
+            payload: host_protocol::NetworkAuthSetProxyPayload,
+        ) -> Result<host_protocol::NetworkAuthProxyResultPayload, HostProtocolError> {
+            self.network_auth_proxies
+                .lock()
+                .expect("fake network auth proxy requests should lock")
+                .push(payload.clone());
+            let result = host_protocol::NetworkAuthProxyResultPayload::new(
+                payload.profile().clone(),
+                payload.mode(),
+            );
+            Ok(match payload.server() {
+                Some(server) => result.with_server(server),
+                None => result,
+            })
         }
 
         fn create_tray(

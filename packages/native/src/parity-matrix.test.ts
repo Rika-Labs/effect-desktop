@@ -284,6 +284,30 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
           ]
         }
       })
+      expect(result.rows.find((row) => row.tag === "NetworkAuth.setProxy")).toMatchObject({
+        hostStatus: "routed",
+        support: {
+          status: "partial",
+          reason: "host-network-auth-proxy-future-webviews-only",
+          platforms: [
+            {
+              platform: "macos",
+              status: "unsupported",
+              reason: "host-network-auth-proxy-platform-unavailable"
+            },
+            {
+              platform: "windows",
+              status: "partial",
+              reason: "host-network-auth-proxy-future-webviews-only"
+            },
+            {
+              platform: "linux",
+              status: "partial",
+              reason: "host-network-auth-proxy-future-webviews-only"
+            }
+          ]
+        }
+      })
       expect(result.rows.find((row) => row.tag === "ContextMenu.show")).toMatchObject({
         hostStatus: "routed",
         support: { status: "supported" }

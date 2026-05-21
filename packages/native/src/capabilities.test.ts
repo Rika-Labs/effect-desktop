@@ -65,6 +65,24 @@ const NetworkAuthUnavailableSupport = {
   ]
 } as const
 
+const NetworkAuthProxySupport = {
+  status: "partial",
+  reason: "host-network-auth-proxy-future-webviews-only",
+  platforms: [
+    {
+      platform: "macos",
+      status: "unsupported",
+      reason: "host-network-auth-proxy-platform-unavailable"
+    },
+    {
+      platform: "windows",
+      status: "partial",
+      reason: "host-network-auth-proxy-future-webviews-only"
+    },
+    { platform: "linux", status: "partial", reason: "host-network-auth-proxy-future-webviews-only" }
+  ]
+} as const
+
 const RuntimeProbedEgressPolicySupport = {
   status: "partial",
   reason: "host-decision-log-runtime-probed",
@@ -165,6 +183,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const networkAuthHandleCertificate = yield* capabilities.support(
         "NetworkAuth.handleCertificate"
       )
+      const networkAuthSetProxy = yield* capabilities.support("NetworkAuth.setProxy")
       const webViewCreate = yield* capabilities.support("WebView.create")
       const menuClear = yield* capabilities.support("Menu.clear")
       const contextMenuShow = yield* capabilities.support("ContextMenu.show")
@@ -224,6 +243,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(nativeNetworkCloseWebSocket).toEqual(NativeNetworkUnavailableSupport)
       expect(networkAuthHandleAuth).toEqual(NetworkAuthUnavailableSupport)
       expect(networkAuthHandleCertificate).toEqual(NetworkAuthUnavailableSupport)
+      expect(networkAuthSetProxy).toEqual(NetworkAuthProxySupport)
       expect(webViewCreate).toEqual({
         status: "partial",
         reason: "host-navigation-state-tracked",

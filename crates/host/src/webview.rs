@@ -8,8 +8,8 @@ use tracing::info;
 #[cfg(target_os = "macos")]
 use wry::WebViewBuilderExtDarwin;
 use wry::{
-    DragDropEvent, NewWindowFeatures, NewWindowResponse, PageLoadEvent, WebContext, WebView,
-    WebViewBuilder,
+    DragDropEvent, NewWindowFeatures, NewWindowResponse, PageLoadEvent, ProxyConfig, WebContext,
+    WebView, WebViewBuilder,
 };
 
 const WEBVIEW_OPENED_EVENT: &str = "host.webview.opened";
@@ -58,6 +58,7 @@ pub(crate) struct ChildWebViewRequest<'a> {
     pub(crate) isolation: Option<ChildWebViewIsolation>,
     pub(crate) page_load_handler: Box<dyn Fn(PageLoadEvent, String)>,
     pub(crate) drag_drop_handler: Box<dyn Fn(DragDropEvent) -> bool>,
+    pub(crate) proxy_config: Option<ProxyConfig>,
 }
 
 pub(crate) struct ChildWebViewIsolation {
@@ -177,10 +178,13 @@ pub(crate) fn attach_child_webview(
     } else {
         builder
     };
-    let builder = apply_profile_data_store(builder, request.data_store_identifier)
-        .with_url(request.url)
-        .with_navigation_handler(request.navigation_handler)
-        .with_new_window_req_handler(request.new_window_handler);
+    let builder = apply_proxy_config(
+        apply_profile_data_store(builder, request.data_store_identifier),
+        request.proxy_config,
+    )
+    .with_url(request.url)
+    .with_navigation_handler(request.navigation_handler)
+    .with_new_window_req_handler(request.new_window_handler);
     let builder = match request.isolation {
         Some(isolation) => builder
             .with_initialization_script(isolation.initialization_script)
@@ -205,6 +209,16 @@ pub(crate) fn attach_child_webview(
     );
 
     Ok(webview)
+}
+
+fn apply_proxy_config<'a>(
+    builder: WebViewBuilder<'a>,
+    proxy_config: Option<ProxyConfig>,
+) -> WebViewBuilder<'a> {
+    match proxy_config {
+        Some(proxy_config) => builder.with_proxy_config(proxy_config),
+        None => builder,
+    }
 }
 
 #[cfg(target_os = "macos")]

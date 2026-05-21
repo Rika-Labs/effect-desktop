@@ -13,14 +13,15 @@ use host_protocol::{
     ContextMenuActivatedEventPayload, CookieStoreCookiePayload, CookieStoreGetPayload,
     CookieStoreGetResultPayload, CookieStoreRemovePayload, CookieStoreSameSitePayload,
     CookieStoreSetPayload, DockProgressState, DockSetProgressPayload, HostProtocolEnvelope,
-    HostProtocolError, MenuActivatedEventPayload, ScreenBoundsPayload, ScreenDisplayPayload,
-    ScreenDisplaysChangedEventPayload, ScreenDisplaysResultPayload, ScreenMethodPayload,
-    ScreenPointPayload, ScreenSupportedPayload, SessionProfileResourcePayload, TrayResourcePayload,
-    WindowAttentionType, WindowBoundsEventPayload, WindowBoundsPayload, WindowCreatePayload,
-    WindowCreateResponse, WindowListResponse, WindowLookupResponse, WindowParentResponse,
-    WindowProgressState, WindowRegistryEventPayload, WindowRegistryEventPhase,
-    WindowSetProgressPayload, WindowStateEventPayload, WindowStatePayload, WindowTitleBarStyle,
-    WindowTrafficLights,
+    HostProtocolError, MenuActivatedEventPayload, NetworkAuthProxyModePayload,
+    NetworkAuthProxyResultPayload, NetworkAuthSetProxyPayload, ScreenBoundsPayload,
+    ScreenDisplayPayload, ScreenDisplaysChangedEventPayload, ScreenDisplaysResultPayload,
+    ScreenMethodPayload, ScreenPointPayload, ScreenSupportedPayload, SessionProfileResourcePayload,
+    TrayResourcePayload, WindowAttentionType, WindowBoundsEventPayload, WindowBoundsPayload,
+    WindowCreatePayload, WindowCreateResponse, WindowListResponse, WindowLookupResponse,
+    WindowParentResponse, WindowProgressState, WindowRegistryEventPayload,
+    WindowRegistryEventPhase, WindowSetProgressPayload, WindowStateEventPayload,
+    WindowStatePayload, WindowTitleBarStyle, WindowTrafficLights,
 };
 use muda::{
     CheckMenuItem, ContextMenu as MudaContextMenu, Menu, MenuItem, PredefinedMenuItem, Submenu,
@@ -67,6 +68,12 @@ const WINDOW_EXIT_REQUESTED_EVENT: &str = "host.window.exit_requested";
 const WINDOW_METHOD_REPLY_TIMEOUT: Duration = Duration::from_secs(120);
 const WINDOW_COMMAND_IDLE_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const WINDOW_SMOKE_TEST_TIMEOUT: Duration = Duration::from_secs(150);
+const NETWORK_AUTH_PROXY_BYPASS_UNSUPPORTED_REASON: &str =
+    "host-network-auth-proxy-bypass-unavailable";
+const NETWORK_AUTH_PROXY_DIRECT_UNSUPPORTED_REASON: &str =
+    "host-network-auth-direct-proxy-unavailable";
+const NETWORK_AUTH_PROXY_PLATFORM_UNSUPPORTED_REASON: &str =
+    "host-network-auth-proxy-platform-unavailable";
 pub(crate) const APP_RESTART_CHILD_SMOKE_TEST_ARG: &str = "--app-restart-child-smoke-test";
 pub(crate) const APP_RESTART_SMOKE_MARKER_ENV: &str = "EFFECT_DESKTOP_APP_RESTART_SMOKE_MARKER";
 
@@ -365,6 +372,16 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
         &self,
         method: ScreenMethodPayload,
     ) -> std::result::Result<ScreenSupportedPayload, HostProtocolError>;
+
+    fn set_network_auth_proxy(
+        &self,
+        _payload: NetworkAuthSetProxyPayload,
+    ) -> std::result::Result<NetworkAuthProxyResultPayload, HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            "host-network-auth-proxy-unavailable",
+            host_protocol::NETWORK_AUTH_SET_PROXY_METHOD,
+        ))
+    }
 
     fn create_webview(
         &self,
@@ -1142,6 +1159,10 @@ enum WindowCommand {
         method: ScreenMethodPayload,
         reply: Sender<WindowCommandReply>,
     },
+    SetNetworkAuthProxy {
+        payload: NetworkAuthSetProxyPayload,
+        reply: Sender<WindowCommandReply>,
+    },
 }
 
 type WindowCommandReply = std::result::Result<WindowCommandResponse, HostProtocolError>;
@@ -1166,6 +1187,7 @@ enum WindowCommandResponse {
     ScreenDisplay(ScreenDisplayPayload),
     ScreenPoint(ScreenPointPayload),
     ScreenSupported(ScreenSupportedPayload),
+    NetworkAuthProxy(NetworkAuthProxyResultPayload),
     WebViewCreated(WebViewResourcePayload),
     WebViewNavigationState(WebViewNavigationStatePayload),
     CookieStoreGet(CookieStoreGetResultPayload),
@@ -1200,6 +1222,13 @@ struct NativeWebViewResources {
 struct NativeWebContextResources {
     context: webview::HostWebContext,
     protocols_registered: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct NetworkAuthProxyPolicy {
+    profile: SessionProfileResourcePayload,
+    mode: NetworkAuthProxyModePayload,
+    server: Option<String>,
 }
 
 type SharedWebViewNavigationPolicy = Rc<RefCell<WebViewNavigationPolicy>>;
@@ -1332,6 +1361,7 @@ struct WindowRegistry {
     windows: HashMap<String, NativeWindowResources>,
     webviews: HashMap<String, NativeWebViewResources>,
     web_contexts: HashMap<String, NativeWebContextResources>,
+    network_auth_proxies: HashMap<String, NetworkAuthProxyPolicy>,
     window_id_by_native_id: HashMap<WindowId, String>,
     window_order: Vec<String>,
     focused_window_id: Option<String>,
@@ -1452,7 +1482,8 @@ impl WindowMethodPort {
             | WindowCommandResponse::WebViewCreated(_)
             | WindowCommandResponse::WebViewNavigationState(_)
             | WindowCommandResponse::CookieStoreGet(_)
-            | WindowCommandResponse::BrowsingDataCleared(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::BrowsingDataCleared(_)
+            | WindowCommandResponse::NetworkAuthProxy(_) => Err(HostProtocolError::internal(
                 "window lifecycle command received unrelated response",
                 operation,
             )),
@@ -1487,7 +1518,8 @@ impl WindowMethodPort {
             | WindowCommandResponse::WebViewCreated(_)
             | WindowCommandResponse::WebViewNavigationState(_)
             | WindowCommandResponse::CookieStoreGet(_)
-            | WindowCommandResponse::BrowsingDataCleared(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::BrowsingDataCleared(_)
+            | WindowCommandResponse::NetworkAuthProxy(_) => Err(HostProtocolError::internal(
                 "window state command received unrelated response",
                 operation,
             )),
@@ -1522,7 +1554,8 @@ impl WindowMethodPort {
             | WindowCommandResponse::WebViewCreated(_)
             | WindowCommandResponse::WebViewNavigationState(_)
             | WindowCommandResponse::CookieStoreGet(_)
-            | WindowCommandResponse::BrowsingDataCleared(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::BrowsingDataCleared(_)
+            | WindowCommandResponse::NetworkAuthProxy(_) => Err(HostProtocolError::internal(
                 "window placement command received unrelated response",
                 operation,
             )),
@@ -1617,7 +1650,8 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::WebViewCreated(_)
             | WindowCommandResponse::WebViewNavigationState(_)
             | WindowCommandResponse::CookieStoreGet(_)
-            | WindowCommandResponse::BrowsingDataCleared(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::BrowsingDataCleared(_)
+            | WindowCommandResponse::NetworkAuthProxy(_) => Err(HostProtocolError::internal(
                 "window create received tray response",
                 host_protocol::WINDOW_CREATE_METHOD,
             )),
@@ -1687,7 +1721,8 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::WebViewCreated(_)
             | WindowCommandResponse::WebViewNavigationState(_)
             | WindowCommandResponse::CookieStoreGet(_)
-            | WindowCommandResponse::BrowsingDataCleared(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::BrowsingDataCleared(_)
+            | WindowCommandResponse::NetworkAuthProxy(_) => Err(HostProtocolError::internal(
                 "window destroy received tray response",
                 host_protocol::WINDOW_DESTROY_METHOD,
             )),
@@ -1840,7 +1875,8 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::WebViewCreated(_)
             | WindowCommandResponse::WebViewNavigationState(_)
             | WindowCommandResponse::CookieStoreGet(_)
-            | WindowCommandResponse::BrowsingDataCleared(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::BrowsingDataCleared(_)
+            | WindowCommandResponse::NetworkAuthProxy(_) => Err(HostProtocolError::internal(
                 "window get bounds received unrelated response",
                 host_protocol::WINDOW_GET_BOUNDS_METHOD,
             )),
@@ -2233,7 +2269,8 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::WebViewCreated(_)
             | WindowCommandResponse::WebViewNavigationState(_)
             | WindowCommandResponse::CookieStoreGet(_)
-            | WindowCommandResponse::BrowsingDataCleared(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::BrowsingDataCleared(_)
+            | WindowCommandResponse::NetworkAuthProxy(_) => Err(HostProtocolError::internal(
                 "window get state received unrelated response",
                 host_protocol::WINDOW_GET_STATE_METHOD,
             )),
@@ -2275,7 +2312,8 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::WebViewCreated(_)
             | WindowCommandResponse::WebViewNavigationState(_)
             | WindowCommandResponse::CookieStoreGet(_)
-            | WindowCommandResponse::BrowsingDataCleared(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::BrowsingDataCleared(_)
+            | WindowCommandResponse::NetworkAuthProxy(_) => Err(HostProtocolError::internal(
                 "dock badge command received window response",
                 operation,
             )),
@@ -2315,7 +2353,8 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::WebViewCreated(_)
             | WindowCommandResponse::WebViewNavigationState(_)
             | WindowCommandResponse::CookieStoreGet(_)
-            | WindowCommandResponse::BrowsingDataCleared(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::BrowsingDataCleared(_)
+            | WindowCommandResponse::NetworkAuthProxy(_) => Err(HostProtocolError::internal(
                 "dock set progress received unrelated response",
                 host_protocol::DOCK_SET_PROGRESS_METHOD,
             )),
@@ -2352,7 +2391,8 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::WebViewCreated(_)
             | WindowCommandResponse::WebViewNavigationState(_)
             | WindowCommandResponse::CookieStoreGet(_)
-            | WindowCommandResponse::BrowsingDataCleared(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::BrowsingDataCleared(_)
+            | WindowCommandResponse::NetworkAuthProxy(_) => Err(HostProtocolError::internal(
                 "dock attention command received window response",
                 host_protocol::DOCK_REQUEST_ATTENTION_METHOD,
             )),
@@ -2392,7 +2432,8 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::WebViewCreated(_)
             | WindowCommandResponse::WebViewNavigationState(_)
             | WindowCommandResponse::CookieStoreGet(_)
-            | WindowCommandResponse::BrowsingDataCleared(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::BrowsingDataCleared(_)
+            | WindowCommandResponse::NetworkAuthProxy(_) => Err(HostProtocolError::internal(
                 "application menu command received window response",
                 host_protocol::MENU_SET_APPLICATION_MENU_METHOD,
             )),
@@ -2434,7 +2475,8 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::WebViewCreated(_)
             | WindowCommandResponse::WebViewNavigationState(_)
             | WindowCommandResponse::CookieStoreGet(_)
-            | WindowCommandResponse::BrowsingDataCleared(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::BrowsingDataCleared(_)
+            | WindowCommandResponse::NetworkAuthProxy(_) => Err(HostProtocolError::internal(
                 "window menu command received window response",
                 host_protocol::MENU_SET_WINDOW_MENU_METHOD,
             )),
@@ -2474,7 +2516,8 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::WebViewCreated(_)
             | WindowCommandResponse::WebViewNavigationState(_)
             | WindowCommandResponse::CookieStoreGet(_)
-            | WindowCommandResponse::BrowsingDataCleared(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::BrowsingDataCleared(_)
+            | WindowCommandResponse::NetworkAuthProxy(_) => Err(HostProtocolError::internal(
                 "context menu command received window response",
                 host_protocol::CONTEXT_MENU_SHOW_METHOD,
             )),
@@ -3021,6 +3064,25 @@ impl WindowMethodHandler for WindowMethodPort {
             )),
         }
     }
+
+    fn set_network_auth_proxy(
+        &self,
+        payload: NetworkAuthSetProxyPayload,
+    ) -> std::result::Result<NetworkAuthProxyResultPayload, HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetNetworkAuthProxy {
+            payload,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::NetworkAuthProxy(result) => Ok(result),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::NETWORK_AUTH_SET_PROXY_METHOD,
+            )),
+        }
+    }
 }
 
 impl WindowCreateRequest {
@@ -3157,6 +3219,7 @@ impl WindowRegistry {
             windows: HashMap::new(),
             webviews: HashMap::new(),
             web_contexts: HashMap::new(),
+            network_auth_proxies: HashMap::new(),
             window_id_by_native_id: HashMap::new(),
             window_order: Vec::new(),
             focused_window_id: None,
@@ -4436,6 +4499,26 @@ impl WindowRegistry {
         Ok(())
     }
 
+    fn set_network_auth_proxy(
+        &mut self,
+        payload: NetworkAuthSetProxyPayload,
+    ) -> std::result::Result<NetworkAuthProxyResultPayload, HostProtocolError> {
+        session_profile::ensure_profile_is_live(
+            payload.profile(),
+            host_protocol::NETWORK_AUTH_SET_PROXY_METHOD,
+        )?;
+        validate_network_auth_proxy_payload(&payload)?;
+        let policy = NetworkAuthProxyPolicy {
+            profile: payload.profile().clone(),
+            mode: payload.mode(),
+            server: payload.server().map(str::to_string),
+        };
+        let result = network_auth_proxy_result(&policy);
+        self.network_auth_proxies
+            .insert(payload.profile().id().to_string(), policy);
+        Ok(result)
+    }
+
     fn create_webview(
         &mut self,
         request: WebViewCreateRequest,
@@ -4510,6 +4593,13 @@ impl WindowRegistry {
                 )
             })?;
         }
+        let proxy_config = request
+            .profile
+            .as_ref()
+            .and_then(|profile| self.network_auth_proxies.get(profile.id()))
+            .map(network_auth_proxy_config)
+            .transpose()?
+            .flatten();
 
         let navigation_handler = Box::new(move |url: String| {
             if !origin_allowed(&url, &policy_for_handler.borrow()) {
@@ -4598,6 +4688,7 @@ impl WindowRegistry {
                     isolation,
                     page_load_handler,
                     drag_drop_handler,
+                    proxy_config: proxy_config.clone(),
                 },
             )
             .map_err(|error| *error)?;
@@ -4616,6 +4707,7 @@ impl WindowRegistry {
                     isolation,
                     page_load_handler,
                     drag_drop_handler,
+                    proxy_config,
                 },
             )
             .map_err(|error| *error)?
@@ -5692,6 +5784,13 @@ impl WindowRegistry {
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
             }
+            WindowCommand::SetNetworkAuthProxy { payload, reply } => {
+                let result = self
+                    .set_network_auth_proxy(payload)
+                    .map(WindowCommandResponse::NetworkAuthProxy);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
         }
     }
 
@@ -6029,6 +6128,136 @@ fn webview_host_error(error: wry::Error, operation: &'static str) -> HostProtoco
     HostProtocolError::internal(format!("WebView host operation failed: {error}"), operation)
 }
 
+fn validate_network_auth_proxy_payload(
+    payload: &NetworkAuthSetProxyPayload,
+) -> std::result::Result<(), HostProtocolError> {
+    if !payload.bypass().is_empty() {
+        return Err(HostProtocolError::unsupported(
+            NETWORK_AUTH_PROXY_BYPASS_UNSUPPORTED_REASON,
+            host_protocol::NETWORK_AUTH_SET_PROXY_METHOD,
+        ));
+    }
+
+    match payload.mode() {
+        NetworkAuthProxyModePayload::Direct => Err(HostProtocolError::unsupported(
+            NETWORK_AUTH_PROXY_DIRECT_UNSUPPORTED_REASON,
+            host_protocol::NETWORK_AUTH_SET_PROXY_METHOD,
+        )),
+        NetworkAuthProxyModePayload::System => {
+            if payload.server().is_some() {
+                return Err(HostProtocolError::invalid_argument(
+                    "server",
+                    "must be omitted unless mode is fixed",
+                    host_protocol::NETWORK_AUTH_SET_PROXY_METHOD,
+                ));
+            }
+            Ok(())
+        }
+        NetworkAuthProxyModePayload::Fixed => {
+            if !network_auth_fixed_proxy_supported_on_current_platform() {
+                return Err(HostProtocolError::unsupported(
+                    NETWORK_AUTH_PROXY_PLATFORM_UNSUPPORTED_REASON,
+                    host_protocol::NETWORK_AUTH_SET_PROXY_METHOD,
+                ));
+            }
+            let Some(server) = payload.server() else {
+                return Err(HostProtocolError::invalid_argument(
+                    "server",
+                    "must be provided when mode is fixed",
+                    host_protocol::NETWORK_AUTH_SET_PROXY_METHOD,
+                ));
+            };
+            parse_network_auth_proxy_config(server, host_protocol::NETWORK_AUTH_SET_PROXY_METHOD)
+                .map(|_| ())
+        }
+    }
+}
+
+fn network_auth_proxy_result(policy: &NetworkAuthProxyPolicy) -> NetworkAuthProxyResultPayload {
+    let result = NetworkAuthProxyResultPayload::new(policy.profile.clone(), policy.mode);
+    match policy.server.as_ref() {
+        Some(server) => result.with_server(server.clone()),
+        None => result,
+    }
+}
+
+fn network_auth_proxy_config(
+    policy: &NetworkAuthProxyPolicy,
+) -> std::result::Result<Option<wry::ProxyConfig>, HostProtocolError> {
+    match (policy.mode, policy.server.as_deref()) {
+        (NetworkAuthProxyModePayload::Fixed, Some(server)) => {
+            parse_network_auth_proxy_config(server, host_protocol::WEBVIEW_CREATE_METHOD).map(Some)
+        }
+        (NetworkAuthProxyModePayload::System, _) => Ok(None),
+        (NetworkAuthProxyModePayload::Direct, _) | (NetworkAuthProxyModePayload::Fixed, None) => {
+            Err(HostProtocolError::invalid_argument(
+                "mode",
+                "stored proxy policy is invalid",
+                host_protocol::WEBVIEW_CREATE_METHOD,
+            ))
+        }
+    }
+}
+
+fn network_auth_fixed_proxy_supported_on_current_platform() -> bool {
+    cfg!(any(target_os = "windows", target_os = "linux"))
+}
+
+fn parse_network_auth_proxy_config(
+    server: &str,
+    operation: &'static str,
+) -> std::result::Result<wry::ProxyConfig, HostProtocolError> {
+    let url = Url::parse(server).map_err(|error| {
+        HostProtocolError::invalid_argument(
+            "server",
+            format!("must be an absolute HTTP(S) or SOCKS5 proxy URL: {error}"),
+            operation,
+        )
+    })?;
+    if !matches!(url.path(), "" | "/") || url.query().is_some() || url.fragment().is_some() {
+        return Err(HostProtocolError::invalid_argument(
+            "server",
+            "must not include a path, query, or fragment",
+            operation,
+        ));
+    }
+    let Some(host) = url.host_str() else {
+        return Err(HostProtocolError::invalid_argument(
+            "server",
+            "must include a host",
+            operation,
+        ));
+    };
+    let Some(port) = network_auth_proxy_port(&url) else {
+        return Err(HostProtocolError::invalid_argument(
+            "server",
+            "must include a port for this proxy scheme",
+            operation,
+        ));
+    };
+    let endpoint = wry::ProxyEndpoint {
+        host: host.to_string(),
+        port: port.to_string(),
+    };
+    match url.scheme() {
+        "http" | "https" => Ok(wry::ProxyConfig::Http(endpoint)),
+        "socks5" => Ok(wry::ProxyConfig::Socks5(endpoint)),
+        _ => Err(HostProtocolError::invalid_argument(
+            "server",
+            "must use http, https, or socks5",
+            operation,
+        )),
+    }
+}
+
+fn network_auth_proxy_port(url: &Url) -> Option<u16> {
+    match url.scheme() {
+        "http" | "https" => url.port_or_known_default(),
+        "socks5" => url.port().or(Some(1080)),
+        _ => None,
+    }
+}
+
 fn parse_cookie_url(
     url: &str,
     operation: &'static str,
@@ -6236,6 +6465,7 @@ fn unexpected_tray_response(
         | WindowCommandResponse::WebViewNavigationState(_)
         | WindowCommandResponse::CookieStoreGet(_)
         | WindowCommandResponse::BrowsingDataCleared(_) => "tray command received webview response",
+        WindowCommandResponse::NetworkAuthProxy(_) => "tray command received network auth response",
     };
     HostProtocolError::internal(message, operation)
 }
@@ -6269,6 +6499,9 @@ fn unexpected_webview_response(
         | WindowCommandResponse::CookieStoreGet(_)
         | WindowCommandResponse::BrowsingDataCleared(_) => {
             "webview command received navigation state response"
+        }
+        WindowCommandResponse::NetworkAuthProxy(_) => {
+            "webview command received network auth response"
         }
     };
     HostProtocolError::internal(message, operation)
@@ -6305,6 +6538,9 @@ fn unexpected_screen_response(
         | WindowCommandResponse::CookieStoreGet(_)
         | WindowCommandResponse::BrowsingDataCleared(_) => {
             "screen command received webview response"
+        }
+        WindowCommandResponse::NetworkAuthProxy(_) => {
+            "screen command received network auth response"
         }
     };
     HostProtocolError::internal(message, operation)
@@ -8427,14 +8663,14 @@ mod tests {
         handle_native_window_close_requested, handle_webview_isolation_ipc,
         install_menu_event_sender, install_webview_event_sender, install_window_event_sender,
         is_screen_displays_changed_window_event, lifecycle_event_with_smoke_timeout,
-        lifecycle_for_create_result, replace_menu_command_bindings, resident_lifecycle,
-        rounded_i32, rounded_u32, screen_bounds_payload, smoke_deadline_for_mode,
-        to_tao_dock_progress, unsupported_screen, validate_positive_finite, LogicalScreenArea,
-        MenuCommandBinding, PhysicalScreenArea, RunMode, WebViewExposedApi, WebViewIsolationPolicy,
-        WebViewNavigationDecision, WebViewNavigationPolicy, WebViewNavigationState, WindowCommand,
-        WindowCommandResponse, WindowCreateRequest, WindowId, WindowLifecycleEvent,
-        WindowMethodPort, WindowRegistry, WINDOW_COMMAND_IDLE_POLL_INTERVAL,
-        WINDOW_SMOKE_TEST_TIMEOUT,
+        lifecycle_for_create_result, network_auth_proxy_port, parse_network_auth_proxy_config,
+        replace_menu_command_bindings, resident_lifecycle, rounded_i32, rounded_u32,
+        screen_bounds_payload, smoke_deadline_for_mode, to_tao_dock_progress, unsupported_screen,
+        validate_positive_finite, LogicalScreenArea, MenuCommandBinding, PhysicalScreenArea,
+        RunMode, WebViewExposedApi, WebViewIsolationPolicy, WebViewNavigationDecision,
+        WebViewNavigationPolicy, WebViewNavigationState, WindowCommand, WindowCommandResponse,
+        WindowCreateRequest, WindowId, WindowLifecycleEvent, WindowMethodPort, WindowRegistry,
+        WINDOW_COMMAND_IDLE_POLL_INTERVAL, WINDOW_SMOKE_TEST_TIMEOUT,
     };
     use host_protocol::{
         DockProgressState, DockSetProgressOptionsPayload, DockSetProgressPayload,
@@ -8467,6 +8703,60 @@ mod tests {
         fn drop(&mut self) {
             let _ = clear_menu_runtime_event_state();
         }
+    }
+
+    #[test]
+    fn network_auth_proxy_config_parses_http_and_socks_servers() {
+        let http = parse_network_auth_proxy_config(
+            "https://proxy.example.test",
+            host_protocol::NETWORK_AUTH_SET_PROXY_METHOD,
+        )
+        .expect("https proxy should parse");
+        match http {
+            wry::ProxyConfig::Http(endpoint) => {
+                assert_eq!(endpoint.host, "proxy.example.test");
+                assert_eq!(endpoint.port, "443");
+            }
+            wry::ProxyConfig::Socks5(_) => panic!("https proxy should use HTTP CONNECT"),
+        }
+
+        let socks = parse_network_auth_proxy_config(
+            "socks5://proxy.example.test",
+            host_protocol::NETWORK_AUTH_SET_PROXY_METHOD,
+        )
+        .expect("socks proxy should parse");
+        match socks {
+            wry::ProxyConfig::Socks5(endpoint) => {
+                assert_eq!(endpoint.host, "proxy.example.test");
+                assert_eq!(endpoint.port, "1080");
+            }
+            wry::ProxyConfig::Http(_) => panic!("socks5 proxy should use SOCKS5"),
+        }
+    }
+
+    #[test]
+    fn network_auth_proxy_config_rejects_non_authority_urls() {
+        let error = parse_network_auth_proxy_config(
+            "http://proxy.example.test/path",
+            host_protocol::NETWORK_AUTH_SET_PROXY_METHOD,
+        )
+        .expect_err("proxy URL with a path should fail");
+
+        assert!(matches!(
+            error,
+            HostProtocolError::InvalidArgument { field, .. } if field == "server"
+        ));
+    }
+
+    #[test]
+    fn network_auth_proxy_port_uses_scheme_defaults() {
+        let http = Url::parse("http://proxy.example.test").expect("http URL should parse");
+        let https = Url::parse("https://proxy.example.test").expect("https URL should parse");
+        let socks = Url::parse("socks5://proxy.example.test").expect("socks URL should parse");
+
+        assert_eq!(network_auth_proxy_port(&http), Some(80));
+        assert_eq!(network_auth_proxy_port(&https), Some(443));
+        assert_eq!(network_auth_proxy_port(&socks), Some(1080));
     }
 
     #[test]

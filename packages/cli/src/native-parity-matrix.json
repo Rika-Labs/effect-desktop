@@ -2079,27 +2079,27 @@
       "method": "setProxy",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-network-auth-unavailable",
+        "status": "partial",
+        "reason": "host-network-auth-proxy-future-webviews-only",
         "platforms": [
           {
             "platform": "macos",
             "status": "unsupported",
-            "reason": "host-network-auth-unavailable"
+            "reason": "host-network-auth-proxy-platform-unavailable"
           },
           {
             "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-network-auth-unavailable"
+            "status": "partial",
+            "reason": "host-network-auth-proxy-future-webviews-only"
           },
           {
             "platform": "linux",
-            "status": "unsupported",
-            "reason": "host-network-auth-unavailable"
+            "status": "partial",
+            "reason": "host-network-auth-proxy-future-webviews-only"
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "routed"
     },
     {
       "tag": "Notification.close",
@@ -5011,10 +5011,10 @@
   ],
   "summary": {
     "total": 288,
-    "routed": 238,
+    "routed": 239,
     "missing": 0,
     "supported": 167,
-    "partial": 71,
-    "unsupported": 50
+    "partial": 72,
+    "unsupported": 49
   }
 }

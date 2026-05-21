@@ -321,6 +321,7 @@ pub const SESSION_PERMISSION_IS_SUPPORTED_METHOD: &str = "SessionPermission.isSu
 pub const SESSION_PERMISSION_EVENT: &str = "SessionPermission.Event";
 pub const DOWNLOAD_IS_SUPPORTED_METHOD: &str = "Download.isSupported";
 pub const DOWNLOAD_EVENT: &str = "Download.Event";
+pub const NETWORK_AUTH_SET_PROXY_METHOD: &str = "NetworkAuth.setProxy";
 pub const NETWORK_AUTH_IS_SUPPORTED_METHOD: &str = "NetworkAuth.isSupported";
 pub const NETWORK_AUTH_EVENT: &str = "NetworkAuth.Event";
 pub const WEB_REQUEST_IS_SUPPORTED_METHOD: &str = "WebRequest.isSupported";
@@ -10688,6 +10689,27 @@ impl NetworkAuthSetProxyPayload {
         self.server = Some(server.into());
         self
     }
+
+    pub fn with_bypass(mut self, bypass: Vec<String>) -> Self {
+        self.bypass = bypass;
+        self
+    }
+
+    pub fn profile(&self) -> &SessionProfileResourcePayload {
+        &self.profile
+    }
+
+    pub fn mode(&self) -> NetworkAuthProxyModePayload {
+        self.mode
+    }
+
+    pub fn server(&self) -> Option<&str> {
+        self.server.as_deref()
+    }
+
+    pub fn bypass(&self) -> &[String] {
+        &self.bypass
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -10708,6 +10730,32 @@ impl NetworkAuthProxyResultPayload {
             server: None,
             bypass: Vec::new(),
         }
+    }
+
+    pub fn with_server(mut self, server: impl Into<String>) -> Self {
+        self.server = Some(server.into());
+        self
+    }
+
+    pub fn with_bypass(mut self, bypass: Vec<String>) -> Self {
+        self.bypass = bypass;
+        self
+    }
+
+    pub fn profile(&self) -> &SessionProfileResourcePayload {
+        &self.profile
+    }
+
+    pub fn mode(&self) -> NetworkAuthProxyModePayload {
+        self.mode
+    }
+
+    pub fn server(&self) -> Option<&str> {
+        self.server.as_deref()
+    }
+
+    pub fn bypass(&self) -> &[String] {
+        &self.bypass
     }
 }
 

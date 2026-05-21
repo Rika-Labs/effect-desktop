@@ -1,7 +1,9 @@
 import { expect, test } from "bun:test"
+import { makeResourceId, P } from "@effect-desktop/core"
 import { Effect, type Layer, ManagedRuntime } from "effect"
 
 import { makeNativeCapabilityManifest } from "./capabilities.js"
+import type { SessionProfileHandle } from "./contracts/session-profile.js"
 import {
   makeNetworkAuthMemoryClient,
   makeNetworkAuthServiceLayer,
@@ -12,7 +14,8 @@ import {
   NetworkAuthSurface
 } from "./network-auth.js"
 
-const UnsupportedMethods = ["setProxy", "handleAuth", "handleCertificate"] as const
+const UnsupportedMethods = ["handleAuth", "handleCertificate"] as const
+const SupportedMethods = ["setProxy"] as const
 const UnsupportedSupport = {
   status: "unsupported",
   reason: "host-network-auth-unavailable",
@@ -22,10 +25,20 @@ const UnsupportedSupport = {
     { platform: "linux", status: "unsupported", reason: "host-network-auth-unavailable" }
   ]
 } as const
+const Profile = {
+  kind: "session-profile",
+  id: makeResourceId("session-profile:workspace-1"),
+  generation: 0,
+  ownerScope: "workspace:1",
+  state: "open"
+} satisfies SessionProfileHandle
 
-test("NetworkAuth exposes only isSupported as a callable RPC", () => {
+test("NetworkAuth exposes isSupported and setProxy as callable RPCs", () => {
   const callableTags = Array.from(NetworkAuthRpcs.requests.keys()).toSorted()
-  expect(callableTags).toEqual(["NetworkAuth.isSupported"])
+  expect(callableTags).toEqual(["NetworkAuth.isSupported", "NetworkAuth.setProxy"])
+  for (const method of SupportedMethods) {
+    expect(callableTags).toContain(`NetworkAuth.${method}`)
+  }
   for (const method of UnsupportedMethods) {
     expect(callableTags).not.toContain(`NetworkAuth.${method}`)
   }
@@ -62,12 +75,46 @@ test("NetworkAuth unsupported client reports the host-unavailable reason", () =>
     })
   ))
 
-test("NetworkAuth declares the 3 unsupported methods as non-callable capability facts", () => {
+test("NetworkAuth setProxy returns the stored proxy policy through the service", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const client = yield* makeNetworkAuthMemoryClient()
+      const result = yield* runScoped(
+        Effect.gen(function* () {
+          const networkAuth = yield* NetworkAuth
+          return yield* networkAuth.setProxy({
+            profile: Profile,
+            mode: "fixed",
+            server: "http://proxy.example.test:8080"
+          })
+        }),
+        makeNetworkAuthServiceLayer(client)
+      )
+      expect(result).toEqual({
+        profile: Profile,
+        mode: "fixed",
+        server: "http://proxy.example.test:8080",
+        bypass: []
+      })
+    })
+  ))
+
+test("NetworkAuth declares the 2 unsupported methods as non-callable capability facts", () => {
   const factTags = NetworkAuthCapabilityFacts.map((fact) => fact.tag).toSorted()
   expect(factTags).toEqual(UnsupportedMethods.map((method) => `NetworkAuth.${method}`).toSorted())
   for (const fact of NetworkAuthCapabilityFacts) {
     expect(fact.support).toEqual(UnsupportedSupport)
   }
+})
+
+test("NetworkAuth exposes setProxy as the selected permission and keeps isSupported unprivileged", () => {
+  expect(NetworkAuthSurface.permissions.setProxy).toEqual(
+    P.nativeInvoke({ primitive: "NetworkAuth", methods: ["setProxy"] })
+  )
+  expect("isSupported" in NetworkAuthSurface.permissions).toBe(false)
+  expect(NetworkAuthSurface.permissions.all).toContainEqual(
+    P.nativeInvoke({ primitive: "NetworkAuth", methods: ["setProxy"] })
+  )
 })
 
 test("NetworkAuth capability facts surface in the manifest and stay non-callable", () =>
@@ -87,7 +134,7 @@ test("NetworkAuth capability facts surface in the manifest and stay non-callable
       const callableFactTags = NetworkAuthSurface.schemaDocs
         .filter((doc) => doc.callable)
         .map((doc) => doc.tag)
-      expect(callableFactTags).toEqual(["NetworkAuth.isSupported"])
+      expect(callableFactTags).toEqual(["NetworkAuth.isSupported", "NetworkAuth.setProxy"])
 
       const nonCallableTags = NetworkAuthSurface.schemaDocs
         .filter((doc) => !doc.callable)
