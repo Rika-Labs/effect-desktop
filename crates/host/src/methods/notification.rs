@@ -540,4 +540,17 @@ mod tests {
                 if reason == host_protocol::NOTIFICATION_UNSUPPORTED_REASON
         ));
     }
+
+    #[cfg(not(target_os = "linux"))]
+    #[test]
+    fn notification_request_permission_returns_unsupported_without_platform_adapter() {
+        let error = request_permission()
+            .expect_err("non-Linux notification permission request has no host adapter");
+
+        assert!(matches!(
+            error,
+            HostProtocolError::Unsupported { reason, .. }
+                if reason == host_protocol::NOTIFICATION_UNSUPPORTED_REASON
+        ));
+    }
 }
