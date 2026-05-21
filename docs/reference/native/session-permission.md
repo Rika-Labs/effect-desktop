@@ -43,6 +43,13 @@ The surface exposes only the genuinely callable methods below.
 
 `origin` must be an `app`, `http`, or `https` origin such as `app://localhost` or `https://example.test`. Paths, query strings, fragments, and empty hosts are rejected before transport.
 
+`request` remains unsupported as an explicit v1 native capability decision. A
+truthful request must be tied to a profile-bound WebView permission callback or
+create pending host state that the browser permission flow will later honor.
+The current host does not route provider permission prompts into
+`SessionPermission`, so accepting a synthetic request would create pending data
+that no WebView can observe or resolve.
+
 `decide` remains unsupported as an explicit v1 native capability decision. A
 truthful implementation must resolve a pending browser permission request under
 the same `SessionProfileHandle`, apply the caller's `grant` or `deny` decision
