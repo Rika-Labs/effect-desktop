@@ -49,6 +49,7 @@ export class CookieStoreSetInput extends Schema.Class<CookieStoreSetInput>("Cook
   cookie: CookieStoreCookie,
   traceId: Schema.optionalKey(BridgeSafeNonEmptyString)
 }) {}
+export type CookieStoreSetOptions = Schema.Schema.Type<typeof CookieStoreSetInput>
 
 export class CookieStoreRemoveInput extends Schema.Class<CookieStoreRemoveInput>(
   "CookieStoreRemoveInput"

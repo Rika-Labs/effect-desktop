@@ -8,7 +8,7 @@ effect_version: 4
 
 # `CookieStore`
 
-`CookieStore` describes cookie read, write, remove, and event operations scoped to an explicit `SessionProfileHandle`. The profile handle is the partition identity; cookie calls do not use global browser state in the public contract. `get` and `remove` are routed native RPCs backed by Wry's WebView cookie API. `set` remains a non-callable capability fact in this build.
+`CookieStore` describes cookie read, write, remove, and event operations scoped to an explicit `SessionProfileHandle`. The profile handle is the partition identity; cookie calls do not use global browser state in the public contract. `get`, `set`, and `remove` are routed native RPCs backed by Wry's WebView cookie API.
 
 The public service is Layer-first and test-substitutable. The TypeScript service exposes `CookieStore.Event` as a typed stream.
 
@@ -17,13 +17,14 @@ The public service is Layer-first and test-substitutable. The TypeScript service
 | Method        | Payload                         | Success                  |
 | ------------- | ------------------------------- | ------------------------ |
 | `get`         | `{ profile, url, name? }`       | `{ cookies }`            |
+| `set`         | `{ profile, url, cookie }`      | `void`                   |
 | `remove`      | `{ profile, url, name }`        | `void`                   |
 | `isSupported` | `void`                          | `{ supported, reason? }` |
 | `events`      | optional `SessionProfileHandle` | stream of events         |
 
 ## Capability facts (non-callable)
 
-`set` is advertised in the native capability manifest as a capability fact with `support.status: "unsupported"` (reason `host-cookie-store-unavailable`). It is not an invocable RPC: the surface registers no handler or client method for it. It exists only so the manifest can describe the intended cookie write operation and so permission tooling can reason about the `native.invoke` authority it would require.
+`CookieStore` currently has no non-callable capability facts. Cookie read, write, remove, and support checks are callable RPCs.
 
 `url` must be absolute `http` or `https` and cookie paths must start with `/`.
 
@@ -42,7 +43,7 @@ Cookies are plain data:
 
 ## Support
 
-`get` and `remove` are routed through the Rust host and operate on cookies from a live Wry WebView bound to the requested `SessionProfileHandle`. Wry 0.55.1 exposes cookie reads and deletion on `WebView`, not `WebContext`; if the profile is live but has no live WebView, the host fails the operation with `Unsupported { reason: "host-cookie-store-live-webview-required" }` rather than pretending the profile cookie store is available.
+`get`, `set`, and `remove` are routed through the Rust host and operate on cookies from a live Wry WebView bound to the requested `SessionProfileHandle`. Wry 0.55.1 exposes cookie reads, writes, and deletion on `WebView`, not `WebContext`; if the profile is live but has no live WebView, the host fails the operation with `Unsupported { reason: "host-cookie-store-live-webview-required" }` rather than pretending the profile cookie store is available.
 
 | Platform | Status    | Reason                                    |
 | -------- | --------- | ----------------------------------------- |

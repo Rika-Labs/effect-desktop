@@ -310,6 +310,7 @@ pub const SESSION_PROFILE_IS_SUPPORTED_METHOD: &str = "SessionProfile.isSupporte
 pub const SESSION_PROFILE_EVENT: &str = "SessionProfile.Event";
 pub const COOKIE_STORE_GET_METHOD: &str = "CookieStore.get";
 pub const COOKIE_STORE_REMOVE_METHOD: &str = "CookieStore.remove";
+pub const COOKIE_STORE_SET_METHOD: &str = "CookieStore.set";
 pub const COOKIE_STORE_IS_SUPPORTED_METHOD: &str = "CookieStore.isSupported";
 pub const COOKIE_STORE_EVENT: &str = "CookieStore.Event";
 pub const BROWSING_DATA_CLEAR_METHOD: &str = "BrowsingData.clear";
@@ -9736,7 +9737,7 @@ impl SessionProfileSupportedPayload {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum CookieStoreSameSitePayload {
     Lax,
@@ -9799,6 +9800,38 @@ impl CookieStoreCookiePayload {
         self.expires_at = Some(expires_at);
         self
     }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+
+    pub fn domain(&self) -> &str {
+        &self.domain
+    }
+
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+
+    pub fn secure(&self) -> Option<bool> {
+        self.secure
+    }
+
+    pub fn http_only(&self) -> Option<bool> {
+        self.http_only
+    }
+
+    pub fn same_site(&self) -> Option<CookieStoreSameSitePayload> {
+        self.same_site
+    }
+
+    pub fn expires_at(&self) -> Option<f64> {
+        self.expires_at
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -9857,6 +9890,18 @@ impl CookieStoreSetPayload {
             cookie,
             trace_id: None,
         }
+    }
+
+    pub fn profile(&self) -> &SessionProfileResourcePayload {
+        &self.profile
+    }
+
+    pub fn url(&self) -> &str {
+        &self.url
+    }
+
+    pub fn cookie(&self) -> &CookieStoreCookiePayload {
+        &self.cookie
     }
 }
 

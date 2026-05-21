@@ -1126,6 +1126,10 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Window(cookie_store::remove),
     ),
     route(
+        host_protocol::COOKIE_STORE_SET_METHOD,
+        HostMethodDispatcher::Window(cookie_store::set),
+    ),
+    route(
         host_protocol::COOKIE_STORE_IS_SUPPORTED_METHOD,
         HostMethodDispatcher::Payload(cookie_store::is_supported),
     ),
@@ -3722,6 +3726,58 @@ mod tests {
         assert_eq!(requests.len(), 1);
         assert_eq!(requests[0].url(), "https://example.test/account");
         assert_eq!(requests[0].name(), "token");
+    }
+
+    #[test]
+    fn cookie_store_set_routes_to_window_handler() {
+        let fake = Arc::new(FakeWindowHandler::default());
+        let router = HostMethodRouter::new(fake.clone());
+        let profile = serde_json::json!({
+            "kind": "session-profile",
+            "id": "session-profile:workspace-1",
+            "generation": 0,
+            "ownerScope": "workspace:1",
+            "state": "open"
+        });
+        let response = router
+            .dispatch_at(
+                request_with_payload(
+                    "request-cookie-store-set",
+                    host_protocol::COOKIE_STORE_SET_METHOD,
+                    serde_json::json!({
+                        "profile": profile,
+                        "url": "https://example.test/account",
+                        "cookie": {
+                            "name": "token",
+                            "value": "secret",
+                            "domain": "example.test",
+                            "path": "/account",
+                            "secure": true,
+                            "httpOnly": true,
+                            "sameSite": "lax",
+                            "expiresAt": 1710000000000.0
+                        }
+                    }),
+                ),
+                1710000000110,
+            )
+            .expect("cookie store set should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-cookie-store-set".to_string(),
+                timestamp: 1710000000110,
+                trace_id: "trace-request-cookie-store-set".to_string(),
+                payload: None,
+                error: None,
+            }
+        );
+        let requests = fake.cookie_sets();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].url(), "https://example.test/account");
+        assert_eq!(requests[0].cookie().name(), "token");
+        assert_eq!(requests[0].cookie().path(), "/account");
     }
 
     #[test]
@@ -7399,6 +7455,7 @@ mod tests {
         context_menus: Mutex<Vec<ContextMenuShowRequest>>,
         cookie_gets: Mutex<Vec<host_protocol::CookieStoreGetPayload>>,
         cookie_removes: Mutex<Vec<host_protocol::CookieStoreRemovePayload>>,
+        cookie_sets: Mutex<Vec<host_protocol::CookieStoreSetPayload>>,
     }
 
     impl FakeWindowHandler {
@@ -7435,6 +7492,7 @@ mod tests {
                 context_menus: Mutex::new(Vec::new()),
                 cookie_gets: Mutex::new(Vec::new()),
                 cookie_removes: Mutex::new(Vec::new()),
+                cookie_sets: Mutex::new(Vec::new()),
             }
         }
 
@@ -7617,6 +7675,13 @@ mod tests {
             self.cookie_removes
                 .lock()
                 .expect("fake cookie remove requests should lock")
+                .clone()
+        }
+
+        fn cookie_sets(&self) -> Vec<host_protocol::CookieStoreSetPayload> {
+            self.cookie_sets
+                .lock()
+                .expect("fake cookie set requests should lock")
                 .clone()
         }
     }
@@ -8043,6 +8108,17 @@ mod tests {
             self.cookie_removes
                 .lock()
                 .expect("fake cookie remove requests should lock")
+                .push(payload);
+            Ok(())
+        }
+
+        fn set_cookie(
+            &self,
+            payload: host_protocol::CookieStoreSetPayload,
+        ) -> Result<(), HostProtocolError> {
+            self.cookie_sets
+                .lock()
+                .expect("fake cookie set requests should lock")
                 .push(payload);
             Ok(())
         }

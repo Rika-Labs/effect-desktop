@@ -311,6 +311,17 @@ pub(crate) fn cookies_for_url(
 }
 
 #[allow(clippy::result_large_err)]
+pub(crate) fn set_cookie(
+    webview: &HostWebView,
+    cookie: &wry::cookie::Cookie<'_>,
+    operation: &'static str,
+) -> std::result::Result<(), HostProtocolError> {
+    webview.set_cookie(cookie).map_err(|error| {
+        HostProtocolError::internal(format!("failed to set WebView cookie: {error}"), operation)
+    })
+}
+
+#[allow(clippy::result_large_err)]
 pub(crate) fn delete_cookie(
     webview: &HostWebView,
     cookie: &wry::cookie::Cookie<'_>,

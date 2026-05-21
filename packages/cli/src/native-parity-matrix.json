@@ -521,27 +521,27 @@
       "method": "set",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-cookie-store-unavailable",
+        "status": "partial",
+        "reason": "host-cookie-store-live-webview-required",
         "platforms": [
           {
             "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-cookie-store-unavailable"
+            "status": "partial",
+            "reason": "host-cookie-store-live-webview-required"
           },
           {
             "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-cookie-store-unavailable"
+            "status": "partial",
+            "reason": "host-cookie-store-live-webview-required"
           },
           {
             "platform": "linux",
-            "status": "unsupported",
-            "reason": "host-cookie-store-unavailable"
+            "status": "partial",
+            "reason": "host-cookie-store-live-webview-required"
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "routed"
     },
     {
       "tag": "CrashReporter.flush",
@@ -5093,10 +5093,10 @@
   ],
   "summary": {
     "total": 289,
-    "routed": 237,
+    "routed": 238,
     "missing": 0,
     "supported": 164,
-    "partial": 73,
-    "unsupported": 52
+    "partial": 74,
+    "unsupported": 51
   }
 }

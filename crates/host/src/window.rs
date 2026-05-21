@@ -12,14 +12,15 @@ use host_protocol::{
     AppBeforeQuitEventPayload, BrowsingDataClearPayload, BrowsingDataClearResultPayload,
     ContextMenuActivatedEventPayload, CookieStoreCookiePayload, CookieStoreGetPayload,
     CookieStoreGetResultPayload, CookieStoreRemovePayload, CookieStoreSameSitePayload,
-    DockProgressState, DockSetProgressPayload, HostProtocolEnvelope, HostProtocolError,
-    ScreenBoundsPayload, ScreenDisplayPayload, ScreenDisplaysChangedEventPayload,
-    ScreenDisplaysResultPayload, ScreenMethodPayload, ScreenPointPayload, ScreenSupportedPayload,
-    SessionProfileResourcePayload, TrayResourcePayload, WindowAttentionType,
-    WindowBoundsEventPayload, WindowBoundsPayload, WindowCreatePayload, WindowCreateResponse,
-    WindowListResponse, WindowLookupResponse, WindowParentResponse, WindowProgressState,
-    WindowRegistryEventPayload, WindowRegistryEventPhase, WindowSetProgressPayload,
-    WindowStateEventPayload, WindowStatePayload, WindowTitleBarStyle, WindowTrafficLights,
+    CookieStoreSetPayload, DockProgressState, DockSetProgressPayload, HostProtocolEnvelope,
+    HostProtocolError, ScreenBoundsPayload, ScreenDisplayPayload,
+    ScreenDisplaysChangedEventPayload, ScreenDisplaysResultPayload, ScreenMethodPayload,
+    ScreenPointPayload, ScreenSupportedPayload, SessionProfileResourcePayload, TrayResourcePayload,
+    WindowAttentionType, WindowBoundsEventPayload, WindowBoundsPayload, WindowCreatePayload,
+    WindowCreateResponse, WindowListResponse, WindowLookupResponse, WindowParentResponse,
+    WindowProgressState, WindowRegistryEventPayload, WindowRegistryEventPhase,
+    WindowSetProgressPayload, WindowStateEventPayload, WindowStatePayload, WindowTitleBarStyle,
+    WindowTrafficLights,
 };
 use muda::{
     CheckMenuItem, ContextMenu as MudaContextMenu, Menu, MenuItem, PredefinedMenuItem, Submenu,
@@ -522,6 +523,16 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
         Err(HostProtocolError::unsupported(
             "host-cookie-store-live-webview-required",
             host_protocol::COOKIE_STORE_REMOVE_METHOD,
+        ))
+    }
+
+    fn set_cookie(
+        &self,
+        _payload: CookieStoreSetPayload,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            "host-cookie-store-live-webview-required",
+            host_protocol::COOKIE_STORE_SET_METHOD,
         ))
     }
 
@@ -1108,6 +1119,10 @@ enum WindowCommand {
     },
     RemoveCookie {
         payload: CookieStoreRemovePayload,
+        reply: Sender<WindowCommandReply>,
+    },
+    SetCookie {
+        payload: CookieStoreSetPayload,
         reply: Sender<WindowCommandReply>,
     },
     ClearBrowsingData {
@@ -2879,6 +2894,25 @@ impl WindowMethodHandler for WindowMethodPort {
             response => Err(unexpected_webview_response(
                 response,
                 host_protocol::COOKIE_STORE_REMOVE_METHOD,
+            )),
+        }
+    }
+
+    fn set_cookie(
+        &self,
+        payload: CookieStoreSetPayload,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::SetCookie {
+            payload,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::WindowUpdated => Ok(()),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::COOKIE_STORE_SET_METHOD,
             )),
         }
     }
@@ -4731,25 +4765,27 @@ impl WindowRegistry {
         Ok(())
     }
 
+    fn live_webview_for_profile(
+        &self,
+        profile: &SessionProfileResourcePayload,
+        operation: &'static str,
+    ) -> std::result::Result<&NativeWebViewResources, HostProtocolError> {
+        session_profile::ensure_profile_is_live(profile, operation)?;
+        self.webviews
+            .values()
+            .find(|resources| resources.profile_id.as_deref() == Some(profile.id()))
+            .ok_or_else(|| {
+                HostProtocolError::unsupported("host-cookie-store-live-webview-required", operation)
+            })
+    }
+
     fn get_cookies(
         &self,
         payload: CookieStoreGetPayload,
     ) -> std::result::Result<CookieStoreGetResultPayload, HostProtocolError> {
-        session_profile::ensure_profile_is_live(
-            payload.profile(),
-            host_protocol::COOKIE_STORE_GET_METHOD,
-        )?;
         let url = parse_cookie_url(payload.url(), host_protocol::COOKIE_STORE_GET_METHOD)?;
         let resources = self
-            .webviews
-            .values()
-            .find(|resources| resources.profile_id.as_deref() == Some(payload.profile().id()))
-            .ok_or_else(|| {
-                HostProtocolError::unsupported(
-                    "host-cookie-store-live-webview-required",
-                    host_protocol::COOKIE_STORE_GET_METHOD,
-                )
-            })?;
+            .live_webview_for_profile(payload.profile(), host_protocol::COOKIE_STORE_GET_METHOD)?;
         let cookies = webview::cookies_for_url(
             &resources._webview,
             payload.url(),
@@ -4773,21 +4809,11 @@ impl WindowRegistry {
         &self,
         payload: CookieStoreRemovePayload,
     ) -> std::result::Result<(), HostProtocolError> {
-        session_profile::ensure_profile_is_live(
+        let url = parse_cookie_url(payload.url(), host_protocol::COOKIE_STORE_REMOVE_METHOD)?;
+        let resources = self.live_webview_for_profile(
             payload.profile(),
             host_protocol::COOKIE_STORE_REMOVE_METHOD,
         )?;
-        let url = parse_cookie_url(payload.url(), host_protocol::COOKIE_STORE_REMOVE_METHOD)?;
-        let resources = self
-            .webviews
-            .values()
-            .find(|resources| resources.profile_id.as_deref() == Some(payload.profile().id()))
-            .ok_or_else(|| {
-                HostProtocolError::unsupported(
-                    "host-cookie-store-live-webview-required",
-                    host_protocol::COOKIE_STORE_REMOVE_METHOD,
-                )
-            })?;
         let cookies = webview::cookies_for_url(
             &resources._webview,
             payload.url(),
@@ -4806,6 +4832,25 @@ impl WindowRegistry {
         }
 
         Ok(())
+    }
+
+    fn set_cookie(
+        &self,
+        payload: CookieStoreSetPayload,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let url = parse_cookie_url(payload.url(), host_protocol::COOKIE_STORE_SET_METHOD)?;
+        let resources = self
+            .live_webview_for_profile(payload.profile(), host_protocol::COOKIE_STORE_SET_METHOD)?;
+        let cookie = wry_cookie_from_payload(
+            payload.cookie(),
+            &url,
+            host_protocol::COOKIE_STORE_SET_METHOD,
+        )?;
+        webview::set_cookie(
+            &resources._webview,
+            &cookie,
+            host_protocol::COOKIE_STORE_SET_METHOD,
+        )
     }
 
     fn clear_browsing_data(
@@ -5586,6 +5631,13 @@ impl WindowRegistry {
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
             }
+            WindowCommand::SetCookie { payload, reply } => {
+                let result = self
+                    .set_cookie(payload)
+                    .map(|()| WindowCommandResponse::WindowUpdated);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
             WindowCommand::ClearBrowsingData { payload, reply } => {
                 let result = self
                     .clear_browsing_data(payload)
@@ -5981,6 +6033,88 @@ fn parse_cookie_url(
         ));
     }
     Ok(parsed)
+}
+
+fn wry_cookie_from_payload(
+    cookie: &CookieStoreCookiePayload,
+    url: &Url,
+    operation: &'static str,
+) -> std::result::Result<wry::cookie::Cookie<'static>, HostProtocolError> {
+    if !cookie_domain_matches_url(cookie.domain(), url) {
+        return Err(HostProtocolError::invalid_argument(
+            "cookie.domain",
+            "must match url host",
+            operation,
+        ));
+    }
+
+    let mut builder =
+        wry::cookie::Cookie::build((cookie.name().to_string(), cookie.value().to_string()))
+            .domain(cookie.domain().to_string())
+            .path(cookie.path().to_string());
+    if let Some(secure) = cookie.secure() {
+        builder = builder.secure(secure);
+    }
+    if let Some(http_only) = cookie.http_only() {
+        builder = builder.http_only(http_only);
+    }
+    if let Some(same_site) = cookie.same_site() {
+        builder = builder.same_site(match same_site {
+            CookieStoreSameSitePayload::Lax => wry::cookie::SameSite::Lax,
+            CookieStoreSameSitePayload::Strict => wry::cookie::SameSite::Strict,
+            CookieStoreSameSitePayload::None => wry::cookie::SameSite::None,
+        });
+    }
+    if let Some(expires_at) = cookie.expires_at() {
+        builder = builder.expires(cookie_expires_at(expires_at, operation)?);
+    }
+
+    Ok(builder.build())
+}
+
+fn cookie_domain_matches_url(cookie_domain: &str, url: &Url) -> bool {
+    let Some(host) = url.host_str() else {
+        return false;
+    };
+    let host = host.trim_end_matches('.').to_ascii_lowercase();
+    let domain = cookie_domain
+        .trim_start_matches('.')
+        .trim_end_matches('.')
+        .to_ascii_lowercase();
+    if domain.is_empty() {
+        return false;
+    }
+    if host == domain {
+        return true;
+    }
+    if !domain.contains('.') {
+        return false;
+    }
+    host.strip_suffix(&domain)
+        .is_some_and(|prefix| prefix.ends_with('.'))
+}
+
+fn cookie_expires_at(
+    expires_at: f64,
+    operation: &'static str,
+) -> std::result::Result<wry::cookie::time::OffsetDateTime, HostProtocolError> {
+    const NANOS_PER_MILLISECOND: f64 = 1_000_000.0;
+
+    let nanos = (expires_at * NANOS_PER_MILLISECOND).round();
+    if !nanos.is_finite() || nanos < i128::MIN as f64 || nanos > i128::MAX as f64 {
+        return Err(HostProtocolError::invalid_argument(
+            "cookie.expiresAt",
+            "must be a finite Unix epoch millisecond timestamp within host range",
+            operation,
+        ));
+    }
+    wry::cookie::time::OffsetDateTime::from_unix_timestamp_nanos(nanos as i128).map_err(|error| {
+        HostProtocolError::invalid_argument(
+            "cookie.expiresAt",
+            format!("must be within host timestamp range: {error}"),
+            operation,
+        )
+    })
 }
 
 fn cookie_store_cookie_payload(
@@ -8160,8 +8294,8 @@ mod tests {
     use super::{
         centered_physical_axis, clear_webview_runtime_event_state,
         clear_window_runtime_event_state, clip_window_bounds_to_logical_area,
-        control_flow_for_lifecycle_event, control_flow_for_window_state, cookie_path_matches_url,
-        display_relative_physical_axis, emit_webview_api_call_event,
+        control_flow_for_lifecycle_event, control_flow_for_window_state, cookie_domain_matches_url,
+        cookie_path_matches_url, display_relative_physical_axis, emit_webview_api_call_event,
         emit_webview_navigation_blocked_event, emit_webview_runtime_event,
         emit_window_registry_event, handle_native_window_close_requested,
         handle_webview_isolation_ipc, install_webview_event_sender, install_window_event_sender,
@@ -8189,6 +8323,7 @@ mod tests {
     use tao::event::WindowEvent;
     use tao::event_loop::ControlFlow;
     use tao::window::ProgressState;
+    use url::Url;
 
     struct WindowEventSenderGuard;
 
@@ -8252,6 +8387,16 @@ mod tests {
             Some("/account/settings"),
             "/account"
         ));
+    }
+
+    #[test]
+    fn cookie_domain_matching_rejects_cross_site_domains() {
+        let url = Url::parse("https://app.example.test/account").expect("url should parse");
+
+        assert!(cookie_domain_matches_url("app.example.test", &url));
+        assert!(cookie_domain_matches_url(".example.test", &url));
+        assert!(!cookie_domain_matches_url("evil.example.test", &url));
+        assert!(!cookie_domain_matches_url("test", &url));
     }
 
     #[test]

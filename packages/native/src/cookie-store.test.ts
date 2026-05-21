@@ -14,8 +14,7 @@ import {
   makeCookieStoreUnsupportedClient
 } from "./cookie-store.js"
 
-const SupportedMethods = ["get", "remove"] as const
-const UnsupportedMethods = ["set"] as const
+const SupportedMethods = ["get", "remove", "set"] as const
 const Profile = {
   kind: "session-profile",
   id: makeResourceId("session-profile:workspace-1"),
@@ -24,14 +23,16 @@ const Profile = {
   state: "open"
 } satisfies SessionProfileHandle
 
-test("CookieStore exposes get, remove, and isSupported as callable RPCs", () => {
+test("CookieStore exposes get, remove, set, and isSupported as callable RPCs", () => {
   const callableTags = Array.from(CookieStoreRpcs.requests.keys()).toSorted()
-  expect(callableTags).toEqual(["CookieStore.get", "CookieStore.isSupported", "CookieStore.remove"])
+  expect(callableTags).toEqual([
+    "CookieStore.get",
+    "CookieStore.isSupported",
+    "CookieStore.remove",
+    "CookieStore.set"
+  ])
   for (const method of SupportedMethods) {
     expect(callableTags).toContain(`CookieStore.${method}`)
-  }
-  for (const method of UnsupportedMethods) {
-    expect(callableTags).not.toContain(`CookieStore.${method}`)
   }
 })
 
@@ -97,6 +98,48 @@ test("CookieStore remove validates input and delegates through the service", () 
     })
   ))
 
+test("CookieStore set validates input and delegates through the service", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const client = yield* makeCookieStoreMemoryClient()
+      const result = yield* runScoped(
+        Effect.gen(function* () {
+          const store = yield* CookieStore
+          yield* store.set({
+            profile: Profile,
+            url: "https://example.test/account",
+            cookie: {
+              name: "token",
+              value: "secret",
+              domain: "example.test",
+              path: "/account",
+              secure: true,
+              httpOnly: true,
+              sameSite: "lax",
+              expiresAt: 1_710_000_000_000
+            }
+          })
+          return true
+        }),
+        makeCookieStoreServiceLayer(client)
+      )
+      expect(result).toBe(true)
+      const error = yield* Effect.flip(
+        client.set({
+          profile: Profile,
+          url: "https://example.test/account",
+          cookie: {
+            name: "token",
+            value: "secret",
+            domain: "example.test",
+            path: "account"
+          }
+        })
+      )
+      expect(error).toMatchObject({ tag: "InvalidArgument", operation: "CookieStore.set" })
+    })
+  ))
+
 test("CookieStore unsupported client reports the host-unavailable reason", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -120,12 +163,26 @@ test("CookieStore unsupported client reports the host-unavailable reason", () =>
       )
       expect(removeError.tag).toBe("Unsupported")
       expect(removeError.operation).toBe("CookieStore.remove")
+      const setError = yield* Effect.flip(
+        client.set({
+          profile: Profile,
+          url: "https://example.test",
+          cookie: {
+            name: "token",
+            value: "secret",
+            domain: "example.test",
+            path: "/"
+          }
+        })
+      )
+      expect(setError.tag).toBe("Unsupported")
+      expect(setError.operation).toBe("CookieStore.set")
     })
   ))
 
-test("CookieStore declares unsupported methods as non-callable capability facts", () => {
+test("CookieStore declares no unsupported methods as non-callable capability facts", () => {
   const factTags = CookieStoreCapabilityFacts.map((fact) => fact.tag).toSorted()
-  expect(factTags).toEqual(UnsupportedMethods.map((method) => `CookieStore.${method}`).toSorted())
+  expect(factTags).toEqual([])
   for (const fact of CookieStoreCapabilityFacts) {
     expect(fact.support.status).toBe("unsupported")
   }
@@ -139,11 +196,7 @@ test("CookieStore capability facts surface in the manifest and stay non-callable
       ])
       const byTag = new Map(manifest.map((fact) => [fact.tag, fact] as const))
 
-      for (const method of UnsupportedMethods) {
-        const fact = byTag.get(`CookieStore.${method}`)
-        expect(fact).toBeDefined()
-        expect(fact?.support.status).toBe("unsupported")
-      }
+      expect(byTag.has("CookieStore.set")).toBe(true)
 
       const callableFactTags = CookieStoreSurface.schemaDocs
         .filter((doc) => doc.callable)
@@ -152,7 +205,8 @@ test("CookieStore capability facts surface in the manifest and stay non-callable
       expect(callableFactTags).toEqual([
         "CookieStore.get",
         "CookieStore.isSupported",
-        "CookieStore.remove"
+        "CookieStore.remove",
+        "CookieStore.set"
       ])
       const getFact = CookieStoreSurface.schemaDocs.find((doc) => doc.tag === "CookieStore.get")
       expect(getFact?.support.status).toBe("partial")
@@ -168,14 +222,18 @@ test("CookieStore capability facts surface in the manifest and stay non-callable
         throw new Error("CookieStore.remove should be partially supported")
       }
       expect(removeFact.support.reason).toBe("host-cookie-store-live-webview-required")
+      const setFact = CookieStoreSurface.schemaDocs.find((doc) => doc.tag === "CookieStore.set")
+      expect(setFact?.support.status).toBe("partial")
+      if (setFact?.support.status !== "partial") {
+        throw new Error("CookieStore.set should be partially supported")
+      }
+      expect(setFact.support.reason).toBe("host-cookie-store-live-webview-required")
 
       const nonCallableTags = CookieStoreSurface.schemaDocs
         .filter((doc) => !doc.callable)
         .map((doc) => doc.tag)
         .toSorted()
-      expect(nonCallableTags).toEqual(
-        UnsupportedMethods.map((method) => `CookieStore.${method}`).toSorted()
-      )
+      expect(nonCallableTags).toEqual([])
     })
   ))
 
