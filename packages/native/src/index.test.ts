@@ -910,6 +910,16 @@ const webViewFindInPageUnsupportedSupport = {
   ]
 } as const
 
+const webViewFrameRoutingUnsupportedSupport = {
+  status: "unsupported",
+  reason: "host-frame-routing-unavailable",
+  platforms: [
+    { platform: "macos", status: "unsupported", reason: "host-frame-routing-unavailable" },
+    { platform: "windows", status: "unsupported", reason: "host-frame-routing-unavailable" },
+    { platform: "linux", status: "unsupported", reason: "host-frame-routing-unavailable" }
+  ]
+} as const
+
 const webViewNavigationTrackedSupport = {
   status: "partial",
   reason: "host-navigation-state-tracked",
@@ -2267,6 +2277,7 @@ test("WebView declares unsupported methods as non-callable capability facts", ()
   expect(byTag.get("WebView.attachDebugger")?.support).toEqual(webViewDebuggerUnsupportedSupport)
   expect(byTag.get("WebView.captureScreenshot")?.support).toEqual(webViewDocumentUnsupportedSupport)
   expect(byTag.get("WebView.findInPage")?.support).toEqual(webViewFindInPageUnsupportedSupport)
+  expect(byTag.get("WebView.listFrames")?.support).toEqual(webViewFrameRoutingUnsupportedSupport)
   expect(byTag.has("WebView.capability")).toBe(false)
   for (const fact of WebViewCapabilityFacts) {
     expect(fact.support.status).toBe("unsupported")
@@ -2296,6 +2307,9 @@ test("WebView capability facts surface in the manifest and stay non-callable", (
         webViewDocumentUnsupportedSupport
       )
       expect(byTag.get("WebView.findInPage")?.support).toEqual(webViewFindInPageUnsupportedSupport)
+      expect(byTag.get("WebView.listFrames")?.support).toEqual(
+        webViewFrameRoutingUnsupportedSupport
+      )
       expect(byTag.has("WebView.capability")).toBe(false)
       const nonCallableTags = WebViewSurface.schemaDocs
         .filter((doc) => !doc.callable)

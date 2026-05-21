@@ -123,6 +123,16 @@ const WebViewFindInPageUnavailableSupport = {
   ]
 } as const
 
+const WebViewFrameRoutingUnavailableSupport = {
+  status: "unsupported",
+  reason: "host-frame-routing-unavailable",
+  platforms: [
+    { platform: "macos", status: "unsupported", reason: "host-frame-routing-unavailable" },
+    { platform: "windows", status: "unsupported", reason: "host-frame-routing-unavailable" },
+    { platform: "linux", status: "unsupported", reason: "host-frame-routing-unavailable" }
+  ]
+} as const
+
 const WebViewNavigationTrackedSupport = {
   status: "partial",
   reason: "host-navigation-state-tracked",
@@ -314,6 +324,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const webViewAttachDebugger = yield* capabilities.support("WebView.attachDebugger")
       const webViewCaptureScreenshot = yield* capabilities.support("WebView.captureScreenshot")
       const webViewFindInPage = yield* capabilities.support("WebView.findInPage")
+      const webViewListFrames = yield* capabilities.support("WebView.listFrames")
       const menuClear = yield* capabilities.support("Menu.clear")
       const contextMenuShow = yield* capabilities.support("ContextMenu.show")
       const safeStorageSet = yield* capabilities.support("SafeStorage.set")
@@ -392,6 +403,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(webViewAttachDebugger).toEqual(WebViewDebuggerUnavailableSupport)
       expect(webViewCaptureScreenshot).toEqual(WebViewDocumentOutputUnavailableSupport)
       expect(webViewFindInPage).toEqual(WebViewFindInPageUnavailableSupport)
+      expect(webViewListFrames).toEqual(WebViewFrameRoutingUnavailableSupport)
       expect(webViewCreate).toEqual({ status: "supported" })
       expect(webViewDestroy).toEqual({ status: "supported" })
       expect(webViewGoBack).toEqual(WebViewNavigationTrackedSupport)

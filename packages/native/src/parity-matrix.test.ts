@@ -197,6 +197,30 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
           ]
         }
       })
+      expect(result.rows.find((row) => row.tag === "WebView.listFrames")).toMatchObject({
+        hostStatus: "capability-fact",
+        support: {
+          status: "unsupported",
+          reason: "host-frame-routing-unavailable",
+          platforms: [
+            {
+              platform: "macos",
+              status: "unsupported",
+              reason: "host-frame-routing-unavailable"
+            },
+            {
+              platform: "windows",
+              status: "unsupported",
+              reason: "host-frame-routing-unavailable"
+            },
+            {
+              platform: "linux",
+              status: "unsupported",
+              reason: "host-frame-routing-unavailable"
+            }
+          ]
+        }
+      })
       expect(result.rows.find((row) => row.tag === "WebView.openDevTools")).toMatchObject({
         hostStatus: "routed",
         support: {
