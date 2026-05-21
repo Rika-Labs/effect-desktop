@@ -54,6 +54,10 @@ Linux `getReducedMotion` remains unsupported. GTK3 exposes
 `gtk-enable-animations`, but that API is GTK-main-thread scoped and is not a
 durable desktop-wide reduced-motion contract for the host protocol path.
 
+Linux `getReducedTransparency` remains unsupported. The current Linux host
+dependency surface does not expose a stable desktop-wide transparency reduction
+setting.
+
 `isSupported` is protected by `native.invoke:SystemAppearance.isSupported`.
 
 ## Events
