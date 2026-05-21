@@ -23,7 +23,8 @@ export * from "./contracts/recent-documents.js"
 
 const Surface = "RecentDocuments"
 const UnsupportedReason = "host-adapter-unimplemented"
-const RecentDocumentsSupport = NativeSurface.support.partial("macos-recent-documents-only", {
+const RecentDocumentsAddSupport = NativeSurface.support.supported
+const MacOsRecentDocumentsSupport = NativeSurface.support.partial("macos-recent-documents-only", {
   platforms: [
     { platform: "macos", status: "supported" },
     { platform: "windows", status: "unsupported", reason: UnsupportedReason },
@@ -40,7 +41,7 @@ export const RecentDocumentsAdd = NativeSurface.rpc(Surface, "add", {
     P.nativeInvoke({ primitive: Surface, methods: ["add"] })
   ),
   endpoint: "mutation",
-  support: RecentDocumentsSupport
+  support: RecentDocumentsAddSupport
 })
 export const RecentDocumentsClear = NativeSurface.rpc(Surface, "clear", {
   payload: Schema.Void,
@@ -49,7 +50,7 @@ export const RecentDocumentsClear = NativeSurface.rpc(Surface, "clear", {
     P.nativeInvoke({ primitive: Surface, methods: ["clear"] })
   ),
   endpoint: "mutation",
-  support: RecentDocumentsSupport
+  support: MacOsRecentDocumentsSupport
 })
 export const RecentDocumentsList = NativeSurface.rpc(Surface, "list", {
   payload: Schema.Void,
@@ -58,7 +59,7 @@ export const RecentDocumentsList = NativeSurface.rpc(Surface, "list", {
     P.nativeInvoke({ primitive: Surface, methods: ["list"] })
   ),
   endpoint: "query",
-  support: RecentDocumentsSupport
+  support: MacOsRecentDocumentsSupport
 })
 
 export const RecentDocumentsRpcEvents = Object.freeze({

@@ -183,6 +183,9 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const crashReporterFlush = yield* capabilities.support("CrashReporter.flush")
       const crashReporterGetReports = yield* capabilities.support("CrashReporter.getReports")
       const powerMonitorIsSupported = yield* capabilities.support("PowerMonitor.isSupported")
+      const recentDocumentsAdd = yield* capabilities.support("RecentDocuments.add")
+      const recentDocumentsClear = yield* capabilities.support("RecentDocuments.clear")
+      const recentDocumentsList = yield* capabilities.support("RecentDocuments.list")
       const systemAppearance = yield* capabilities.support("SystemAppearance.getAppearance")
       const appQuit = yield* capabilities.support("App.quit")
       const globalShortcutRegister = yield* capabilities.support("GlobalShortcut.register")
@@ -401,6 +404,17 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
           { platform: "linux", status: "unsupported", reason: "platform-power-monitor-unavailable" }
         ]
       })
+      expect(recentDocumentsAdd).toEqual({ status: "supported" })
+      expect(recentDocumentsClear).toEqual({
+        status: "partial",
+        reason: "macos-recent-documents-only",
+        platforms: [
+          { platform: "macos", status: "supported" },
+          { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
+          { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
+        ]
+      })
+      expect(recentDocumentsList).toEqual(recentDocumentsClear)
       expect(systemAppearance).toEqual({
         status: "partial",
         reason: "host-system-appearance-snapshot",
