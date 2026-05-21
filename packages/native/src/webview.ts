@@ -48,13 +48,25 @@ const WebViewNavigationSupport = NativeSurface.support.partial(WebViewNavigation
     { platform: "linux", status: "partial", reason: WebViewNavigationPartialReason }
   ]
 })
-const WebViewDevToolsPartialReason = "host-devtools-debug-build-only"
+const WebViewDevToolsBuildGatedReason = "host-devtools-build-gated"
+const WebViewCloseDevToolsWindowsUnsupportedReason = "windows-devtools-close-unavailable"
 const WebViewDebuggerUnsupportedReason = "host-debugger-protocol-unavailable"
-const WebViewDevToolsSupport = NativeSurface.support.partial(WebViewDevToolsPartialReason, {
+const WebViewOpenDevToolsSupport = NativeSurface.support.partial(WebViewDevToolsBuildGatedReason, {
   platforms: [
-    { platform: "macos", status: "partial", reason: WebViewDevToolsPartialReason },
-    { platform: "windows", status: "partial", reason: WebViewDevToolsPartialReason },
-    { platform: "linux", status: "partial", reason: WebViewDevToolsPartialReason }
+    { platform: "macos", status: "partial", reason: WebViewDevToolsBuildGatedReason },
+    { platform: "windows", status: "partial", reason: WebViewDevToolsBuildGatedReason },
+    { platform: "linux", status: "partial", reason: WebViewDevToolsBuildGatedReason }
+  ]
+})
+const WebViewCloseDevToolsSupport = NativeSurface.support.partial(WebViewDevToolsBuildGatedReason, {
+  platforms: [
+    { platform: "macos", status: "partial", reason: WebViewDevToolsBuildGatedReason },
+    {
+      platform: "windows",
+      status: "unsupported",
+      reason: WebViewCloseDevToolsWindowsUnsupportedReason
+    },
+    { platform: "linux", status: "partial", reason: WebViewDevToolsBuildGatedReason }
   ]
 })
 const WebViewDebuggerSupport = NativeSurface.support.unsupported(WebViewDebuggerUnsupportedReason, {
@@ -257,7 +269,7 @@ export const WebViewOpenDevTools = NativeSurface.rpc("WebView", "openDevTools", 
     P.nativeInvoke({ primitive: "WebView", methods: ["openDevTools"] })
   ),
   endpoint: "mutation",
-  support: WebViewDevToolsSupport
+  support: WebViewOpenDevToolsSupport
 })
 export const WebViewCloseDevTools = NativeSurface.rpc("WebView", "closeDevTools", {
   payload: WebViewHandleInput,
@@ -266,7 +278,7 @@ export const WebViewCloseDevTools = NativeSurface.rpc("WebView", "closeDevTools"
     P.nativeInvoke({ primitive: "WebView", methods: ["closeDevTools"] })
   ),
   endpoint: "mutation",
-  support: WebViewDevToolsSupport
+  support: WebViewCloseDevToolsSupport
 })
 export const WebViewSetNavigationPolicy = NativeSurface.rpc("WebView", "setNavigationPolicy", {
   payload: WebViewSetNavigationPolicyInput,

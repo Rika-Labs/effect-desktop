@@ -16,6 +16,11 @@ const WEBVIEW_OPENED_EVENT: &str = "host.webview.opened";
 const WEBVIEW_CHILD_OPENED_EVENT: &str = "host.webview.child_opened";
 const DEV_URL_ENV: &str = "EFFECT_DESKTOP_DEV_URL";
 const WEBVIEW_CREATE_OPERATION: &str = host_protocol::WINDOW_CREATE_METHOD;
+#[cfg(any(not(any(debug_assertions, feature = "devtools")), test))]
+const WEBVIEW_DEVTOOLS_BUILD_GATED_REASON: &str = "host-devtools-build-gated";
+#[cfg(any(target_os = "windows", test))]
+const WEBVIEW_CLOSE_DEVTOOLS_WINDOWS_UNAVAILABLE_REASON: &str =
+    "windows-devtools-close-unavailable";
 
 pub(crate) type HostWebView = WebView;
 pub(crate) type HostWebContext = WebContext;
@@ -243,16 +248,16 @@ fn apply_profile_data_store<'a>(
 
 #[allow(clippy::result_large_err)]
 pub(crate) fn open_devtools(webview: &HostWebView) -> std::result::Result<(), HostProtocolError> {
-    #[cfg(debug_assertions)]
+    #[cfg(any(debug_assertions, feature = "devtools"))]
     {
         webview.open_devtools();
         Ok(())
     }
-    #[cfg(not(debug_assertions))]
+    #[cfg(not(any(debug_assertions, feature = "devtools")))]
     {
         let _ = webview;
-        Err(HostProtocolError::unsupported(
-            "host-devtools-debug-build-only",
+        Err(devtools_unsupported(
+            WEBVIEW_DEVTOOLS_BUILD_GATED_REASON,
             host_protocol::WEBVIEW_OPEN_DEVTOOLS_METHOD,
         ))
     }
@@ -260,19 +265,42 @@ pub(crate) fn open_devtools(webview: &HostWebView) -> std::result::Result<(), Ho
 
 #[allow(clippy::result_large_err)]
 pub(crate) fn close_devtools(webview: &HostWebView) -> std::result::Result<(), HostProtocolError> {
-    #[cfg(debug_assertions)]
+    #[cfg(target_os = "windows")]
+    {
+        let _ = webview;
+        Err(devtools_unsupported(
+            WEBVIEW_CLOSE_DEVTOOLS_WINDOWS_UNAVAILABLE_REASON,
+            host_protocol::WEBVIEW_CLOSE_DEVTOOLS_METHOD,
+        ))
+    }
+    #[cfg(all(
+        not(target_os = "windows"),
+        any(debug_assertions, feature = "devtools")
+    ))]
     {
         webview.close_devtools();
         Ok(())
     }
-    #[cfg(not(debug_assertions))]
+    #[cfg(all(
+        not(target_os = "windows"),
+        not(any(debug_assertions, feature = "devtools"))
+    ))]
     {
         let _ = webview;
-        Err(HostProtocolError::unsupported(
-            "host-devtools-debug-build-only",
+        Err(devtools_unsupported(
+            WEBVIEW_DEVTOOLS_BUILD_GATED_REASON,
             host_protocol::WEBVIEW_CLOSE_DEVTOOLS_METHOD,
         ))
     }
+}
+
+#[cfg(any(
+    target_os = "windows",
+    not(any(debug_assertions, feature = "devtools")),
+    test
+))]
+fn devtools_unsupported(reason: &'static str, operation: &'static str) -> HostProtocolError {
+    HostProtocolError::unsupported(reason, operation)
 }
 
 #[allow(clippy::result_large_err)]
@@ -484,9 +512,12 @@ fn build_webview(builder: WebViewBuilder<'_>, window: &Window) -> anyhow::Result
 #[cfg(test)]
 mod tests {
     use super::{
-        chrome_provider_missing_error, renderer_url, web_engine_from_manifest_str, WebEngineKind,
+        chrome_provider_missing_error, devtools_unsupported, renderer_url,
+        web_engine_from_manifest_str, WebEngineKind,
+        WEBVIEW_CLOSE_DEVTOOLS_WINDOWS_UNAVAILABLE_REASON, WEBVIEW_DEVTOOLS_BUILD_GATED_REASON,
     };
     use crate::scheme::{APP_PROTOCOL_SOURCE_KIND, APP_URL};
+    use host_protocol::HostProtocolError;
 
     #[test]
     fn webview_source_identifies_the_app_protocol_path() {
@@ -559,5 +590,32 @@ mod tests {
         assert_eq!(error.tag(), "Unsupported");
         assert!(format!("{error:?}").contains("bundled Chromium/CEF WebView provider"));
         assert!(format!("{error:?}").contains("native/chrome"));
+    }
+
+    #[test]
+    fn devtools_unsupported_errors_report_stable_reasons() {
+        for (reason, operation) in [
+            (
+                WEBVIEW_DEVTOOLS_BUILD_GATED_REASON,
+                host_protocol::WEBVIEW_OPEN_DEVTOOLS_METHOD,
+            ),
+            (
+                WEBVIEW_CLOSE_DEVTOOLS_WINDOWS_UNAVAILABLE_REASON,
+                host_protocol::WEBVIEW_CLOSE_DEVTOOLS_METHOD,
+            ),
+        ] {
+            let error = devtools_unsupported(reason, operation);
+            match error {
+                HostProtocolError::Unsupported {
+                    reason: actual_reason,
+                    operation: actual_operation,
+                    ..
+                } => {
+                    assert_eq!(actual_reason, reason);
+                    assert_eq!(actual_operation, operation);
+                }
+                other => panic!("expected Unsupported, got {other:?}"),
+            }
+        }
     }
 }

@@ -94,11 +94,14 @@ creation time; Effect Desktop does not pretend that is a runtime mutation.
 
 Inspection controls are partially host-backed for child WebViews.
 `openDevTools` and `closeDevTools` route through the retained Wry WebView in
-debug builds. Production builds return typed unsupported unless the host is
-compiled with a devtools-enabled WebView provider. `attachDebugger` is a
-non-callable capability fact because Wry exposes no portable debugger protocol
-attachment API. Opening the inspector UI is not the same as creating a host
-debugger session that can exchange protocol commands and events.
+debug builds or when the host is compiled with the `devtools` feature. Release
+builds without that feature return typed unsupported. Wry does not expose a
+Windows close-devtools operation, so `closeDevTools` is unsupported on Windows
+even though `openDevTools` can open the WebView2 devtools window.
+`attachDebugger` is a non-callable capability fact because Wry exposes no
+portable debugger protocol attachment API. Opening the inspector UI is not the
+same as creating a host debugger session that can exchange protocol commands
+and events.
 
 Preload isolation is create-time and host-backed for child WebViews.
 `WebView.create` accepts an optional `isolation.exposedApis` manifest. The host
@@ -246,7 +249,10 @@ and IPC hooks, and reports through the typed `WebView.ApiCall` stream.
 Runtime events are partially host-backed through Wry page-load and drag/drop
 callbacks and report through `WebView.RuntimeEvent`.
 `print` and `setZoom` are host-backed through Wry.
-`openDevTools` and `closeDevTools` are host-backed in debug builds only.
+`openDevTools` is host-backed in debug builds or host builds compiled with the
+`devtools` feature. `closeDevTools` uses the same build gate on macOS and Linux,
+and is unsupported on Windows because Wry's WebView2 adapter has no close
+operation.
 
 `captureScreenshot`, `printToPdf`, `findInPage`, `setUserAgent`,
 `setAudioMuted`, `respondToPermission`, `listFrames`, `postToFrame`,

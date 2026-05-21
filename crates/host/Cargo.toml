@@ -8,6 +8,10 @@ publish = false
 
 [lib]
 
+[features]
+default = []
+devtools = ["wry/devtools"]
+
 [[bin]]
 name = "host"
 path = "src/main.rs"

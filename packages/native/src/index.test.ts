@@ -900,6 +900,30 @@ const webViewDocumentUnsupportedSupport = {
   ]
 } as const
 
+const webViewOpenDevToolsSupport = {
+  status: "partial",
+  reason: "host-devtools-build-gated",
+  platforms: [
+    { platform: "macos", status: "partial", reason: "host-devtools-build-gated" },
+    { platform: "windows", status: "partial", reason: "host-devtools-build-gated" },
+    { platform: "linux", status: "partial", reason: "host-devtools-build-gated" }
+  ]
+} as const
+
+const webViewCloseDevToolsSupport = {
+  status: "partial",
+  reason: "host-devtools-build-gated",
+  platforms: [
+    { platform: "macos", status: "partial", reason: "host-devtools-build-gated" },
+    {
+      platform: "windows",
+      status: "unsupported",
+      reason: "windows-devtools-close-unavailable"
+    },
+    { platform: "linux", status: "partial", reason: "host-devtools-build-gated" }
+  ]
+} as const
+
 const expectedMenuMethods: Array<(typeof MenuMethodNames)[number]> = [
   "setApplicationMenu",
   "setWindowMenu",
@@ -2203,6 +2227,12 @@ test("WebViewRpcs declares the Phase 7 WebView method and event surface", () => 
   ])
 })
 
+test("WebView devtools support metadata reflects build and platform gates", () => {
+  const byTag = new Map(WebViewSurface.schemaDocs.map((doc) => [doc.tag, doc] as const))
+  expect(byTag.get("WebView.openDevTools")?.support).toEqual(webViewOpenDevToolsSupport)
+  expect(byTag.get("WebView.closeDevTools")?.support).toEqual(webViewCloseDevToolsSupport)
+})
+
 test("WebView declares unsupported methods as non-callable capability facts", () => {
   const factTags = WebViewCapabilityFacts.map((fact) => fact.tag).toSorted()
   expect(factTags).toEqual(
@@ -2461,7 +2491,7 @@ test("WebView devtools controls propagate success, unsupported, and host failure
 
       const devtoolsUnsupported = new HostProtocolUnsupportedError({
         tag: "Unsupported",
-        reason: "host-devtools-debug-build-only",
+        reason: "host-devtools-build-gated",
         message: "unsupported WebView.openDevTools",
         operation: WEBVIEW_OPEN_DEVTOOLS_METHOD,
         recoverable: false

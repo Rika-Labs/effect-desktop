@@ -3684,22 +3684,22 @@
       "capability": "native",
       "support": {
         "status": "partial",
-        "reason": "host-devtools-debug-build-only",
+        "reason": "host-devtools-build-gated",
         "platforms": [
           {
             "platform": "macos",
             "status": "partial",
-            "reason": "host-devtools-debug-build-only"
+            "reason": "host-devtools-build-gated"
           },
           {
             "platform": "windows",
-            "status": "partial",
-            "reason": "host-devtools-debug-build-only"
+            "status": "unsupported",
+            "reason": "windows-devtools-close-unavailable"
           },
           {
             "platform": "linux",
             "status": "partial",
-            "reason": "host-devtools-debug-build-only"
+            "reason": "host-devtools-build-gated"
           }
         ]
       },
@@ -3964,22 +3964,22 @@
       "capability": "native",
       "support": {
         "status": "partial",
-        "reason": "host-devtools-debug-build-only",
+        "reason": "host-devtools-build-gated",
         "platforms": [
           {
             "platform": "macos",
             "status": "partial",
-            "reason": "host-devtools-debug-build-only"
+            "reason": "host-devtools-build-gated"
           },
           {
             "platform": "windows",
             "status": "partial",
-            "reason": "host-devtools-debug-build-only"
+            "reason": "host-devtools-build-gated"
           },
           {
             "platform": "linux",
             "status": "partial",
-            "reason": "host-devtools-debug-build-only"
+            "reason": "host-devtools-build-gated"
           }
         ]
       },

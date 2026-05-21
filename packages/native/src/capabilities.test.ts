@@ -113,6 +113,30 @@ const WebViewDocumentOutputUnavailableSupport = {
   ]
 } as const
 
+const WebViewOpenDevToolsSupport = {
+  status: "partial",
+  reason: "host-devtools-build-gated",
+  platforms: [
+    { platform: "macos", status: "partial", reason: "host-devtools-build-gated" },
+    { platform: "windows", status: "partial", reason: "host-devtools-build-gated" },
+    { platform: "linux", status: "partial", reason: "host-devtools-build-gated" }
+  ]
+} as const
+
+const WebViewCloseDevToolsSupport = {
+  status: "partial",
+  reason: "host-devtools-build-gated",
+  platforms: [
+    { platform: "macos", status: "partial", reason: "host-devtools-build-gated" },
+    {
+      platform: "windows",
+      status: "unsupported",
+      reason: "windows-devtools-close-unavailable"
+    },
+    { platform: "linux", status: "partial", reason: "host-devtools-build-gated" }
+  ]
+} as const
+
 const NotificationUnavailableSupport = {
   status: "partial",
   reason: "host-notification-unavailable",
@@ -261,6 +285,8 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
         "RealtimeMediaSession.interrupt"
       )
       const webViewCreate = yield* capabilities.support("WebView.create")
+      const webViewOpenDevTools = yield* capabilities.support("WebView.openDevTools")
+      const webViewCloseDevTools = yield* capabilities.support("WebView.closeDevTools")
       const webViewAttachDebugger = yield* capabilities.support("WebView.attachDebugger")
       const webViewCaptureScreenshot = yield* capabilities.support("WebView.captureScreenshot")
       const menuClear = yield* capabilities.support("Menu.clear")
@@ -336,6 +362,8 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(realtimeMediaSessionClose).toEqual(RealtimeMediaSessionMacOsSupport)
       expect(realtimeMediaSessionSelectDevice).toEqual(RealtimeMediaSessionMacOsSupport)
       expect(realtimeMediaSessionInterrupt).toEqual(RealtimeMediaSessionMacOsSupport)
+      expect(webViewOpenDevTools).toEqual(WebViewOpenDevToolsSupport)
+      expect(webViewCloseDevTools).toEqual(WebViewCloseDevToolsSupport)
       expect(webViewAttachDebugger).toEqual(WebViewDebuggerUnavailableSupport)
       expect(webViewCaptureScreenshot).toEqual(WebViewDocumentOutputUnavailableSupport)
       expect(webViewCreate).toEqual({

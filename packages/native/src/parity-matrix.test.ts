@@ -141,6 +141,34 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
           ]
         }
       })
+      expect(result.rows.find((row) => row.tag === "WebView.openDevTools")).toMatchObject({
+        hostStatus: "routed",
+        support: {
+          status: "partial",
+          reason: "host-devtools-build-gated",
+          platforms: [
+            { platform: "macos", status: "partial", reason: "host-devtools-build-gated" },
+            { platform: "windows", status: "partial", reason: "host-devtools-build-gated" },
+            { platform: "linux", status: "partial", reason: "host-devtools-build-gated" }
+          ]
+        }
+      })
+      expect(result.rows.find((row) => row.tag === "WebView.closeDevTools")).toMatchObject({
+        hostStatus: "routed",
+        support: {
+          status: "partial",
+          reason: "host-devtools-build-gated",
+          platforms: [
+            { platform: "macos", status: "partial", reason: "host-devtools-build-gated" },
+            {
+              platform: "windows",
+              status: "unsupported",
+              reason: "windows-devtools-close-unavailable"
+            },
+            { platform: "linux", status: "partial", reason: "host-devtools-build-gated" }
+          ]
+        }
+      })
       expect(result.rows.find((row) => row.tag === "WebView.capability")).toBeUndefined()
       expect(result.rows.find((row) => row.tag === "Menu.setApplicationMenu")).toMatchObject({
         hostStatus: "routed",
