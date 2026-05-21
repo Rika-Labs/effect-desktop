@@ -658,6 +658,10 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
         hostStatus: "capability-fact",
         support: { status: "unsupported", reason: "host-session-permission-unavailable" }
       })
+      expect(result.rows.find((row) => row.tag === "SessionProfile.destroy")).toMatchObject({
+        hostStatus: "routed",
+        support: { status: "supported" }
+      })
       expect(result.rows.find((row) => row.tag === "SystemAppearance.getAppearance")).toMatchObject(
         {
           hostStatus: "routed",
