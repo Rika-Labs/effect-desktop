@@ -6976,6 +6976,18 @@ test("Updater.getStatus support metadata reports the host-owned updater state", 
   })
 })
 
+test("Updater.install support metadata keeps staged install limitations visible", () => {
+  expect(UpdaterRpcs.requests.get("Updater.install")!.pipe(rpcSupport)).toEqual({
+    status: "partial",
+    reason: "signed-manifest-staged-install-only",
+    platforms: [
+      { platform: "macos", status: "partial", reason: "signed-manifest-staged-install-only" },
+      { platform: "windows", status: "partial", reason: "signed-manifest-staged-install-only" },
+      { platform: "linux", status: "partial", reason: "signed-manifest-staged-install-only" }
+    ]
+  })
+})
+
 test("Updater service delegates through a substitutable UpdaterClient port", () =>
   Effect.runPromise(
     Effect.gen(function* () {

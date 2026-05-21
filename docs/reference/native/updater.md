@@ -16,6 +16,8 @@ The host does not fetch feeds, download network artifacts, enforce update policy
 
 `Updater.download` remains partial because it stages only `file://` artifacts selected from the previously verified signed manifest. Network artifact download still needs a host-owned transport policy, TLS/proxy behavior, progress and cancellation state, and durable terminal failure reporting before it can be marked supported.
 
+`Updater.install` remains partial because it commits the staged artifact into the host-owned updater bundle path. It does not yet perform OS-specific app replacement, rollback execution, process relaunch, or installer handoff.
+
 ## Methods
 
 | Method              | Payload                                           | Success                                                    | Current support |
