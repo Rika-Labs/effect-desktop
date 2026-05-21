@@ -881,6 +881,16 @@ const expectedWebViewCapabilityFactMethods = [
   "capability"
 ] as const
 
+const webViewDebuggerUnsupportedSupport = {
+  status: "unsupported",
+  reason: "host-debugger-protocol-unavailable",
+  platforms: [
+    { platform: "macos", status: "unsupported", reason: "host-debugger-protocol-unavailable" },
+    { platform: "windows", status: "unsupported", reason: "host-debugger-protocol-unavailable" },
+    { platform: "linux", status: "unsupported", reason: "host-debugger-protocol-unavailable" }
+  ]
+} as const
+
 const expectedMenuMethods: Array<(typeof MenuMethodNames)[number]> = [
   "setApplicationMenu",
   "setWindowMenu",
@@ -2189,6 +2199,8 @@ test("WebView declares the 10 unsupported methods as non-callable capability fac
   expect(factTags).toEqual(
     expectedWebViewCapabilityFactMethods.map((method) => `WebView.${method}`).toSorted()
   )
+  const byTag = new Map(WebViewCapabilityFacts.map((fact) => [fact.tag, fact] as const))
+  expect(byTag.get("WebView.attachDebugger")?.support).toEqual(webViewDebuggerUnsupportedSupport)
   for (const fact of WebViewCapabilityFacts) {
     expect(fact.support.status).toBe("unsupported")
   }
@@ -2210,6 +2222,9 @@ test("WebView capability facts surface in the manifest and stay non-callable", (
         expect(fact).toBeDefined()
         expect(fact?.support.status).toBe("unsupported")
       }
+      expect(byTag.get("WebView.attachDebugger")?.support).toEqual(
+        webViewDebuggerUnsupportedSupport
+      )
       const nonCallableTags = WebViewSurface.schemaDocs
         .filter((doc) => !doc.callable)
         .map((doc) => doc.tag)

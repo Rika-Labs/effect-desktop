@@ -95,7 +95,8 @@ Inspection controls are partially host-backed for child WebViews.
 debug builds. Production builds return typed unsupported unless the host is
 compiled with a devtools-enabled WebView provider. `attachDebugger` is a
 non-callable capability fact because Wry exposes no portable debugger protocol
-attachment API.
+attachment API. Opening the inspector UI is not the same as creating a host
+debugger session that can exchange protocol commands and events.
 
 Preload isolation is create-time and host-backed for child WebViews.
 `WebView.create` accepts an optional `isolation.exposedApis` manifest. The host

@@ -97,6 +97,30 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
         hostStatus: "routed",
         support: { status: "partial", reason: "host-navigation-state-tracked" }
       })
+      expect(result.rows.find((row) => row.tag === "WebView.attachDebugger")).toMatchObject({
+        hostStatus: "capability-fact",
+        support: {
+          status: "unsupported",
+          reason: "host-debugger-protocol-unavailable",
+          platforms: [
+            {
+              platform: "macos",
+              status: "unsupported",
+              reason: "host-debugger-protocol-unavailable"
+            },
+            {
+              platform: "windows",
+              status: "unsupported",
+              reason: "host-debugger-protocol-unavailable"
+            },
+            {
+              platform: "linux",
+              status: "unsupported",
+              reason: "host-debugger-protocol-unavailable"
+            }
+          ]
+        }
+      })
       expect(result.rows.find((row) => row.tag === "Menu.setApplicationMenu")).toMatchObject({
         hostStatus: "routed",
         support: { status: "supported" }

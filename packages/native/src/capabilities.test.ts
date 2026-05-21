@@ -93,6 +93,16 @@ const WebRequestUnavailableSupport = {
   ]
 } as const
 
+const WebViewDebuggerUnavailableSupport = {
+  status: "unsupported",
+  reason: "host-debugger-protocol-unavailable",
+  platforms: [
+    { platform: "macos", status: "unsupported", reason: "host-debugger-protocol-unavailable" },
+    { platform: "windows", status: "unsupported", reason: "host-debugger-protocol-unavailable" },
+    { platform: "linux", status: "unsupported", reason: "host-debugger-protocol-unavailable" }
+  ]
+} as const
+
 const NotificationUnavailableSupport = {
   status: "partial",
   reason: "host-notification-unavailable",
@@ -241,6 +251,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
         "RealtimeMediaSession.interrupt"
       )
       const webViewCreate = yield* capabilities.support("WebView.create")
+      const webViewAttachDebugger = yield* capabilities.support("WebView.attachDebugger")
       const menuClear = yield* capabilities.support("Menu.clear")
       const contextMenuShow = yield* capabilities.support("ContextMenu.show")
       const safeStorageSet = yield* capabilities.support("SafeStorage.set")
@@ -311,6 +322,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(realtimeMediaSessionClose).toEqual(RealtimeMediaSessionMacOsSupport)
       expect(realtimeMediaSessionSelectDevice).toEqual(RealtimeMediaSessionMacOsSupport)
       expect(realtimeMediaSessionInterrupt).toEqual(RealtimeMediaSessionMacOsSupport)
+      expect(webViewAttachDebugger).toEqual(WebViewDebuggerUnavailableSupport)
       expect(webViewCreate).toEqual({
         status: "partial",
         reason: "host-navigation-state-tracked",
