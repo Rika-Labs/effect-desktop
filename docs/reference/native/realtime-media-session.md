@@ -16,9 +16,10 @@ geolocation, clipboard, display capture, or generic browser permission prompts.
 
 The public service is Layer-first and test-substitutable. The Rust host adapter is runtime-verified on macOS through CPAL. `isSupported` opens and immediately releases default microphone and speaker streams; it returns `supported: true` only where CPAL reports stream startup synchronously. Headless machines, missing devices, unavailable audio backends, denied OS media access, or platforms where stream startup is only enqueued return typed failures or typed unsupported results. `open` and `selectDevice` obey the same startup-verification gate, so unsupported platforms do not silently start best-effort streams.
 
-`open` is supported on macOS because the host can synchronously verify stream startup before
-registering a session. Runtime failures such as missing devices or denied OS media access remain
-typed operation failures and should be checked with `isSupported` before opening a session.
+`open` and `selectDevice` are supported on macOS because the host can synchronously verify stream
+startup before registering or updating a session. Runtime failures such as missing devices or
+denied OS media access remain typed operation failures and should be checked with `isSupported`
+before opening a session.
 
 ## Methods
 
@@ -43,7 +44,9 @@ All streams are partitioned by explicit `profileId` and `sessionId`. The memory 
 The production host emits host lifecycle events for `open`, `selectDevice`, `interrupt`, `close`, and CPAL stream failure:
 
 - `open` records a host-owned session, starts the selected microphone and speaker streams, emits permission state, device state, and active session state. If the OS denies capture or the device cannot be opened, `open` fails before a session is registered.
-- `selectDevice` validates the session and requested host device, opens the selected microphone or speaker stream, and emits a new device state event.
+- `selectDevice` validates the session and requested host device, opens the selected microphone or
+  speaker stream, and emits a new device state event. Like `open`, it is supported on macOS and
+  returns typed unsupported on Windows/Linux until verified realtime media startup exists there.
 - `interrupt` releases the host-owned microphone and speaker streams, then emits interruption and
   interrupted session-state events. `interrupt` is supported on macOS for host-owned sessions;
   Windows/Linux return typed unsupported until verified realtime media startup exists there.

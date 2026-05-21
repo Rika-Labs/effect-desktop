@@ -214,6 +214,9 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const notificationShow = yield* capabilities.support("Notification.show")
       const realtimeMediaSessionOpen = yield* capabilities.support("RealtimeMediaSession.open")
       const realtimeMediaSessionClose = yield* capabilities.support("RealtimeMediaSession.close")
+      const realtimeMediaSessionSelectDevice = yield* capabilities.support(
+        "RealtimeMediaSession.selectDevice"
+      )
       const realtimeMediaSessionInterrupt = yield* capabilities.support(
         "RealtimeMediaSession.interrupt"
       )
@@ -283,6 +286,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(notificationShow).toEqual(NotificationUnavailableSupport)
       expect(realtimeMediaSessionOpen).toEqual(RealtimeMediaSessionMacOsSupport)
       expect(realtimeMediaSessionClose).toEqual(RealtimeMediaSessionMacOsSupport)
+      expect(realtimeMediaSessionSelectDevice).toEqual(RealtimeMediaSessionMacOsSupport)
       expect(realtimeMediaSessionInterrupt).toEqual(RealtimeMediaSessionMacOsSupport)
       expect(webViewCreate).toEqual({
         status: "partial",

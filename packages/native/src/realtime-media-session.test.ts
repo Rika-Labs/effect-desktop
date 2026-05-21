@@ -283,10 +283,16 @@ test("NativeCapabilities reports realtime media privileged operation support tru
           const capabilities = yield* NativeCapabilities
           const openSupport = yield* capabilities.support("RealtimeMediaSession.open")
           const closeSupport = yield* capabilities.support("RealtimeMediaSession.close")
+          const selectDeviceSupport = yield* capabilities.support(
+            "RealtimeMediaSession.selectDevice"
+          )
           const interruptSupport = yield* capabilities.support("RealtimeMediaSession.interrupt")
           const requireOpen = yield* Effect.exit(capabilities.require("RealtimeMediaSession.open"))
           const requireClose = yield* Effect.exit(
             capabilities.require("RealtimeMediaSession.close")
+          )
+          const requireSelectDevice = yield* Effect.exit(
+            capabilities.require("RealtimeMediaSession.selectDevice")
           )
           const requireInterrupt = yield* Effect.exit(
             capabilities.require("RealtimeMediaSession.interrupt")
@@ -297,7 +303,9 @@ test("NativeCapabilities reports realtime media privileged operation support tru
             openSupport,
             requireClose,
             requireInterrupt,
-            requireOpen
+            requireOpen,
+            requireSelectDevice,
+            selectDeviceSupport
           }
         }),
         makeNativeCapabilitiesLayer(Native.available(Native.RealtimeMediaSession))
@@ -313,9 +321,11 @@ test("NativeCapabilities reports realtime media privileged operation support tru
         ]
       })
       expect(result.openSupport).toEqual(result.closeSupport)
+      expect(result.selectDeviceSupport).toEqual(result.closeSupport)
       expect(result.interruptSupport).toEqual(result.closeSupport)
       expect(Exit.isSuccess(result.requireOpen)).toBe(true)
       expect(Exit.isSuccess(result.requireClose)).toBe(true)
+      expect(Exit.isSuccess(result.requireSelectDevice)).toBe(true)
       expect(Exit.isSuccess(result.requireInterrupt)).toBe(true)
     })
   ))

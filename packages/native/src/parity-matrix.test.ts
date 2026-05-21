@@ -532,6 +532,28 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
           ]
         }
       })
+      expect(
+        result.rows.find((row) => row.tag === "RealtimeMediaSession.selectDevice")
+      ).toMatchObject({
+        hostStatus: "routed",
+        support: {
+          status: "partial",
+          reason: "host-media-startup-unverified",
+          platforms: [
+            { platform: "macos", status: "supported" },
+            {
+              platform: "windows",
+              status: "unsupported",
+              reason: "host-media-startup-unverified"
+            },
+            {
+              platform: "linux",
+              status: "unsupported",
+              reason: "host-media-startup-unverified"
+            }
+          ]
+        }
+      })
       expect(result.rows.find((row) => row.tag === "RealtimeMediaSession.close")).toMatchObject({
         hostStatus: "routed",
         support: {

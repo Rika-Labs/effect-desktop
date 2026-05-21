@@ -1415,6 +1415,33 @@ mod tests {
         ));
     }
 
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn host_select_device_rejects_startup_unverified_platforms() {
+        let error = super::select_device_with_events(
+            "request-platform",
+            Some(json!({
+                "profileId": "profile-platform",
+                "sessionId": "session-platform",
+                "kind": "microphone",
+                "deviceId": "mic-platform"
+            })),
+            0,
+            None,
+            None,
+            None,
+        )
+        .expect_err("unverified startup platforms should reject real host device selection");
+
+        assert!(matches!(
+            error,
+            HostProtocolError::Unsupported {
+                reason,
+                ..
+            } if reason == host_protocol::REALTIME_MEDIA_SESSION_STARTUP_UNVERIFIED_REASON
+        ));
+    }
+
     #[test]
     fn select_device_requires_open_session() {
         let _sessions = isolated_sessions();
