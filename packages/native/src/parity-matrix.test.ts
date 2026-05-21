@@ -173,6 +173,43 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
     })
   ))
 
+test("NativeParityMatrix keeps CrashReporter.start partial until native crash capture exists", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const result = yield* buildNativeParityMatrix()
+      const crashReporterRows = result.rows.filter((row) => row.surface === "CrashReporter")
+
+      expect(crashReporterRows.find((row) => row.tag === "CrashReporter.start")).toMatchObject({
+        hostStatus: "routed",
+        support: {
+          status: "partial",
+          reason: "native-crash-capture-unavailable",
+          platforms: [
+            { platform: "macos", status: "partial", reason: "native-crash-capture-unavailable" },
+            { platform: "windows", status: "partial", reason: "native-crash-capture-unavailable" },
+            { platform: "linux", status: "partial", reason: "native-crash-capture-unavailable" }
+          ]
+        }
+      })
+      expect(
+        crashReporterRows.find((row) => row.tag === "CrashReporter.recordBreadcrumb")
+      ).toMatchObject({
+        hostStatus: "routed",
+        support: { status: "supported" }
+      })
+      expect(crashReporterRows.find((row) => row.tag === "CrashReporter.flush")).toMatchObject({
+        hostStatus: "routed",
+        support: { status: "supported" }
+      })
+      expect(crashReporterRows.find((row) => row.tag === "CrashReporter.getReports")).toMatchObject(
+        {
+          hostStatus: "routed",
+          support: { status: "supported" }
+        }
+      )
+    })
+  ))
+
 test("NativeParityMatrix does not mark missing host methods as supported", () =>
   Effect.runPromise(
     Effect.gen(function* () {

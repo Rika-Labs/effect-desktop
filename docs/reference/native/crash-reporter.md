@@ -17,6 +17,9 @@ and reports those artifacts through `getReports`.
 breadcrumb artifacts. `start` reports `partial` on macOS, Windows, and Linux
 because host crash capture, minidumps, symbol handling, upload consent, and
 native crash hooks are still unavailable.
+A successful `start()` call only enables or disables that local breadcrumb
+collector. It does not install process crash handlers or create native crash
+artifacts.
 
 ## Methods
 
