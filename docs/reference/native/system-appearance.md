@@ -50,6 +50,10 @@ host expose application dark-theme preference and theme name, but that is not a
 durable desktop-wide `"light" | "dark" | "highContrast"` contract across Linux
 desktops.
 
+Linux `getReducedMotion` remains unsupported. GTK3 exposes
+`gtk-enable-animations`, but that API is GTK-main-thread scoped and is not a
+durable desktop-wide reduced-motion contract for the host protocol path.
+
 `isSupported` is protected by `native.invoke:SystemAppearance.isSupported`.
 
 ## Events
