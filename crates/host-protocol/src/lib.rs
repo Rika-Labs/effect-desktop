@@ -308,6 +308,7 @@ pub const SESSION_PROFILE_DESTROY_METHOD: &str = "SessionProfile.destroy";
 pub const SESSION_PROFILE_LIST_METHOD: &str = "SessionProfile.list";
 pub const SESSION_PROFILE_IS_SUPPORTED_METHOD: &str = "SessionProfile.isSupported";
 pub const SESSION_PROFILE_EVENT: &str = "SessionProfile.Event";
+pub const COOKIE_STORE_GET_METHOD: &str = "CookieStore.get";
 pub const COOKIE_STORE_IS_SUPPORTED_METHOD: &str = "CookieStore.isSupported";
 pub const COOKIE_STORE_EVENT: &str = "CookieStore.Event";
 pub const BROWSING_DATA_CLEAR_METHOD: &str = "BrowsingData.clear";
@@ -9782,6 +9783,21 @@ impl CookieStoreCookiePayload {
         self.secure = Some(secure);
         self
     }
+
+    pub fn with_http_only(mut self, http_only: bool) -> Self {
+        self.http_only = Some(http_only);
+        self
+    }
+
+    pub fn with_same_site(mut self, same_site: CookieStoreSameSitePayload) -> Self {
+        self.same_site = Some(same_site);
+        self
+    }
+
+    pub fn with_expires_at(mut self, expires_at: f64) -> Self {
+        self.expires_at = Some(expires_at);
+        self
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -9803,6 +9819,18 @@ impl CookieStoreGetPayload {
             name: None,
             trace_id: None,
         }
+    }
+
+    pub fn profile(&self) -> &SessionProfileResourcePayload {
+        &self.profile
+    }
+
+    pub fn url(&self) -> &str {
+        &self.url
+    }
+
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_deref()
     }
 }
 
@@ -9877,6 +9905,13 @@ pub struct CookieStoreSupportedPayload {
 }
 
 impl CookieStoreSupportedPayload {
+    pub fn supported() -> Self {
+        Self {
+            supported: true,
+            reason: None,
+        }
+    }
+
     pub fn unsupported(reason: impl Into<String>) -> Self {
         Self {
             supported: false,
@@ -17013,11 +17048,9 @@ mod tests {
             r#"{"cookies":[{"name":"token","value":"secret","domain":"example.test","path":"/","secure":true}]}"#
         );
         assert_eq!(
-            serde_json::to_string(&CookieStoreSupportedPayload::unsupported(
-                "host-cookie-store-unavailable"
-            ))
-            .expect("support payload should encode"),
-            r#"{"supported":false,"reason":"host-cookie-store-unavailable"}"#
+            serde_json::to_string(&CookieStoreSupportedPayload::supported())
+                .expect("support payload should encode"),
+            r#"{"supported":true}"#
         );
     }
 

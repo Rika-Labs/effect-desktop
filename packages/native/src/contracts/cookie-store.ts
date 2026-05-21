@@ -41,6 +41,7 @@ export class CookieStoreGetInput extends Schema.Class<CookieStoreGetInput>("Cook
   name: Schema.optionalKey(CookieName),
   traceId: Schema.optionalKey(BridgeSafeNonEmptyString)
 }) {}
+export type CookieStoreGetOptions = Schema.Schema.Type<typeof CookieStoreGetInput>
 
 export class CookieStoreSetInput extends Schema.Class<CookieStoreSetInput>("CookieStoreSetInput")({
   profile: SessionProfileResource,

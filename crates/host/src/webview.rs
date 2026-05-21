@@ -296,6 +296,20 @@ pub(crate) fn clear_all_browsing_data(
     })
 }
 
+#[allow(clippy::result_large_err)]
+pub(crate) fn cookies_for_url(
+    webview: &HostWebView,
+    url: &str,
+    operation: &'static str,
+) -> std::result::Result<Vec<wry::cookie::Cookie<'static>>, HostProtocolError> {
+    webview.cookies_for_url(url).map_err(|error| {
+        HostProtocolError::internal(
+            format!("failed to read WebView cookies: {error}"),
+            operation,
+        )
+    })
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct WebEngineSelection {
     kind: WebEngineKind,

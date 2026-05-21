@@ -10,15 +10,16 @@ use crate::{linux, macos, webview, windows};
 use anyhow::Result;
 use host_protocol::{
     AppBeforeQuitEventPayload, BrowsingDataClearPayload, BrowsingDataClearResultPayload,
-    ContextMenuActivatedEventPayload, DockProgressState, DockSetProgressPayload,
-    HostProtocolEnvelope, HostProtocolError, ScreenBoundsPayload, ScreenDisplayPayload,
-    ScreenDisplaysChangedEventPayload, ScreenDisplaysResultPayload, ScreenMethodPayload,
-    ScreenPointPayload, ScreenSupportedPayload, SessionProfileResourcePayload, TrayResourcePayload,
-    WindowAttentionType, WindowBoundsEventPayload, WindowBoundsPayload, WindowCreatePayload,
-    WindowCreateResponse, WindowListResponse, WindowLookupResponse, WindowParentResponse,
-    WindowProgressState, WindowRegistryEventPayload, WindowRegistryEventPhase,
-    WindowSetProgressPayload, WindowStateEventPayload, WindowStatePayload, WindowTitleBarStyle,
-    WindowTrafficLights,
+    ContextMenuActivatedEventPayload, CookieStoreCookiePayload, CookieStoreGetPayload,
+    CookieStoreGetResultPayload, CookieStoreSameSitePayload, DockProgressState,
+    DockSetProgressPayload, HostProtocolEnvelope, HostProtocolError, ScreenBoundsPayload,
+    ScreenDisplayPayload, ScreenDisplaysChangedEventPayload, ScreenDisplaysResultPayload,
+    ScreenMethodPayload, ScreenPointPayload, ScreenSupportedPayload, SessionProfileResourcePayload,
+    TrayResourcePayload, WindowAttentionType, WindowBoundsEventPayload, WindowBoundsPayload,
+    WindowCreatePayload, WindowCreateResponse, WindowListResponse, WindowLookupResponse,
+    WindowParentResponse, WindowProgressState, WindowRegistryEventPayload,
+    WindowRegistryEventPhase, WindowSetProgressPayload, WindowStateEventPayload,
+    WindowStatePayload, WindowTitleBarStyle, WindowTrafficLights,
 };
 use muda::{
     CheckMenuItem, ContextMenu as MudaContextMenu, Menu, MenuItem, PredefinedMenuItem, Submenu,
@@ -53,6 +54,7 @@ use tao::{
     },
 };
 use tracing::{info, warn};
+use url::Url;
 use uuid::Uuid;
 
 const WINDOW_TITLE: &str = "Effect Desktop";
@@ -500,6 +502,16 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
         Err(HostProtocolError::unsupported(
             host_protocol::WEBVIEW_UNSUPPORTED_REASON,
             host_protocol::WEBVIEW_DESTROY_METHOD,
+        ))
+    }
+
+    fn get_cookies(
+        &self,
+        _payload: CookieStoreGetPayload,
+    ) -> std::result::Result<CookieStoreGetResultPayload, HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            "host-cookie-store-live-webview-required",
+            host_protocol::COOKIE_STORE_GET_METHOD,
         ))
     }
 
@@ -1080,6 +1092,10 @@ enum WindowCommand {
         handle: WebViewHandleRequest,
         reply: Sender<WindowCommandReply>,
     },
+    GetCookies {
+        payload: CookieStoreGetPayload,
+        reply: Sender<WindowCommandReply>,
+    },
     ClearBrowsingData {
         payload: BrowsingDataClearPayload,
         reply: Sender<WindowCommandReply>,
@@ -1123,6 +1139,7 @@ enum WindowCommandResponse {
     ScreenSupported(ScreenSupportedPayload),
     WebViewCreated(WebViewResourcePayload),
     WebViewNavigationState(WebViewNavigationStatePayload),
+    CookieStoreGet(CookieStoreGetResultPayload),
     BrowsingDataCleared(BrowsingDataClearResultPayload),
 }
 
@@ -1383,6 +1400,7 @@ impl WindowMethodPort {
             | WindowCommandResponse::ScreenSupported(_)
             | WindowCommandResponse::WebViewCreated(_)
             | WindowCommandResponse::WebViewNavigationState(_)
+            | WindowCommandResponse::CookieStoreGet(_)
             | WindowCommandResponse::BrowsingDataCleared(_) => Err(HostProtocolError::internal(
                 "window lifecycle command received unrelated response",
                 operation,
@@ -1417,6 +1435,7 @@ impl WindowMethodPort {
             | WindowCommandResponse::ScreenSupported(_)
             | WindowCommandResponse::WebViewCreated(_)
             | WindowCommandResponse::WebViewNavigationState(_)
+            | WindowCommandResponse::CookieStoreGet(_)
             | WindowCommandResponse::BrowsingDataCleared(_) => Err(HostProtocolError::internal(
                 "window state command received unrelated response",
                 operation,
@@ -1451,6 +1470,7 @@ impl WindowMethodPort {
             | WindowCommandResponse::ScreenSupported(_)
             | WindowCommandResponse::WebViewCreated(_)
             | WindowCommandResponse::WebViewNavigationState(_)
+            | WindowCommandResponse::CookieStoreGet(_)
             | WindowCommandResponse::BrowsingDataCleared(_) => Err(HostProtocolError::internal(
                 "window placement command received unrelated response",
                 operation,
@@ -1545,6 +1565,7 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenSupported(_)
             | WindowCommandResponse::WebViewCreated(_)
             | WindowCommandResponse::WebViewNavigationState(_)
+            | WindowCommandResponse::CookieStoreGet(_)
             | WindowCommandResponse::BrowsingDataCleared(_) => Err(HostProtocolError::internal(
                 "window create received tray response",
                 host_protocol::WINDOW_CREATE_METHOD,
@@ -1614,6 +1635,7 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenSupported(_)
             | WindowCommandResponse::WebViewCreated(_)
             | WindowCommandResponse::WebViewNavigationState(_)
+            | WindowCommandResponse::CookieStoreGet(_)
             | WindowCommandResponse::BrowsingDataCleared(_) => Err(HostProtocolError::internal(
                 "window destroy received tray response",
                 host_protocol::WINDOW_DESTROY_METHOD,
@@ -1766,6 +1788,7 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenSupported(_)
             | WindowCommandResponse::WebViewCreated(_)
             | WindowCommandResponse::WebViewNavigationState(_)
+            | WindowCommandResponse::CookieStoreGet(_)
             | WindowCommandResponse::BrowsingDataCleared(_) => Err(HostProtocolError::internal(
                 "window get bounds received unrelated response",
                 host_protocol::WINDOW_GET_BOUNDS_METHOD,
@@ -2158,6 +2181,7 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenSupported(_)
             | WindowCommandResponse::WebViewCreated(_)
             | WindowCommandResponse::WebViewNavigationState(_)
+            | WindowCommandResponse::CookieStoreGet(_)
             | WindowCommandResponse::BrowsingDataCleared(_) => Err(HostProtocolError::internal(
                 "window get state received unrelated response",
                 host_protocol::WINDOW_GET_STATE_METHOD,
@@ -2199,6 +2223,7 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenSupported(_)
             | WindowCommandResponse::WebViewCreated(_)
             | WindowCommandResponse::WebViewNavigationState(_)
+            | WindowCommandResponse::CookieStoreGet(_)
             | WindowCommandResponse::BrowsingDataCleared(_) => Err(HostProtocolError::internal(
                 "dock badge command received window response",
                 operation,
@@ -2238,6 +2263,7 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenSupported(_)
             | WindowCommandResponse::WebViewCreated(_)
             | WindowCommandResponse::WebViewNavigationState(_)
+            | WindowCommandResponse::CookieStoreGet(_)
             | WindowCommandResponse::BrowsingDataCleared(_) => Err(HostProtocolError::internal(
                 "dock set progress received unrelated response",
                 host_protocol::DOCK_SET_PROGRESS_METHOD,
@@ -2274,6 +2300,7 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenSupported(_)
             | WindowCommandResponse::WebViewCreated(_)
             | WindowCommandResponse::WebViewNavigationState(_)
+            | WindowCommandResponse::CookieStoreGet(_)
             | WindowCommandResponse::BrowsingDataCleared(_) => Err(HostProtocolError::internal(
                 "dock attention command received window response",
                 host_protocol::DOCK_REQUEST_ATTENTION_METHOD,
@@ -2313,6 +2340,7 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenSupported(_)
             | WindowCommandResponse::WebViewCreated(_)
             | WindowCommandResponse::WebViewNavigationState(_)
+            | WindowCommandResponse::CookieStoreGet(_)
             | WindowCommandResponse::BrowsingDataCleared(_) => Err(HostProtocolError::internal(
                 "application menu command received window response",
                 host_protocol::MENU_SET_APPLICATION_MENU_METHOD,
@@ -2354,6 +2382,7 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenSupported(_)
             | WindowCommandResponse::WebViewCreated(_)
             | WindowCommandResponse::WebViewNavigationState(_)
+            | WindowCommandResponse::CookieStoreGet(_)
             | WindowCommandResponse::BrowsingDataCleared(_) => Err(HostProtocolError::internal(
                 "window menu command received window response",
                 host_protocol::MENU_SET_WINDOW_MENU_METHOD,
@@ -2393,6 +2422,7 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::ScreenSupported(_)
             | WindowCommandResponse::WebViewCreated(_)
             | WindowCommandResponse::WebViewNavigationState(_)
+            | WindowCommandResponse::CookieStoreGet(_)
             | WindowCommandResponse::BrowsingDataCleared(_) => Err(HostProtocolError::internal(
                 "context menu command received window response",
                 host_protocol::CONTEXT_MENU_SHOW_METHOD,
@@ -2797,6 +2827,25 @@ impl WindowMethodHandler for WindowMethodPort {
             response => Err(unexpected_webview_response(
                 response,
                 host_protocol::WEBVIEW_DESTROY_METHOD,
+            )),
+        }
+    }
+
+    fn get_cookies(
+        &self,
+        payload: CookieStoreGetPayload,
+    ) -> std::result::Result<CookieStoreGetResultPayload, HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::GetCookies {
+            payload,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::CookieStoreGet(result) => Ok(result),
+            response => Err(unexpected_webview_response(
+                response,
+                host_protocol::COOKIE_STORE_GET_METHOD,
             )),
         }
     }
@@ -4649,6 +4698,44 @@ impl WindowRegistry {
         Ok(())
     }
 
+    fn get_cookies(
+        &self,
+        payload: CookieStoreGetPayload,
+    ) -> std::result::Result<CookieStoreGetResultPayload, HostProtocolError> {
+        session_profile::ensure_profile_is_live(
+            payload.profile(),
+            host_protocol::COOKIE_STORE_GET_METHOD,
+        )?;
+        let url = parse_cookie_url(payload.url())?;
+        let resources = self
+            .webviews
+            .values()
+            .find(|resources| resources.profile_id.as_deref() == Some(payload.profile().id()))
+            .ok_or_else(|| {
+                HostProtocolError::unsupported(
+                    "host-cookie-store-live-webview-required",
+                    host_protocol::COOKIE_STORE_GET_METHOD,
+                )
+            })?;
+        let cookies = webview::cookies_for_url(
+            &resources._webview,
+            payload.url(),
+            host_protocol::COOKIE_STORE_GET_METHOD,
+        )?;
+        let cookies = cookies
+            .into_iter()
+            .filter(|cookie| {
+                (match payload.name() {
+                    Some(name) => cookie.name() == name,
+                    None => true,
+                }) && cookie_path_matches_url(cookie.path(), url.path())
+            })
+            .map(|cookie| cookie_store_cookie_payload(cookie, &url))
+            .collect();
+
+        Ok(CookieStoreGetResultPayload::new(cookies))
+    }
+
     fn clear_browsing_data(
         &mut self,
         payload: BrowsingDataClearPayload,
@@ -5413,6 +5500,13 @@ impl WindowRegistry {
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
             }
+            WindowCommand::GetCookies { payload, reply } => {
+                let result = self
+                    .get_cookies(payload)
+                    .map(WindowCommandResponse::CookieStoreGet);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
             WindowCommand::ClearBrowsingData { payload, reply } => {
                 let result = self
                     .clear_browsing_data(payload)
@@ -5782,6 +5876,83 @@ fn webview_host_error(error: wry::Error, operation: &'static str) -> HostProtoco
     HostProtocolError::internal(format!("WebView host operation failed: {error}"), operation)
 }
 
+fn parse_cookie_url(url: &str) -> std::result::Result<Url, HostProtocolError> {
+    let parsed = Url::parse(url).map_err(|error| {
+        HostProtocolError::invalid_argument(
+            "url",
+            format!("must be an absolute HTTP(S) URL: {error}"),
+            host_protocol::COOKIE_STORE_GET_METHOD,
+        )
+    })?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err(HostProtocolError::invalid_argument(
+            "url",
+            "must use http or https",
+            host_protocol::COOKIE_STORE_GET_METHOD,
+        ));
+    }
+    if parsed.host_str().is_none() {
+        return Err(HostProtocolError::invalid_argument(
+            "url",
+            "must include a host",
+            host_protocol::COOKIE_STORE_GET_METHOD,
+        ));
+    }
+    Ok(parsed)
+}
+
+fn cookie_store_cookie_payload(
+    cookie: wry::cookie::Cookie<'static>,
+    url: &Url,
+) -> CookieStoreCookiePayload {
+    let domain = cookie
+        .domain()
+        .or_else(|| url.host_str())
+        .unwrap_or_default()
+        .to_string();
+    let mut payload = CookieStoreCookiePayload::new(
+        cookie.name().to_string(),
+        cookie.value().to_string(),
+        domain,
+        cookie.path().unwrap_or("/").to_string(),
+    );
+    if let Some(secure) = cookie.secure() {
+        payload = payload.with_secure(secure);
+    }
+    if let Some(http_only) = cookie.http_only() {
+        payload = payload.with_http_only(http_only);
+    }
+    if let Some(same_site) = cookie.same_site() {
+        payload = payload.with_same_site(match same_site {
+            wry::cookie::SameSite::Lax => CookieStoreSameSitePayload::Lax,
+            wry::cookie::SameSite::Strict => CookieStoreSameSitePayload::Strict,
+            wry::cookie::SameSite::None => CookieStoreSameSitePayload::None,
+        });
+    }
+    if let Some(expires_at) = cookie.expires_datetime() {
+        payload = payload.with_expires_at(expires_at.unix_timestamp() as f64 * 1000.0);
+    }
+    payload
+}
+
+fn cookie_path_matches_url(cookie_path: Option<&str>, url_path: &str) -> bool {
+    let cookie_path = cookie_path.unwrap_or("/");
+    if cookie_path == url_path {
+        return true;
+    }
+    if cookie_path == "/" {
+        return true;
+    }
+    if !url_path.starts_with(cookie_path) {
+        return false;
+    }
+    cookie_path.ends_with('/')
+        || matches!(
+            url_path.as_bytes().get(cookie_path.len()),
+            Some(byte) if *byte == b'/'
+        )
+}
+
 fn webview_permission_denied(message: &'static str, operation: &'static str) -> HostProtocolError {
     HostProtocolError::PermissionDenied {
         capability: "WebView.navigation".to_string(),
@@ -5825,6 +5996,7 @@ fn unexpected_tray_response(
         | WindowCommandResponse::ScreenSupported(_) => "tray command received screen response",
         WindowCommandResponse::WebViewCreated(_)
         | WindowCommandResponse::WebViewNavigationState(_)
+        | WindowCommandResponse::CookieStoreGet(_)
         | WindowCommandResponse::BrowsingDataCleared(_) => "tray command received webview response",
     };
     HostProtocolError::internal(message, operation)
@@ -5856,6 +6028,7 @@ fn unexpected_webview_response(
         | WindowCommandResponse::ScreenSupported(_) => "webview command received screen response",
         WindowCommandResponse::WebViewCreated(_) => "webview command received create response",
         WindowCommandResponse::WebViewNavigationState(_)
+        | WindowCommandResponse::CookieStoreGet(_)
         | WindowCommandResponse::BrowsingDataCleared(_) => {
             "webview command received navigation state response"
         }
@@ -5891,6 +6064,7 @@ fn unexpected_screen_response(
         WindowCommandResponse::ScreenSupported(_) => "screen command received support response",
         WindowCommandResponse::WebViewCreated(_)
         | WindowCommandResponse::WebViewNavigationState(_)
+        | WindowCommandResponse::CookieStoreGet(_)
         | WindowCommandResponse::BrowsingDataCleared(_) => {
             "screen command received webview response"
         }
@@ -7422,15 +7596,13 @@ fn append_context_menu_item(
             let native_id = context_menu_native_item_id(value, window_id, native_ids, operation)?;
             let label = context_menu_required_string(value, "label", operation)?;
             let enabled = context_menu_optional_bool(value, "enabled", operation)?.unwrap_or(true);
-            let result =
-                if let Some(checked) = context_menu_optional_bool(value, "checked", operation)? {
-                    let item = CheckMenuItem::with_id(native_id, label, enabled, checked, None);
-                    menu.append(&item)
-                } else {
-                    let item = MenuItem::with_id(native_id, label, enabled, None);
-                    menu.append(&item)
-                };
-            result
+            if let Some(checked) = context_menu_optional_bool(value, "checked", operation)? {
+                let item = CheckMenuItem::with_id(native_id, label, enabled, checked, None);
+                menu.append(&item)
+            } else {
+                let item = MenuItem::with_id(native_id, label, enabled, None);
+                menu.append(&item)
+            }
         }
         "separator" => {
             if value.get("id").is_some() {
@@ -7466,15 +7638,13 @@ fn append_context_submenu_item(
             let native_id = context_menu_native_item_id(value, window_id, native_ids, operation)?;
             let label = context_menu_required_string(value, "label", operation)?;
             let enabled = context_menu_optional_bool(value, "enabled", operation)?.unwrap_or(true);
-            let result =
-                if let Some(checked) = context_menu_optional_bool(value, "checked", operation)? {
-                    let item = CheckMenuItem::with_id(native_id, label, enabled, checked, None);
-                    submenu.append(&item)
-                } else {
-                    let item = MenuItem::with_id(native_id, label, enabled, None);
-                    submenu.append(&item)
-                };
-            result
+            if let Some(checked) = context_menu_optional_bool(value, "checked", operation)? {
+                let item = CheckMenuItem::with_id(native_id, label, enabled, checked, None);
+                submenu.append(&item)
+            } else {
+                let item = MenuItem::with_id(native_id, label, enabled, None);
+                submenu.append(&item)
+            }
         }
         "separator" => {
             if value.get("id").is_some() {
@@ -7908,7 +8078,7 @@ mod tests {
     use super::{
         centered_physical_axis, clear_webview_runtime_event_state,
         clear_window_runtime_event_state, clip_window_bounds_to_logical_area,
-        control_flow_for_lifecycle_event, control_flow_for_window_state,
+        control_flow_for_lifecycle_event, control_flow_for_window_state, cookie_path_matches_url,
         display_relative_physical_axis, emit_webview_api_call_event,
         emit_webview_navigation_blocked_event, emit_webview_runtime_event,
         emit_window_registry_event, handle_native_window_close_requested,
@@ -7984,6 +8154,21 @@ mod tests {
         assert!(!super::origin_allowed(
             "https://evil.example.com/path",
             &policy
+        ));
+    }
+
+    #[test]
+    fn cookie_path_matching_follows_browser_prefix_rules() {
+        assert!(cookie_path_matches_url(Some("/"), "/account"));
+        assert!(cookie_path_matches_url(Some("/account"), "/account"));
+        assert!(cookie_path_matches_url(
+            Some("/account"),
+            "/account/settings"
+        ));
+        assert!(!cookie_path_matches_url(Some("/account"), "/accounting"));
+        assert!(!cookie_path_matches_url(
+            Some("/account/settings"),
+            "/account"
         ));
     }
 

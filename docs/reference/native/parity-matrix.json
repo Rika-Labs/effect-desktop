@@ -455,27 +455,27 @@
       "method": "get",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-cookie-store-unavailable",
+        "status": "partial",
+        "reason": "host-cookie-store-live-webview-required",
         "platforms": [
           {
             "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-cookie-store-unavailable"
+            "status": "partial",
+            "reason": "host-cookie-store-live-webview-required"
           },
           {
             "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-cookie-store-unavailable"
+            "status": "partial",
+            "reason": "host-cookie-store-live-webview-required"
           },
           {
             "platform": "linux",
-            "status": "unsupported",
-            "reason": "host-cookie-store-unavailable"
+            "status": "partial",
+            "reason": "host-cookie-store-live-webview-required"
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "routed"
     },
     {
       "tag": "CookieStore.isSupported",
@@ -5093,10 +5093,10 @@
   ],
   "summary": {
     "total": 289,
-    "routed": 235,
+    "routed": 236,
     "missing": 0,
     "supported": 164,
-    "partial": 71,
-    "unsupported": 54
+    "partial": 72,
+    "unsupported": 53
   }
 }

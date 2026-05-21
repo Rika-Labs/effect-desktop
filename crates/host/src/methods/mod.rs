@@ -1118,6 +1118,10 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Payload(session_profile::is_supported),
     ),
     route(
+        host_protocol::COOKIE_STORE_GET_METHOD,
+        HostMethodDispatcher::Window(cookie_store::get),
+    ),
+    route(
         host_protocol::COOKIE_STORE_IS_SUPPORTED_METHOD,
         HostMethodDispatcher::Payload(cookie_store::is_supported),
     ),
@@ -3621,6 +3625,57 @@ mod tests {
         let requests = fake.context_menus();
         assert_eq!(requests.len(), 1);
         assert_eq!(requests[0].window_id(), "window-1");
+    }
+
+    #[test]
+    fn cookie_store_get_routes_to_window_handler() {
+        let fake = Arc::new(FakeWindowHandler::default());
+        let router = HostMethodRouter::new(fake.clone());
+        let profile = serde_json::json!({
+            "kind": "session-profile",
+            "id": "session-profile:workspace-1",
+            "generation": 0,
+            "ownerScope": "workspace:1",
+            "state": "open"
+        });
+        let response = router
+            .dispatch_at(
+                request_with_payload(
+                    "request-cookie-store-get",
+                    host_protocol::COOKIE_STORE_GET_METHOD,
+                    serde_json::json!({
+                        "profile": profile,
+                        "url": "https://example.test/account",
+                        "name": "token"
+                    }),
+                ),
+                1710000000108,
+            )
+            .expect("cookie store get should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-cookie-store-get".to_string(),
+                timestamp: 1710000000108,
+                trace_id: "trace-request-cookie-store-get".to_string(),
+                payload: Some(serde_json::json!({
+                    "cookies": [
+                        {
+                            "name": "token",
+                            "value": "secret",
+                            "domain": "example.test",
+                            "path": "/"
+                        }
+                    ]
+                })),
+                error: None,
+            }
+        );
+        let requests = fake.cookie_gets();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].url(), "https://example.test/account");
+        assert_eq!(requests[0].name(), Some("token"));
     }
 
     #[test]
@@ -7296,6 +7351,7 @@ mod tests {
         simple_fullscreen: Mutex<Vec<(String, bool)>>,
         dock_badge_labels: Mutex<Vec<Option<String>>>,
         context_menus: Mutex<Vec<ContextMenuShowRequest>>,
+        cookie_gets: Mutex<Vec<host_protocol::CookieStoreGetPayload>>,
     }
 
     impl FakeWindowHandler {
@@ -7330,6 +7386,7 @@ mod tests {
                 simple_fullscreen: Mutex::new(Vec::new()),
                 dock_badge_labels: Mutex::new(Vec::new()),
                 context_menus: Mutex::new(Vec::new()),
+                cookie_gets: Mutex::new(Vec::new()),
             }
         }
 
@@ -7498,6 +7555,13 @@ mod tests {
             self.context_menus
                 .lock()
                 .expect("fake context menu requests should lock")
+                .clone()
+        }
+
+        fn cookie_gets(&self) -> Vec<host_protocol::CookieStoreGetPayload> {
+            self.cookie_gets
+                .lock()
+                .expect("fake cookie get requests should lock")
                 .clone()
         }
     }
@@ -7897,6 +7961,24 @@ mod tests {
                 .expect("fake context menu requests should lock")
                 .push(request);
             Ok(())
+        }
+
+        fn get_cookies(
+            &self,
+            payload: host_protocol::CookieStoreGetPayload,
+        ) -> Result<host_protocol::CookieStoreGetResultPayload, HostProtocolError> {
+            self.cookie_gets
+                .lock()
+                .expect("fake cookie get requests should lock")
+                .push(payload);
+            Ok(host_protocol::CookieStoreGetResultPayload::new(vec![
+                host_protocol::CookieStoreCookiePayload::new(
+                    "token",
+                    "secret",
+                    "example.test",
+                    "/",
+                ),
+            ]))
         }
 
         fn create_tray(
