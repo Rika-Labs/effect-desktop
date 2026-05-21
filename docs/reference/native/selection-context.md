@@ -52,6 +52,14 @@ The current host only has the protocol shape and a fail-closed support query; it
 does not have macOS Accessibility, Windows UI Automation, or Linux AT-SPI
 document adapters wired to this contract.
 
+`readSelection` also remains unsupported as an explicit v1 native capability
+decision. Reading selected text safely requires a native accessibility adapter
+that can identify the focused text provider, enforce metadata-only versus
+content access before reading text, and return typed failures when the provider
+does not expose selected content. ORIKA does not use clipboard-copy simulation
+for this contract because it mutates user state, depends on focused application
+keyboard handling, and cannot preserve the caller permission boundary.
+
 ## Support
 
 The current Rust host adapter is intentionally fail-closed while OS selection and document adapters are not implemented.

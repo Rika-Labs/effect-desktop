@@ -630,6 +630,12 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
         hostStatus: "capability-fact",
         support: { status: "unsupported", reason: "host-adapter-unimplemented" }
       })
+      expect(result.rows.find((row) => row.tag === "SelectionContext.readSelection")).toMatchObject(
+        {
+          hostStatus: "capability-fact",
+          support: { status: "unsupported", reason: "host-adapter-unimplemented" }
+        }
+      )
       expect(result.rows.find((row) => row.tag === "SystemAppearance.getAppearance")).toMatchObject(
         {
           hostStatus: "routed",
