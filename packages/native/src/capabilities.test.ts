@@ -142,6 +142,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const globalShortcutUnregisterAll = yield* capabilities.support(
         "GlobalShortcut.unregisterAll"
       )
+      const nativeNetworkFetch = yield* capabilities.support("NativeNetwork.fetch")
       const nativeNetworkConnectWebSocket = yield* capabilities.support(
         "NativeNetwork.connectWebSocket"
       )
@@ -200,6 +201,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(globalShortcutRegister).toEqual(HostAdapterUnimplementedSupport)
       expect(globalShortcutUnregister).toEqual(HostAdapterUnimplementedSupport)
       expect(globalShortcutUnregisterAll).toEqual(HostAdapterUnimplementedSupport)
+      expect(nativeNetworkFetch).toEqual(NativeNetworkUnavailableSupport)
       expect(nativeNetworkConnectWebSocket).toEqual(NativeNetworkUnavailableSupport)
       expect(nativeNetworkCloseWebSocket).toEqual(NativeNetworkUnavailableSupport)
       expect(webViewCreate).toEqual({
