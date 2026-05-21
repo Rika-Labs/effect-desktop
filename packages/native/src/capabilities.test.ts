@@ -55,6 +55,16 @@ const RuntimeProbedEgressPolicySupport = {
   ]
 } as const
 
+const UnsupportedExecutionSandboxSupport = {
+  status: "unsupported",
+  reason: "host-adapter-unimplemented",
+  platforms: [
+    { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
+    { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
+    { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
+  ]
+} as const
+
 test("NativeCapabilities exposes support metadata from native surfaces", () => {
   const runtime = ManagedRuntime.make(NativeCapabilitiesLive)
   return runtime.runPromise(
@@ -88,6 +98,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const egressPolicyDecide = yield* capabilities.support("EgressPolicy.decide")
       const egressPolicyIsSupported = yield* capabilities.support("EgressPolicy.isSupported")
       const egressPolicyRecord = yield* capabilities.support("EgressPolicy.record")
+      const executionSandboxCreate = yield* capabilities.support("ExecutionSandbox.create")
       const crashReporterStart = yield* capabilities.support("CrashReporter.start")
       const crashReporterRecordBreadcrumb = yield* capabilities.support(
         "CrashReporter.recordBreadcrumb"
@@ -223,6 +234,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(egressPolicyDecide).toEqual(RuntimeProbedEgressPolicySupport)
       expect(egressPolicyIsSupported).toEqual(RuntimeProbedEgressPolicySupport)
       expect(egressPolicyRecord).toEqual(RuntimeProbedEgressPolicySupport)
+      expect(executionSandboxCreate).toEqual(UnsupportedExecutionSandboxSupport)
       expect(displayCaptureCaptureDisplay).toEqual({
         status: "partial",
         reason: "macos-screencapture-adapter",
