@@ -45,6 +45,16 @@ const UnsupportedDownloadSupport = {
   ]
 } as const
 
+const NativeNetworkUnavailableSupport = {
+  status: "unsupported",
+  reason: "host-native-network-unavailable",
+  platforms: [
+    { platform: "macos", status: "unsupported", reason: "host-native-network-unavailable" },
+    { platform: "windows", status: "unsupported", reason: "host-native-network-unavailable" },
+    { platform: "linux", status: "unsupported", reason: "host-native-network-unavailable" }
+  ]
+} as const
+
 const RuntimeProbedEgressPolicySupport = {
   status: "partial",
   reason: "host-decision-log-runtime-probed",
@@ -132,6 +142,9 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const globalShortcutUnregisterAll = yield* capabilities.support(
         "GlobalShortcut.unregisterAll"
       )
+      const nativeNetworkCloseWebSocket = yield* capabilities.support(
+        "NativeNetwork.closeWebSocket"
+      )
       const webViewCreate = yield* capabilities.support("WebView.create")
       const menuClear = yield* capabilities.support("Menu.clear")
       const contextMenuShow = yield* capabilities.support("ContextMenu.show")
@@ -184,6 +197,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(globalShortcutRegister).toEqual(HostAdapterUnimplementedSupport)
       expect(globalShortcutUnregister).toEqual(HostAdapterUnimplementedSupport)
       expect(globalShortcutUnregisterAll).toEqual(HostAdapterUnimplementedSupport)
+      expect(nativeNetworkCloseWebSocket).toEqual(NativeNetworkUnavailableSupport)
       expect(webViewCreate).toEqual({
         status: "partial",
         reason: "host-navigation-state-tracked",

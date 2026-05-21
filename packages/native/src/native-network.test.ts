@@ -20,6 +20,16 @@ const UnsupportedMethods = [
   "localhostUrl"
 ] as const
 
+const UnsupportedSupport = {
+  status: "unsupported",
+  reason: "host-native-network-unavailable",
+  platforms: [
+    { platform: "macos", status: "unsupported", reason: "host-native-network-unavailable" },
+    { platform: "windows", status: "unsupported", reason: "host-native-network-unavailable" },
+    { platform: "linux", status: "unsupported", reason: "host-native-network-unavailable" }
+  ]
+} as const
+
 test("NativeNetwork exposes only isSupported as a callable RPC", () => {
   const callableTags = Array.from(NativeNetworkRpcs.requests.keys()).toSorted()
   expect(callableTags).toEqual(["NativeNetwork.isSupported"])
@@ -63,7 +73,8 @@ test("NativeNetwork declares the 5 unsupported methods as non-callable capabilit
   const factTags = NativeNetworkCapabilityFacts.map((fact) => fact.tag).toSorted()
   expect(factTags).toEqual(UnsupportedMethods.map((method) => `NativeNetwork.${method}`).toSorted())
   for (const fact of NativeNetworkCapabilityFacts) {
-    expect(fact.support.status).toBe("unsupported")
+    expect(fact.support).toEqual(UnsupportedSupport)
+    expect(fact.capability.kind).toBe("native.invoke")
   }
 })
 
@@ -78,7 +89,7 @@ test("NativeNetwork capability facts surface in the manifest and stay non-callab
       for (const method of UnsupportedMethods) {
         const fact = byTag.get(`NativeNetwork.${method}`)
         expect(fact).toBeDefined()
-        expect(fact?.support.status).toBe("unsupported")
+        expect(fact?.support).toEqual(UnsupportedSupport)
       }
 
       const callableFactTags = NativeNetworkSurface.schemaDocs

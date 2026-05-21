@@ -114,6 +114,30 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
         }
       })
       expect(result.rows.find((row) => row.tag === "Menu.bindCommand")).toBeUndefined()
+      expect(result.rows.find((row) => row.tag === "NativeNetwork.closeWebSocket")).toMatchObject({
+        hostStatus: "capability-fact",
+        support: {
+          status: "unsupported",
+          reason: "host-native-network-unavailable",
+          platforms: [
+            {
+              platform: "macos",
+              status: "unsupported",
+              reason: "host-native-network-unavailable"
+            },
+            {
+              platform: "windows",
+              status: "unsupported",
+              reason: "host-native-network-unavailable"
+            },
+            {
+              platform: "linux",
+              status: "unsupported",
+              reason: "host-native-network-unavailable"
+            }
+          ]
+        }
+      })
       expect(result.rows.find((row) => row.tag === "ContextMenu.show")).toMatchObject({
         hostStatus: "routed",
         support: { status: "supported" }
