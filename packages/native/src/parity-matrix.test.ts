@@ -167,6 +167,10 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
         hostStatus: "capability-fact",
         support: { status: "unsupported", reason: "host-download-unavailable" }
       })
+      expect(result.rows.find((row) => row.tag === "Download.start")).toMatchObject({
+        hostStatus: "capability-fact",
+        support: { status: "unsupported", reason: "host-download-unavailable" }
+      })
       expect(result.rows.find((row) => row.tag === "SafeStorage.isAvailable")).toMatchObject({
         hostStatus: "routed",
         support: { status: "supported" }
