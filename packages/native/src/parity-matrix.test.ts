@@ -260,6 +260,30 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
           ]
         }
       })
+      expect(result.rows.find((row) => row.tag === "NetworkAuth.handleCertificate")).toMatchObject({
+        hostStatus: "capability-fact",
+        support: {
+          status: "unsupported",
+          reason: "host-network-auth-unavailable",
+          platforms: [
+            {
+              platform: "macos",
+              status: "unsupported",
+              reason: "host-network-auth-unavailable"
+            },
+            {
+              platform: "windows",
+              status: "unsupported",
+              reason: "host-network-auth-unavailable"
+            },
+            {
+              platform: "linux",
+              status: "unsupported",
+              reason: "host-network-auth-unavailable"
+            }
+          ]
+        }
+      })
       expect(result.rows.find((row) => row.tag === "ContextMenu.show")).toMatchObject({
         hostStatus: "routed",
         support: { status: "supported" }

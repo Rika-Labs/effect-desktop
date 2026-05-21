@@ -162,6 +162,9 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
         "NativeNetwork.closeWebSocket"
       )
       const networkAuthHandleAuth = yield* capabilities.support("NetworkAuth.handleAuth")
+      const networkAuthHandleCertificate = yield* capabilities.support(
+        "NetworkAuth.handleCertificate"
+      )
       const webViewCreate = yield* capabilities.support("WebView.create")
       const menuClear = yield* capabilities.support("Menu.clear")
       const contextMenuShow = yield* capabilities.support("ContextMenu.show")
@@ -220,6 +223,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(nativeNetworkConnectWebSocket).toEqual(NativeNetworkUnavailableSupport)
       expect(nativeNetworkCloseWebSocket).toEqual(NativeNetworkUnavailableSupport)
       expect(networkAuthHandleAuth).toEqual(NetworkAuthUnavailableSupport)
+      expect(networkAuthHandleCertificate).toEqual(NetworkAuthUnavailableSupport)
       expect(webViewCreate).toEqual({
         status: "partial",
         reason: "host-navigation-state-tracked",

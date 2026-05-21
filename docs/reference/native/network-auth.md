@@ -35,7 +35,7 @@ Proxy modes are `direct`, `system`, and `fixed`. `fixed` requires an `http`, `ht
 
 ## Support
 
-The host does not yet receive portable proxy, auth-challenge, or certificate-decision callbacks from profile-bound WebViews. The current Wry-backed host path exposes navigation, page-load, download, drag/drop, new-window, and proxy configuration hooks, but not an HTTP auth-challenge callback that can be correlated to `SessionProfileHandle` and completed by `handleAuth`. Because those methods are not implemented, they are published as non-callable capability facts with `support.status: "unsupported"` rather than registered as invocable RPCs.
+The host does not yet receive portable proxy, auth-challenge, or certificate-decision callbacks from profile-bound WebViews. The current Wry-backed host path exposes navigation, page-load, download, drag/drop, new-window, and proxy configuration hooks, but not HTTP-auth or certificate-challenge callbacks that can be correlated to `SessionProfileHandle` and completed by `handleAuth` or `handleCertificate`. Because those methods are not implemented, they are published as non-callable capability facts with `support.status: "unsupported"` rather than registered as invocable RPCs.
 
 | Platform | Status        | Reason                          |
 | -------- | ------------- | ------------------------------- |
