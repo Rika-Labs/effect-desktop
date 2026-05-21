@@ -892,7 +892,7 @@ const expectedMenuCapabilityFactMethods = ["bindCommand"]
 
 const expectedContextMenuMethods: Array<(typeof ContextMenuMethodNames)[number]> = []
 
-const expectedContextMenuCapabilityFactMethods = ["show", "buildFromTemplate"]
+const expectedContextMenuCapabilityFactMethods = ["show"]
 
 const expectedDialogMethods: Array<(typeof DialogMethodNames)[number]> = [
   "openFile",
@@ -3664,7 +3664,7 @@ test("ContextMenu bindCommand closes the command listener with its resource scop
     })
   ))
 
-test("ContextMenu bridge client fails host-backed methods and binds commands locally", () =>
+test("ContextMenu bridge client fails show and keeps local helpers off transport", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const requests: HostProtocolRequestEnvelope[] = []
@@ -3699,7 +3699,7 @@ test("ContextMenu bridge client fails host-backed methods and binds commands loc
       )
 
       expectExitFailure(result.showExit, (error) => hasErrorTag(error, "Unsupported"))
-      expectExitFailure(result.buildExit, (error) => hasErrorTag(error, "Unsupported"))
+      expect(Exit.isSuccess(result.buildExit)).toBe(true)
       expect(Exit.isSuccess(result.bindExit)).toBe(true)
       expect(Array.from(result.activated)).toEqual([
         new ContextMenuActivatedEvent({

@@ -53,7 +53,7 @@ const ContextMenuHostUnsupportedSupport = NativeSurface.support.unsupported(
 export type ContextMenuError = HostProtocolError
 export type ContextMenuCommandBindingError = ContextMenuError | CommandRegistryError
 
-const contextMenuCapabilityFact = (method: "show" | "buildFromTemplate") =>
+const contextMenuCapabilityFact = (method: "show") =>
   NativeSurface.capabilityFact("ContextMenu", method, {
     authority: NativeSurface.authority.custom(
       P.nativeInvoke({ primitive: "ContextMenu", methods: [method] })
@@ -61,10 +61,7 @@ const contextMenuCapabilityFact = (method: "show" | "buildFromTemplate") =>
     support: ContextMenuHostUnsupportedSupport
   })
 
-export const ContextMenuCapabilityFacts = Object.freeze([
-  contextMenuCapabilityFact("show"),
-  contextMenuCapabilityFact("buildFromTemplate")
-])
+export const ContextMenuCapabilityFacts = Object.freeze([contextMenuCapabilityFact("show")])
 
 export const ContextMenuRpcEvents = Object.freeze({
   Activated: { payload: ContextMenuActivatedEvent }
@@ -221,9 +218,7 @@ const contextMenuClientFromRpcClient = (
         Effect.flatMap(() => Effect.fail(unsupportedError("ContextMenu.show")))
       ),
     buildFromTemplate: (input) =>
-      decodeContextMenuBuildFromTemplateInput(input).pipe(
-        Effect.flatMap(() => Effect.fail(unsupportedError("ContextMenu.buildFromTemplate")))
-      ),
+      decodeContextMenuBuildFromTemplateInput(input).pipe(Effect.asVoid),
     bindCommand: (itemId, commandId) =>
       decodeContextMenuBindCommandInput({ itemId, commandId }).pipe(Effect.asVoid),
     onActivated: () => subscribeContextMenuEvent(exchange, "ContextMenu.Activated")
