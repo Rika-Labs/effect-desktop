@@ -13,17 +13,17 @@ Crash reporter setup and breadcrumb collection.
 The Rust host implements local breadcrumb collection, flushes breadcrumbs into
 inspectable JSON artifacts, rediscovers existing breadcrumb artifacts from disk,
 and reports those artifacts through `getReports`.
-`flush` and `getReports` are fully supported for host-owned breadcrumb artifacts.
-The remaining native surface methods report `partial` on macOS, Windows, and
-Linux because host crash capture, minidumps, symbol handling, upload consent,
-and native crash hooks are still unavailable.
+`recordBreadcrumb`, `flush`, and `getReports` are fully supported for host-owned
+breadcrumb artifacts. `start` reports `partial` on macOS, Windows, and Linux
+because host crash capture, minidumps, symbol handling, upload consent, and
+native crash hooks are still unavailable.
 
 ## Methods
 
 | Method             | Payload                   | Success                    | Runtime support |
 | ------------------ | ------------------------- | -------------------------- | --------------- |
 | `start`            | `{ enabled?: boolean }`   | `void`                     | partial         |
-| `recordBreadcrumb` | `CrashReporterBreadcrumb` | `void`                     | partial         |
+| `recordBreadcrumb` | `CrashReporterBreadcrumb` | `void`                     | supported       |
 | `flush`            | `void`                    | `{ flushed: number >= 0 }` | supported       |
 | `getReports`       | `void`                    | `{ reports: Report[] }`    | supported       |
 

@@ -73,7 +73,7 @@ export const CrashReporterRecordBreadcrumb = NativeSurface.rpc(Surface, "recordB
     P.nativeInvoke({ primitive: "CrashReporter", methods: ["recordBreadcrumb"] })
   ),
   endpoint: "mutation",
-  support: CrashReporterSupport
+  support: CrashReporterLocalArtifactSupport
 })
 export const CrashReporterFlush = NativeSurface.rpc(Surface, "flush", {
   payload: Schema.Void,

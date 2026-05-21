@@ -62,7 +62,7 @@ The machine-readable matrix lives in [`parity-matrix.json`](parity-matrix.json).
 | `CookieStore`               | `set`                       | `partial`     | `CookieStore.set`                         | `routed`          |
 | `CrashReporter`             | `flush`                     | `supported`   | `CrashReporter.flush`                     | `routed`          |
 | `CrashReporter`             | `getReports`                | `supported`   | `CrashReporter.getReports`                | `routed`          |
-| `CrashReporter`             | `recordBreadcrumb`          | `partial`     | `CrashReporter.recordBreadcrumb`          | `routed`          |
+| `CrashReporter`             | `recordBreadcrumb`          | `supported`   | `CrashReporter.recordBreadcrumb`          | `routed`          |
 | `CrashReporter`             | `start`                     | `partial`     | `CrashReporter.start`                     | `routed`          |
 | `DiagnosticsBundle`         | `collect`                   | `supported`   | `DiagnosticsBundle.collect`               | `routed`          |
 | `DiagnosticsBundle`         | `isSupported`               | `supported`   | `DiagnosticsBundle.isSupported`           | `routed`          |

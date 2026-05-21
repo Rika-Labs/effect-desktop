@@ -25,6 +25,9 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const updaterDownload = yield* capabilities.support("Updater.download")
       const updaterInstall = yield* capabilities.support("Updater.install")
       const crashReporterStart = yield* capabilities.support("CrashReporter.start")
+      const crashReporterRecordBreadcrumb = yield* capabilities.support(
+        "CrashReporter.recordBreadcrumb"
+      )
       const crashReporterFlush = yield* capabilities.support("CrashReporter.flush")
       const crashReporterGetReports = yield* capabilities.support("CrashReporter.getReports")
       const powerMonitorIsSupported = yield* capabilities.support("PowerMonitor.isSupported")
@@ -124,6 +127,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
           { platform: "linux", status: "partial", reason: "native-crash-capture-unavailable" }
         ]
       })
+      expect(crashReporterRecordBreadcrumb).toEqual({ status: "supported" })
       expect(crashReporterFlush).toEqual({ status: "supported" })
       expect(crashReporterGetReports).toEqual({ status: "supported" })
       expect(powerMonitorIsSupported).toEqual({
