@@ -26,6 +26,9 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const updaterInstall = yield* capabilities.support("Updater.install")
       const dialogOpenFile = yield* capabilities.support("Dialog.openFile")
       const dialogOpenDirectory = yield* capabilities.support("Dialog.openDirectory")
+      const displayCaptureCaptureDisplay = yield* capabilities.support(
+        "DisplayCapture.captureDisplay"
+      )
       const crashReporterStart = yield* capabilities.support("CrashReporter.start")
       const crashReporterRecordBreadcrumb = yield* capabilities.support(
         "CrashReporter.recordBreadcrumb"
@@ -134,6 +137,15 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
         ]
       })
       expect(dialogOpenFile).toEqual(dialogOpenDirectory)
+      expect(displayCaptureCaptureDisplay).toEqual({
+        status: "partial",
+        reason: "macos-screencapture-adapter",
+        platforms: [
+          { platform: "macos", status: "supported" },
+          { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
+          { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
+        ]
+      })
       expect(crashReporterStart).toEqual({
         status: "partial",
         reason: "native-crash-capture-unavailable",
