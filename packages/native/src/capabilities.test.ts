@@ -24,6 +24,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const updaterCheck = yield* capabilities.support("Updater.check")
       const updaterDownload = yield* capabilities.support("Updater.download")
       const updaterInstall = yield* capabilities.support("Updater.install")
+      const dialogOpenFile = yield* capabilities.support("Dialog.openFile")
       const dialogOpenDirectory = yield* capabilities.support("Dialog.openDirectory")
       const crashReporterStart = yield* capabilities.support("CrashReporter.start")
       const crashReporterRecordBreadcrumb = yield* capabilities.support(
@@ -132,6 +133,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
           }
         ]
       })
+      expect(dialogOpenFile).toEqual(dialogOpenDirectory)
       expect(crashReporterStart).toEqual({
         status: "partial",
         reason: "native-crash-capture-unavailable",
