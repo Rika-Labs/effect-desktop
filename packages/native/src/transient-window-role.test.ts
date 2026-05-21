@@ -35,6 +35,23 @@ test("TransientWindowRole declares open/reposition/dismiss as non-callable capab
   }
 })
 
+test("TransientWindowRole.open stays unsupported until a role adapter owns rendered content", () => {
+  const openFact = TransientWindowRoleCapabilityFacts.find(
+    (fact) => fact.tag === "TransientWindowRole.open"
+  )
+
+  expect(openFact).toBeDefined()
+  expect(openFact?.support).toEqual({
+    status: "unsupported",
+    reason: "host-adapter-unimplemented",
+    platforms: [
+      { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
+    ]
+  })
+})
+
 test("TransientWindowRole.dismiss stays unsupported until an open role adapter owns handles", () => {
   const dismissFact = TransientWindowRoleCapabilityFacts.find(
     (fact) => fact.tag === "TransientWindowRole.dismiss"
