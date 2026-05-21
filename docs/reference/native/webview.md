@@ -37,8 +37,9 @@ request audit.
 Navigation controls are host-backed for child WebViews. `WebView.create`
 registers a generation-stamped handle scoped to the owner window and enforces
 the create origin policy before attachment. `destroy` releases the retained
-native WebView. `loadRoute`, `loadUrl`, `reload`, `stop`, `goBack`, and
-`goForward` dispatch to the retained Wry WebView. `getNavigationState` returns
+native WebView. `loadRoute` validates app routes and loads them through the
+retained Wry WebView. `loadUrl`, `reload`, `stop`, `goBack`, and `goForward`
+also dispatch to the retained Wry WebView. `getNavigationState` returns
 host-tracked `canGoBack`, `canGoForward`, and `loading` state. The host still
 has no typed browser-internal same-document history API, so same-document
 history is not exposed as a portable native primitive.
@@ -241,12 +242,13 @@ For the example above, renderer code can call
 ## Status
 
 The contract is declared through `WebViewRpcs`. App runtime WebView attachment
-is owned by `Window.create`. `WebView.create` and `WebView.destroy` are
-host-backed and report `supported`. Direct child WebView navigation methods are
-routed through host-backed resources and report `partial` support with
-`host-navigation-state-tracked`. `setNavigationPolicy` is also host-backed for
-those resources and shares the same partial support reason because popup
-approval and external-open delegation are still intentionally conservative.
+is owned by `Window.create`. `WebView.create`, `WebView.destroy`, and
+`WebView.loadRoute` are host-backed and report `supported`. Other direct child
+WebView navigation methods are routed through host-backed resources and report
+`partial` support with `host-navigation-state-tracked`. `setNavigationPolicy`
+is also host-backed for those resources and shares the same partial support
+reason because popup approval and external-open delegation are still
+intentionally conservative.
 Create-time preload isolation is host-backed through Wry initialization-script
 and IPC hooks, and reports through the typed `WebView.ApiCall` stream.
 Runtime events are partially host-backed through Wry page-load and drag/drop

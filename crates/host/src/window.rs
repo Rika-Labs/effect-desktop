@@ -4733,25 +4733,38 @@ impl WindowRegistry {
         request: WebViewLoadRouteRequest,
     ) -> std::result::Result<(), HostProtocolError> {
         let url = format!("app://localhost{}", request.route);
-        self.load_webview_url(WebViewLoadUrlRequest::new(request.handle, url))
+        self.load_webview_url_for_operation(
+            WebViewLoadUrlRequest::new(request.handle, url),
+            host_protocol::WEBVIEW_LOAD_ROUTE_METHOD,
+            "WebView.loadRoute denied by origin policy",
+        )
     }
 
     fn load_webview_url(
         &mut self,
         request: WebViewLoadUrlRequest,
     ) -> std::result::Result<(), HostProtocolError> {
-        let resources =
-            self.webview_resources(&request.handle, host_protocol::WEBVIEW_LOAD_URL_METHOD)?;
+        self.load_webview_url_for_operation(
+            request,
+            host_protocol::WEBVIEW_LOAD_URL_METHOD,
+            "WebView.loadUrl denied by origin policy",
+        )
+    }
+
+    fn load_webview_url_for_operation(
+        &mut self,
+        request: WebViewLoadUrlRequest,
+        operation: &'static str,
+        policy_denied_message: &'static str,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let resources = self.webview_resources(&request.handle, operation)?;
         if !origin_allowed(&request.url, &resources.policy.borrow()) {
-            return Err(webview_permission_denied(
-                "WebView.loadUrl denied by origin policy",
-                host_protocol::WEBVIEW_LOAD_URL_METHOD,
-            ));
+            return Err(webview_permission_denied(policy_denied_message, operation));
         }
         resources
             ._webview
             .load_url(&request.url)
-            .map_err(|error| webview_host_error(error, host_protocol::WEBVIEW_LOAD_URL_METHOD))?;
+            .map_err(|error| webview_host_error(error, operation))?;
         resources.navigation.borrow_mut().mark_loading(&request.url);
         Ok(())
     }
