@@ -7403,13 +7403,7 @@ test("ShellRpcs declares the Phase 8 Shell method surface", () => {
   expect([...ShellMethodNames]).toEqual(expectedShellMethods)
   expect(rpcMethodNames("Shell", ShellRpcs)).toEqual(expectedShellMethods)
   expect(ShellRpcs.requests.get("Shell.trashItem")!.pipe(rpcSupport)).toEqual({
-    status: "partial",
-    reason: "windows-trash-unavailable",
-    platforms: [
-      { platform: "macos", status: "supported" },
-      { platform: "windows", status: "unsupported", reason: "windows-trash-unavailable" },
-      { platform: "linux", status: "supported" }
-    ]
+    status: "supported"
   })
 })
 

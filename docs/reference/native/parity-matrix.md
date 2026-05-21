@@ -209,7 +209,7 @@ The machine-readable matrix lives in [`parity-matrix.json`](parity-matrix.json).
 | `Shell`                     | `openExternal`              | `supported`   | `Shell.openExternal`                      | `routed`          |
 | `Shell`                     | `openPath`                  | `supported`   | `Shell.openPath`                          | `routed`          |
 | `Shell`                     | `showItemInFolder`          | `supported`   | `Shell.showItemInFolder`                  | `routed`          |
-| `Shell`                     | `trashItem`                 | `partial`     | `Shell.trashItem`                         | `routed`          |
+| `Shell`                     | `trashItem`                 | `supported`   | `Shell.trashItem`                         | `routed`          |
 | `SystemAppearance`          | `getAccentColor`            | `partial`     | `SystemAppearance.getAccentColor`         | `routed`          |
 | `SystemAppearance`          | `getAppearance`             | `partial`     | `SystemAppearance.getAppearance`          | `routed`          |
 | `SystemAppearance`          | `getReducedMotion`          | `partial`     | `SystemAppearance.getReducedMotion`       | `routed`          |

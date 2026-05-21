@@ -3010,23 +3010,7 @@
       "method": "trashItem",
       "capability": "native",
       "support": {
-        "status": "partial",
-        "reason": "windows-trash-unavailable",
-        "platforms": [
-          {
-            "platform": "macos",
-            "status": "supported"
-          },
-          {
-            "platform": "windows",
-            "status": "unsupported",
-            "reason": "windows-trash-unavailable"
-          },
-          {
-            "platform": "linux",
-            "status": "supported"
-          }
-        ]
+        "status": "supported"
       },
       "hostStatus": "routed"
     },
@@ -4958,8 +4942,8 @@
     "total": 288,
     "routed": 239,
     "missing": 0,
-    "supported": 170,
-    "partial": 69,
+    "supported": 171,
+    "partial": 68,
     "unsupported": 49
   }
 }

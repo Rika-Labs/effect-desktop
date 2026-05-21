@@ -27,6 +27,8 @@ Operations that hand off to the OS shell: open a file in its default app, reveal
 
 Path methods reject empty strings, control characters, shell metacharacters, parent traversal segments (`..`), and paths beginning with an option prefix (`-`) before transport. `openPath` also denies executable-looking paths (`.exe`, `.bat`, `.cmd`, `.com`, `.scr`, `.msi`, `.sh`, `.ps1`, `.vbs`, `.wsf`, `.js`, `.desktop`, `.lnk`, `.url`, `.command`, `.app`) unless `allowExecutable: true` is set for that call. On Unix hosts, existing files with executable permission bits are also denied unless explicitly allowed.
 
+On Windows, `trashItem` requires an absolute non-verbatim path so the host can send the item to the Recycle Bin through the shell API rather than risk a permanent delete.
+
 ## Platform Matrix
 
 | Method             | macOS         | Linux                       | Windows                |
@@ -34,7 +36,7 @@ Path methods reject empty strings, control characters, shell metacharacters, par
 | `openExternal`     | `open`        | `xdg-open`                  | `rundll32.exe`         |
 | `openPath`         | `open`        | `xdg-open`                  | `rundll32.exe`         |
 | `showItemInFolder` | `open -R`     | `xdg-open` parent directory | `explorer.exe /select` |
-| `trashItem`        | Finder delete | `gio trash`                 | unsupported            |
+| `trashItem`        | Finder delete | `gio trash`                 | Recycle Bin            |
 
 ## Errors
 

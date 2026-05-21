@@ -346,12 +346,8 @@ fn trash_filesystem_path(
 
     #[cfg(target_os = "windows")]
     {
-        let _ = path;
         let _ = runner;
-        Err(unsupported_with_reason(
-            "windows-trash-unavailable",
-            host_protocol::SHELL_TRASH_ITEM_METHOD,
-        ))
+        windows_trash_filesystem_path(path)
     }
 
     #[cfg(target_os = "linux")]
@@ -360,6 +356,125 @@ fn trash_filesystem_path(
             shell_command("gio", ["trash", "--", path]),
             host_protocol::SHELL_TRASH_ITEM_METHOD,
         )
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn windows_trash_filesystem_path(path: &str) -> Result<(), HostProtocolError> {
+    use std::{
+        os::windows::ffi::OsStrExt,
+        path::{Component, Path, Prefix},
+    };
+    use windows_sys::Win32::UI::Shell::{
+        SHFileOperationW, FOF_ALLOWUNDO, FOF_NO_UI, FO_DELETE, SHFILEOPSTRUCTW,
+    };
+
+    let path = Path::new(path);
+    if !path.is_absolute() {
+        return Err(HostProtocolError::invalid_argument(
+            "path",
+            "must be absolute on Windows to move to the Recycle Bin",
+            host_protocol::SHELL_TRASH_ITEM_METHOD,
+        ));
+    }
+    if matches!(
+        path.components().next(),
+        Some(Component::Prefix(prefix))
+            if matches!(
+                prefix.kind(),
+                Prefix::Verbatim(_) | Prefix::VerbatimDisk(_) | Prefix::VerbatimUNC(_, _)
+            )
+    ) {
+        return Err(HostProtocolError::invalid_argument(
+            "path",
+            "must not use a Windows verbatim path prefix",
+            host_protocol::SHELL_TRASH_ITEM_METHOD,
+        ));
+    }
+
+    std::fs::metadata(path).map_err(|error| windows_trash_metadata_error(path, error))?;
+
+    let from = path
+        .as_os_str()
+        .encode_wide()
+        .chain([0, 0])
+        .collect::<Vec<_>>();
+    let mut operation = SHFILEOPSTRUCTW {
+        wFunc: FO_DELETE,
+        pFrom: from.as_ptr(),
+        fFlags: (FOF_ALLOWUNDO | FOF_NO_UI) as u16,
+        ..Default::default()
+    };
+    let result = unsafe { SHFileOperationW(&mut operation) };
+    if result != 0 {
+        return Err(windows_trash_operation_error(
+            path,
+            Some(result),
+            operation.fAnyOperationsAborted != 0,
+        ));
+    }
+    if operation.fAnyOperationsAborted != 0 {
+        return Err(windows_trash_operation_error(path, None, true));
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn windows_trash_metadata_error(
+    path: &std::path::Path,
+    error: std::io::Error,
+) -> HostProtocolError {
+    match error.kind() {
+        std::io::ErrorKind::NotFound => HostProtocolError::not_found(
+            path.display().to_string(),
+            host_protocol::SHELL_TRASH_ITEM_METHOD,
+        ),
+        std::io::ErrorKind::PermissionDenied => HostProtocolError::PermissionDenied {
+            capability: "Shell.trashItem".to_string(),
+            resource: Some(path.display().to_string()),
+            message: "permission denied while inspecting shell trash item".to_string(),
+            operation: host_protocol::SHELL_TRASH_ITEM_METHOD.to_string(),
+            platform: Some(current_platform()),
+            code: error.raw_os_error().map(|code| code.to_string()),
+            cause: Some(json!({ "error": error.to_string() })),
+            recoverable: HostProtocolError::recoverable_default("PermissionDenied")
+                .expect("known tag"),
+            remediation: None,
+            docs_url: None,
+        },
+        _ => HostProtocolError::HostUnavailable {
+            message: "host is unavailable".to_string(),
+            operation: host_protocol::SHELL_TRASH_ITEM_METHOD.to_string(),
+            platform: Some(current_platform()),
+            code: error.raw_os_error().map(|code| code.to_string()),
+            cause: Some(json!({ "path": path.display().to_string(), "error": error.to_string() })),
+            recoverable: HostProtocolError::recoverable_default("HostUnavailable")
+                .expect("known tag"),
+            remediation: None,
+            docs_url: None,
+        },
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn windows_trash_operation_error(
+    path: &std::path::Path,
+    code: Option<i32>,
+    aborted: bool,
+) -> HostProtocolError {
+    HostProtocolError::HostUnavailable {
+        message: if aborted {
+            "host shell trash operation aborted".to_string()
+        } else {
+            "host shell trash operation failed".to_string()
+        },
+        operation: host_protocol::SHELL_TRASH_ITEM_METHOD.to_string(),
+        platform: Some(current_platform()),
+        code: Some(code.map_or_else(|| "aborted".to_string(), |code| code.to_string())),
+        cause: Some(json!({ "path": path.display().to_string(), "aborted": aborted })),
+        recoverable: HostProtocolError::recoverable_default("HostUnavailable").expect("known tag"),
+        remediation: None,
+        docs_url: None,
     }
 }
 
@@ -413,21 +528,6 @@ fn execute_shell_command(
             &command,
             status.code(),
         ))
-    }
-}
-
-#[cfg(target_os = "windows")]
-fn unsupported_with_reason(reason: &'static str, operation: &'static str) -> HostProtocolError {
-    HostProtocolError::Unsupported {
-        reason: reason.to_string(),
-        message: format!("unsupported operation {operation}: {reason}"),
-        operation: operation.to_string(),
-        platform: Some(current_platform()),
-        code: Some(reason.to_string()),
-        cause: None,
-        recoverable: HostProtocolError::recoverable_default("Unsupported").expect("known tag"),
-        remediation: None,
-        docs_url: None,
     }
 }
 
@@ -629,16 +729,9 @@ mod tests {
         .expect("valid external URL should dispatch");
         show_item_in_folder_with(Some(json!({ "path": "/tmp/report.txt" })), &mut runner)
             .expect("valid show item request should dispatch");
-        trash_item_with(Some(json!({ "path": "/tmp/report.txt" })), &mut runner).unwrap_or_else(
-            |error| {
-                if cfg!(target_os = "windows") {
-                    assert!(matches!(error, HostProtocolError::Unsupported { .. }));
-                    None
-                } else {
-                    panic!("trash should dispatch on this platform: {error:?}");
-                }
-            },
-        );
+        #[cfg(not(target_os = "windows"))]
+        trash_item_with(Some(json!({ "path": "/tmp/report.txt" })), &mut runner)
+            .expect("trash should dispatch on this platform");
 
         assert!(calls
             .iter()
@@ -654,6 +747,19 @@ mod tests {
                 .iter()
                 .any(|(_, _, operation)| *operation == host_protocol::SHELL_TRASH_ITEM_METHOD));
         }
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn trash_item_rejects_relative_windows_paths_before_shell_api() {
+        assert_eq!(
+            trash_item(Some(json!({ "path": "report.txt" }))).expect_err("relative path"),
+            HostProtocolError::invalid_argument(
+                "path",
+                "must be absolute on Windows to move to the Recycle Bin",
+                host_protocol::SHELL_TRASH_ITEM_METHOD,
+            )
+        );
     }
 
     #[test]

@@ -46,13 +46,6 @@ const ExecutableExtensions = Object.freeze([
   ".command",
   ".app"
 ])
-const ShellTrashSupport = NativeSurface.support.partial("windows-trash-unavailable", {
-  platforms: [
-    { platform: "macos", status: "supported" },
-    { platform: "windows", status: "unsupported", reason: "windows-trash-unavailable" },
-    { platform: "linux", status: "supported" }
-  ]
-}) satisfies RpcSupportMetadata
 const ShellMetacharacters = /[;|&><`\n]|\$\(/u
 // eslint-disable-next-line no-control-regex -- Shell URLs must not carry raw control bytes.
 const ShellUrlControlCharacters = /[\u0000-\u001f\u007f]/u
@@ -79,8 +72,7 @@ export const ShellOpenPath = shellRpc(
 export const ShellTrashItem = shellRpc(
   "trashItem",
   ShellTrashItemInput,
-  P.nativeInvoke({ primitive: "Shell", methods: ["trashItem"] }),
-  ShellTrashSupport
+  P.nativeInvoke({ primitive: "Shell", methods: ["trashItem"] })
 )
 
 export const ShellRpcEvents = Object.freeze({})
