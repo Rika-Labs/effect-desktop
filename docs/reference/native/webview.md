@@ -10,19 +10,21 @@ effect_version: 4
 
 Embedded browser views inside desktop windows.
 
-The Rust host attaches the application WebView during `Window.create`. Direct
-WebView navigation methods now own generated host handles for child WebViews:
-`create`, `loadRoute`, `loadUrl`, `reload`, `stop`, `goBack`, `goForward`,
-`getNavigationState`, and `destroy` route through the host event-loop command
-port. Capability metadata marks those methods `partial` because history state is
-tracked from Wry navigation/page-load callbacks and host-issued commands rather
-than a portable browser history API.
+The Rust host attaches the application WebView during `Window.create`.
+`WebView.create` creates host-owned child WebViews under an explicit
+`WindowHandle` owner and supports initial URL, origin policy, optional
+`SessionProfile`, and optional preload isolation. Navigation methods own
+generated host handles for child WebViews: `loadRoute`, `loadUrl`, `reload`,
+`stop`, `goBack`, `goForward`, `getNavigationState`, and `destroy` route through
+the host event-loop command port. Capability metadata marks the history-related
+navigation methods `partial` because history state is tracked from Wry
+navigation/page-load callbacks and host-issued commands rather than a portable
+browser history API.
 
-`WebView.create` requires an explicit `WindowHandle` owner. `SessionProfile`
-now exposes typed profile handles, but `WebView.create` has no profile/session
-input yet, and the host does not retain a browser `WebContext` registry that
-can bind WebViews, cookies, cache, permissions, storage, downloads, or requests
-to a partition.
+`WebView.create` can bind a child WebView to a typed `SessionProfile` handle.
+The host retains a WebContext registry for profile-bound child WebViews, but
+profile-scoped cookies, permissions, storage, downloads, and request
+interception are still represented by their own capability rows.
 
 `WebView.NavigationBlocked` is a navigation-policy event, not request/response
 interception. `WebView.ApiCall` is a preload-isolation event emitted only for
@@ -33,13 +35,13 @@ subresource inspection, response-header mutation, blocking, redirects, or
 request audit.
 
 Navigation controls are host-backed for child WebViews. `WebView.create`
-registers a generation-stamped handle scoped to the owner window, enforces the
-create origin policy before attachment, and releases the native WebView on
-`destroy`. `loadRoute`, `loadUrl`, `reload`, `stop`, `goBack`, and `goForward`
-dispatch to the retained Wry WebView. `getNavigationState` returns host-tracked
-`canGoBack`, `canGoForward`, and `loading` state. The host still has no typed
-browser-internal same-document history API, so same-document history is not
-exposed as a portable native primitive.
+registers a generation-stamped handle scoped to the owner window and enforces
+the create origin policy before attachment. `destroy` releases the retained
+native WebView. `loadRoute`, `loadUrl`, `reload`, `stop`, `goBack`, and
+`goForward` dispatch to the retained Wry WebView. `getNavigationState` returns
+host-tracked `canGoBack`, `canGoForward`, and `loading` state. The host still
+has no typed browser-internal same-document history API, so same-document
+history is not exposed as a portable native primitive.
 
 Navigation and popup policy is host-backed for child WebViews. `create` stores
 an initial origin policy, `setNavigationPolicy` replaces that policy on the
@@ -239,8 +241,9 @@ For the example above, renderer code can call
 ## Status
 
 The contract is declared through `WebViewRpcs`. App runtime WebView attachment
-is owned by `Window.create`; direct child WebView navigation methods are routed
-through host-backed resources and report `partial` support with
+is owned by `Window.create`. `WebView.create` is host-backed and reports
+`supported`. Direct child WebView navigation methods are routed through
+host-backed resources and report `partial` support with
 `host-navigation-state-tracked`. `setNavigationPolicy` is also host-backed for
 those resources and shares the same partial support reason because popup
 approval and external-open delegation are still intentionally conservative.

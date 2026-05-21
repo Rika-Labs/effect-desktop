@@ -3711,25 +3711,7 @@
       "method": "create",
       "capability": "native",
       "support": {
-        "status": "partial",
-        "reason": "host-navigation-state-tracked",
-        "platforms": [
-          {
-            "platform": "macos",
-            "status": "partial",
-            "reason": "host-navigation-state-tracked"
-          },
-          {
-            "platform": "windows",
-            "status": "partial",
-            "reason": "host-navigation-state-tracked"
-          },
-          {
-            "platform": "linux",
-            "status": "partial",
-            "reason": "host-navigation-state-tracked"
-          }
-        ]
+        "status": "supported"
       },
       "hostStatus": "routed"
     },
@@ -4844,8 +4826,8 @@
     "total": 287,
     "routed": 239,
     "missing": 0,
-    "supported": 175,
-    "partial": 64,
+    "supported": 176,
+    "partial": 63,
     "unsupported": 48
   }
 }

@@ -366,15 +366,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(webViewCloseDevTools).toEqual(WebViewCloseDevToolsSupport)
       expect(webViewAttachDebugger).toEqual(WebViewDebuggerUnavailableSupport)
       expect(webViewCaptureScreenshot).toEqual(WebViewDocumentOutputUnavailableSupport)
-      expect(webViewCreate).toEqual({
-        status: "partial",
-        reason: "host-navigation-state-tracked",
-        platforms: [
-          { platform: "macos", status: "partial", reason: "host-navigation-state-tracked" },
-          { platform: "windows", status: "partial", reason: "host-navigation-state-tracked" },
-          { platform: "linux", status: "partial", reason: "host-navigation-state-tracked" }
-        ]
-      })
+      expect(webViewCreate).toEqual({ status: "supported" })
       expect(menuClear).toEqual({
         status: "partial",
         reason: "macos-menu-clear-only",

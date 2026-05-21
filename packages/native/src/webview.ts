@@ -179,7 +179,7 @@ export const WebViewCreate = NativeSurface.rpc("WebView", "create", {
     P.nativeInvoke({ primitive: "WebView", methods: ["create"] })
   ),
   endpoint: "mutation",
-  support: WebViewNavigationSupport
+  support: NativeSurface.support.supported
 })
 export const WebViewLoadRoute = NativeSurface.rpc("WebView", "loadRoute", {
   payload: WebViewLoadRouteInput,

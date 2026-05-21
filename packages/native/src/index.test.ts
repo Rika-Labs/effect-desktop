@@ -2227,8 +2227,9 @@ test("WebViewRpcs declares the Phase 7 WebView method and event surface", () => 
   ])
 })
 
-test("WebView devtools support metadata reflects build and platform gates", () => {
+test("WebView support metadata reflects create and devtools platform gates", () => {
   const byTag = new Map(WebViewSurface.schemaDocs.map((doc) => [doc.tag, doc] as const))
+  expect(byTag.get("WebView.create")?.support).toEqual({ status: "supported" })
   expect(byTag.get("WebView.openDevTools")?.support).toEqual(webViewOpenDevToolsSupport)
   expect(byTag.get("WebView.closeDevTools")?.support).toEqual(webViewCloseDevToolsSupport)
 })

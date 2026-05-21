@@ -243,7 +243,7 @@ The machine-readable matrix lives in [`parity-matrix.json`](parity-matrix.json).
 | `WebView`                   | `attachDebugger`            | `unsupported` | `WebView.attachDebugger`                  | `capability-fact` |
 | `WebView`                   | `captureScreenshot`         | `unsupported` | `WebView.captureScreenshot`               | `capability-fact` |
 | `WebView`                   | `closeDevTools`             | `partial`     | `WebView.closeDevTools`                   | `routed`          |
-| `WebView`                   | `create`                    | `partial`     | `WebView.create`                          | `routed`          |
+| `WebView`                   | `create`                    | `supported`   | `WebView.create`                          | `routed`          |
 | `WebView`                   | `destroy`                   | `partial`     | `WebView.destroy`                         | `routed`          |
 | `WebView`                   | `findInPage`                | `unsupported` | `WebView.findInPage`                      | `capability-fact` |
 | `WebView`                   | `getNavigationState`        | `partial`     | `WebView.getNavigationState`              | `routed`          |
