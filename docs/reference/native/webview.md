@@ -87,8 +87,10 @@ Document controls are partially host-backed for child WebViews. `print` and
 `setZoom` route through the retained Wry WebView resource. `captureScreenshot`,
 `printToPdf`, `findInPage`, and `setUserAgent` are non-callable capability facts
 because Wry exposes no portable public screenshot, PDF export, find-in-page, or
-runtime user-agent setter. Wry supports user-agent policy at WebView creation
-time; Effect Desktop does not pretend that is a runtime mutation.
+runtime user-agent setter on desktop targets. A platform-specific snapshot hook
+would need a host-owned adapter before it could satisfy the portable
+`captureScreenshot` contract. Wry supports user-agent policy at WebView
+creation time; Effect Desktop does not pretend that is a runtime mutation.
 
 Inspection controls are partially host-backed for child WebViews.
 `openDevTools` and `closeDevTools` route through the retained Wry WebView in
