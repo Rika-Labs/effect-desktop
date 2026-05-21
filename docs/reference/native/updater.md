@@ -18,6 +18,8 @@ The host does not fetch feeds, download network artifacts, enforce update policy
 
 `Updater.install` remains partial because it commits the staged artifact into the host-owned updater bundle path. It does not yet perform OS-specific app replacement, rollback execution, process relaunch, or installer handoff.
 
+`Updater.installAndRestart` remains partial because it adds a renderer readiness handshake and restart breadcrumb to the staged install, but it does not relaunch the process into the installed update.
+
 ## Methods
 
 | Method              | Payload                                           | Success                                                    | Current support |

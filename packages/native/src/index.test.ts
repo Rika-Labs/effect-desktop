@@ -6988,6 +6988,18 @@ test("Updater.install support metadata keeps staged install limitations visible"
   })
 })
 
+test("Updater.installAndRestart support metadata keeps restart handshake limitations visible", () => {
+  expect(UpdaterRpcs.requests.get("Updater.installAndRestart")!.pipe(rpcSupport)).toEqual({
+    status: "partial",
+    reason: "signed-manifest-restart-handshake-only",
+    platforms: [
+      { platform: "macos", status: "partial", reason: "signed-manifest-restart-handshake-only" },
+      { platform: "windows", status: "partial", reason: "signed-manifest-restart-handshake-only" },
+      { platform: "linux", status: "partial", reason: "signed-manifest-restart-handshake-only" }
+    ]
+  })
+})
+
 test("Updater service delegates through a substitutable UpdaterClient port", () =>
   Effect.runPromise(
     Effect.gen(function* () {
