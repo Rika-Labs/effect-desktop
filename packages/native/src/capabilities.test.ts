@@ -21,6 +21,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const create = yield* capabilities.support("Window.create")
       const dockBadge = yield* capabilities.support("Dock.setBadgeCount")
       const dockBadgeText = yield* capabilities.support("Dock.setBadgeText")
+      const dockJumpList = yield* capabilities.support("Dock.setJumpList")
       const dockProgress = yield* capabilities.support("Dock.setProgress")
       const updaterCheck = yield* capabilities.support("Updater.check")
       const updaterDownload = yield* capabilities.support("Updater.download")
@@ -86,6 +87,27 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
             platform: "windows",
             status: "unsupported",
             reason: "Windows taskbar badges require jump-list/taskbar integration"
+          }
+        ]
+      })
+      expect(dockJumpList).toEqual({
+        status: "unsupported",
+        reason: "host adapter does not implement this Dock method on any platform",
+        platforms: [
+          {
+            platform: "macos",
+            status: "unsupported",
+            reason: "host adapter does not implement this Dock method on any platform"
+          },
+          {
+            platform: "linux",
+            status: "unsupported",
+            reason: "host adapter does not implement this Dock method on any platform"
+          },
+          {
+            platform: "windows",
+            status: "unsupported",
+            reason: "host adapter does not implement this Dock method on any platform"
           }
         ]
       })

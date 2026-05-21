@@ -137,6 +137,13 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
         hostStatus: "routed",
         support: { status: "partial", reason: "dock behavior is platform-specific" }
       })
+      expect(result.rows.find((row) => row.tag === "Dock.setJumpList")).toMatchObject({
+        hostStatus: "capability-fact",
+        support: {
+          status: "unsupported",
+          reason: "host adapter does not implement this Dock method on any platform"
+        }
+      })
       expect(result.rows.find((row) => row.tag === "SafeStorage.isAvailable")).toMatchObject({
         hostStatus: "routed",
         support: { status: "supported" }
