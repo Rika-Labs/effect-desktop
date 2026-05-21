@@ -1406,7 +1406,13 @@ mod tests {
         )
         .expect_err("unverified startup platforms should reject real host open");
 
-        assert_eq!(error.tag(), "Unsupported");
+        assert!(matches!(
+            error,
+            HostProtocolError::Unsupported {
+                reason,
+                ..
+            } if reason == host_protocol::REALTIME_MEDIA_SESSION_STARTUP_UNVERIFIED_REASON
+        ));
     }
 
     #[test]

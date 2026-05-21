@@ -16,6 +16,10 @@ geolocation, clipboard, display capture, or generic browser permission prompts.
 
 The public service is Layer-first and test-substitutable. The Rust host adapter is runtime-verified on macOS through CPAL. `isSupported` opens and immediately releases default microphone and speaker streams; it returns `supported: true` only where CPAL reports stream startup synchronously. Headless machines, missing devices, unavailable audio backends, denied OS media access, or platforms where stream startup is only enqueued return typed failures or typed unsupported results. `open` and `selectDevice` obey the same startup-verification gate, so unsupported platforms do not silently start best-effort streams.
 
+`open` is supported on macOS because the host can synchronously verify stream startup before
+registering a session. Runtime failures such as missing devices or denied OS media access remain
+typed operation failures and should be checked with `isSupported` before opening a session.
+
 ## Methods
 
 | Method         | Payload                                    | Success                  |

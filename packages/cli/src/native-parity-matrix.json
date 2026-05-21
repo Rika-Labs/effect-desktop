@@ -2417,12 +2417,11 @@
       "capability": "native",
       "support": {
         "status": "partial",
-        "reason": "host-media-runtime-verified",
+        "reason": "host-media-startup-unverified",
         "platforms": [
           {
             "platform": "macos",
-            "status": "partial",
-            "reason": "host-media-runtime-verified"
+            "status": "supported"
           },
           {
             "platform": "windows",

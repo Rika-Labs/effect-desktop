@@ -41,13 +41,16 @@ const RuntimeVerifiedSupport = NativeSurface.support.partial(RuntimeVerifiedSupp
     { platform: "linux", status: "unsupported", reason: StartupUnverifiedSupportReason }
   ]
 }) satisfies RpcSupportMetadata
-const SessionLifecycleSupport = NativeSurface.support.partial(StartupUnverifiedSupportReason, {
-  platforms: [
-    { platform: "macos", status: "supported" },
-    { platform: "windows", status: "unsupported", reason: StartupUnverifiedSupportReason },
-    { platform: "linux", status: "unsupported", reason: StartupUnverifiedSupportReason }
-  ]
-}) satisfies RpcSupportMetadata
+const MacOsRealtimeMediaSessionSupport = NativeSurface.support.partial(
+  StartupUnverifiedSupportReason,
+  {
+    platforms: [
+      { platform: "macos", status: "supported" },
+      { platform: "windows", status: "unsupported", reason: StartupUnverifiedSupportReason },
+      { platform: "linux", status: "unsupported", reason: StartupUnverifiedSupportReason }
+    ]
+  }
+) satisfies RpcSupportMetadata
 
 export type RealtimeMediaSessionError = HostProtocolError
 
@@ -55,14 +58,15 @@ export const RealtimeMediaSessionOpen = realtimeMediaSessionRpc(
   "open",
   RealtimeMediaSessionOpenInput,
   Schema.Void,
-  P.nativeInvoke({ primitive: Surface, methods: ["open"] })
+  P.nativeInvoke({ primitive: Surface, methods: ["open"] }),
+  MacOsRealtimeMediaSessionSupport
 )
 export const RealtimeMediaSessionClose = realtimeMediaSessionRpc(
   "close",
   RealtimeMediaSessionIdentity,
   Schema.Void,
   P.nativeInvoke({ primitive: Surface, methods: ["close"] }),
-  SessionLifecycleSupport
+  MacOsRealtimeMediaSessionSupport
 )
 export const RealtimeMediaSessionSelectDevice = realtimeMediaSessionRpc(
   "selectDevice",
@@ -75,7 +79,7 @@ export const RealtimeMediaSessionInterrupt = realtimeMediaSessionRpc(
   RealtimeMediaSessionInterruptInput,
   Schema.Void,
   P.nativeInvoke({ primitive: Surface, methods: ["interrupt"] }),
-  SessionLifecycleSupport
+  MacOsRealtimeMediaSessionSupport
 )
 export const RealtimeMediaSessionIsSupported = NativeSurface.rpc(Surface, "isSupported", {
   payload: Schema.Void,

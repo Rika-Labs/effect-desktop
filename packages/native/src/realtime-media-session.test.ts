@@ -303,15 +303,6 @@ test("NativeCapabilities reports realtime media privileged operation support tru
         makeNativeCapabilitiesLayer(Native.available(Native.RealtimeMediaSession))
       )
 
-      expect(result.openSupport).toEqual({
-        status: "partial",
-        reason: "host-media-runtime-verified",
-        platforms: [
-          { platform: "macos", status: "partial", reason: "host-media-runtime-verified" },
-          { platform: "windows", status: "unsupported", reason: "host-media-startup-unverified" },
-          { platform: "linux", status: "unsupported", reason: "host-media-startup-unverified" }
-        ]
-      })
       expect(result.closeSupport).toEqual({
         status: "partial",
         reason: "host-media-startup-unverified",
@@ -321,6 +312,7 @@ test("NativeCapabilities reports realtime media privileged operation support tru
           { platform: "linux", status: "unsupported", reason: "host-media-startup-unverified" }
         ]
       })
+      expect(result.openSupport).toEqual(result.closeSupport)
       expect(result.interruptSupport).toEqual(result.closeSupport)
       expect(Exit.isSuccess(result.requireOpen)).toBe(true)
       expect(Exit.isSuccess(result.requireClose)).toBe(true)

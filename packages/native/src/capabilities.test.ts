@@ -93,7 +93,7 @@ const NotificationUnavailableSupport = {
   ]
 } as const
 
-const RealtimeMediaSessionLifecycleSupport = {
+const RealtimeMediaSessionMacOsSupport = {
   status: "partial",
   reason: "host-media-startup-unverified",
   platforms: [
@@ -212,6 +212,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
         "Notification.requestPermission"
       )
       const notificationShow = yield* capabilities.support("Notification.show")
+      const realtimeMediaSessionOpen = yield* capabilities.support("RealtimeMediaSession.open")
       const realtimeMediaSessionClose = yield* capabilities.support("RealtimeMediaSession.close")
       const realtimeMediaSessionInterrupt = yield* capabilities.support(
         "RealtimeMediaSession.interrupt"
@@ -280,8 +281,9 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(notificationGetPermissionStatus).toEqual(NotificationUnavailableSupport)
       expect(notificationRequestPermission).toEqual(NotificationUnavailableSupport)
       expect(notificationShow).toEqual(NotificationUnavailableSupport)
-      expect(realtimeMediaSessionClose).toEqual(RealtimeMediaSessionLifecycleSupport)
-      expect(realtimeMediaSessionInterrupt).toEqual(RealtimeMediaSessionLifecycleSupport)
+      expect(realtimeMediaSessionOpen).toEqual(RealtimeMediaSessionMacOsSupport)
+      expect(realtimeMediaSessionClose).toEqual(RealtimeMediaSessionMacOsSupport)
+      expect(realtimeMediaSessionInterrupt).toEqual(RealtimeMediaSessionMacOsSupport)
       expect(webViewCreate).toEqual({
         status: "partial",
         reason: "host-navigation-state-tracked",
