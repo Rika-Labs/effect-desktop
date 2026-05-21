@@ -283,11 +283,22 @@ test("NativeCapabilities reports realtime media privileged operation support tru
           const capabilities = yield* NativeCapabilities
           const openSupport = yield* capabilities.support("RealtimeMediaSession.open")
           const closeSupport = yield* capabilities.support("RealtimeMediaSession.close")
+          const interruptSupport = yield* capabilities.support("RealtimeMediaSession.interrupt")
           const requireOpen = yield* Effect.exit(capabilities.require("RealtimeMediaSession.open"))
           const requireClose = yield* Effect.exit(
             capabilities.require("RealtimeMediaSession.close")
           )
-          return { closeSupport, openSupport, requireClose, requireOpen }
+          const requireInterrupt = yield* Effect.exit(
+            capabilities.require("RealtimeMediaSession.interrupt")
+          )
+          return {
+            closeSupport,
+            interruptSupport,
+            openSupport,
+            requireClose,
+            requireInterrupt,
+            requireOpen
+          }
         }),
         makeNativeCapabilitiesLayer(Native.available(Native.RealtimeMediaSession))
       )
@@ -310,8 +321,10 @@ test("NativeCapabilities reports realtime media privileged operation support tru
           { platform: "linux", status: "unsupported", reason: "host-media-startup-unverified" }
         ]
       })
+      expect(result.interruptSupport).toEqual(result.closeSupport)
       expect(Exit.isSuccess(result.requireOpen)).toBe(true)
       expect(Exit.isSuccess(result.requireClose)).toBe(true)
+      expect(Exit.isSuccess(result.requireInterrupt)).toBe(true)
     })
   ))
 

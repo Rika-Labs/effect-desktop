@@ -5742,44 +5742,54 @@ mod tests {
 
     #[test]
     fn realtime_media_session_known_methods_route_to_host_adapter() {
-        let response = test_router()
-            .dispatch_at(
-                request_with_payload(
-                    "request-realtime-media-close",
-                    host_protocol::REALTIME_MEDIA_SESSION_CLOSE_METHOD,
-                    serde_json::json!({
-                        "profileId": "profile-1",
-                        "sessionId": "session-1"
-                    }),
-                ),
-                1710000000113,
-            )
-            .expect("realtime media close should return response");
+        for (id, method, payload) in [
+            (
+                "request-realtime-media-close",
+                host_protocol::REALTIME_MEDIA_SESSION_CLOSE_METHOD,
+                serde_json::json!({
+                    "profileId": "profile-1",
+                    "sessionId": "session-1"
+                }),
+            ),
+            (
+                "request-realtime-media-interrupt",
+                host_protocol::REALTIME_MEDIA_SESSION_INTERRUPT_METHOD,
+                serde_json::json!({
+                    "profileId": "profile-1",
+                    "sessionId": "session-1",
+                    "reason": "background"
+                }),
+            ),
+        ] {
+            let response = test_router()
+                .dispatch_at(request_with_payload(id, method, payload), 1710000000113)
+                .expect("realtime media lifecycle request should return response");
 
-        match response {
-            HostProtocolEnvelope::Response {
-                id,
-                timestamp,
-                trace_id,
-                payload: None,
-                error: Some(error),
-            } => {
-                assert_eq!(id, "request-realtime-media-close");
-                assert_eq!(timestamp, 1710000000113);
-                assert_eq!(trace_id, "trace-request-realtime-media-close");
-                if cfg!(target_os = "macos") {
-                    assert_eq!(error.tag(), "NotFound");
-                } else {
-                    assert!(matches!(
-                        error,
-                        HostProtocolError::Unsupported {
-                            reason,
-                            ..
-                        } if reason == host_protocol::REALTIME_MEDIA_SESSION_STARTUP_UNVERIFIED_REASON
-                    ));
+            match response {
+                HostProtocolEnvelope::Response {
+                    id: response_id,
+                    timestamp,
+                    trace_id,
+                    payload: None,
+                    error: Some(error),
+                } => {
+                    assert_eq!(response_id, id);
+                    assert_eq!(timestamp, 1710000000113);
+                    assert_eq!(trace_id, format!("trace-{id}"));
+                    if cfg!(target_os = "macos") {
+                        assert_eq!(error.tag(), "NotFound");
+                    } else {
+                        assert!(matches!(
+                            error,
+                            HostProtocolError::Unsupported {
+                                reason,
+                                ..
+                            } if reason == host_protocol::REALTIME_MEDIA_SESSION_STARTUP_UNVERIFIED_REASON
+                        ));
+                    }
                 }
+                other => panic!("unexpected realtime media lifecycle response: {other:?}"),
             }
-            other => panic!("unexpected realtime media close response: {other:?}"),
         }
     }
 

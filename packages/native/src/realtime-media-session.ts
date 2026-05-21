@@ -41,7 +41,7 @@ const RuntimeVerifiedSupport = NativeSurface.support.partial(RuntimeVerifiedSupp
     { platform: "linux", status: "unsupported", reason: StartupUnverifiedSupportReason }
   ]
 }) satisfies RpcSupportMetadata
-const CloseSupport = NativeSurface.support.partial(StartupUnverifiedSupportReason, {
+const SessionLifecycleSupport = NativeSurface.support.partial(StartupUnverifiedSupportReason, {
   platforms: [
     { platform: "macos", status: "supported" },
     { platform: "windows", status: "unsupported", reason: StartupUnverifiedSupportReason },
@@ -62,7 +62,7 @@ export const RealtimeMediaSessionClose = realtimeMediaSessionRpc(
   RealtimeMediaSessionIdentity,
   Schema.Void,
   P.nativeInvoke({ primitive: Surface, methods: ["close"] }),
-  CloseSupport
+  SessionLifecycleSupport
 )
 export const RealtimeMediaSessionSelectDevice = realtimeMediaSessionRpc(
   "selectDevice",
@@ -74,7 +74,8 @@ export const RealtimeMediaSessionInterrupt = realtimeMediaSessionRpc(
   "interrupt",
   RealtimeMediaSessionInterruptInput,
   Schema.Void,
-  P.nativeInvoke({ primitive: Surface, methods: ["interrupt"] })
+  P.nativeInvoke({ primitive: Surface, methods: ["interrupt"] }),
+  SessionLifecycleSupport
 )
 export const RealtimeMediaSessionIsSupported = NativeSurface.rpc(Surface, "isSupported", {
   payload: Schema.Void,
