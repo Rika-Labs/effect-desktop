@@ -117,6 +117,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const focusedApplicationStopWatching = yield* capabilities.support(
         "FocusedApplicationContext.stopWatching"
       )
+      const focusedApplicationWatch = yield* capabilities.support("FocusedApplicationContext.watch")
       const crashReporterStart = yield* capabilities.support("CrashReporter.start")
       const crashReporterRecordBreadcrumb = yield* capabilities.support(
         "CrashReporter.recordBreadcrumb"
@@ -257,6 +258,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(executionSandboxRun).toEqual(HostAdapterUnimplementedSupport)
       expect(focusedApplicationSnapshot).toEqual(MacOsFocusedApplicationSnapshotSupport)
       expect(focusedApplicationStopWatching).toEqual(HostAdapterUnimplementedSupport)
+      expect(focusedApplicationWatch).toEqual(HostAdapterUnimplementedSupport)
       expect(displayCaptureCaptureDisplay).toEqual({
         status: "partial",
         reason: "macos-screencapture-adapter",
