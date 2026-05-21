@@ -26,6 +26,10 @@ instead of accepting synthetic handles.
 AppIndicator-backed handle and the backend's temporary PNG icon path management, so the host keeps the
 method partial until that backend is shipped and probed.
 
+`Tray.setMenu` has the same Linux dependency. The local backend maps menu templates into GTK menu objects
+owned by the AppIndicator tray item; without that adapter and runtime probe, Linux menu mutation remains
+unsupported.
+
 ## Methods
 
 | Method        | Payload                             | Success                  |

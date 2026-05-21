@@ -3835,7 +3835,7 @@ test("TrayRpcs declares the Phase 8 Tray method and event surface", () => {
 })
 
 test("Tray lifecycle support metadata keeps Linux unavailable until tray dependencies ship", () => {
-  for (const method of ["Tray.create", "Tray.destroy", "Tray.setIcon"] as const) {
+  for (const method of ["Tray.create", "Tray.destroy", "Tray.setIcon", "Tray.setMenu"] as const) {
     expect(TrayRpcs.requests.get(method)!.pipe(rpcSupport)).toEqual({
       status: "partial",
       reason: "linux-tray-unavailable",
