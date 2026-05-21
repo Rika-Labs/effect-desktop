@@ -20,6 +20,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const capabilities = yield* NativeCapabilities
       const create = yield* capabilities.support("Window.create")
       const dockBadge = yield* capabilities.support("Dock.setBadgeCount")
+      const dockBadgeText = yield* capabilities.support("Dock.setBadgeText")
       const dockProgress = yield* capabilities.support("Dock.setProgress")
       const updaterCheck = yield* capabilities.support("Updater.check")
       const updaterDownload = yield* capabilities.support("Updater.download")
@@ -63,6 +64,23 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
             platform: "linux",
             status: "unsupported",
             reason: "Linux launcher badge labels are not wired in the host adapter"
+          },
+          {
+            platform: "windows",
+            status: "unsupported",
+            reason: "Windows taskbar badges require jump-list/taskbar integration"
+          }
+        ]
+      })
+      expect(dockBadgeText).toEqual({
+        status: "partial",
+        reason: "dock behavior is platform-specific",
+        platforms: [
+          { platform: "macos", status: "supported" },
+          {
+            platform: "linux",
+            status: "unsupported",
+            reason: "Linux host only exposes numeric launcher badge labels"
           },
           {
             platform: "windows",
