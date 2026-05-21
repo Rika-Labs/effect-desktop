@@ -143,6 +143,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
         "GlobalShortcut.unregisterAll"
       )
       const nativeNetworkFetch = yield* capabilities.support("NativeNetwork.fetch")
+      const nativeNetworkUpload = yield* capabilities.support("NativeNetwork.upload")
       const nativeNetworkLocalhostUrl = yield* capabilities.support("NativeNetwork.localhostUrl")
       const nativeNetworkConnectWebSocket = yield* capabilities.support(
         "NativeNetwork.connectWebSocket"
@@ -203,6 +204,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(globalShortcutUnregister).toEqual(HostAdapterUnimplementedSupport)
       expect(globalShortcutUnregisterAll).toEqual(HostAdapterUnimplementedSupport)
       expect(nativeNetworkFetch).toEqual(NativeNetworkUnavailableSupport)
+      expect(nativeNetworkUpload).toEqual(NativeNetworkUnavailableSupport)
       expect(nativeNetworkLocalhostUrl).toEqual(NativeNetworkUnavailableSupport)
       expect(nativeNetworkConnectWebSocket).toEqual(NativeNetworkUnavailableSupport)
       expect(nativeNetworkCloseWebSocket).toEqual(NativeNetworkUnavailableSupport)
