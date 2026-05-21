@@ -29,6 +29,9 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const displayCaptureCaptureDisplay = yield* capabilities.support(
         "DisplayCapture.captureDisplay"
       )
+      const displayCaptureCaptureRegion = yield* capabilities.support(
+        "DisplayCapture.captureRegion"
+      )
       const crashReporterStart = yield* capabilities.support("CrashReporter.start")
       const crashReporterRecordBreadcrumb = yield* capabilities.support(
         "CrashReporter.recordBreadcrumb"
@@ -146,6 +149,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
           { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
         ]
       })
+      expect(displayCaptureCaptureRegion).toEqual(displayCaptureCaptureDisplay)
       expect(crashReporterStart).toEqual({
         status: "partial",
         reason: "native-crash-capture-unavailable",
