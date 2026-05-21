@@ -32,8 +32,9 @@ import { Dialog, DialogClient, DialogRpcs, DialogError } from "@effect-desktop/n
 The Rust host adapter is backed by native dialogs through `rfd` on macOS and Windows, and through
 `zenity` on Linux. Linux reports cancellation from `zenity` exit code `1` as result data and reports
 spawn failures or unexpected dialog exits as typed host failures. Linux currently rejects
-`multiple: true` with `Unsupported` because `zenity` cannot return multiple arbitrary Unix paths
-without a lossy separator.
+`multiple: true` for `openFile` and `openDirectory` with `Unsupported` because `zenity` cannot
+return multiple arbitrary Unix paths without a lossy separator. Single-directory selection remains
+routed on Linux.
 
 ## Errors
 

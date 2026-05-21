@@ -24,6 +24,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const updaterCheck = yield* capabilities.support("Updater.check")
       const updaterDownload = yield* capabilities.support("Updater.download")
       const updaterInstall = yield* capabilities.support("Updater.install")
+      const dialogOpenDirectory = yield* capabilities.support("Dialog.openDirectory")
       const crashReporterStart = yield* capabilities.support("CrashReporter.start")
       const crashReporterRecordBreadcrumb = yield* capabilities.support(
         "CrashReporter.recordBreadcrumb"
@@ -116,6 +117,19 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
           { platform: "macos", status: "partial", reason: "signed-manifest-staged-install-only" },
           { platform: "windows", status: "partial", reason: "signed-manifest-staged-install-only" },
           { platform: "linux", status: "partial", reason: "signed-manifest-staged-install-only" }
+        ]
+      })
+      expect(dialogOpenDirectory).toEqual({
+        status: "partial",
+        reason: "linux-zenity-multi-selection-unavailable",
+        platforms: [
+          { platform: "macos", status: "supported" },
+          { platform: "windows", status: "supported" },
+          {
+            platform: "linux",
+            status: "partial",
+            reason: "linux-zenity-multi-selection-unavailable"
+          }
         ]
       })
       expect(crashReporterStart).toEqual({
