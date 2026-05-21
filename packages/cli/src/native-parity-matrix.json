@@ -355,27 +355,9 @@
       "method": "listTypes",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-browsing-data-unavailable",
-        "platforms": [
-          {
-            "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-browsing-data-unavailable"
-          },
-          {
-            "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-browsing-data-unavailable"
-          },
-          {
-            "platform": "linux",
-            "status": "unsupported",
-            "reason": "host-browsing-data-unavailable"
-          }
-        ]
+        "status": "supported"
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "routed"
     },
     {
       "tag": "Clipboard.clear",
@@ -5185,10 +5167,10 @@
   ],
   "summary": {
     "total": 291,
-    "routed": 233,
+    "routed": 234,
     "missing": 0,
-    "supported": 162,
+    "supported": 163,
     "partial": 71,
-    "unsupported": 58
+    "unsupported": 57
   }
 }

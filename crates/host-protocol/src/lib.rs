@@ -310,6 +310,7 @@ pub const SESSION_PROFILE_EVENT: &str = "SessionProfile.Event";
 pub const COOKIE_STORE_IS_SUPPORTED_METHOD: &str = "CookieStore.isSupported";
 pub const COOKIE_STORE_EVENT: &str = "CookieStore.Event";
 pub const BROWSING_DATA_CLEAR_METHOD: &str = "BrowsingData.clear";
+pub const BROWSING_DATA_LIST_TYPES_METHOD: &str = "BrowsingData.listTypes";
 pub const BROWSING_DATA_IS_SUPPORTED_METHOD: &str = "BrowsingData.isSupported";
 pub const BROWSING_DATA_EVENT: &str = "BrowsingData.Event";
 pub const SESSION_PERMISSION_IS_SUPPORTED_METHOD: &str = "SessionPermission.isSupported";

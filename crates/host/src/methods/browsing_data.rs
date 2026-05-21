@@ -3,7 +3,10 @@
 // wire contract. Boxing that error here would obscure the protocol surface.
 
 use crate::window::WindowMethodHandler;
-use host_protocol::{BrowsingDataClearPayload, BrowsingDataSupportedPayload, HostProtocolError};
+use host_protocol::{
+    BrowsingDataClearPayload, BrowsingDataListTypesPayload, BrowsingDataSupportedPayload,
+    BrowsingDataTypePayload, HostProtocolError,
+};
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
@@ -27,10 +30,37 @@ pub(crate) fn clear(
         .map_err(|error| encode_error(error, host_protocol::BROWSING_DATA_CLEAR_METHOD))
 }
 
+pub(crate) fn list_types(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
+    if payload.is_some() {
+        return Err(HostProtocolError::invalid_argument(
+            "payload",
+            "must be absent",
+            host_protocol::BROWSING_DATA_LIST_TYPES_METHOD,
+        ));
+    }
+
+    serde_json::to_value(BrowsingDataListTypesPayload::new(
+        portable_browsing_data_types(),
+    ))
+    .map(Some)
+    .map_err(|error| encode_error(error, host_protocol::BROWSING_DATA_LIST_TYPES_METHOD))
+}
+
 pub(crate) fn is_supported(_payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
     serde_json::to_value(BrowsingDataSupportedPayload::supported())
         .map(Some)
         .map_err(|error| encode_error(error, host_protocol::BROWSING_DATA_IS_SUPPORTED_METHOD))
+}
+
+fn portable_browsing_data_types() -> Vec<BrowsingDataTypePayload> {
+    vec![
+        BrowsingDataTypePayload::Cache,
+        BrowsingDataTypePayload::Cookies,
+        BrowsingDataTypePayload::LocalStorage,
+        BrowsingDataTypePayload::IndexedDb,
+        BrowsingDataTypePayload::History,
+        BrowsingDataTypePayload::ServiceWorkers,
+    ]
 }
 
 fn decode_payload<T: DeserializeOwned>(
@@ -62,7 +92,7 @@ fn encode_error(error: serde_json::Error, operation: &'static str) -> HostProtoc
 
 #[cfg(test)]
 mod tests {
-    use super::{clear, is_supported};
+    use super::{clear, is_supported, list_types};
     use crate::window::WindowMethodPort;
     use serde_json::json;
 
@@ -92,6 +122,35 @@ mod tests {
             })),
         )
         .expect_err("empty types should be rejected");
+
+        assert_eq!(error.tag(), "InvalidArgument");
+    }
+
+    #[test]
+    fn browsing_data_list_types_reports_portable_type_set() {
+        let response = list_types(None)
+            .expect("list types should encode")
+            .expect("list types should return a payload");
+
+        assert_eq!(
+            response,
+            json!({
+                "types": [
+                    "cache",
+                    "cookies",
+                    "localStorage",
+                    "indexedDb",
+                    "history",
+                    "serviceWorkers"
+                ]
+            })
+        );
+    }
+
+    #[test]
+    fn browsing_data_list_types_rejects_payload() {
+        let error =
+            list_types(Some(json!({}))).expect_err("listTypes should reject unexpected payloads");
 
         assert_eq!(error.tag(), "InvalidArgument");
     }

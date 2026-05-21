@@ -11,10 +11,12 @@ import { type DesktopRpcClient, P, type PermissionRegistry } from "@effect-deskt
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import {
+  type BrowsingDataType,
   type BrowsingDataClearOptions,
   BrowsingDataClearInput,
   BrowsingDataClearResult,
   BrowsingDataEvent,
+  BrowsingDataListTypesResult,
   BrowsingDataSupportedResult
 } from "./contracts/browsing-data.js"
 import type { SessionProfileHandle } from "./contracts/session-profile.js"
@@ -27,6 +29,14 @@ export * from "./contracts/browsing-data.js"
 const Surface = "BrowsingData"
 const UnsupportedReason = "host-browsing-data-unavailable"
 const EventMethod = "BrowsingData.Event"
+const PortableBrowsingDataTypes = Object.freeze([
+  "cache",
+  "cookies",
+  "localStorage",
+  "indexedDb",
+  "history",
+  "serviceWorkers"
+] as const satisfies readonly BrowsingDataType[])
 const UnsupportedSupport = NativeSurface.support.unsupported(UnsupportedReason, {
   platforms: [
     { platform: "macos", status: "unsupported", reason: UnsupportedReason },
@@ -47,6 +57,16 @@ export const BrowsingDataClear = NativeSurface.rpc(Surface, "clear", {
   support: NativeSurface.support.supported
 })
 
+export const BrowsingDataListTypes = NativeSurface.rpc(Surface, "listTypes", {
+  payload: Schema.Void,
+  success: BrowsingDataListTypesResult,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: Surface, methods: ["listTypes"] })
+  ),
+  endpoint: "query",
+  support: NativeSurface.support.supported
+})
+
 export const BrowsingDataIsSupported = NativeSurface.rpc(Surface, "isSupported", {
   payload: Schema.Void,
   success: BrowsingDataSupportedResult,
@@ -55,7 +75,7 @@ export const BrowsingDataIsSupported = NativeSurface.rpc(Surface, "isSupported",
   support: NativeSurface.support.supported
 })
 
-const browsingDataCapabilityFact = (method: "estimate" | "listTypes") =>
+const browsingDataCapabilityFact = (method: "estimate") =>
   NativeSurface.capabilityFact(Surface, method, {
     authority: NativeSurface.authority.custom(
       P.nativeInvoke({ primitive: Surface, methods: [method] })
@@ -63,25 +83,27 @@ const browsingDataCapabilityFact = (method: "estimate" | "listTypes") =>
     support: UnsupportedSupport
   })
 
-export const BrowsingDataCapabilityFacts = Object.freeze([
-  browsingDataCapabilityFact("estimate"),
-  browsingDataCapabilityFact("listTypes")
-])
+export const BrowsingDataCapabilityFacts = Object.freeze([browsingDataCapabilityFact("estimate")])
 
 export const BrowsingDataRpcEvents = Object.freeze({
   Event: { payload: BrowsingDataEvent }
 })
 
-const BrowsingDataRpcGroup = RpcGroup.make(BrowsingDataClear, BrowsingDataIsSupported)
+const BrowsingDataRpcGroup = RpcGroup.make(
+  BrowsingDataClear,
+  BrowsingDataListTypes,
+  BrowsingDataIsSupported
+)
 
 export const BrowsingDataRpcs: RpcGroup.RpcGroup<BrowsingDataRpc> = BrowsingDataRpcGroup
 
-export const BrowsingDataMethodNames = Object.freeze(["clear"] as const)
+export const BrowsingDataMethodNames = Object.freeze(["clear", "listTypes"] as const)
 
 export interface BrowsingDataClientApi {
   readonly clear: (
     input: BrowsingDataClearOptions
   ) => Effect.Effect<BrowsingDataClearResult, BrowsingDataError, never>
+  readonly listTypes: () => Effect.Effect<BrowsingDataListTypesResult, BrowsingDataError, never>
   readonly isSupported: () => Effect.Effect<BrowsingDataSupportedResult, BrowsingDataError, never>
   readonly events: (
     profile?: SessionProfileHandle
@@ -97,6 +119,7 @@ export interface BrowsingDataServiceApi {
   readonly clear: (
     input: BrowsingDataClearOptions
   ) => Effect.Effect<BrowsingDataClearResult, BrowsingDataError, never>
+  readonly listTypes: () => Effect.Effect<BrowsingDataListTypesResult, BrowsingDataError, never>
   readonly isSupported: () => Effect.Effect<BrowsingDataSupportedResult, BrowsingDataError, never>
   readonly events: (
     profile?: SessionProfileHandle
@@ -138,6 +161,11 @@ export const BrowsingDataHandlersLive = BrowsingDataRpcGroup.toLayer({
       const browsingData = yield* BrowsingData
       return yield* browsingData.clear(input)
     }),
+  "BrowsingData.listTypes": () =>
+    Effect.gen(function* () {
+      const browsingData = yield* BrowsingData
+      return yield* browsingData.listTypes()
+    }),
   "BrowsingData.isSupported": () =>
     Effect.gen(function* () {
       const browsingData = yield* BrowsingData
@@ -174,6 +202,10 @@ export const makeBrowsingDataMemoryClient = (): Effect.Effect<
               new BrowsingDataClearResult({ cleared: Array.from(valid.types), unsupported: [] })
           )
         ),
+      listTypes: () =>
+        Effect.succeed(
+          new BrowsingDataListTypesResult({ types: Array.from(PortableBrowsingDataTypes) })
+        ),
       isSupported: () => Effect.succeed(new BrowsingDataSupportedResult({ supported: true })),
       events: () => Stream.empty
     } satisfies BrowsingDataClientApi)
@@ -182,6 +214,7 @@ export const makeBrowsingDataMemoryClient = (): Effect.Effect<
 export const makeBrowsingDataUnsupportedClient = (): BrowsingDataClientApi =>
   Object.freeze({
     clear: () => Effect.fail(unsupportedError("BrowsingData.clear")),
+    listTypes: () => Effect.fail(unsupportedError("BrowsingData.listTypes")),
     isSupported: () =>
       Effect.succeed(
         new BrowsingDataSupportedResult({ supported: false, reason: UnsupportedReason })
@@ -192,6 +225,7 @@ export const makeBrowsingDataUnsupportedClient = (): BrowsingDataClientApi =>
 const makeBrowsingDataService = (client: BrowsingDataClientApi): BrowsingDataServiceApi =>
   Object.freeze({
     clear: (input) => client.clear(input),
+    listTypes: () => client.listTypes(),
     isSupported: () => client.isSupported(),
     events: (profile) => client.events(profile)
   } satisfies BrowsingDataServiceApi)
@@ -207,6 +241,8 @@ const browsingDataClientFromRpcClient = (
           runBrowsingDataRpc(client["BrowsingData.clear"](decoded), "BrowsingData.clear")
         )
       ),
+    listTypes: () =>
+      runBrowsingDataRpc(client["BrowsingData.listTypes"](undefined), "BrowsingData.listTypes"),
     isSupported: () =>
       runBrowsingDataRpc(client["BrowsingData.isSupported"](undefined), "BrowsingData.isSupported"),
     events: (profile) =>

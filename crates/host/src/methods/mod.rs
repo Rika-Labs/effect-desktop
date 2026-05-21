@@ -1120,6 +1120,10 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Window(browsing_data::clear),
     ),
     route(
+        host_protocol::BROWSING_DATA_LIST_TYPES_METHOD,
+        HostMethodDispatcher::Payload(browsing_data::list_types),
+    ),
+    route(
         host_protocol::BROWSING_DATA_IS_SUPPORTED_METHOD,
         HostMethodDispatcher::Payload(browsing_data::is_supported),
     ),
