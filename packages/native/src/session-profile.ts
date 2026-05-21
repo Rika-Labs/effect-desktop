@@ -7,12 +7,26 @@ import {
   HostProtocolUnsupportedError,
   RpcGroup
 } from "@effect-desktop/bridge"
-import { type DesktopRpcClient, P, type PermissionRegistry } from "@effect-desktop/core"
+import {
+  type DesktopRpcClient,
+  makeResourceId,
+  P,
+  type PermissionRegistry
+} from "@effect-desktop/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
-import { SessionProfileEvent, SessionProfileSupportedResult } from "./contracts/session-profile.js"
+import {
+  type SessionProfileFromPartitionOptions,
+  SessionProfileFromPartitionInput,
+  type SessionProfileHandle,
+  SessionProfileHandleInput,
+  SessionProfileEvent,
+  SessionProfileList,
+  SessionProfileResource,
+  SessionProfileSupportedResult
+} from "./contracts/session-profile.js"
 import { subscribeNativeEvent } from "./event-stream.js"
-import { runNativeRpc } from "./native-client.js"
+import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 
 export * from "./contracts/session-profile.js"
@@ -20,49 +34,77 @@ export * from "./contracts/session-profile.js"
 const Surface = "SessionProfile"
 const UnsupportedReason = "host-session-profile-routing-unavailable"
 const EventMethod = "SessionProfile.Event"
-const UnsupportedSupport = NativeSurface.support.unsupported(UnsupportedReason, {
-  platforms: [
-    { platform: "macos", status: "unsupported", reason: UnsupportedReason },
-    { platform: "windows", status: "unsupported", reason: UnsupportedReason },
-    { platform: "linux", status: "unsupported", reason: UnsupportedReason }
-  ]
-})
+const SessionProfileSupport = NativeSurface.support.supported
 
 export type SessionProfileError = HostProtocolError
+
+export const SessionProfileFromPartition = NativeSurface.rpc(Surface, "fromPartition", {
+  payload: SessionProfileFromPartitionInput,
+  success: SessionProfileResource,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: Surface, methods: ["fromPartition"] })
+  ),
+  endpoint: "mutation",
+  support: SessionProfileSupport
+})
+
+export const SessionProfileDestroy = NativeSurface.rpc(Surface, "destroy", {
+  payload: SessionProfileHandleInput,
+  success: Schema.Void,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: Surface, methods: ["destroy"] })
+  ),
+  endpoint: "mutation",
+  support: SessionProfileSupport
+})
+
+export const SessionProfileListProfiles = NativeSurface.rpc(Surface, "list", {
+  payload: Schema.Void,
+  success: SessionProfileList,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: Surface, methods: ["list"] })
+  ),
+  endpoint: "query",
+  support: SessionProfileSupport
+})
 
 export const SessionProfileIsSupported = NativeSurface.rpc(Surface, "isSupported", {
   payload: Schema.Void,
   success: SessionProfileSupportedResult,
   authority: NativeSurface.authority.none,
   endpoint: "query",
-  support: NativeSurface.support.supported
+  support: SessionProfileSupport
 })
 
-const sessionProfileCapabilityFact = (method: "fromPartition" | "destroy" | "list") =>
-  NativeSurface.capabilityFact(Surface, method, {
-    authority: NativeSurface.authority.custom(
-      P.nativeInvoke({ primitive: Surface, methods: [method] })
-    ),
-    support: UnsupportedSupport
-  })
-
-export const SessionProfileCapabilityFacts = Object.freeze([
-  sessionProfileCapabilityFact("fromPartition"),
-  sessionProfileCapabilityFact("destroy"),
-  sessionProfileCapabilityFact("list")
-])
+export const SessionProfileCapabilityFacts = Object.freeze([])
 
 export const SessionProfileRpcEvents = Object.freeze({
   Event: { payload: SessionProfileEvent }
 })
 
-const SessionProfileRpcGroup = RpcGroup.make(SessionProfileIsSupported)
+const SessionProfileRpcGroup = RpcGroup.make(
+  SessionProfileFromPartition,
+  SessionProfileDestroy,
+  SessionProfileListProfiles,
+  SessionProfileIsSupported
+)
 
 export const SessionProfileRpcs: RpcGroup.RpcGroup<SessionProfileRpc> = SessionProfileRpcGroup
 
-export const SessionProfileMethodNames = Object.freeze(["isSupported"] as const)
+export const SessionProfileMethodNames = Object.freeze([
+  "fromPartition",
+  "destroy",
+  "list"
+] as const)
 
 export interface SessionProfileClientApi {
+  readonly fromPartition: (
+    input: SessionProfileFromPartitionOptions
+  ) => Effect.Effect<SessionProfileHandle, SessionProfileError, never>
+  readonly destroy: (
+    profile: SessionProfileHandle
+  ) => Effect.Effect<void, SessionProfileError, never>
+  readonly list: () => Effect.Effect<SessionProfileList, SessionProfileError, never>
   readonly isSupported: () => Effect.Effect<
     SessionProfileSupportedResult,
     SessionProfileError,
@@ -77,6 +119,13 @@ export class SessionProfileClient extends Context.Service<
 >()("@effect-desktop/native/SessionProfileClient") {}
 
 export interface SessionProfileServiceApi {
+  readonly fromPartition: (
+    input: SessionProfileFromPartitionOptions
+  ) => Effect.Effect<SessionProfileHandle, SessionProfileError, never>
+  readonly destroy: (
+    profile: SessionProfileHandle
+  ) => Effect.Effect<void, SessionProfileError, never>
+  readonly list: () => Effect.Effect<SessionProfileList, SessionProfileError, never>
   readonly isSupported: () => Effect.Effect<
     SessionProfileSupportedResult,
     SessionProfileError,
@@ -115,6 +164,21 @@ export type SessionProfileRpc = RpcGroup.Rpcs<typeof SessionProfileRpcGroup>
 export type SessionProfileRpcHandlers = RpcGroup.HandlersFrom<SessionProfileRpc>
 
 export const SessionProfileHandlersLive = SessionProfileRpcGroup.toLayer({
+  "SessionProfile.fromPartition": (input) =>
+    Effect.gen(function* () {
+      const profiles = yield* SessionProfile
+      return yield* profiles.fromPartition(input)
+    }),
+  "SessionProfile.destroy": (input) =>
+    Effect.gen(function* () {
+      const profiles = yield* SessionProfile
+      yield* profiles.destroy(input.profile)
+    }),
+  "SessionProfile.list": () =>
+    Effect.gen(function* () {
+      const profiles = yield* SessionProfile
+      return yield* profiles.list()
+    }),
   "SessionProfile.isSupported": () =>
     Effect.gen(function* () {
       const profiles = yield* SessionProfile
@@ -124,6 +188,7 @@ export const SessionProfileHandlersLive = SessionProfileRpcGroup.toLayer({
 
 export const SessionProfileSurface = NativeSurface.make(Surface, SessionProfileRpcGroup, {
   service: SessionProfileClient,
+  capabilities: SessionProfileMethodNames,
   handlers: SessionProfileHandlersLive,
   capabilityFacts: SessionProfileCapabilityFacts,
   client: (client) => sessionProfileClientFromRpcClient(client, undefined),
@@ -141,15 +206,44 @@ export const makeSessionProfileMemoryClient = (): Effect.Effect<
   never,
   never
 > =>
-  Effect.succeed(
-    Object.freeze({
+  Effect.sync(() => {
+    const profiles = new Map<string, SessionProfileHandle>()
+    return Object.freeze({
+      fromPartition: (input) =>
+        decodeSessionProfileFromPartitionInput(input, "SessionProfile.fromPartition").pipe(
+          Effect.map((valid) => {
+            const id = `session-profile:${valid.partition}`
+            const profile =
+              profiles.get(id) ??
+              Object.freeze({
+                kind: "session-profile",
+                id: makeResourceId(id),
+                generation: 0,
+                ownerScope: valid.ownerScope ?? "app",
+                state: "open"
+              } satisfies SessionProfileHandle)
+            profiles.set(id, profile)
+            return profile
+          })
+        ),
+      destroy: (profile) =>
+        decodeSessionProfileHandleInput({ profile }, "SessionProfile.destroy").pipe(
+          Effect.map((valid) => {
+            profiles.delete(valid.profile.id)
+          })
+        ),
+      list: () =>
+        Effect.succeed(new SessionProfileList({ profiles: Array.from(profiles.values()) })),
       isSupported: () => Effect.succeed(new SessionProfileSupportedResult({ supported: true })),
       events: () => Stream.empty
     } satisfies SessionProfileClientApi)
-  )
+  })
 
 export const makeSessionProfileUnsupportedClient = (): SessionProfileClientApi =>
   Object.freeze({
+    fromPartition: () => Effect.fail(unsupportedError("SessionProfile.fromPartition")),
+    destroy: () => Effect.fail(unsupportedError("SessionProfile.destroy")),
+    list: () => Effect.fail(unsupportedError("SessionProfile.list")),
     isSupported: () =>
       Effect.succeed(
         new SessionProfileSupportedResult({ supported: false, reason: UnsupportedReason })
@@ -159,6 +253,9 @@ export const makeSessionProfileUnsupportedClient = (): SessionProfileClientApi =
 
 const makeSessionProfileService = (client: SessionProfileClientApi): SessionProfileServiceApi =>
   Object.freeze({
+    fromPartition: (input) => client.fromPartition(input),
+    destroy: (profile) => client.destroy(profile),
+    list: () => client.list(),
     isSupported: () => client.isSupported(),
     events: () => client.events()
   } satisfies SessionProfileServiceApi)
@@ -168,6 +265,23 @@ const sessionProfileClientFromRpcClient = (
   exchange: BridgeClientExchange | undefined
 ): SessionProfileClientApi =>
   Object.freeze({
+    fromPartition: (input) =>
+      decodeSessionProfileFromPartitionInput(input, "SessionProfile.fromPartition").pipe(
+        Effect.flatMap((decoded) =>
+          runSessionProfileRpc(
+            client["SessionProfile.fromPartition"](decoded),
+            "SessionProfile.fromPartition"
+          )
+        )
+      ),
+    destroy: (profile) =>
+      decodeSessionProfileHandleInput({ profile }, "SessionProfile.destroy").pipe(
+        Effect.flatMap((decoded) =>
+          runSessionProfileRpc(client["SessionProfile.destroy"](decoded), "SessionProfile.destroy")
+        )
+      ),
+    list: () =>
+      runSessionProfileRpc(client["SessionProfile.list"](undefined), "SessionProfile.list"),
     isSupported: () =>
       runSessionProfileRpc(
         client["SessionProfile.isSupported"](undefined),
@@ -175,6 +289,18 @@ const sessionProfileClientFromRpcClient = (
       ),
     events: () => subscribeNativeEvent(exchange, EventMethod, SessionProfileEvent)
   } satisfies SessionProfileClientApi)
+
+const decodeSessionProfileFromPartitionInput = (
+  input: unknown,
+  operation: string
+): Effect.Effect<SessionProfileFromPartitionInput, SessionProfileError, never> =>
+  decodeNativeInput(SessionProfileFromPartitionInput, input, operation)
+
+const decodeSessionProfileHandleInput = (
+  input: unknown,
+  operation: string
+): Effect.Effect<SessionProfileHandleInput, SessionProfileError, never> =>
+  decodeNativeInput(SessionProfileHandleInput, input, operation)
 
 const runSessionProfileRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,

@@ -23,6 +23,7 @@ export class BrowsingDataClearInput extends Schema.Class<BrowsingDataClearInput>
   types: Schema.NonEmptyArray(BrowsingDataType),
   traceId: Schema.optionalKey(BridgeSafeNonEmptyString)
 }) {}
+export type BrowsingDataClearOptions = Schema.Schema.Type<typeof BrowsingDataClearInput>
 
 export class BrowsingDataEstimateInput extends Schema.Class<BrowsingDataEstimateInput>(
   "BrowsingDataEstimateInput"

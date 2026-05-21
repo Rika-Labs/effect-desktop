@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import { makeResourceId } from "@effect-desktop/core"
 import { Effect, type Layer, ManagedRuntime } from "effect"
 
 import {
@@ -11,15 +12,20 @@ import {
   makeBrowsingDataUnsupportedClient
 } from "./browsing-data.js"
 import { makeNativeCapabilityManifest } from "./capabilities.js"
+import type { SessionProfileHandle } from "./contracts/session-profile.js"
 
-const UnsupportedMethods = ["clear", "estimate", "listTypes"] as const
+const UnsupportedMethods = ["estimate", "listTypes"] as const
+const TestProfile = {
+  kind: "session-profile",
+  id: makeResourceId("session-profile:workspace-1"),
+  generation: 0,
+  ownerScope: "workspace:1",
+  state: "open"
+} satisfies SessionProfileHandle
 
-test("BrowsingData exposes only isSupported as a callable RPC", () => {
+test("BrowsingData exposes clear and isSupported as callable RPCs", () => {
   const callableTags = Array.from(BrowsingDataRpcs.requests.keys()).toSorted()
-  expect(callableTags).toEqual(["BrowsingData.isSupported"])
-  for (const method of UnsupportedMethods) {
-    expect(callableTags).not.toContain(`BrowsingData.${method}`)
-  }
+  expect(callableTags).toEqual(["BrowsingData.clear", "BrowsingData.isSupported"])
 })
 
 test("BrowsingData isSupported reports supported result through the service", () =>
@@ -34,6 +40,25 @@ test("BrowsingData isSupported reports supported result through the service", ()
         makeBrowsingDataServiceLayer(client)
       )
       expect(result.supported).toBe(true)
+    })
+  ))
+
+test("BrowsingData memory client clears requested portable data types", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const client = yield* makeBrowsingDataMemoryClient()
+      const result = yield* runScoped(
+        Effect.gen(function* () {
+          const browsingData = yield* BrowsingData
+          return yield* browsingData.clear({
+            profile: TestProfile,
+            types: ["cache", "cookies"]
+          })
+        }),
+        makeBrowsingDataServiceLayer(client)
+      )
+
+      expect(result).toEqual({ cleared: ["cache", "cookies"], unsupported: [] })
     })
   ))
 
@@ -53,7 +78,7 @@ test("BrowsingData unsupported client reports the host-unavailable reason", () =
     })
   ))
 
-test("BrowsingData declares the 3 unsupported methods as non-callable capability facts", () => {
+test("BrowsingData keeps estimate and listTypes as non-callable capability facts", () => {
   const factTags = BrowsingDataCapabilityFacts.map((fact) => fact.tag).toSorted()
   expect(factTags).toEqual(UnsupportedMethods.map((method) => `BrowsingData.${method}`).toSorted())
   for (const fact of BrowsingDataCapabilityFacts) {
@@ -61,7 +86,7 @@ test("BrowsingData declares the 3 unsupported methods as non-callable capability
   }
 })
 
-test("BrowsingData capability facts surface in the manifest and stay non-callable", () =>
+test("BrowsingData manifest exposes clear as callable and keeps estimate/listTypes non-callable", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const manifest = yield* makeNativeCapabilityManifest([
@@ -78,7 +103,8 @@ test("BrowsingData capability facts surface in the manifest and stay non-callabl
       const callableFactTags = BrowsingDataSurface.schemaDocs
         .filter((doc) => doc.callable)
         .map((doc) => doc.tag)
-      expect(callableFactTags).toEqual(["BrowsingData.isSupported"])
+        .toSorted()
+      expect(callableFactTags).toEqual(["BrowsingData.clear", "BrowsingData.isSupported"])
 
       const nonCallableTags = BrowsingDataSurface.schemaDocs
         .filter((doc) => !doc.callable)

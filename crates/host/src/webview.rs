@@ -5,8 +5,11 @@ use std::borrow::Cow;
 use std::path::Path;
 use tao::window::Window;
 use tracing::info;
+#[cfg(target_os = "macos")]
+use wry::WebViewBuilderExtDarwin;
 use wry::{
-    DragDropEvent, NewWindowFeatures, NewWindowResponse, PageLoadEvent, WebView, WebViewBuilder,
+    DragDropEvent, NewWindowFeatures, NewWindowResponse, PageLoadEvent, WebContext, WebView,
+    WebViewBuilder,
 };
 
 const WEBVIEW_OPENED_EVENT: &str = "host.webview.opened";
@@ -15,6 +18,7 @@ const DEV_URL_ENV: &str = "EFFECT_DESKTOP_DEV_URL";
 const WEBVIEW_CREATE_OPERATION: &str = host_protocol::WINDOW_CREATE_METHOD;
 
 pub(crate) type HostWebView = WebView;
+pub(crate) type HostWebContext = WebContext;
 type WebViewResult<T> = std::result::Result<T, Box<HostProtocolError>>;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -44,8 +48,11 @@ struct WebViewRequest {
     chrome_runtime_path: Option<String>,
 }
 
-pub(crate) struct ChildWebViewRequest {
+pub(crate) struct ChildWebViewRequest<'a> {
     pub(crate) url: String,
+    pub(crate) web_context: Option<&'a mut HostWebContext>,
+    pub(crate) register_app_protocols: bool,
+    pub(crate) data_store_identifier: Option<[u8; 16]>,
     pub(crate) navigation_handler: Box<dyn Fn(String) -> bool>,
     pub(crate) new_window_handler: Box<dyn Fn(String, NewWindowFeatures) -> NewWindowResponse>,
     pub(crate) isolation: Option<ChildWebViewIsolation>,
@@ -150,7 +157,7 @@ pub(crate) fn attach_app_webview(window: &Window) -> WebViewResult<HostWebView> 
 
 pub(crate) fn attach_child_webview(
     window: &Window,
-    request: ChildWebViewRequest,
+    request: ChildWebViewRequest<'_>,
 ) -> WebViewResult<HostWebView> {
     let selection = selected_web_engine_for_operation(host_protocol::WEBVIEW_CREATE_METHOD)?;
     if matches!(selection.kind, WebEngineKind::Chrome) {
@@ -161,7 +168,16 @@ pub(crate) fn attach_child_webview(
     }
 
     let url_for_log = request.url.clone();
-    let builder = scheme::register_app_scheme(WebViewBuilder::new())
+    let builder = match request.web_context {
+        Some(context) => WebViewBuilder::new_with_web_context(context),
+        None => WebViewBuilder::new(),
+    };
+    let builder = if request.register_app_protocols {
+        scheme::register_app_scheme(builder)
+    } else {
+        builder
+    };
+    let builder = apply_profile_data_store(builder, request.data_store_identifier)
         .with_url(request.url)
         .with_navigation_handler(request.navigation_handler)
         .with_new_window_req_handler(request.new_window_handler);
@@ -189,6 +205,26 @@ pub(crate) fn attach_child_webview(
     );
 
     Ok(webview)
+}
+
+#[cfg(target_os = "macos")]
+fn apply_profile_data_store<'a>(
+    builder: WebViewBuilder<'a>,
+    identifier: Option<[u8; 16]>,
+) -> WebViewBuilder<'a> {
+    match identifier {
+        Some(identifier) => builder.with_data_store_identifier(identifier),
+        None => builder,
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn apply_profile_data_store<'a>(
+    builder: WebViewBuilder<'a>,
+    identifier: Option<[u8; 16]>,
+) -> WebViewBuilder<'a> {
+    let _ = identifier;
+    builder
 }
 
 #[allow(clippy::result_large_err)]
@@ -244,6 +280,18 @@ pub(crate) fn zoom(
         HostProtocolError::internal(
             format!("failed to zoom WebView: {error}"),
             host_protocol::WEBVIEW_SET_ZOOM_METHOD,
+        )
+    })
+}
+
+#[allow(clippy::result_large_err)]
+pub(crate) fn clear_all_browsing_data(
+    webview: &HostWebView,
+) -> std::result::Result<(), HostProtocolError> {
+    webview.clear_all_browsing_data().map_err(|error| {
+        HostProtocolError::internal(
+            format!("failed to clear WebView browsing data: {error}"),
+            host_protocol::BROWSING_DATA_CLEAR_METHOD,
         )
     })
 }

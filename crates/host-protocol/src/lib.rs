@@ -302,10 +302,14 @@ pub const WEBVIEW_NAVIGATION_BLOCKED_EVENT: &str = "WebView.NavigationBlocked";
 pub const WEBVIEW_API_CALL_EVENT: &str = "WebView.ApiCall";
 pub const WEBVIEW_RUNTIME_EVENT: &str = "WebView.RuntimeEvent";
 pub const WEBVIEW_FRAME_EVENT: &str = "WebView.FrameEvent";
+pub const SESSION_PROFILE_FROM_PARTITION_METHOD: &str = "SessionProfile.fromPartition";
+pub const SESSION_PROFILE_DESTROY_METHOD: &str = "SessionProfile.destroy";
+pub const SESSION_PROFILE_LIST_METHOD: &str = "SessionProfile.list";
 pub const SESSION_PROFILE_IS_SUPPORTED_METHOD: &str = "SessionProfile.isSupported";
 pub const SESSION_PROFILE_EVENT: &str = "SessionProfile.Event";
 pub const COOKIE_STORE_IS_SUPPORTED_METHOD: &str = "CookieStore.isSupported";
 pub const COOKIE_STORE_EVENT: &str = "CookieStore.Event";
+pub const BROWSING_DATA_CLEAR_METHOD: &str = "BrowsingData.clear";
 pub const BROWSING_DATA_IS_SUPPORTED_METHOD: &str = "BrowsingData.isSupported";
 pub const BROWSING_DATA_EVENT: &str = "BrowsingData.Event";
 pub const SESSION_PERMISSION_IS_SUPPORTED_METHOD: &str = "SessionPermission.isSupported";
@@ -9583,8 +9587,20 @@ impl SessionProfileResourcePayload {
         &self.id
     }
 
+    pub fn kind(&self) -> &str {
+        &self.kind
+    }
+
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
     pub fn owner_scope(&self) -> &str {
         &self.owner_scope
+    }
+
+    pub fn state(&self) -> &str {
+        &self.state
     }
 }
 
@@ -9864,6 +9880,14 @@ impl BrowsingDataClearPayload {
             trace_id: None,
         }
     }
+
+    pub fn profile(&self) -> &SessionProfileResourcePayload {
+        &self.profile
+    }
+
+    pub fn types(&self) -> &[BrowsingDataTypePayload] {
+        &self.types
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -9957,6 +9981,13 @@ pub struct BrowsingDataSupportedPayload {
 }
 
 impl BrowsingDataSupportedPayload {
+    pub fn supported() -> Self {
+        Self {
+            supported: true,
+            reason: None,
+        }
+    }
+
     pub fn unsupported(reason: impl Into<String>) -> Self {
         Self {
             supported: false,

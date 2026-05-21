@@ -307,27 +307,9 @@
       "method": "clear",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-browsing-data-unavailable",
-        "platforms": [
-          {
-            "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-browsing-data-unavailable"
-          },
-          {
-            "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-browsing-data-unavailable"
-          },
-          {
-            "platform": "linux",
-            "status": "unsupported",
-            "reason": "host-browsing-data-unavailable"
-          }
-        ]
+        "status": "supported"
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "routed"
     },
     {
       "tag": "BrowsingData.estimate",
@@ -3187,27 +3169,9 @@
       "method": "destroy",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-session-profile-routing-unavailable",
-        "platforms": [
-          {
-            "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-session-profile-routing-unavailable"
-          },
-          {
-            "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-session-profile-routing-unavailable"
-          },
-          {
-            "platform": "linux",
-            "status": "unsupported",
-            "reason": "host-session-profile-routing-unavailable"
-          }
-        ]
+        "status": "supported"
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "routed"
     },
     {
       "tag": "SessionProfile.fromPartition",
@@ -3215,27 +3179,9 @@
       "method": "fromPartition",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-session-profile-routing-unavailable",
-        "platforms": [
-          {
-            "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-session-profile-routing-unavailable"
-          },
-          {
-            "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-session-profile-routing-unavailable"
-          },
-          {
-            "platform": "linux",
-            "status": "unsupported",
-            "reason": "host-session-profile-routing-unavailable"
-          }
-        ]
+        "status": "supported"
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "routed"
     },
     {
       "tag": "SessionProfile.isSupported",
@@ -3253,27 +3199,9 @@
       "method": "list",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-session-profile-routing-unavailable",
-        "platforms": [
-          {
-            "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-session-profile-routing-unavailable"
-          },
-          {
-            "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-session-profile-routing-unavailable"
-          },
-          {
-            "platform": "linux",
-            "status": "unsupported",
-            "reason": "host-session-profile-routing-unavailable"
-          }
-        ]
+        "status": "supported"
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "routed"
     },
     {
       "tag": "Shell.openExternal",
@@ -5257,10 +5185,10 @@
   ],
   "summary": {
     "total": 291,
-    "routed": 229,
+    "routed": 233,
     "missing": 0,
-    "supported": 158,
+    "supported": 162,
     "partial": 71,
-    "unsupported": 62
+    "unsupported": 58
   }
 }

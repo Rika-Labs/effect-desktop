@@ -9,9 +9,10 @@ use crate::window::{
     WindowMethodHandler,
 };
 use host_protocol::HostProtocolError;
+use host_protocol::SessionProfileResourcePayload;
 use serde_json::{Map, Value};
 
-const ALLOWED_CREATE_FIELDS: &[&str] = &["window", "url", "originPolicy", "isolation"];
+const ALLOWED_CREATE_FIELDS: &[&str] = &["window", "url", "originPolicy", "profile", "isolation"];
 const ALLOWED_HANDLE_FIELDS: &[&str] = &["webview"];
 const ALLOWED_LOAD_ROUTE_FIELDS: &[&str] = &["webview", "route"];
 const ALLOWED_LOAD_URL_FIELDS: &[&str] = &["webview", "url"];
@@ -22,6 +23,8 @@ const ALLOWED_ISOLATION_FIELDS: &[&str] = &["exposedApis"];
 const ALLOWED_EXPOSED_API_FIELDS: &[&str] = &["name", "methods"];
 const ALLOWED_WEBVIEW_HANDLE_FIELDS: &[&str] = &["kind", "id", "generation", "ownerScope", "state"];
 const ALLOWED_WINDOW_HANDLE_FIELDS: &[&str] = &["kind", "id", "generation", "ownerScope", "state"];
+const ALLOWED_SESSION_PROFILE_HANDLE_FIELDS: &[&str] =
+    &["kind", "id", "generation", "ownerScope", "state"];
 
 pub(crate) fn create(
     handler: &dyn WindowMethodHandler,
@@ -40,6 +43,7 @@ pub(crate) fn create(
         "originPolicy",
         host_protocol::WEBVIEW_CREATE_METHOD,
     )?;
+    validate_session_profile_field(&payload, host_protocol::WEBVIEW_CREATE_METHOD)?;
     validate_isolation_field(&payload, host_protocol::WEBVIEW_CREATE_METHOD)?;
     let request = decode_create_request(&payload)?;
     let response = handler.create_webview(request)?;
@@ -280,6 +284,7 @@ fn decode_create_request(
             "originPolicy",
             host_protocol::WEBVIEW_CREATE_METHOD,
         )?,
+        decode_session_profile(payload, host_protocol::WEBVIEW_CREATE_METHOD)?,
         decode_isolation(payload, host_protocol::WEBVIEW_CREATE_METHOD)?,
     ))
 }
@@ -321,6 +326,24 @@ fn decode_webview_handle(
             })?,
         required_string(handle, "ownerScope", operation)?.to_string(),
     ))
+}
+
+fn decode_session_profile(
+    payload: &Map<String, Value>,
+    operation: &'static str,
+) -> Result<Option<SessionProfileResourcePayload>, HostProtocolError> {
+    let Some(profile) = payload.get("profile") else {
+        return Ok(None);
+    };
+    serde_json::from_value(profile.clone())
+        .map(Some)
+        .map_err(|error| {
+            HostProtocolError::invalid_argument(
+                "profile",
+                format!("invalid session profile handle: {error}"),
+                operation,
+            )
+        })
 }
 
 fn decode_policy(
@@ -532,6 +555,47 @@ fn validate_webview_handle_field(
     if state != "open" {
         return Err(HostProtocolError::invalid_argument(
             "webview.state",
+            "must be open",
+            operation,
+        ));
+    }
+
+    Ok(())
+}
+
+fn validate_session_profile_field(
+    payload: &Map<String, Value>,
+    operation: &'static str,
+) -> Result<(), HostProtocolError> {
+    let Some(profile) = payload.get("profile") else {
+        return Ok(());
+    };
+    let handle = profile.as_object().ok_or_else(|| {
+        HostProtocolError::invalid_argument("profile", "must be an object", operation)
+    })?;
+    validate_allowed_fields(handle, ALLOWED_SESSION_PROFILE_HANDLE_FIELDS, operation)?;
+
+    let kind = handle.get("kind").and_then(Value::as_str).ok_or_else(|| {
+        HostProtocolError::invalid_argument("profile.kind", "must be a string", operation)
+    })?;
+    if kind != "session-profile" {
+        return Err(HostProtocolError::invalid_argument(
+            "profile.kind",
+            "must be session-profile",
+            operation,
+        ));
+    }
+
+    validate_printable_object_string(handle, "id", "profile.id", operation)?;
+    validate_u64_field(handle, "generation", "profile.generation", operation)?;
+    validate_printable_object_string(handle, "ownerScope", "profile.ownerScope", operation)?;
+
+    let state = handle.get("state").and_then(Value::as_str).ok_or_else(|| {
+        HostProtocolError::invalid_argument("profile.state", "must be a string", operation)
+    })?;
+    if state != "open" {
+        return Err(HostProtocolError::invalid_argument(
+            "profile.state",
             "must be open",
             operation,
         ));

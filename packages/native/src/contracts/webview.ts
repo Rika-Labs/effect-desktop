@@ -3,6 +3,7 @@ import { Schema } from "effect"
 
 import { BridgeSafeNonEmptyString, BridgeSafeString } from "./strings.js"
 import { ImageMime } from "./image.js"
+import { SessionProfileResource } from "./session-profile.js"
 import { WindowResource } from "./window.js"
 
 export const WebViewResource = ResourceHandleSchema("webview", "open")
@@ -123,6 +124,7 @@ export class WebViewCreateInput extends Schema.Class<WebViewCreateInput>("WebVie
   window: WindowResource,
   url: WebViewNavigationUrl,
   originPolicy: WebViewNavigationPolicy,
+  profile: Schema.optionalKey(SessionProfileResource),
   isolation: Schema.optionalKey(WebViewIsolationPolicy)
 }) {}
 

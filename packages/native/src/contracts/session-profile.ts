@@ -16,6 +16,9 @@ export class SessionProfileFromPartitionInput extends Schema.Class<SessionProfil
   ownerScope: Schema.optionalKey(BridgeSafeNonEmptyString),
   traceId: Schema.optionalKey(BridgeSafeNonEmptyString)
 }) {}
+export type SessionProfileFromPartitionOptions = Schema.Schema.Type<
+  typeof SessionProfileFromPartitionInput
+>
 
 export class SessionProfileHandleInput extends Schema.Class<SessionProfileHandleInput>(
   "SessionProfileHandleInput"
@@ -23,6 +26,7 @@ export class SessionProfileHandleInput extends Schema.Class<SessionProfileHandle
   profile: SessionProfileResource,
   traceId: Schema.optionalKey(BridgeSafeNonEmptyString)
 }) {}
+export type SessionProfileHandleOptions = Schema.Schema.Type<typeof SessionProfileHandleInput>
 
 export class SessionProfileList extends Schema.Class<SessionProfileList>("SessionProfileList")({
   profiles: Schema.Array(SessionProfileResource)

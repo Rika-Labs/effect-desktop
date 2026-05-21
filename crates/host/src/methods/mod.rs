@@ -39,7 +39,7 @@ mod scoped_access_grant;
 mod screen;
 mod selection_context;
 mod session_permission;
-mod session_profile;
+pub(crate) mod session_profile;
 mod shell;
 pub(crate) mod system_appearance;
 mod transactional_file_mutation;
@@ -1096,12 +1096,28 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Window(webview::destroy),
     ),
     route(
+        host_protocol::SESSION_PROFILE_FROM_PARTITION_METHOD,
+        HostMethodDispatcher::Payload(session_profile::from_partition),
+    ),
+    route(
+        host_protocol::SESSION_PROFILE_DESTROY_METHOD,
+        HostMethodDispatcher::Payload(session_profile::destroy),
+    ),
+    route(
+        host_protocol::SESSION_PROFILE_LIST_METHOD,
+        HostMethodDispatcher::Payload(session_profile::list),
+    ),
+    route(
         host_protocol::SESSION_PROFILE_IS_SUPPORTED_METHOD,
         HostMethodDispatcher::Payload(session_profile::is_supported),
     ),
     route(
         host_protocol::COOKIE_STORE_IS_SUPPORTED_METHOD,
         HostMethodDispatcher::Payload(cookie_store::is_supported),
+    ),
+    route(
+        host_protocol::BROWSING_DATA_CLEAR_METHOD,
+        HostMethodDispatcher::Window(browsing_data::clear),
     ),
     route(
         host_protocol::BROWSING_DATA_IS_SUPPORTED_METHOD,
