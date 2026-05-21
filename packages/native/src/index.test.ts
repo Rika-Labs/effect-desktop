@@ -3834,6 +3834,18 @@ test("TrayRpcs declares the Phase 8 Tray method and event surface", () => {
   expect(Object.keys(TrayRpcEvents)).toEqual(["Activated"])
 })
 
+test("Tray.create support metadata keeps Linux unavailable until tray dependencies ship", () => {
+  expect(TrayRpcs.requests.get("Tray.create")!.pipe(rpcSupport)).toEqual({
+    status: "partial",
+    reason: "linux-tray-unavailable",
+    platforms: [
+      { platform: "macos", status: "supported" },
+      { platform: "windows", status: "supported" },
+      { platform: "linux", status: "unsupported", reason: "host-tray-unavailable" }
+    ]
+  })
+})
+
 test("Tray service delegates through a substitutable TrayClient port", () =>
   Effect.runPromise(
     Effect.gen(function* () {

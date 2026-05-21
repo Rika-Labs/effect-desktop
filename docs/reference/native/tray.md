@@ -9,8 +9,14 @@ effect_version: 4
 # `Tray`
 
 System tray icon and menu support. The host adapter currently supports macOS and Windows. Linux returns
-`{ supported: false, reason: "host-tray-unavailable" }` until the project carries the required GTK and
-appindicator dependencies.
+`{ supported: false, reason: "host-tray-unavailable" }` until the project ships and probes the required
+tray stack.
+
+The local `tray-icon` backend can target Linux, but it relies on a GTK event loop plus AppIndicator and
+libxdo system support. The current host does not include the Linux `tray-icon` dependency, does not ship
+or verify `libayatana-appindicator3`/`libappindicator3`, and does not have a fail-closed probe before
+tray creation. `Tray.create` therefore remains partial rather than claiming support that may crash or
+silently fail on Linux desktops without that stack.
 
 ## Methods
 
