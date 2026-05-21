@@ -59,6 +59,13 @@ fresh OS revalidation, and failure semantics for stale or revoked platform
 tokens. The current host has none of those pieces, so a routed `resolve` method
 would only turn an unsupported capability into a deferred runtime failure.
 
+`revoke` remains unsupported for the same reason. A revoker must own the original
+platform grant material: a balanced macOS security-scoped URL access session or
+bookmark record, a Windows future-access-list token, or a Linux document-portal
+document ID and permission set. The current host does not issue or persist those
+tokens, so it cannot prove that `grantId` names a live platform grant or revoke
+that grant without risking a false success result.
+
 ## Support
 
 The current Rust host adapter is intentionally fail-closed while OS persistent
