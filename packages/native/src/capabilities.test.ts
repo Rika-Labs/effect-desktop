@@ -35,6 +35,16 @@ const UnsupportedDockCapabilitySupport = {
   ]
 } as const
 
+const UnsupportedDownloadSupport = {
+  status: "unsupported",
+  reason: "host-download-unavailable",
+  platforms: [
+    { platform: "macos", status: "unsupported", reason: "host-download-unavailable" },
+    { platform: "windows", status: "unsupported", reason: "host-download-unavailable" },
+    { platform: "linux", status: "unsupported", reason: "host-download-unavailable" }
+  ]
+} as const
+
 test("NativeCapabilities exposes support metadata from native surfaces", () => {
   const runtime = ManagedRuntime.make(NativeCapabilitiesLive)
   return runtime.runPromise(
@@ -60,6 +70,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const displayCaptureCaptureWindow = yield* capabilities.support(
         "DisplayCapture.captureWindow"
       )
+      const downloadCancel = yield* capabilities.support("Download.cancel")
       const crashReporterStart = yield* capabilities.support("CrashReporter.start")
       const crashReporterRecordBreadcrumb = yield* capabilities.support(
         "CrashReporter.recordBreadcrumb"
@@ -187,6 +198,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
         ]
       })
       expect(dialogOpenFile).toEqual(dialogOpenDirectory)
+      expect(downloadCancel).toEqual(UnsupportedDownloadSupport)
       expect(displayCaptureCaptureDisplay).toEqual({
         status: "partial",
         reason: "macos-screencapture-adapter",
