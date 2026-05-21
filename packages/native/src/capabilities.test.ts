@@ -55,6 +55,16 @@ const NativeNetworkUnavailableSupport = {
   ]
 } as const
 
+const NetworkAuthUnavailableSupport = {
+  status: "unsupported",
+  reason: "host-network-auth-unavailable",
+  platforms: [
+    { platform: "macos", status: "unsupported", reason: "host-network-auth-unavailable" },
+    { platform: "windows", status: "unsupported", reason: "host-network-auth-unavailable" },
+    { platform: "linux", status: "unsupported", reason: "host-network-auth-unavailable" }
+  ]
+} as const
+
 const RuntimeProbedEgressPolicySupport = {
   status: "partial",
   reason: "host-decision-log-runtime-probed",
@@ -151,6 +161,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const nativeNetworkCloseWebSocket = yield* capabilities.support(
         "NativeNetwork.closeWebSocket"
       )
+      const networkAuthHandleAuth = yield* capabilities.support("NetworkAuth.handleAuth")
       const webViewCreate = yield* capabilities.support("WebView.create")
       const menuClear = yield* capabilities.support("Menu.clear")
       const contextMenuShow = yield* capabilities.support("ContextMenu.show")
@@ -208,6 +219,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(nativeNetworkLocalhostUrl).toEqual(NativeNetworkUnavailableSupport)
       expect(nativeNetworkConnectWebSocket).toEqual(NativeNetworkUnavailableSupport)
       expect(nativeNetworkCloseWebSocket).toEqual(NativeNetworkUnavailableSupport)
+      expect(networkAuthHandleAuth).toEqual(NetworkAuthUnavailableSupport)
       expect(webViewCreate).toEqual({
         status: "partial",
         reason: "host-navigation-state-tracked",

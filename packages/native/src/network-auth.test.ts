@@ -13,6 +13,15 @@ import {
 } from "./network-auth.js"
 
 const UnsupportedMethods = ["setProxy", "handleAuth", "handleCertificate"] as const
+const UnsupportedSupport = {
+  status: "unsupported",
+  reason: "host-network-auth-unavailable",
+  platforms: [
+    { platform: "macos", status: "unsupported", reason: "host-network-auth-unavailable" },
+    { platform: "windows", status: "unsupported", reason: "host-network-auth-unavailable" },
+    { platform: "linux", status: "unsupported", reason: "host-network-auth-unavailable" }
+  ]
+} as const
 
 test("NetworkAuth exposes only isSupported as a callable RPC", () => {
   const callableTags = Array.from(NetworkAuthRpcs.requests.keys()).toSorted()
@@ -57,7 +66,7 @@ test("NetworkAuth declares the 3 unsupported methods as non-callable capability 
   const factTags = NetworkAuthCapabilityFacts.map((fact) => fact.tag).toSorted()
   expect(factTags).toEqual(UnsupportedMethods.map((method) => `NetworkAuth.${method}`).toSorted())
   for (const fact of NetworkAuthCapabilityFacts) {
-    expect(fact.support.status).toBe("unsupported")
+    expect(fact.support).toEqual(UnsupportedSupport)
   }
 })
 
@@ -72,7 +81,7 @@ test("NetworkAuth capability facts surface in the manifest and stay non-callable
       for (const method of UnsupportedMethods) {
         const fact = byTag.get(`NetworkAuth.${method}`)
         expect(fact).toBeDefined()
-        expect(fact?.support.status).toBe("unsupported")
+        expect(fact?.support).toEqual(UnsupportedSupport)
       }
 
       const callableFactTags = NetworkAuthSurface.schemaDocs
