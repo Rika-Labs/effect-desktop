@@ -52,6 +52,12 @@ permission callbacks or pending request state, so a routed `decide` method could
 only accept data without changing the browser permission prompt it claims to
 settle.
 
+`listDecisions` remains unsupported for the same host-boundary reason. The
+result must come from a profile-scoped decision store populated by real browser
+permission requests and decisions, not from renderer memory or a synthetic
+cache. The current host has no such store, so listing decisions would either be
+empty for the wrong reason or detached from actual WebView permission state.
+
 ## Support
 
 The host does not yet receive portable browser permission callbacks from profile-bound WebViews. Because those methods are not implemented, they are published as non-callable capability facts with `support.status: "unsupported"` rather than registered as invocable RPCs.
