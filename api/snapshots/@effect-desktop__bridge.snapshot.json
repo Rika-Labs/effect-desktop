@@ -869,6 +869,11 @@
       "signature": "const NETWORK_AUTH_IS_SUPPORTED_METHOD: \"NetworkAuth.isSupported\""
     },
     {
+      "name": "NETWORK_AUTH_SET_PROXY_METHOD",
+      "kind": "value",
+      "signature": "const NETWORK_AUTH_SET_PROXY_METHOD: \"NetworkAuth.setProxy\""
+    },
+    {
       "name": "parseHostProtocolFrameJson",
       "kind": "value",
       "signature": "const parseHostProtocolFrameJson: (frame: Uint8Array, operation: string) => Effect.Effect<unknown, HostProtocolError, never>"
