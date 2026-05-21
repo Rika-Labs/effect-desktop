@@ -129,6 +129,10 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
         hostStatus: "routed",
         support: { status: "partial", reason: "macos-screencapture-adapter" }
       })
+      expect(result.rows.find((row) => row.tag === "Dock.setBadgeCount")).toMatchObject({
+        hostStatus: "routed",
+        support: { status: "partial", reason: "dock behavior is platform-specific" }
+      })
       expect(result.rows.find((row) => row.tag === "SafeStorage.isAvailable")).toMatchObject({
         hostStatus: "routed",
         support: { status: "supported" }
