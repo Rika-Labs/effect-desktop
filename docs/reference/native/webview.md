@@ -189,7 +189,7 @@ The following are not callable RPCs. They are advertised in the native capabilit
 | --------------------- | ---------------------------------- | --------------------------------------------- |
 | `captureScreenshot`   | `{ webview }`                      | `host-document-output-unavailable`            |
 | `printToPdf`          | `{ webview }`                      | `host-document-output-unavailable`            |
-| `findInPage`          | `{ webview, query }`               | `host-document-output-unavailable`            |
+| `findInPage`          | `{ webview, query }`               | `host-find-in-page-unavailable`               |
 | `setUserAgent`        | `{ webview, userAgent }`           | `host-user-agent-runtime-unavailable`         |
 | `setAudioMuted`       | `{ webview, muted }`               | `host-runtime-media-control-unavailable`      |
 | `respondToPermission` | `{ webview, requestId, decision }` | `host-permission-request-routing-unavailable` |
@@ -261,8 +261,9 @@ operation.
 `setAudioMuted`, `respondToPermission`, `listFrames`, `postToFrame`,
 and `attachDebugger` are non-callable capability facts. They are
 advertised in the native capability manifest with `support.status:
-"unsupported"` — `host-document-output-unavailable` for the document-output
-methods, `host-user-agent-runtime-unavailable` for `setUserAgent`,
+"unsupported"` — `host-document-output-unavailable` for screenshot and PDF
+output, `host-find-in-page-unavailable` for `findInPage`,
+`host-user-agent-runtime-unavailable` for `setUserAgent`,
 `host-runtime-media-control-unavailable` for `setAudioMuted`,
 `host-permission-request-routing-unavailable` for `respondToPermission`,
 `host-frame-routing-unavailable` for the frame methods,

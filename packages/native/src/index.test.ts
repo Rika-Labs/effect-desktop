@@ -900,6 +900,16 @@ const webViewDocumentUnsupportedSupport = {
   ]
 } as const
 
+const webViewFindInPageUnsupportedSupport = {
+  status: "unsupported",
+  reason: "host-find-in-page-unavailable",
+  platforms: [
+    { platform: "macos", status: "unsupported", reason: "host-find-in-page-unavailable" },
+    { platform: "windows", status: "unsupported", reason: "host-find-in-page-unavailable" },
+    { platform: "linux", status: "unsupported", reason: "host-find-in-page-unavailable" }
+  ]
+} as const
+
 const webViewOpenDevToolsSupport = {
   status: "partial",
   reason: "host-devtools-build-gated",
@@ -2243,6 +2253,7 @@ test("WebView declares unsupported methods as non-callable capability facts", ()
   const byTag = new Map(WebViewCapabilityFacts.map((fact) => [fact.tag, fact] as const))
   expect(byTag.get("WebView.attachDebugger")?.support).toEqual(webViewDebuggerUnsupportedSupport)
   expect(byTag.get("WebView.captureScreenshot")?.support).toEqual(webViewDocumentUnsupportedSupport)
+  expect(byTag.get("WebView.findInPage")?.support).toEqual(webViewFindInPageUnsupportedSupport)
   expect(byTag.has("WebView.capability")).toBe(false)
   for (const fact of WebViewCapabilityFacts) {
     expect(fact.support.status).toBe("unsupported")
@@ -2271,6 +2282,7 @@ test("WebView capability facts surface in the manifest and stay non-callable", (
       expect(byTag.get("WebView.captureScreenshot")?.support).toEqual(
         webViewDocumentUnsupportedSupport
       )
+      expect(byTag.get("WebView.findInPage")?.support).toEqual(webViewFindInPageUnsupportedSupport)
       expect(byTag.has("WebView.capability")).toBe(false)
       const nonCallableTags = WebViewSurface.schemaDocs
         .filter((doc) => !doc.callable)

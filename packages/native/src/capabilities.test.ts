@@ -113,6 +113,16 @@ const WebViewDocumentOutputUnavailableSupport = {
   ]
 } as const
 
+const WebViewFindInPageUnavailableSupport = {
+  status: "unsupported",
+  reason: "host-find-in-page-unavailable",
+  platforms: [
+    { platform: "macos", status: "unsupported", reason: "host-find-in-page-unavailable" },
+    { platform: "windows", status: "unsupported", reason: "host-find-in-page-unavailable" },
+    { platform: "linux", status: "unsupported", reason: "host-find-in-page-unavailable" }
+  ]
+} as const
+
 const WebViewOpenDevToolsSupport = {
   status: "partial",
   reason: "host-devtools-build-gated",
@@ -290,6 +300,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const webViewCloseDevTools = yield* capabilities.support("WebView.closeDevTools")
       const webViewAttachDebugger = yield* capabilities.support("WebView.attachDebugger")
       const webViewCaptureScreenshot = yield* capabilities.support("WebView.captureScreenshot")
+      const webViewFindInPage = yield* capabilities.support("WebView.findInPage")
       const menuClear = yield* capabilities.support("Menu.clear")
       const contextMenuShow = yield* capabilities.support("ContextMenu.show")
       const safeStorageSet = yield* capabilities.support("SafeStorage.set")
@@ -367,6 +378,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(webViewCloseDevTools).toEqual(WebViewCloseDevToolsSupport)
       expect(webViewAttachDebugger).toEqual(WebViewDebuggerUnavailableSupport)
       expect(webViewCaptureScreenshot).toEqual(WebViewDocumentOutputUnavailableSupport)
+      expect(webViewFindInPage).toEqual(WebViewFindInPageUnavailableSupport)
       expect(webViewCreate).toEqual({ status: "supported" })
       expect(webViewDestroy).toEqual({ status: "supported" })
       expect(menuClear).toEqual({

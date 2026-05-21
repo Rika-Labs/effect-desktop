@@ -77,6 +77,7 @@ const WebViewDebuggerSupport = NativeSurface.support.unsupported(WebViewDebugger
   ]
 })
 const WebViewDocumentUnsupportedReason = "host-document-output-unavailable"
+const WebViewFindInPageUnsupportedReason = "host-find-in-page-unavailable"
 const WebViewRuntimeUserAgentUnsupportedReason = "host-user-agent-runtime-unavailable"
 const WebViewRuntimeMediaControlUnsupportedReason = "host-runtime-media-control-unavailable"
 const WebViewRuntimePermissionUnsupportedReason = "host-permission-request-routing-unavailable"
@@ -89,6 +90,16 @@ const WebViewDocumentUnsupportedSupport = NativeSurface.support.unsupported(
       { platform: "macos", status: "unsupported", reason: WebViewDocumentUnsupportedReason },
       { platform: "windows", status: "unsupported", reason: WebViewDocumentUnsupportedReason },
       { platform: "linux", status: "unsupported", reason: WebViewDocumentUnsupportedReason }
+    ]
+  }
+)
+const WebViewFindInPageSupport = NativeSurface.support.unsupported(
+  WebViewFindInPageUnsupportedReason,
+  {
+    platforms: [
+      { platform: "macos", status: "unsupported", reason: WebViewFindInPageUnsupportedReason },
+      { platform: "windows", status: "unsupported", reason: WebViewFindInPageUnsupportedReason },
+      { platform: "linux", status: "unsupported", reason: WebViewFindInPageUnsupportedReason }
     ]
   }
 )
@@ -322,7 +333,7 @@ const webViewCapabilityFact = (
 export const WebViewCapabilityFacts = Object.freeze([
   webViewCapabilityFact("captureScreenshot", WebViewDocumentUnsupportedSupport),
   webViewCapabilityFact("printToPdf", WebViewDocumentUnsupportedSupport),
-  webViewCapabilityFact("findInPage", WebViewDocumentUnsupportedSupport),
+  webViewCapabilityFact("findInPage", WebViewFindInPageSupport),
   webViewCapabilityFact("setUserAgent", WebViewRuntimeUserAgentSupport),
   webViewCapabilityFact("setAudioMuted", WebViewRuntimeMediaControlSupport),
   webViewCapabilityFact("respondToPermission", WebViewRuntimePermissionSupport),
