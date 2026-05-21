@@ -3419,25 +3419,7 @@
       "method": "check",
       "capability": "native",
       "support": {
-        "status": "partial",
-        "reason": "signed-manifest-check-only",
-        "platforms": [
-          {
-            "platform": "macos",
-            "status": "partial",
-            "reason": "signed-manifest-check-only"
-          },
-          {
-            "platform": "windows",
-            "status": "partial",
-            "reason": "signed-manifest-check-only"
-          },
-          {
-            "platform": "linux",
-            "status": "partial",
-            "reason": "signed-manifest-check-only"
-          }
-        ]
+        "status": "supported"
       },
       "hostStatus": "routed"
     },
@@ -4926,8 +4908,8 @@
     "total": 288,
     "routed": 239,
     "missing": 0,
-    "supported": 172,
-    "partial": 67,
+    "supported": 173,
+    "partial": 66,
     "unsupported": 49
   }
 }

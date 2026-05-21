@@ -158,7 +158,6 @@ pub const UPDATER_INSTALL_AND_RESTART_METHOD: &str = "Updater.installAndRestart"
 pub const UPDATER_GET_STATUS_METHOD: &str = "Updater.getStatus";
 pub const UPDATER_READY_FOR_RESTART_METHOD: &str = "Updater.readyForRestart";
 pub const UPDATER_PREPARING_RESTART_EVENT: &str = "Updater.PreparingRestart";
-pub const UPDATER_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const CRASH_REPORTER_START_METHOD: &str = "CrashReporter.start";
 pub const CRASH_REPORTER_RECORD_BREADCRUMB_METHOD: &str = "CrashReporter.recordBreadcrumb";
 pub const CRASH_REPORTER_FLUSH_METHOD: &str = "CrashReporter.flush";
@@ -2581,14 +2580,6 @@ pub struct UpdaterCheckPayload {
 }
 
 impl UpdaterCheckPayload {
-    pub fn new(current_version: Option<String>) -> Self {
-        Self {
-            current_version,
-            manifest_json: None,
-            trust_anchors: None,
-        }
-    }
-
     pub fn with_signed_manifest(
         current_version: Option<String>,
         manifest_json: String,
@@ -14192,7 +14183,7 @@ mod tests {
         NATIVE_FILE_SYSTEM_UNSUPPORTED_REASON, NOTIFICATION_UNSUPPORTED_REASON, PROTOCOL_VERSION,
         REALTIME_MEDIA_SESSION_UNSUPPORTED_REASON, TRANSACTIONAL_FILE_MUTATION_UNSUPPORTED_REASON,
         TRANSIENT_WINDOW_ROLE_UNSUPPORTED_REASON, TRAY_UNSUPPORTED_REASON,
-        UPDATER_UNSUPPORTED_REASON, WORKSPACE_INDEX_UNSUPPORTED_REASON,
+        WORKSPACE_INDEX_UNSUPPORTED_REASON,
     };
     use std::{
         collections::{BTreeMap, BTreeSet},
@@ -14958,12 +14949,6 @@ mod tests {
 
     #[test]
     fn updater_payloads_encode_current_contract() {
-        let check = UpdaterCheckPayload::new(Some("1.0.0".to_string()));
-        assert_eq!(check.current_version(), Some("1.0.0"));
-        assert_eq!(
-            serde_json::to_string(&check).expect("updater check should encode"),
-            r#"{"currentVersion":"1.0.0"}"#
-        );
         let signed_check = UpdaterCheckPayload::with_signed_manifest(
             Some("1.0.0".to_string()),
             r#"{"schemaVersion":1}"#.to_string(),
@@ -15021,8 +15006,6 @@ mod tests {
             serde_json::to_string(&restart).expect("updater restart event should encode"),
             r#"{"deadlineMs":5000}"#
         );
-
-        assert_eq!(UPDATER_UNSUPPORTED_REASON, "host-adapter-unimplemented");
     }
 
     #[test]

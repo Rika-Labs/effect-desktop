@@ -999,6 +999,11 @@ const expectedUpdaterMethods: Array<(typeof UpdaterMethodNames)[number]> = [
   "getStatus",
   "readyForRestart"
 ]
+const updaterCheckInput = (currentVersion = "1.0.0") => ({
+  currentVersion,
+  manifestJson: '{"schemaVersion":1}',
+  trustAnchors: [{ keyVersion: 7, publicKey: "ed25519:public-key" }]
+})
 
 const expectedCrashReporterMethods: Array<(typeof CrashReporterMethodNames)[number]> = [
   "start",
@@ -6960,7 +6965,7 @@ test("Updater service delegates through a substitutable UpdaterClient port", () 
       const result = yield* runScoped(
         Effect.gen(function* () {
           const updater = yield* Updater
-          const check = yield* updater.check({ currentVersion: "1.0.0" })
+          const check = yield* updater.check(updaterCheckInput("1.0.0"))
           const downloaded = yield* updater.download({ version: "1.1.0" })
           const installed = yield* updater.install({ version: "1.1.0" })
           const restarted = yield* updater.installAndRestart({ version: "1.1.0" })
@@ -7002,7 +7007,7 @@ test("Updater bridge client sends typed host envelopes and decodes status values
       const result = yield* runScoped(
         Effect.gen(function* () {
           const updater = yield* Updater
-          const check = yield* updater.check({ currentVersion: "1.0.0" })
+          const check = yield* updater.check(updaterCheckInput("1.0.0"))
           const downloaded = yield* updater.download({ version: "1.1.0" })
           const status = yield* updater.getStatus()
           return { check, downloaded, status }
@@ -7015,7 +7020,7 @@ test("Updater bridge client sends typed host envelopes and decodes status values
       expect(result.downloaded.state).toBe("downloaded")
       expect(result.status.state).toBe("update-available")
       expect(requests.map((request) => [request.method, request.payload])).toEqual([
-        ["Updater.check", { currentVersion: "1.0.0" }],
+        ["Updater.check", updaterCheckInput("1.0.0")],
         ["Updater.download", { version: "1.1.0" }],
         ["Updater.getStatus", null]
       ])
@@ -7056,7 +7061,7 @@ test("Updater bridge client sends signed manifest check inputs", () =>
     })
   ))
 
-test("Updater bridge client rejects incomplete signed manifest check inputs", () =>
+test("Updater bridge client rejects empty signed manifest trust anchors", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const requests: HostProtocolRequestEnvelope[] = []
@@ -7070,19 +7075,11 @@ test("Updater bridge client rejects incomplete signed manifest check inputs", ()
         )
       )
 
-      const missingAnchorsExit = yield* Effect.exit(
-        client.check({ manifestJson: '{"schemaVersion":1}' })
-      )
       const emptyAnchorsExit = yield* Effect.exit(
         client.check({ manifestJson: '{"schemaVersion":1}', trustAnchors: [] })
       )
-      const missingManifestExit = yield* Effect.exit(
-        client.check({ trustAnchors: [{ keyVersion: 7, publicKey: "ed25519:public-key" }] })
-      )
 
-      expectExitFailure(missingAnchorsExit, (error) => hasErrorTag(error, "InvalidArgument"))
       expectExitFailure(emptyAnchorsExit, (error) => hasErrorTag(error, "InvalidArgument"))
-      expectExitFailure(missingManifestExit, (error) => hasErrorTag(error, "InvalidArgument"))
       expect(requests).toEqual([])
     })
   ))
@@ -12792,7 +12789,7 @@ test("Updater bridge client rejects empty version strings as InvalidArgument", (
         )
       )
 
-      const checkExit = yield* Effect.exit(client.check({ currentVersion: "" }))
+      const checkExit = yield* Effect.exit(client.check(updaterCheckInput("")))
       const downloadExit = yield* Effect.exit(client.download({ version: "" }))
       const installExit = yield* Effect.exit(client.install({ version: "" }))
 
@@ -12810,7 +12807,7 @@ test("Updater bridge client rejects check responses missing version when availab
       const checkExit = yield* runScoped(
         Effect.gen(function* () {
           const client = yield* Updater
-          return yield* Effect.exit(client.check({ currentVersion: "1.0.0" }))
+          return yield* Effect.exit(client.check(updaterCheckInput("1.0.0")))
         }),
         Layer.provide(
           UpdaterLive,
@@ -12822,7 +12819,7 @@ test("Updater bridge client rejects check responses missing version when availab
 
       expectExitFailure(checkExit, (error) => hasErrorTag(error, "InvalidOutput"))
       expect(requests).toEqual([
-        expect.objectContaining({ method: "Updater.check", payload: { currentVersion: "1.0.0" } })
+        expect.objectContaining({ method: "Updater.check", payload: updaterCheckInput("1.0.0") })
       ])
     })
   ))
@@ -12898,7 +12895,7 @@ test("Updater bridge client rejects control-byte versions as InvalidArgument", (
       const versions = ["1.0.0\u0000dev", "1.0.0\n", "1.0.0\u007f"]
 
       for (const version of versions) {
-        const checkExit = yield* Effect.exit(client.check({ currentVersion: version }))
+        const checkExit = yield* Effect.exit(client.check(updaterCheckInput(version)))
         const downloadExit = yield* Effect.exit(client.download({ version }))
         const installExit = yield* Effect.exit(client.install({ version }))
 
@@ -12917,7 +12914,7 @@ test("Updater bridge client rejects control-byte versions from host output", () 
       const checkExit = yield* runScoped(
         Effect.gen(function* () {
           const client = yield* Updater
-          return yield* Effect.exit(client.check({ currentVersion: "1.0.0" }))
+          return yield* Effect.exit(client.check(updaterCheckInput("1.0.0")))
         }),
         Layer.provide(
           UpdaterLive,

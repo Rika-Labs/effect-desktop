@@ -8,7 +8,7 @@ effect_version: 4
 
 # `Updater`
 
-Auto-update service contract. The TypeScript surface is Schema-typed and test-substitutable. The native host currently supports a local signed-manifest check, local file artifact staging for that verified manifest, committing the staged artifact into the host-owned current-bundle path, and status for those host-owned steps. `Updater.check` can verify a caller-supplied manifest JSON string against caller-supplied Ed25519 trust anchors, then report whether that manifest version differs from `currentVersion`. `Updater.download` can stage the verified manifest's current-platform `file://` artifact after checking its signed byte count and SHA-256 digest. `Updater.install` commits the staged artifact. `Updater.installAndRestart` commits the staged artifact and emits `Updater.PreparingRestart`; `Updater.readyForRestart` acknowledges that renderer work is quiesced before restart. `Updater.getStatus` reports the host-owned result as `idle`, `update-available`, `downloading`, `downloaded`, `installing`, or `error`.
+Auto-update service contract. The TypeScript surface is Schema-typed and test-substitutable. The native host currently supports a local signed-manifest check, local file artifact staging for that verified manifest, committing the staged artifact into the host-owned current-bundle path, and status for those host-owned steps. `Updater.check` verifies a caller-supplied manifest JSON string against caller-supplied Ed25519 trust anchors, then reports whether that manifest version differs from `currentVersion`. `Updater.download` can stage the verified manifest's current-platform `file://` artifact after checking its signed byte count and SHA-256 digest. `Updater.install` commits the staged artifact. `Updater.installAndRestart` commits the staged artifact and emits `Updater.PreparingRestart`; `Updater.readyForRestart` acknowledges that renderer work is quiesced before restart. `Updater.getStatus` reports the host-owned result as `idle`, `update-available`, `downloading`, `downloaded`, `installing`, or `error`.
 
 The host does not fetch feeds, download network artifacts, enforce update policy, or relaunch the process into an installed update yet. The current restart path is a typed readiness handshake over the local staged install.
 
@@ -16,20 +16,20 @@ The host does not fetch feeds, download network artifacts, enforce update policy
 
 ## Methods
 
-| Method              | Payload                                             | Success                                                    | Current support |
-| ------------------- | --------------------------------------------------- | ---------------------------------------------------------- | --------------- |
-| `check`             | `{ currentVersion?, manifestJson?, trustAnchors? }` | `{ available: boolean, version?: string, notes?: string }` | partial         |
-| `download`          | `{ version? }`                                      | updater status result                                      | partial         |
-| `install`           | `{ version? }`                                      | updater status result                                      | partial         |
-| `installAndRestart` | `{ version? }`                                      | updater status result                                      | partial         |
-| `getStatus`         | `void`                                              | updater status result                                      | partial         |
-| `readyForRestart`   | `void`                                              | `void`                                                     | partial         |
+| Method              | Payload                                           | Success                                                    | Current support |
+| ------------------- | ------------------------------------------------- | ---------------------------------------------------------- | --------------- |
+| `check`             | `{ currentVersion?, manifestJson, trustAnchors }` | `{ available: boolean, version?: string, notes?: string }` | supported       |
+| `download`          | `{ version? }`                                    | updater status result                                      | partial         |
+| `install`           | `{ version? }`                                    | updater status result                                      | partial         |
+| `installAndRestart` | `{ version? }`                                    | updater status result                                      | partial         |
+| `getStatus`         | `void`                                            | updater status result                                      | partial         |
+| `readyForRestart`   | `void`                                            | `void`                                                     | partial         |
 
 ## Types
 
 `UpdaterCheckOptions`, `UpdaterDownloadOptions`, `UpdaterInstallOptions`.
 
-`manifestJson` and `trustAnchors` must be provided together. Each trust anchor has `{ keyVersion, publicKey }`, where `publicKey` is an `ed25519:<base64>` public key envelope.
+`manifestJson` and `trustAnchors` are required for `check`. Each trust anchor has `{ keyVersion, publicKey }`, where `publicKey` is an `ed25519:<base64>` public key envelope.
 
 ## Errors
 

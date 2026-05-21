@@ -8,6 +8,7 @@ import { HttpClient as HttpClientNs } from "effect/unstable/http"
 import { Activity, DurableClock, DurableDeferred, Workflow } from "effect/unstable/workflow"
 
 import { Updater } from "./updater.js"
+import { UpdaterTrustAnchor } from "./contracts/updater.js"
 
 const HttpClientTag = HttpClientNs.HttpClient
 
@@ -20,6 +21,8 @@ export class UpdateManifest extends Schema.Class<UpdateManifest>("UpdateManifest
   version: Schema.String,
   url: Schema.String,
   signature: Schema.String,
+  hostManifestJson: Schema.String,
+  trustAnchors: Schema.Array(UpdaterTrustAnchor).check(Schema.isNonEmpty()),
   notes: Schema.optionalKey(Schema.String)
 }) {}
 
@@ -86,7 +89,10 @@ const requireHostUpdateAvailable = (bytes: Uint8Array, manifest: UpdateManifest)
       void bytes
       const updater = yield* Updater
       const result = yield* updater
-        .check({ currentVersion: manifest.version })
+        .check({
+          manifestJson: manifest.hostManifestJson,
+          trustAnchors: manifest.trustAnchors
+        })
         .pipe(Effect.mapError((e) => new UpdateError({ stage: "verify", message: formatCause(e) })))
       if (!result.available) {
         return yield* new UpdateError({

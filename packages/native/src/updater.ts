@@ -25,19 +25,10 @@ import {
 
 export type UpdaterError = HostProtocolError
 
-const CheckPartialSupportReason = "signed-manifest-check-only"
 const DownloadPartialSupportReason = "signed-manifest-file-artifact-only"
 const InstallPartialSupportReason = "signed-manifest-staged-install-only"
 const RestartPartialSupportReason = "signed-manifest-restart-handshake-only"
 const StatusPartialSupportReason = "signed-manifest-status-only"
-
-const UpdaterCheckSupport = NativeSurface.support.partial(CheckPartialSupportReason, {
-  platforms: [
-    { platform: "macos", status: "partial", reason: CheckPartialSupportReason },
-    { platform: "windows", status: "partial", reason: CheckPartialSupportReason },
-    { platform: "linux", status: "partial", reason: CheckPartialSupportReason }
-  ]
-})
 
 const UpdaterStatusSupport = NativeSurface.support.partial(StatusPartialSupportReason, {
   platforms: [
@@ -84,7 +75,7 @@ export const UpdaterCheck = NativeSurface.rpc("Updater", "check", {
     P.nativeInvoke({ primitive: "Updater", methods: ["check"] })
   ),
   endpoint: "mutation",
-  support: UpdaterCheckSupport
+  support: NativeSurface.support.supported
 })
 export const UpdaterDownload = NativeSurface.rpc("Updater", "download", {
   payload: UpdaterDownloadInput,
@@ -160,7 +151,7 @@ export const UpdaterMethodNames = Object.freeze([
 
 export interface UpdaterClientApi {
   readonly check: (
-    options?: UpdaterCheckOptions
+    options: UpdaterCheckOptions
   ) => Effect.Effect<UpdaterCheckResult, UpdaterError, never>
   readonly download: (
     options?: UpdaterDownloadOptions
@@ -286,7 +277,7 @@ const updaterClientFromRpcClient = (
   onPreparingRestart: () => Stream.Stream<UpdaterPreparingRestartEvent, UpdaterError, never>
 ): UpdaterClientApi =>
   Object.freeze({
-    check: (input = {}) =>
+    check: (input) =>
       decodeUpdaterCheckInput(input, "Updater.check").pipe(
         Effect.flatMap((decoded) =>
           runUpdaterRpc(client["Updater.check"](decoded), "Updater.check")

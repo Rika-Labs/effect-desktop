@@ -5451,7 +5451,7 @@ mod tests {
     }
 
     #[test]
-    fn updater_check_routes_to_typed_unsupported() {
+    fn updater_check_routes_to_typed_invalid_argument_for_unsigned_check() {
         let response = test_router()
             .dispatch_at(
                 request_with_payload(
@@ -5470,8 +5470,9 @@ mod tests {
                 timestamp: 1710000000112,
                 trace_id: "trace-request-updater-check".to_string(),
                 payload: None,
-                error: Some(HostProtocolError::unsupported(
-                    host_protocol::UPDATER_UNSUPPORTED_REASON,
+                error: Some(HostProtocolError::invalid_argument(
+                    "manifestJson",
+                    "is required",
                     host_protocol::UPDATER_CHECK_METHOD,
                 )),
             }
@@ -5479,7 +5480,7 @@ mod tests {
     }
 
     #[test]
-    fn updater_invalid_payload_rejects_before_unsupported() {
+    fn updater_invalid_payload_rejects_before_state_checks() {
         let response = test_router()
             .dispatch_at(
                 request_with_payload(

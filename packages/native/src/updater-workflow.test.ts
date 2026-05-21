@@ -46,7 +46,9 @@ test("UpdateWorkflow fails when host update availability is not confirmed", () =
       const manifest = {
         version: "2.0.0",
         url: "https://updates.example/app.bin",
-        signature: "sig"
+        signature: "sig",
+        hostManifestJson: '{"schemaVersion":1}',
+        trustAnchors: [{ keyVersion: 7, publicKey: "ed25519:public-key" }]
       }
 
       const httpLayer = makeHttpLayer((url) => {
@@ -107,7 +109,9 @@ test("UpdateWorkflow rejects manifest versions that are not safe filename segmen
       const manifest = {
         version: "../escape",
         url: "https://updates.example/app.bin",
-        signature: "sig"
+        signature: "sig",
+        hostManifestJson: '{"schemaVersion":1}',
+        trustAnchors: [{ keyVersion: 7, publicKey: "ed25519:public-key" }]
       }
 
       const httpLayer = makeHttpLayer((url) => {

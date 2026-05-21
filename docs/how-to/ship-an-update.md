@@ -47,9 +47,9 @@ Upload the manifest and artifacts to your distribution host (S3, Cloudflare R2, 
 
 ## 3. Runtime updater status
 
-The runtime updater is not executable yet. `UpdaterRpcs` and `UpdaterHandlersLive` describe the planned surface, but the Rust host does not verify manifests, download artifacts, install updates, or restart the app.
+The runtime updater has an executable local subset: `Updater.check` verifies caller-supplied signed manifest JSON against caller-supplied Ed25519 trust anchors. Follow-on lifecycle calls are still partial and limited to host-owned local file staging, staged install commit, and restart readiness; the host does not fetch feeds, download network artifacts, enforce production update policy, or relaunch the app yet.
 
-Do not wire `UpdaterRpcs` into production apps until #1331 is implemented. The eventual manifest shape is expected to look like this:
+Do not wire `UpdaterRpcs` into production apps until the remaining updater lifecycle is complete. The manifest wiring is expected to look like this:
 
 ```ts
 import { Desktop } from "@effect-desktop/core"
@@ -60,15 +60,15 @@ export const App = Desktop.make({
 })
 
 // Updater configuration (feedUrl, channel, publicKeys, pollIntervalMs) is
-// declared in desktop.config.ts under the `publishing` and `updater` sections;
-// runtime consumption is planned for UpdaterHandlersLive once the host adapter exists.
+// declared in desktop.config.ts under the `publishing` and `updater` sections.
+// Feed polling and policy enforcement are still application-owned.
 ```
 
-`feedUrl` will substitute `{channel}` once the host updater exists. Polling and on-demand checks are planned behavior, not current runtime behavior.
+`feedUrl` will substitute `{channel}` for published manifests. Host-owned polling and on-demand feed checks are planned behavior, not current runtime behavior.
 
 ## 4. Renderer trigger
 
-The intended runtime contract is to verify the manifest signature against the embedded public key before downloading anything. The current host adapter is not implemented, so bad-signature handling and install prevention are not executable yet.
+The current host check contract verifies the manifest signature against caller-supplied public keys before any updater state advances. Bad signatures fail with `UpdateSignatureInvalid`; malformed manifests and malformed trust anchors fail with `InvalidArgument`.
 
 ## 5. Rollback
 

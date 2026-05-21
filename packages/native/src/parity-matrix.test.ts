@@ -468,7 +468,7 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
       })
       expect(result.rows.find((row) => row.tag === "Updater.check")).toMatchObject({
         hostStatus: "routed",
-        support: { status: "partial", reason: "signed-manifest-check-only" }
+        support: { status: "supported" }
       })
       expect(result.rows.find((row) => row.tag === "Updater.download")).toMatchObject({
         hostStatus: "routed",

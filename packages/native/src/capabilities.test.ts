@@ -313,15 +313,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(hasMenuBindCommand).toBe(false)
       expect(safeStorageSet).toEqual({ status: "supported" })
       expect(safeStorageIsAvailable).toEqual({ status: "supported" })
-      expect(updaterCheck).toEqual({
-        status: "partial",
-        reason: "signed-manifest-check-only",
-        platforms: [
-          { platform: "macos", status: "partial", reason: "signed-manifest-check-only" },
-          { platform: "windows", status: "partial", reason: "signed-manifest-check-only" },
-          { platform: "linux", status: "partial", reason: "signed-manifest-check-only" }
-        ]
-      })
+      expect(updaterCheck).toEqual({ status: "supported" })
       expect(updaterDownload).toEqual({
         status: "partial",
         reason: "signed-manifest-file-artifact-only",

@@ -75,10 +75,7 @@ pub(crate) fn check(payload: Option<Value>) -> Result<Option<Value>, HostProtoco
         input.current_version(),
         host_protocol::UPDATER_CHECK_METHOD,
     )?;
-    if input.manifest_json().is_some() || input.trust_anchors().is_some() {
-        return check_signed_manifest(&input);
-    }
-    Err(unsupported(host_protocol::UPDATER_CHECK_METHOD))
+    check_signed_manifest(&input)
 }
 
 pub(crate) fn download(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
@@ -210,9 +207,14 @@ fn validate_optional_version(
 
 fn check_signed_manifest(input: &UpdaterCheckPayload) -> Result<Option<Value>, HostProtocolError> {
     let manifest_json = input.manifest_json().ok_or_else(|| {
+        let reason = if input.trust_anchors().is_some() {
+            "is required when trustAnchors is provided"
+        } else {
+            "is required"
+        };
         HostProtocolError::invalid_argument(
             "manifestJson",
-            "is required when trustAnchors is provided",
+            reason,
             host_protocol::UPDATER_CHECK_METHOD,
         )
     })?;
@@ -887,10 +889,6 @@ fn manifest_key_version(manifest_json: &str) -> Option<u32> {
         .and_then(|value| u32::try_from(value).ok())
 }
 
-fn unsupported(operation: &'static str) -> HostProtocolError {
-    HostProtocolError::unsupported(host_protocol::UPDATER_UNSUPPORTED_REASON, operation)
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
@@ -911,13 +909,14 @@ mod tests {
     static UPDATER_TEST_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
     #[test]
-    fn updater_requests_decode_before_unsupported() {
+    fn updater_requests_decode_before_state_checks() {
         let _guard = updater_test_guard();
         reset_status();
         assert_eq!(
             check(Some(json!({ "currentVersion": "1.0.0" }))).expect_err("check"),
-            HostProtocolError::unsupported(
-                host_protocol::UPDATER_UNSUPPORTED_REASON,
+            HostProtocolError::invalid_argument(
+                "manifestJson",
+                "is required",
                 host_protocol::UPDATER_CHECK_METHOD,
             )
         );
@@ -1117,7 +1116,7 @@ mod tests {
     }
 
     #[test]
-    fn updater_rejects_malformed_payloads_before_unsupported() {
+    fn updater_rejects_malformed_payloads_before_state_checks() {
         let _guard = updater_test_guard();
         reset_status();
         assert_eq!(

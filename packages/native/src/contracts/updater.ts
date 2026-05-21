@@ -15,8 +15,8 @@ export class UpdaterTrustAnchor extends Schema.Class<UpdaterTrustAnchor>("Update
 
 export class UpdaterCheckInput extends Schema.Class<UpdaterCheckInput>("UpdaterCheckInput")({
   currentVersion: Schema.optionalKey(UpdaterVersion),
-  manifestJson: Schema.optionalKey(UpdaterSignedManifestJson),
-  trustAnchors: Schema.optionalKey(Schema.Array(UpdaterTrustAnchor).check(Schema.isNonEmpty()))
+  manifestJson: UpdaterSignedManifestJson,
+  trustAnchors: Schema.Array(UpdaterTrustAnchor).check(Schema.isNonEmpty())
 }) {}
 
 export class UpdaterDownloadInput extends Schema.Class<UpdaterDownloadInput>(
