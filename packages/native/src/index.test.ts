@@ -6970,6 +6970,12 @@ test("Updater.download support metadata keeps network artifact download unavaila
   })
 })
 
+test("Updater.getStatus support metadata reports the host-owned updater state", () => {
+  expect(UpdaterRpcs.requests.get("Updater.getStatus")!.pipe(rpcSupport)).toEqual({
+    status: "supported"
+  })
+})
+
 test("Updater service delegates through a substitutable UpdaterClient port", () =>
   Effect.runPromise(
     Effect.gen(function* () {

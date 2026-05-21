@@ -232,7 +232,7 @@ The machine-readable matrix lives in [`parity-matrix.json`](parity-matrix.json).
 | `Tray`                      | `setTooltip`                | `partial`     | `Tray.setTooltip`                         | `routed`          |
 | `Updater`                   | `check`                     | `supported`   | `Updater.check`                           | `routed`          |
 | `Updater`                   | `download`                  | `partial`     | `Updater.download`                        | `routed`          |
-| `Updater`                   | `getStatus`                 | `partial`     | `Updater.getStatus`                       | `routed`          |
+| `Updater`                   | `getStatus`                 | `supported`   | `Updater.getStatus`                       | `routed`          |
 | `Updater`                   | `install`                   | `partial`     | `Updater.install`                         | `routed`          |
 | `Updater`                   | `installAndRestart`         | `partial`     | `Updater.installAndRestart`               | `routed`          |
 | `Updater`                   | `readyForRestart`           | `partial`     | `Updater.readyForRestart`                 | `routed`          |

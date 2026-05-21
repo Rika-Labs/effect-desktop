@@ -3457,25 +3457,7 @@
       "method": "getStatus",
       "capability": "native",
       "support": {
-        "status": "partial",
-        "reason": "signed-manifest-status-only",
-        "platforms": [
-          {
-            "platform": "macos",
-            "status": "partial",
-            "reason": "signed-manifest-status-only"
-          },
-          {
-            "platform": "windows",
-            "status": "partial",
-            "reason": "signed-manifest-status-only"
-          },
-          {
-            "platform": "linux",
-            "status": "partial",
-            "reason": "signed-manifest-status-only"
-          }
-        ]
+        "status": "supported"
       },
       "hostStatus": "routed"
     },
@@ -4908,8 +4890,8 @@
     "total": 288,
     "routed": 239,
     "missing": 0,
-    "supported": 173,
-    "partial": 66,
+    "supported": 174,
+    "partial": 65,
     "unsupported": 49
   }
 }

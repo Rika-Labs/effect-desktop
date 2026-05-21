@@ -146,6 +146,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const dockProgress = yield* capabilities.support("Dock.setProgress")
       const updaterCheck = yield* capabilities.support("Updater.check")
       const updaterDownload = yield* capabilities.support("Updater.download")
+      const updaterGetStatus = yield* capabilities.support("Updater.getStatus")
       const updaterInstall = yield* capabilities.support("Updater.install")
       const dialogOpenFile = yield* capabilities.support("Dialog.openFile")
       const dialogOpenDirectory = yield* capabilities.support("Dialog.openDirectory")
@@ -323,6 +324,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
           { platform: "linux", status: "partial", reason: "signed-manifest-file-artifact-only" }
         ]
       })
+      expect(updaterGetStatus).toEqual({ status: "supported" })
       expect(updaterInstall).toEqual({
         status: "partial",
         reason: "signed-manifest-staged-install-only",

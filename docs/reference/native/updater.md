@@ -24,7 +24,7 @@ The host does not fetch feeds, download network artifacts, enforce update policy
 | `download`          | `{ version? }`                                    | updater status result                                      | partial         |
 | `install`           | `{ version? }`                                    | updater status result                                      | partial         |
 | `installAndRestart` | `{ version? }`                                    | updater status result                                      | partial         |
-| `getStatus`         | `void`                                            | updater status result                                      | partial         |
+| `getStatus`         | `void`                                            | updater status result                                      | supported       |
 | `readyForRestart`   | `void`                                            | `void`                                                     | partial         |
 
 ## Types

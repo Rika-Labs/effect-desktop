@@ -28,15 +28,6 @@ export type UpdaterError = HostProtocolError
 const DownloadPartialSupportReason = "signed-manifest-file-artifact-only"
 const InstallPartialSupportReason = "signed-manifest-staged-install-only"
 const RestartPartialSupportReason = "signed-manifest-restart-handshake-only"
-const StatusPartialSupportReason = "signed-manifest-status-only"
-
-const UpdaterStatusSupport = NativeSurface.support.partial(StatusPartialSupportReason, {
-  platforms: [
-    { platform: "macos", status: "partial", reason: StatusPartialSupportReason },
-    { platform: "windows", status: "partial", reason: StatusPartialSupportReason },
-    { platform: "linux", status: "partial", reason: StatusPartialSupportReason }
-  ]
-})
 
 const UpdaterDownloadSupport = NativeSurface.support.partial(DownloadPartialSupportReason, {
   platforms: [
@@ -111,7 +102,7 @@ export const UpdaterGetStatus = NativeSurface.rpc("Updater", "getStatus", {
     P.nativeInvoke({ primitive: "Updater", methods: ["getStatus"] })
   ),
   endpoint: "mutation",
-  support: UpdaterStatusSupport
+  support: NativeSurface.support.supported
 })
 export const UpdaterReadyForRestart = NativeSurface.rpc("Updater", "readyForRestart", {
   payload: Schema.Void,
