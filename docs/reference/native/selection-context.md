@@ -43,6 +43,15 @@ The actor is data:
 - `kind`: `"workspace"`, `"extension"`, `"tool"`, `"process"`, `"native"`, `"app"`, or `"window"`
 - `id`: printable non-empty string
 
+`readDocumentContext` remains unsupported as an explicit v1 native capability
+decision. A truthful implementation needs a host adapter that can find the
+active document, separate metadata from content, apply the caller's permission
+mode before reading text, normalize provider-specific document IDs and paths,
+and return typed failures when the focused app does not expose document content.
+The current host only has the protocol shape and a fail-closed support query; it
+does not have macOS Accessibility, Windows UI Automation, or Linux AT-SPI
+document adapters wired to this contract.
+
 ## Support
 
 The current Rust host adapter is intentionally fail-closed while OS selection and document adapters are not implemented.
