@@ -285,6 +285,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
         "RealtimeMediaSession.interrupt"
       )
       const webViewCreate = yield* capabilities.support("WebView.create")
+      const webViewDestroy = yield* capabilities.support("WebView.destroy")
       const webViewOpenDevTools = yield* capabilities.support("WebView.openDevTools")
       const webViewCloseDevTools = yield* capabilities.support("WebView.closeDevTools")
       const webViewAttachDebugger = yield* capabilities.support("WebView.attachDebugger")
@@ -367,6 +368,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(webViewAttachDebugger).toEqual(WebViewDebuggerUnavailableSupport)
       expect(webViewCaptureScreenshot).toEqual(WebViewDocumentOutputUnavailableSupport)
       expect(webViewCreate).toEqual({ status: "supported" })
+      expect(webViewDestroy).toEqual({ status: "supported" })
       expect(menuClear).toEqual({
         status: "partial",
         reason: "macos-menu-clear-only",

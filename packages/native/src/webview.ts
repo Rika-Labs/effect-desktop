@@ -296,7 +296,7 @@ export const WebViewDestroy = NativeSurface.rpc("WebView", "destroy", {
     P.nativeInvoke({ primitive: "WebView", methods: ["destroy"] })
   ),
   endpoint: "mutation",
-  support: WebViewNavigationSupport
+  support: NativeSurface.support.supported
 })
 
 const webViewCapabilityFact = (

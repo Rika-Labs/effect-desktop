@@ -15,11 +15,11 @@ The Rust host attaches the application WebView during `Window.create`.
 `WindowHandle` owner and supports initial URL, origin policy, optional
 `SessionProfile`, and optional preload isolation. Navigation methods own
 generated host handles for child WebViews: `loadRoute`, `loadUrl`, `reload`,
-`stop`, `goBack`, `goForward`, `getNavigationState`, and `destroy` route through
-the host event-loop command port. Capability metadata marks the history-related
-navigation methods `partial` because history state is tracked from Wry
-navigation/page-load callbacks and host-issued commands rather than a portable
-browser history API.
+`stop`, `goBack`, `goForward`, and `getNavigationState` route through the host
+event-loop command port. `WebView.destroy` releases the retained child WebView
+resource. Capability metadata marks the history-related navigation methods
+`partial` because history state is tracked from Wry navigation/page-load
+callbacks and host-issued commands rather than a portable browser history API.
 
 `WebView.create` can bind a child WebView to a typed `SessionProfile` handle.
 The host retains a WebContext registry for profile-bound child WebViews, but
@@ -241,9 +241,9 @@ For the example above, renderer code can call
 ## Status
 
 The contract is declared through `WebViewRpcs`. App runtime WebView attachment
-is owned by `Window.create`. `WebView.create` is host-backed and reports
-`supported`. Direct child WebView navigation methods are routed through
-host-backed resources and report `partial` support with
+is owned by `Window.create`. `WebView.create` and `WebView.destroy` are
+host-backed and report `supported`. Direct child WebView navigation methods are
+routed through host-backed resources and report `partial` support with
 `host-navigation-state-tracked`. `setNavigationPolicy` is also host-backed for
 those resources and shares the same partial support reason because popup
 approval and external-open delegation are still intentionally conservative.
