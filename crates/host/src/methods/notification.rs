@@ -491,6 +491,25 @@ mod tests {
         assert!(matches!(error, HostProtocolError::InvalidArgument { .. }));
     }
 
+    #[cfg(not(target_os = "linux"))]
+    #[test]
+    fn notification_show_returns_unsupported_without_lifecycle_adapter() {
+        let error = show_with_event_sender(
+            Some(json!({
+                "title": "Build finished",
+                "body": "Open results"
+            })),
+            None,
+        )
+        .expect_err("non-Linux notification show has no managed lifecycle adapter");
+
+        assert!(matches!(
+            error,
+            HostProtocolError::Unsupported { reason, .. }
+                if reason == host_protocol::NOTIFICATION_UNSUPPORTED_REASON
+        ));
+    }
+
     #[test]
     fn notification_close_rejects_malformed_handle() {
         let error = close(Some(json!({

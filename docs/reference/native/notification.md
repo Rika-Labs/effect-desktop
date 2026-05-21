@@ -45,6 +45,8 @@ On macOS and Windows, `requestPermission` and `getPermissionStatus` return `Unsu
 
 `show` registers the returned notification handle with the `ResourceRegistry`. Closing the returned owner scope, renderer disconnect, or runtime restart closes the native notification. Explicit `close` disposes the registry entry so scope finalizers do not double-close. Native click, action, and close responses remove terminal host resources so stale handles fail closed.
 
+`show` is Linux-only today because the public contract returns a managed notification handle, not a fire-and-forget toast. A platform is supported only when the host can create the notification, retain its lifecycle handle, and keep close/click/action behavior consistent with that handle.
+
 `close` is Linux-only today because the host stores a close-capable XDG notification handle from `notify-rust`. The macOS and Windows notification backends do not provide a close-capable handle in the current host contract, so `close` returns `Unsupported` with reason `host-notification-unavailable` on those platforms.
 
 ## Errors

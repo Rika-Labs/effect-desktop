@@ -201,6 +201,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const notificationRequestPermission = yield* capabilities.support(
         "Notification.requestPermission"
       )
+      const notificationShow = yield* capabilities.support("Notification.show")
       const webViewCreate = yield* capabilities.support("WebView.create")
       const menuClear = yield* capabilities.support("Menu.clear")
       const contextMenuShow = yield* capabilities.support("ContextMenu.show")
@@ -264,6 +265,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(notificationClose).toEqual(NotificationUnavailableSupport)
       expect(notificationGetPermissionStatus).toEqual(NotificationUnavailableSupport)
       expect(notificationRequestPermission).toEqual(NotificationUnavailableSupport)
+      expect(notificationShow).toEqual(NotificationUnavailableSupport)
       expect(webViewCreate).toEqual({
         status: "partial",
         reason: "host-navigation-state-tracked",
