@@ -24,6 +24,7 @@ export * from "./contracts/recent-documents.js"
 const Surface = "RecentDocuments"
 const UnsupportedReason = "host-adapter-unimplemented"
 const RecentDocumentsAddSupport = NativeSurface.support.supported
+const RecentDocumentsClearSupport = NativeSurface.support.supported
 const MacOsRecentDocumentsSupport = NativeSurface.support.partial("macos-recent-documents-only", {
   platforms: [
     { platform: "macos", status: "supported" },
@@ -50,7 +51,7 @@ export const RecentDocumentsClear = NativeSurface.rpc(Surface, "clear", {
     P.nativeInvoke({ primitive: Surface, methods: ["clear"] })
   ),
   endpoint: "mutation",
-  support: MacOsRecentDocumentsSupport
+  support: RecentDocumentsClearSupport
 })
 export const RecentDocumentsList = NativeSurface.rpc(Surface, "list", {
   payload: Schema.Void,

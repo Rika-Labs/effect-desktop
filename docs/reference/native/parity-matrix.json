@@ -2480,24 +2480,7 @@
       "method": "clear",
       "capability": "native",
       "support": {
-        "status": "partial",
-        "reason": "macos-recent-documents-only",
-        "platforms": [
-          {
-            "platform": "macos",
-            "status": "supported"
-          },
-          {
-            "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          },
-          {
-            "platform": "linux",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          }
-        ]
+        "status": "supported"
       },
       "hostStatus": "routed"
     },
@@ -4992,8 +4975,8 @@
     "total": 288,
     "routed": 239,
     "missing": 0,
-    "supported": 168,
-    "partial": 71,
+    "supported": 169,
+    "partial": 70,
     "unsupported": 49
   }
 }

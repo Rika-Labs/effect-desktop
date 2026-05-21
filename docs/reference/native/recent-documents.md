@@ -10,17 +10,17 @@ effect_version: 4
 
 Declare OS-level recent-document operations through the native host boundary.
 
-The Rust host adapter adds recent documents on macOS through
+The Rust host adapter adds and clears recent documents on macOS through
 `NSDocumentController`, on Windows through `SHAddToRecentDocs`, and on Linux
-through GTK `RecentManager`. `clear` and `list` remain macOS-only until
-platform-specific adapters exist.
+through GTK `RecentManager`. `list` remains macOS-only until platform-specific
+adapters exist.
 
 ## Status
 
 | Method  | Success                     | Runtime support                 |
 | ------- | --------------------------- | ------------------------------- |
 | `add`   | `void`                      | macOS, Windows, Linux supported |
-| `clear` | `void`                      | macOS supported                 |
+| `clear` | `void`                      | macOS, Windows, Linux supported |
 | `list`  | `RecentDocumentsListResult` | macOS supported                 |
 
 ## Events
@@ -39,8 +39,8 @@ Windows paths, and incomplete UNC roots are rejected before native transport.
 
 `RecentDocumentsError` is the host protocol error union. Malformed paths return
 `InvalidArgument`. Host transport failure returns `HostUnavailable`. On
-Windows and Linux, decoded `clear` and `list` fail closed as typed
-`Unsupported` with reason `host-adapter-unimplemented`.
+Windows and Linux, decoded `list` fails closed as typed `Unsupported` with
+reason `host-adapter-unimplemented`.
 
 ## Related
 

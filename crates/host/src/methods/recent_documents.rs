@@ -242,7 +242,25 @@ fn platform_clear(operation: &'static str) -> Result<(), HostProtocolError> {
     macos_recent_documents::clear(operation)
 }
 
-#[cfg(any(not(target_os = "macos"), test))]
+#[cfg(all(windows, not(test)))]
+fn platform_clear(operation: &'static str) -> Result<(), HostProtocolError> {
+    windows_recent_documents::clear(operation)
+}
+
+#[cfg(all(target_os = "linux", not(test)))]
+fn platform_clear(operation: &'static str) -> Result<(), HostProtocolError> {
+    linux_recent_documents::clear(operation)
+}
+
+#[cfg(any(
+    test,
+    all(
+        not(target_os = "macos"),
+        not(windows),
+        not(target_os = "linux"),
+        not(test)
+    )
+))]
 fn platform_clear(operation: &'static str) -> Result<(), HostProtocolError> {
     test_recent_documents_clear().unwrap_or_else(|| Err(unsupported(operation)))
 }
@@ -314,7 +332,7 @@ mod windows_recent_documents {
     use super::HostProtocolError;
     use std::ffi::OsStr;
     use std::os::windows::ffi::OsStrExt;
-    use windows_sys::Win32::UI::Shell::{SHAddToRecentDocs, SHARD_PATHW};
+    use windows_sys::Win32::UI::Shell::{SHAddToRecentDocs, SHARD_PATHW, SHARD_PIDL};
 
     pub(super) fn add(path: &str, _operation: &'static str) -> Result<(), HostProtocolError> {
         let wide_path = OsStr::new(path)
@@ -326,6 +344,13 @@ mod windows_recent_documents {
         }
         Ok(())
     }
+
+    pub(super) fn clear(_operation: &'static str) -> Result<(), HostProtocolError> {
+        unsafe {
+            SHAddToRecentDocs(SHARD_PIDL as u32, std::ptr::null());
+        }
+        Ok(())
+    }
 }
 
 #[cfg(all(target_os = "linux", not(test)))]
@@ -334,24 +359,40 @@ mod linux_recent_documents {
     use gtk::prelude::RecentManagerExt;
 
     pub(super) fn add(path: &str, operation: &'static str) -> Result<(), HostProtocolError> {
-        if !gtk::is_initialized_main_thread() {
-            return Err(HostProtocolError::internal(
-                "Linux recent documents must run on the GTK main thread",
-                operation,
-            ));
-        }
+        let manager = manager(operation)?;
         let uri = gtk::glib::filename_to_uri(path, None).map_err(|error| {
             HostProtocolError::internal(
                 format!("failed to convert recent document path to URI: {error}"),
                 operation,
             )
         })?;
-        let manager = gtk::RecentManager::default().ok_or_else(|| unsupported(operation))?;
         if manager.add_item(uri.as_str()) {
             Ok(())
         } else {
             Err(unsupported(operation))
         }
+    }
+
+    pub(super) fn clear(operation: &'static str) -> Result<(), HostProtocolError> {
+        manager(operation)?
+            .purge_items()
+            .map(|_| ())
+            .map_err(|error| {
+                HostProtocolError::internal(
+                    format!("failed to clear Linux recent documents: {error}"),
+                    operation,
+                )
+            })
+    }
+
+    fn manager(operation: &'static str) -> Result<gtk::RecentManager, HostProtocolError> {
+        if !gtk::is_initialized_main_thread() {
+            return Err(HostProtocolError::internal(
+                "Linux recent documents must run on the GTK main thread",
+                operation,
+            ));
+        }
+        gtk::RecentManager::default().ok_or_else(|| unsupported(operation))
     }
 }
 
