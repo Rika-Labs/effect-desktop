@@ -251,7 +251,7 @@ The machine-readable matrix lives in [`parity-matrix.json`](parity-matrix.json).
 | `WebView`                   | `goForward`                 | `partial`     | `WebView.goForward`                       | `routed`          |
 | `WebView`                   | `listFrames`                | `unsupported` | `WebView.listFrames`                      | `capability-fact` |
 | `WebView`                   | `loadRoute`                 | `supported`   | `WebView.loadRoute`                       | `routed`          |
-| `WebView`                   | `loadUrl`                   | `partial`     | `WebView.loadUrl`                         | `routed`          |
+| `WebView`                   | `loadUrl`                   | `supported`   | `WebView.loadUrl`                         | `routed`          |
 | `WebView`                   | `openDevTools`              | `partial`     | `WebView.openDevTools`                    | `routed`          |
 | `WebView`                   | `postToFrame`               | `unsupported` | `WebView.postToFrame`                     | `capability-fact` |
 | `WebView`                   | `print`                     | `partial`     | `WebView.print`                           | `routed`          |

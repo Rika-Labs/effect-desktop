@@ -105,6 +105,10 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
         hostStatus: "routed",
         support: { status: "supported" }
       })
+      expect(result.rows.find((row) => row.tag === "WebView.loadUrl")).toMatchObject({
+        hostStatus: "routed",
+        support: { status: "supported" }
+      })
       expect(result.rows.find((row) => row.tag === "WebView.getNavigationState")).toMatchObject({
         hostStatus: "routed",
         support: {
