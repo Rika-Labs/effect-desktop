@@ -41,7 +41,10 @@ The production host emits host lifecycle events for `open`, `selectDevice`, `int
 - `open` records a host-owned session, starts the selected microphone and speaker streams, emits permission state, device state, and active session state. If the OS denies capture or the device cannot be opened, `open` fails before a session is registered.
 - `selectDevice` validates the session and requested host device, opens the selected microphone or speaker stream, and emits a new device state event.
 - `interrupt` releases the host-owned microphone and speaker streams, then emits interruption and interrupted session-state events.
-- `close`, request cancellation, renderer disconnect, and window destroy drop host session resources and release owned streams.
+- `close`, request cancellation, renderer disconnect, and window destroy drop host session resources
+  and release owned streams. `close` is supported on macOS for host-owned sessions; Windows/Linux
+  return typed unsupported because the host disables realtime media session startup there until stream
+  startup can be verified synchronously.
 - CPAL stream failures enqueue a host-control cleanup signal, release the session off the audio callback path, and emit `host-failed` interruption plus closed session-state events when the runtime event channel is still available.
 
 Device state is a host snapshot at `open` and `selectDevice`; this adapter does not claim a separate OS device-change watcher. Bridge event streams call `isSupported` before subscribing and fail with typed `Unsupported` when the real host reports startup-unverified or unavailable support.

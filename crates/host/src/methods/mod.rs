@@ -5770,7 +5770,13 @@ mod tests {
                 if cfg!(target_os = "macos") {
                     assert_eq!(error.tag(), "NotFound");
                 } else {
-                    assert_eq!(error.tag(), "Unsupported");
+                    assert!(matches!(
+                        error,
+                        HostProtocolError::Unsupported {
+                            reason,
+                            ..
+                        } if reason == host_protocol::REALTIME_MEDIA_SESSION_STARTUP_UNVERIFIED_REASON
+                    ));
                 }
             }
             other => panic!("unexpected realtime media close response: {other:?}"),

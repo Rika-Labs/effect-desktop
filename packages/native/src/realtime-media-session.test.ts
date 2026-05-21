@@ -275,20 +275,24 @@ test("RealtimeMediaSession bridge client rejects malformed input before native t
     })
   ))
 
-test("NativeCapabilities reports realtime media privileged operations as runtime-verified partial support", () =>
+test("NativeCapabilities reports realtime media privileged operation support truthfully", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const result = yield* runScoped(
         Effect.gen(function* () {
           const capabilities = yield* NativeCapabilities
-          const support = yield* capabilities.support("RealtimeMediaSession.open")
+          const openSupport = yield* capabilities.support("RealtimeMediaSession.open")
+          const closeSupport = yield* capabilities.support("RealtimeMediaSession.close")
           const requireOpen = yield* Effect.exit(capabilities.require("RealtimeMediaSession.open"))
-          return { requireOpen, support }
+          const requireClose = yield* Effect.exit(
+            capabilities.require("RealtimeMediaSession.close")
+          )
+          return { closeSupport, openSupport, requireClose, requireOpen }
         }),
         makeNativeCapabilitiesLayer(Native.available(Native.RealtimeMediaSession))
       )
 
-      expect(result.support).toEqual({
+      expect(result.openSupport).toEqual({
         status: "partial",
         reason: "host-media-runtime-verified",
         platforms: [
@@ -297,7 +301,17 @@ test("NativeCapabilities reports realtime media privileged operations as runtime
           { platform: "linux", status: "unsupported", reason: "host-media-startup-unverified" }
         ]
       })
+      expect(result.closeSupport).toEqual({
+        status: "partial",
+        reason: "host-media-startup-unverified",
+        platforms: [
+          { platform: "macos", status: "supported" },
+          { platform: "windows", status: "unsupported", reason: "host-media-startup-unverified" },
+          { platform: "linux", status: "unsupported", reason: "host-media-startup-unverified" }
+        ]
+      })
       expect(Exit.isSuccess(result.requireOpen)).toBe(true)
+      expect(Exit.isSuccess(result.requireClose)).toBe(true)
     })
   ))
 

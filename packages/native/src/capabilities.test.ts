@@ -93,6 +93,16 @@ const NotificationUnavailableSupport = {
   ]
 } as const
 
+const RealtimeMediaSessionCloseSupport = {
+  status: "partial",
+  reason: "host-media-startup-unverified",
+  platforms: [
+    { platform: "macos", status: "supported" },
+    { platform: "windows", status: "unsupported", reason: "host-media-startup-unverified" },
+    { platform: "linux", status: "unsupported", reason: "host-media-startup-unverified" }
+  ]
+} as const
+
 const RuntimeProbedEgressPolicySupport = {
   status: "partial",
   reason: "host-decision-log-runtime-probed",
@@ -202,6 +212,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
         "Notification.requestPermission"
       )
       const notificationShow = yield* capabilities.support("Notification.show")
+      const realtimeMediaSessionClose = yield* capabilities.support("RealtimeMediaSession.close")
       const webViewCreate = yield* capabilities.support("WebView.create")
       const menuClear = yield* capabilities.support("Menu.clear")
       const contextMenuShow = yield* capabilities.support("ContextMenu.show")
@@ -266,6 +277,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(notificationGetPermissionStatus).toEqual(NotificationUnavailableSupport)
       expect(notificationRequestPermission).toEqual(NotificationUnavailableSupport)
       expect(notificationShow).toEqual(NotificationUnavailableSupport)
+      expect(realtimeMediaSessionClose).toEqual(RealtimeMediaSessionCloseSupport)
       expect(webViewCreate).toEqual({
         status: "partial",
         reason: "host-navigation-state-tracked",

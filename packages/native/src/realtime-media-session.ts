@@ -41,6 +41,13 @@ const RuntimeVerifiedSupport = NativeSurface.support.partial(RuntimeVerifiedSupp
     { platform: "linux", status: "unsupported", reason: StartupUnverifiedSupportReason }
   ]
 }) satisfies RpcSupportMetadata
+const CloseSupport = NativeSurface.support.partial(StartupUnverifiedSupportReason, {
+  platforms: [
+    { platform: "macos", status: "supported" },
+    { platform: "windows", status: "unsupported", reason: StartupUnverifiedSupportReason },
+    { platform: "linux", status: "unsupported", reason: StartupUnverifiedSupportReason }
+  ]
+}) satisfies RpcSupportMetadata
 
 export type RealtimeMediaSessionError = HostProtocolError
 
@@ -54,7 +61,8 @@ export const RealtimeMediaSessionClose = realtimeMediaSessionRpc(
   "close",
   RealtimeMediaSessionIdentity,
   Schema.Void,
-  P.nativeInvoke({ primitive: Surface, methods: ["close"] })
+  P.nativeInvoke({ primitive: Surface, methods: ["close"] }),
+  CloseSupport
 )
 export const RealtimeMediaSessionSelectDevice = realtimeMediaSessionRpc(
   "selectDevice",
@@ -574,13 +582,19 @@ function realtimeMediaSessionRpc<
   const Method extends string,
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
->(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
+>(
+  method: Method,
+  payload: Payload,
+  success: Success,
+  capability: RpcCapabilityMetadata,
+  support: RpcSupportMetadata = RuntimeVerifiedSupport
+) {
   return NativeSurface.rpc(Surface, method, {
     payload,
     success,
     authority: NativeSurface.authority.custom(capability),
     endpoint: "mutation",
-    support: RuntimeVerifiedSupport
+    support
   })
 }
 
