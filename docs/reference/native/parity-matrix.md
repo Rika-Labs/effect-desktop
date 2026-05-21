@@ -175,7 +175,7 @@ The machine-readable matrix lives in [`parity-matrix.json`](parity-matrix.json).
 | `RealtimeMediaSession`      | `selectDevice`              | `partial`     | `RealtimeMediaSession.selectDevice`       | `routed`          |
 | `RecentDocuments`           | `add`                       | `supported`   | `RecentDocuments.add`                     | `routed`          |
 | `RecentDocuments`           | `clear`                     | `supported`   | `RecentDocuments.clear`                   | `routed`          |
-| `RecentDocuments`           | `list`                      | `partial`     | `RecentDocuments.list`                    | `routed`          |
+| `RecentDocuments`           | `list`                      | `supported`   | `RecentDocuments.list`                    | `routed`          |
 | `ResidentLifecycle`         | `disable`                   | `supported`   | `ResidentLifecycle.disable`               | `routed`          |
 | `ResidentLifecycle`         | `enable`                    | `supported`   | `ResidentLifecycle.enable`                | `routed`          |
 | `ResidentLifecycle`         | `getState`                  | `supported`   | `ResidentLifecycle.getState`              | `routed`          |

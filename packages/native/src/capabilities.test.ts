@@ -406,15 +406,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       })
       expect(recentDocumentsAdd).toEqual({ status: "supported" })
       expect(recentDocumentsClear).toEqual({ status: "supported" })
-      expect(recentDocumentsList).toEqual({
-        status: "partial",
-        reason: "macos-recent-documents-only",
-        platforms: [
-          { platform: "macos", status: "supported" },
-          { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
-          { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
-        ]
-      })
+      expect(recentDocumentsList).toEqual({ status: "supported" })
       expect(systemAppearance).toEqual({
         status: "partial",
         reason: "host-system-appearance-snapshot",
