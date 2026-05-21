@@ -892,7 +892,7 @@ const expectedMenuCapabilityFactMethods = ["bindCommand"]
 
 const expectedContextMenuMethods: Array<(typeof ContextMenuMethodNames)[number]> = []
 
-const expectedContextMenuCapabilityFactMethods = ["show", "buildFromTemplate", "bindCommand"]
+const expectedContextMenuCapabilityFactMethods = ["show", "buildFromTemplate"]
 
 const expectedDialogMethods: Array<(typeof DialogMethodNames)[number]> = [
   "openFile",
@@ -3506,7 +3506,7 @@ test("ContextMenuRpcs declares the Phase 8 ContextMenu method and event surface"
   expect(Object.keys(ContextMenuRpcEvents)).toEqual(["Activated"])
 })
 
-test("ContextMenu declares show, buildFromTemplate, bindCommand as non-callable capability facts", () => {
+test("ContextMenu declares only host-backed operations as non-callable capability facts", () => {
   const factTags = ContextMenuCapabilityFacts.map((fact) => fact.tag).toSorted()
   expect(factTags).toEqual(
     expectedContextMenuCapabilityFactMethods.map((method) => `ContextMenu.${method}`).toSorted()
@@ -3664,7 +3664,7 @@ test("ContextMenu bindCommand closes the command listener with its resource scop
     })
   ))
 
-test("ContextMenu bridge client fails demoted methods as Unsupported and decodes activation events", () =>
+test("ContextMenu bridge client fails host-backed methods and binds commands locally", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const requests: HostProtocolRequestEnvelope[] = []
@@ -3700,7 +3700,7 @@ test("ContextMenu bridge client fails demoted methods as Unsupported and decodes
 
       expectExitFailure(result.showExit, (error) => hasErrorTag(error, "Unsupported"))
       expectExitFailure(result.buildExit, (error) => hasErrorTag(error, "Unsupported"))
-      expectExitFailure(result.bindExit, (error) => hasErrorTag(error, "Unsupported"))
+      expect(Exit.isSuccess(result.bindExit)).toBe(true)
       expect(Array.from(result.activated)).toEqual([
         new ContextMenuActivatedEvent({
           itemId: "file.open",

@@ -440,34 +440,6 @@
       "hostStatus": "routed"
     },
     {
-      "tag": "ContextMenu.bindCommand",
-      "surface": "ContextMenu",
-      "method": "bindCommand",
-      "capability": "native",
-      "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
-        "platforms": [
-          {
-            "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          },
-          {
-            "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          },
-          {
-            "platform": "linux",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          }
-        ]
-      },
-      "hostStatus": "capability-fact"
-    },
-    {
       "tag": "ContextMenu.buildFromTemplate",
       "surface": "ContextMenu",
       "method": "buildFromTemplate",
@@ -5166,11 +5138,11 @@
     }
   ],
   "summary": {
-    "total": 291,
+    "total": 290,
     "routed": 234,
     "missing": 0,
     "supported": 163,
     "partial": 71,
-    "unsupported": 57
+    "unsupported": 56
   }
 }
