@@ -25,11 +25,11 @@ The surface exposes only the genuinely callable methods below.
 
 `request`, `decide`, and `listDecisions` are **not callable**. They are advertised in the native capability manifest as capability facts with `support.status: "unsupported"`, so callers can discover the intended contract, but the surface does not register them as invocable RPCs.
 
-| Capability fact | Intended payload                        | Status        |
-| --------------- | --------------------------------------- | ------------- |
-| `request`       | `{ profile, kind, origin, requestId? }` | `unsupported` |
-| `decide`        | `{ profile, requestId, kind, origin }`  | `unsupported` |
-| `listDecisions` | `{ profile, kind?, origin? }`           | `unsupported` |
+| Capability fact | Intended payload                                 | Status        |
+| --------------- | ------------------------------------------------ | ------------- |
+| `request`       | `{ profile, kind, origin, requestId? }`          | `unsupported` |
+| `decide`        | `{ profile, requestId, kind, origin, decision }` | `unsupported` |
+| `listDecisions` | `{ profile, kind?, origin? }`                    | `unsupported` |
 
 ## Permission Kinds
 
@@ -42,6 +42,15 @@ The surface exposes only the genuinely callable methods below.
 - `display-capture`
 
 `origin` must be an `app`, `http`, or `https` origin such as `app://localhost` or `https://example.test`. Paths, query strings, fragments, and empty hosts are rejected before transport.
+
+`decide` remains unsupported as an explicit v1 native capability decision. A
+truthful implementation must resolve a pending browser permission request under
+the same `SessionProfileHandle`, apply the caller's `grant` or `deny` decision
+to a retained provider callback, record the decision under the profile, and emit
+a `decided` event. The current host does not retain profile-bound WebView
+permission callbacks or pending request state, so a routed `decide` method could
+only accept data without changing the browser permission prompt it claims to
+settle.
 
 ## Support
 
