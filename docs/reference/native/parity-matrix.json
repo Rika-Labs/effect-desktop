@@ -3394,7 +3394,7 @@
       "capability": "native",
       "support": {
         "status": "partial",
-        "reason": "linux-tray-unavailable",
+        "reason": "linux-tray-tooltip-unavailable",
         "platforms": [
           {
             "platform": "macos",
@@ -3407,7 +3407,7 @@
           {
             "platform": "linux",
             "status": "unsupported",
-            "reason": "host-tray-unavailable"
+            "reason": "linux-tray-tooltip-unavailable"
           }
         ]
       },

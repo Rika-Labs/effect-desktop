@@ -46,6 +46,13 @@ const TrayTitleSupport = NativeSurface.support.partial("windows-tray-title-unava
     { platform: "linux", status: "unsupported", reason: "host-tray-unavailable" }
   ]
 }) satisfies RpcSupportMetadata
+const TrayTooltipSupport = NativeSurface.support.partial("linux-tray-tooltip-unavailable", {
+  platforms: [
+    { platform: "macos", status: "supported" },
+    { platform: "windows", status: "supported" },
+    { platform: "linux", status: "unsupported", reason: "linux-tray-tooltip-unavailable" }
+  ]
+}) satisfies RpcSupportMetadata
 const TrayPlatformSupport = NativeSurface.support.partial("linux-tray-unavailable", {
   platforms: [
     { platform: "macos", status: "supported" },
@@ -75,7 +82,7 @@ export const TraySetTooltip = trayRpc(
   TraySetTooltipInput,
   Schema.Void,
   P.nativeInvoke({ primitive: "Tray", methods: ["setTooltip"] }),
-  TrayPlatformSupport
+  TrayTooltipSupport
 )
 export const TraySetTitle = trayRpc(
   "setTitle",

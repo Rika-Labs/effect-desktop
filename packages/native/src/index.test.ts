@@ -3860,6 +3860,18 @@ test("Tray.setTitle support metadata keeps Windows and Linux unavailable", () =>
   })
 })
 
+test("Tray.setTooltip support metadata keeps Linux tooltip unavailable", () => {
+  expect(TrayRpcs.requests.get("Tray.setTooltip")!.pipe(rpcSupport)).toEqual({
+    status: "partial",
+    reason: "linux-tray-tooltip-unavailable",
+    platforms: [
+      { platform: "macos", status: "supported" },
+      { platform: "windows", status: "supported" },
+      { platform: "linux", status: "unsupported", reason: "linux-tray-tooltip-unavailable" }
+    ]
+  })
+})
+
 test("Tray service delegates through a substitutable TrayClient port", () =>
   Effect.runPromise(
     Effect.gen(function* () {

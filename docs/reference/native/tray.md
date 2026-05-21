@@ -34,6 +34,10 @@ unsupported.
 unsupported and its Windows implementation does not mutate a native title; Linux title support depends on
 the same AppIndicator-backed tray adapter that is not shipped yet.
 
+`Tray.setTooltip` is supported on macOS and Windows. The local tray backend documents Linux tooltips as
+unsupported, and its Linux implementation does not mutate tooltip text, so the parity row uses the
+method-specific `linux-tray-tooltip-unavailable` reason.
+
 ## Methods
 
 | Method        | Payload                             | Success                  |

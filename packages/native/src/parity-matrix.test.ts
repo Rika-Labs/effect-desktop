@@ -952,6 +952,18 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
           ]
         }
       })
+      expect(result.rows.find((row) => row.tag === "Tray.setTooltip")).toMatchObject({
+        hostStatus: "routed",
+        support: {
+          status: "partial",
+          reason: "linux-tray-tooltip-unavailable",
+          platforms: [
+            { platform: "macos", status: "supported" },
+            { platform: "windows", status: "supported" },
+            { platform: "linux", status: "unsupported", reason: "linux-tray-tooltip-unavailable" }
+          ]
+        }
+      })
     })
   ))
 
