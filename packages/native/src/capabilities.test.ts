@@ -83,6 +83,16 @@ const NetworkAuthProxySupport = {
   ]
 } as const
 
+const NotificationUnavailableSupport = {
+  status: "partial",
+  reason: "host-notification-unavailable",
+  platforms: [
+    { platform: "macos", status: "unsupported", reason: "host-notification-unavailable" },
+    { platform: "windows", status: "unsupported", reason: "host-notification-unavailable" },
+    { platform: "linux", status: "supported" }
+  ]
+} as const
+
 const RuntimeProbedEgressPolicySupport = {
   status: "partial",
   reason: "host-decision-log-runtime-probed",
@@ -184,6 +194,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
         "NetworkAuth.handleCertificate"
       )
       const networkAuthSetProxy = yield* capabilities.support("NetworkAuth.setProxy")
+      const notificationClose = yield* capabilities.support("Notification.close")
       const webViewCreate = yield* capabilities.support("WebView.create")
       const menuClear = yield* capabilities.support("Menu.clear")
       const contextMenuShow = yield* capabilities.support("ContextMenu.show")
@@ -244,6 +255,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(networkAuthHandleAuth).toEqual(NetworkAuthUnavailableSupport)
       expect(networkAuthHandleCertificate).toEqual(NetworkAuthUnavailableSupport)
       expect(networkAuthSetProxy).toEqual(NetworkAuthProxySupport)
+      expect(notificationClose).toEqual(NotificationUnavailableSupport)
       expect(webViewCreate).toEqual({
         status: "partial",
         reason: "host-navigation-state-tracked",

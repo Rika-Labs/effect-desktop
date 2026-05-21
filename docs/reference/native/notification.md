@@ -43,6 +43,8 @@ On Linux, `requestPermission` and `getPermissionStatus` do not show an OS prompt
 
 `show` registers the returned notification handle with the `ResourceRegistry`. Closing the returned owner scope, renderer disconnect, or runtime restart closes the native notification. Explicit `close` disposes the registry entry so scope finalizers do not double-close. Native click, action, and close responses remove terminal host resources so stale handles fail closed.
 
+`close` is Linux-only today because the host stores a close-capable XDG notification handle from `notify-rust`. The macOS and Windows notification backends do not provide a close-capable handle in the current host contract, so `close` returns `Unsupported` with reason `host-notification-unavailable` on those platforms.
+
 ## Errors
 
 Expected failures use host protocol tagged errors:

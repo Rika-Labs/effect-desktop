@@ -312,6 +312,26 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
         hostStatus: "routed",
         support: { status: "supported" }
       })
+      expect(result.rows.find((row) => row.tag === "Notification.close")).toMatchObject({
+        hostStatus: "routed",
+        support: {
+          status: "partial",
+          reason: "host-notification-unavailable",
+          platforms: [
+            {
+              platform: "macos",
+              status: "unsupported",
+              reason: "host-notification-unavailable"
+            },
+            {
+              platform: "windows",
+              status: "unsupported",
+              reason: "host-notification-unavailable"
+            },
+            { platform: "linux", status: "supported" }
+          ]
+        }
+      })
       expect(result.rows.find((row) => row.tag === "Dialog.openDirectory")).toMatchObject({
         hostStatus: "routed",
         support: { status: "partial", reason: "linux-zenity-multi-selection-unavailable" }

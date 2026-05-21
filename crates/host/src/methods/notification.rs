@@ -506,4 +506,25 @@ mod tests {
 
         assert!(matches!(error, HostProtocolError::InvalidArgument { .. }));
     }
+
+    #[cfg(not(target_os = "linux"))]
+    #[test]
+    fn notification_close_returns_unsupported_without_platform_adapter() {
+        let error = close(Some(json!({
+            "notification": {
+                "kind": "notification",
+                "id": "notification-1",
+                "generation": 0,
+                "ownerScope": "notification:notification-1",
+                "state": "open"
+            }
+        })))
+        .expect_err("non-Linux notification close has no host adapter");
+
+        assert!(matches!(
+            error,
+            HostProtocolError::Unsupported { reason, .. }
+                if reason == host_protocol::NOTIFICATION_UNSUPPORTED_REASON
+        ));
+    }
 }
