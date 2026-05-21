@@ -26,6 +26,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const updaterInstall = yield* capabilities.support("Updater.install")
       const crashReporterStart = yield* capabilities.support("CrashReporter.start")
       const crashReporterFlush = yield* capabilities.support("CrashReporter.flush")
+      const crashReporterGetReports = yield* capabilities.support("CrashReporter.getReports")
       const powerMonitorIsSupported = yield* capabilities.support("PowerMonitor.isSupported")
       const systemAppearance = yield* capabilities.support("SystemAppearance.getAppearance")
       const appQuit = yield* capabilities.support("App.quit")
@@ -124,6 +125,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
         ]
       })
       expect(crashReporterFlush).toEqual({ status: "supported" })
+      expect(crashReporterGetReports).toEqual({ status: "supported" })
       expect(powerMonitorIsSupported).toEqual({
         status: "partial",
         reason: "platform-power-monitor-unavailable",
