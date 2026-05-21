@@ -350,6 +350,15 @@ mod tests {
     }
 
     #[test]
+    fn menu_clear_reports_unsupported_without_platform_adapter() {
+        assert!(matches!(
+            clear(None),
+            Err(HostProtocolError::Unsupported { operation, .. })
+                if operation == host_protocol::MENU_CLEAR_METHOD
+        ));
+    }
+
+    #[test]
     fn menu_clear_rejects_unexpected_payload_before_macos_clear() {
         let (result, calls) =
             with_menu_clear_recording(|| clear(Some(json!({ "window": { "id": "" } }))));
