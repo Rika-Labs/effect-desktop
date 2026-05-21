@@ -60,6 +60,12 @@ does not expose selected content. ORIKA does not use clipboard-copy simulation
 for this contract because it mutates user state, depends on focused application
 keyboard handling, and cannot preserve the caller permission boundary.
 
+`stopWatching` remains unsupported because there is no native selection watch
+registry to stop. A truthful stop operation must release a watch that was
+previously installed by `watchFocus`, detach the platform observer, publish a
+`watch-stopped` event, and make repeated or unknown watch IDs deterministic.
+The current host has none of that lifecycle state.
+
 ## Support
 
 The current Rust host adapter is intentionally fail-closed while OS selection and document adapters are not implemented.
