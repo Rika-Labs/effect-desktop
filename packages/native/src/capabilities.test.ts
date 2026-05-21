@@ -45,6 +45,16 @@ const UnsupportedDownloadSupport = {
   ]
 } as const
 
+const RuntimeProbedEgressPolicySupport = {
+  status: "partial",
+  reason: "host-decision-log-runtime-probed",
+  platforms: [
+    { platform: "macos", status: "partial", reason: "host-decision-log-runtime-probed" },
+    { platform: "windows", status: "partial", reason: "host-decision-log-runtime-probed" },
+    { platform: "linux", status: "partial", reason: "host-decision-log-runtime-probed" }
+  ]
+} as const
+
 test("NativeCapabilities exposes support metadata from native surfaces", () => {
   const runtime = ManagedRuntime.make(NativeCapabilitiesLive)
   return runtime.runPromise(
@@ -75,6 +85,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const downloadPause = yield* capabilities.support("Download.pause")
       const downloadResume = yield* capabilities.support("Download.resume")
       const downloadStart = yield* capabilities.support("Download.start")
+      const egressPolicyDecide = yield* capabilities.support("EgressPolicy.decide")
       const crashReporterStart = yield* capabilities.support("CrashReporter.start")
       const crashReporterRecordBreadcrumb = yield* capabilities.support(
         "CrashReporter.recordBreadcrumb"
@@ -207,6 +218,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(downloadPause).toEqual(UnsupportedDownloadSupport)
       expect(downloadResume).toEqual(UnsupportedDownloadSupport)
       expect(downloadStart).toEqual(UnsupportedDownloadSupport)
+      expect(egressPolicyDecide).toEqual(RuntimeProbedEgressPolicySupport)
       expect(displayCaptureCaptureDisplay).toEqual({
         status: "partial",
         reason: "macos-screencapture-adapter",
