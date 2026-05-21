@@ -18,6 +18,10 @@ or verify `libayatana-appindicator3`/`libappindicator3`, and does not have a fai
 tray creation. `Tray.create` therefore remains partial rather than claiming support that may crash or
 silently fail on Linux desktops without that stack.
 
+`Tray.destroy` is tied to the same adapter boundary. Linux cannot own a generation-stamped tray handle
+until `Tray.create` can allocate one through the host tray registry, so destroy remains unsupported there
+instead of accepting synthetic handles.
+
 ## Methods
 
 | Method        | Payload                             | Success                  |

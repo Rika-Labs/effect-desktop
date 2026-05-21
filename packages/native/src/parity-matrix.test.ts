@@ -900,6 +900,18 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
           ]
         }
       })
+      expect(result.rows.find((row) => row.tag === "Tray.destroy")).toMatchObject({
+        hostStatus: "routed",
+        support: {
+          status: "partial",
+          reason: "linux-tray-unavailable",
+          platforms: [
+            { platform: "macos", status: "supported" },
+            { platform: "windows", status: "supported" },
+            { platform: "linux", status: "unsupported", reason: "host-tray-unavailable" }
+          ]
+        }
+      })
     })
   ))
 
