@@ -15,6 +15,10 @@ typed unsupported results until platform watchers are implemented. The macOS
 adapter uses `NSWorkspace` notifications for suspend, resume, shutdown, lock,
 and unlock events, and polls `pmset -g ps` for power-source changes.
 
+`isSupported` is intentionally partial: it returns `true` on macOS for known
+power-monitor methods and `false` on Windows/Linux until those platforms have
+host-owned event watchers instead of inferred or renderer-side state.
+
 ## Methods
 
 | Method        | Payload      | Success                  | Runtime support |
