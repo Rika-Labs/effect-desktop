@@ -32,6 +32,8 @@ Host-backed system notifications with typed permission, support, click, and acti
 
 On Linux, `requestPermission` and `getPermissionStatus` do not show an OS prompt. They probe the notification server and return `granted` when the server is reachable; otherwise they fail with `Unsupported`.
 
+On macOS and Windows, `getPermissionStatus` returns `Unsupported` with reason `host-notification-unavailable` because the host has no notification permission-status adapter on those platforms.
+
 ## Events
 
 | Event                 | Payload                                      |

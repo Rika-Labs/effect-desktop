@@ -195,6 +195,9 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       )
       const networkAuthSetProxy = yield* capabilities.support("NetworkAuth.setProxy")
       const notificationClose = yield* capabilities.support("Notification.close")
+      const notificationGetPermissionStatus = yield* capabilities.support(
+        "Notification.getPermissionStatus"
+      )
       const webViewCreate = yield* capabilities.support("WebView.create")
       const menuClear = yield* capabilities.support("Menu.clear")
       const contextMenuShow = yield* capabilities.support("ContextMenu.show")
@@ -256,6 +259,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(networkAuthHandleCertificate).toEqual(NetworkAuthUnavailableSupport)
       expect(networkAuthSetProxy).toEqual(NetworkAuthProxySupport)
       expect(notificationClose).toEqual(NotificationUnavailableSupport)
+      expect(notificationGetPermissionStatus).toEqual(NotificationUnavailableSupport)
       expect(webViewCreate).toEqual({
         status: "partial",
         reason: "host-navigation-state-tracked",
