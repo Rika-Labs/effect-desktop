@@ -8419,6 +8419,17 @@ test("SystemAppearanceRpcs declares the Phase 8 SystemAppearance method and even
   ).toEqual({
     status: "supported"
   })
+  expect(
+    SystemAppearanceRpcs.requests.get("SystemAppearance.getAppearance")!.pipe(rpcSupport)
+  ).toEqual({
+    status: "partial",
+    reason: "host-system-appearance-snapshot",
+    platforms: [
+      { platform: "macos", status: "supported" },
+      { platform: "windows", status: "supported" },
+      { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
+    ]
+  })
   expect(Object.keys(SystemAppearanceRpcEvents)).toEqual(["AppearanceChanged"])
 })
 

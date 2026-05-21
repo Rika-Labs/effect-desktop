@@ -45,6 +45,11 @@ On Linux, `getAccentColor` returns `null`. The current GTK3 host dependency
 surface does not expose a stable desktop-wide accent-color setting, and `null`
 is the API's explicit "no accent color" value.
 
+Linux `getAppearance` remains unsupported. The GTK3 settings available to the
+host expose application dark-theme preference and theme name, but that is not a
+durable desktop-wide `"light" | "dark" | "highContrast"` contract across Linux
+desktops.
+
 `isSupported` is protected by `native.invoke:SystemAppearance.isSupported`.
 
 ## Events
