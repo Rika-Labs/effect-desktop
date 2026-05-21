@@ -73,6 +73,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const downloadCancel = yield* capabilities.support("Download.cancel")
       const downloadList = yield* capabilities.support("Download.list")
       const downloadPause = yield* capabilities.support("Download.pause")
+      const downloadResume = yield* capabilities.support("Download.resume")
       const crashReporterStart = yield* capabilities.support("CrashReporter.start")
       const crashReporterRecordBreadcrumb = yield* capabilities.support(
         "CrashReporter.recordBreadcrumb"
@@ -203,6 +204,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(downloadCancel).toEqual(UnsupportedDownloadSupport)
       expect(downloadList).toEqual(UnsupportedDownloadSupport)
       expect(downloadPause).toEqual(UnsupportedDownloadSupport)
+      expect(downloadResume).toEqual(UnsupportedDownloadSupport)
       expect(displayCaptureCaptureDisplay).toEqual({
         status: "partial",
         reason: "macos-screencapture-adapter",
