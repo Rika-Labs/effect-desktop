@@ -301,6 +301,20 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
           ]
         }
       })
+      expect(
+        result.rows.find((row) => row.tag === "FocusedApplicationContext.snapshot")
+      ).toMatchObject({
+        hostStatus: "routed",
+        support: {
+          status: "partial",
+          reason: "macos-frontmost-application-only",
+          platforms: [
+            { platform: "macos", status: "partial", reason: "macos-frontmost-application-only" },
+            { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
+            { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
+          ]
+        }
+      })
     })
   ))
 

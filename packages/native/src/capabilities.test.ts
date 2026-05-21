@@ -65,6 +65,16 @@ const UnsupportedExecutionSandboxSupport = {
   ]
 } as const
 
+const MacOsFocusedApplicationSnapshotSupport = {
+  status: "partial",
+  reason: "macos-frontmost-application-only",
+  platforms: [
+    { platform: "macos", status: "partial", reason: "macos-frontmost-application-only" },
+    { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
+    { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
+  ]
+} as const
+
 test("NativeCapabilities exposes support metadata from native surfaces", () => {
   const runtime = ManagedRuntime.make(NativeCapabilitiesLive)
   return runtime.runPromise(
@@ -101,6 +111,9 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const executionSandboxCreate = yield* capabilities.support("ExecutionSandbox.create")
       const executionSandboxDestroy = yield* capabilities.support("ExecutionSandbox.destroy")
       const executionSandboxRun = yield* capabilities.support("ExecutionSandbox.run")
+      const focusedApplicationSnapshot = yield* capabilities.support(
+        "FocusedApplicationContext.snapshot"
+      )
       const crashReporterStart = yield* capabilities.support("CrashReporter.start")
       const crashReporterRecordBreadcrumb = yield* capabilities.support(
         "CrashReporter.recordBreadcrumb"
@@ -239,6 +252,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(executionSandboxCreate).toEqual(UnsupportedExecutionSandboxSupport)
       expect(executionSandboxDestroy).toEqual(UnsupportedExecutionSandboxSupport)
       expect(executionSandboxRun).toEqual(UnsupportedExecutionSandboxSupport)
+      expect(focusedApplicationSnapshot).toEqual(MacOsFocusedApplicationSnapshotSupport)
       expect(displayCaptureCaptureDisplay).toEqual({
         status: "partial",
         reason: "macos-screencapture-adapter",
