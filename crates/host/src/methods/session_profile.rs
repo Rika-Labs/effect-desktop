@@ -286,12 +286,24 @@ fn encode_error(error: serde_json::Error, operation: &'static str) -> HostProtoc
 mod tests {
     use super::{destroy, from_partition, is_supported, list, profile_dir_name, SESSION_PROFILES};
     use serde_json::json;
+    use std::sync::{LazyLock, Mutex};
+
+    static TEST_PROFILE_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
     fn reset_profiles() {
         SESSION_PROFILES
             .lock()
             .expect("profiles mutex should lock")
             .clear();
+    }
+
+    fn with_clean_profiles(test: impl FnOnce()) {
+        let _guard = TEST_PROFILE_LOCK
+            .lock()
+            .expect("test profile lock should lock");
+        reset_profiles();
+        test();
+        reset_profiles();
     }
 
     #[test]
@@ -305,66 +317,69 @@ mod tests {
 
     #[test]
     fn session_profile_from_partition_is_idempotent_and_listable() {
-        reset_profiles();
-        let profile = from_partition(Some(json!({
-            "partition": "workspace-1",
-            "ownerScope": "workspace:1"
-        })))
-        .expect("profile should create")
-        .expect("profile should encode");
-        let same_profile = from_partition(Some(json!({
-            "partition": "workspace-1",
-            "ownerScope": "workspace:1"
-        })))
-        .expect("profile should resolve")
-        .expect("profile should encode");
-        let profiles = list(None)
-            .expect("profiles should list")
-            .expect("profiles should encode");
+        with_clean_profiles(|| {
+            let profile = from_partition(Some(json!({
+                "partition": "workspace-1",
+                "ownerScope": "workspace:1"
+            })))
+            .expect("profile should create")
+            .expect("profile should encode");
+            let same_profile = from_partition(Some(json!({
+                "partition": "workspace-1",
+                "ownerScope": "workspace:1"
+            })))
+            .expect("profile should resolve")
+            .expect("profile should encode");
+            let profiles = list(None)
+                .expect("profiles should list")
+                .expect("profiles should encode");
 
-        assert_eq!(profile, same_profile);
-        assert_eq!(
-            profile,
-            json!({
-                "kind": "session-profile",
-                "id": "session-profile:workspace-1",
-                "generation": 0,
-                "ownerScope": "workspace:1",
-                "state": "open"
-            })
-        );
-        assert_eq!(profiles, json!({ "profiles": [profile] }));
+            assert_eq!(profile, same_profile);
+            assert_eq!(
+                profile,
+                json!({
+                    "kind": "session-profile",
+                    "id": "session-profile:workspace-1",
+                    "generation": 0,
+                    "ownerScope": "workspace:1",
+                    "state": "open"
+                })
+            );
+            assert_eq!(profiles, json!({ "profiles": [profile] }));
+        });
     }
 
     #[test]
     fn session_profile_destroy_removes_profile() {
-        reset_profiles();
-        let profile = from_partition(Some(json!({ "partition": "workspace-1" })))
-            .expect("profile should create")
-            .expect("profile should encode");
-        destroy(Some(json!({ "profile": profile }))).expect("profile should destroy");
-        let profiles = list(None)
-            .expect("profiles should list")
-            .expect("profiles should encode");
+        with_clean_profiles(|| {
+            let profile = from_partition(Some(json!({ "partition": "workspace-1" })))
+                .expect("profile should create")
+                .expect("profile should encode");
+            destroy(Some(json!({ "profile": profile }))).expect("profile should destroy");
+            let profiles = list(None)
+                .expect("profiles should list")
+                .expect("profiles should encode");
 
-        assert_eq!(profiles, json!({ "profiles": [] }));
+            assert_eq!(profiles, json!({ "profiles": [] }));
+        });
     }
 
     #[test]
     fn session_profile_from_partition_rejects_malformed_payload_before_registry_mutation() {
-        reset_profiles();
-        let error = from_partition(Some(json!({ "partition": "" })))
-            .expect_err("blank partition should be rejected by payload decode");
+        with_clean_profiles(|| {
+            let error = from_partition(Some(json!({ "partition": "" })))
+                .expect_err("blank partition should be rejected by payload decode");
 
-        assert_eq!(error.tag(), "InvalidArgument");
-        assert_eq!(
-            serde_json::to_value(&error).expect("error should encode")["operation"],
-            host_protocol::SESSION_PROFILE_FROM_PARTITION_METHOD
-        );
-        assert!(!SESSION_PROFILES
-            .lock()
-            .expect("profiles mutex should lock")
-            .contains_key("session-profile:"));
+            assert_eq!(error.tag(), "InvalidArgument");
+            assert_eq!(
+                serde_json::to_value(&error).expect("error should encode")["operation"],
+                host_protocol::SESSION_PROFILE_FROM_PARTITION_METHOD
+            );
+            assert!(!SESSION_PROFILES
+                .lock()
+                .expect("profiles mutex should lock")
+                .contains_key("session-profile:"));
+        });
     }
 
     #[test]
