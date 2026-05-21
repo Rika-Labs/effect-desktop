@@ -73,9 +73,9 @@ download callbacks through retained native resources.
 Request and response interception are also separate from `WebView`.
 `WebRequest` defines ordered `onBeforeRequest`, `onHeadersReceived`,
 `removeListener`, and event contracts scoped to `SessionProfileHandle`. Those
-interception methods are non-callable capability facts until profile-bound
-WebViews can route provider request and response callbacks through retained
-native resources.
+interception methods are non-callable capability facts because retained
+profile-bound WebViews do not expose portable request and response interception
+callbacks through the current host provider.
 
 `setAudioMuted` and `respondToPermission` are non-callable capability facts.
 `setAudioMuted` is advertised with `host-runtime-media-control-unavailable`;
@@ -260,7 +260,7 @@ methods, `host-user-agent-runtime-unavailable` for `setUserAgent`,
 `webViewCapability(...)` remains a local platform and runtime-mode feature
 helper; it does not grant permission.
 Request/response interception is also not part of this surface yet; it requires
-a separate native host adapter.
+a separate native host adapter with provider request and response callbacks.
 Proxy/auth/certificate hooks are likewise absent from the `WebView` surface;
 use `NetworkAuth.setProxy` for the current future-WebView proxy path.
 

@@ -83,6 +83,16 @@ const NetworkAuthProxySupport = {
   ]
 } as const
 
+const WebRequestUnavailableSupport = {
+  status: "unsupported",
+  reason: "host-web-request-unavailable",
+  platforms: [
+    { platform: "macos", status: "unsupported", reason: "host-web-request-unavailable" },
+    { platform: "windows", status: "unsupported", reason: "host-web-request-unavailable" },
+    { platform: "linux", status: "unsupported", reason: "host-web-request-unavailable" }
+  ]
+} as const
+
 const NotificationUnavailableSupport = {
   status: "partial",
   reason: "host-notification-unavailable",
@@ -209,6 +219,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
         "NetworkAuth.handleCertificate"
       )
       const networkAuthSetProxy = yield* capabilities.support("NetworkAuth.setProxy")
+      const webRequestOnBeforeRequest = yield* capabilities.support("WebRequest.onBeforeRequest")
       const notificationClose = yield* capabilities.support("Notification.close")
       const notificationGetPermissionStatus = yield* capabilities.support(
         "Notification.getPermissionStatus"
@@ -285,6 +296,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(networkAuthHandleAuth).toEqual(NetworkAuthUnavailableSupport)
       expect(networkAuthHandleCertificate).toEqual(NetworkAuthUnavailableSupport)
       expect(networkAuthSetProxy).toEqual(NetworkAuthProxySupport)
+      expect(webRequestOnBeforeRequest).toEqual(WebRequestUnavailableSupport)
       expect(notificationClose).toEqual(NotificationUnavailableSupport)
       expect(notificationGetPermissionStatus).toEqual(NotificationUnavailableSupport)
       expect(notificationRequestPermission).toEqual(NotificationUnavailableSupport)

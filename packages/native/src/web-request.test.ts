@@ -16,6 +16,15 @@ import {
 } from "./web-request.js"
 
 const UnsupportedMethods = ["onBeforeRequest", "onHeadersReceived", "removeListener"] as const
+const UnsupportedSupport = {
+  status: "unsupported",
+  reason: "host-web-request-unavailable",
+  platforms: [
+    { platform: "macos", status: "unsupported", reason: "host-web-request-unavailable" },
+    { platform: "windows", status: "unsupported", reason: "host-web-request-unavailable" },
+    { platform: "linux", status: "unsupported", reason: "host-web-request-unavailable" }
+  ]
+} as const
 
 test("WebRequest exposes only isSupported as a callable RPC", () => {
   const callableTags = Array.from(WebRequestRpcs.requests.keys()).toSorted()
@@ -25,11 +34,11 @@ test("WebRequest exposes only isSupported as a callable RPC", () => {
   }
 })
 
-test("WebRequest declares onBeforeRequest/onHeadersReceived/removeListener as non-callable capability facts", () => {
+test("WebRequest declares onBeforeRequest/onHeadersReceived/removeListener as unsupported capability facts", () => {
   const factTags = WebRequestCapabilityFacts.map((fact) => fact.tag).toSorted()
   expect(factTags).toEqual(UnsupportedMethods.map((method) => `WebRequest.${method}`).toSorted())
   for (const fact of WebRequestCapabilityFacts) {
-    expect(fact.support.status).toBe("unsupported")
+    expect(fact.support).toEqual(UnsupportedSupport)
   }
 })
 

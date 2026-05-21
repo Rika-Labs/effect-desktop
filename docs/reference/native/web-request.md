@@ -25,7 +25,7 @@ The only callable RPC on this surface is the support query:
 
 ## Capability facts (non-callable)
 
-`onBeforeRequest`, `onHeadersReceived`, and `removeListener` are not callable RPCs. They are advertised in the native capability manifest as capability facts with `support.status: "unsupported"` and reason `host-web-request-unavailable`, but no host adapter can be invoked. They describe the intended interception contract until profile-bound WebViews can route provider request and response callbacks.
+`onBeforeRequest`, `onHeadersReceived`, and `removeListener` are not callable RPCs. They are advertised in the native capability manifest as capability facts with `support.status: "unsupported"` and reason `host-web-request-unavailable`, but no host adapter can be invoked. They describe the intended interception contract until WebView providers expose portable profile-bound request and response interception callbacks.
 
 | Capability fact     | Intended role                                                               |
 | ------------------- | --------------------------------------------------------------------------- |
@@ -35,7 +35,7 @@ The only callable RPC on this surface is the support query:
 
 ## Support
 
-The Rust host does not yet receive portable request or response interception callbacks from profile-bound WebViews, so the interception methods are demoted to non-callable capability facts.
+The Rust host does not yet receive portable request or response interception callbacks from profile-bound WebViews, so the interception methods are demoted to non-callable capability facts. Wry 0.55.1 exposes navigation allow/deny callbacks, custom-protocol handlers, and download callbacks, but those do not provide ordered interception for arbitrary `app`, HTTP, and HTTPS requests before load, nor response-header mutation after headers arrive.
 
 | Platform | Status        | Reason                         |
 | -------- | ------------- | ------------------------------ |
