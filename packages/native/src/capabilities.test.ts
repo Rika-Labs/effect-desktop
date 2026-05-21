@@ -13,6 +13,28 @@ import {
 } from "./capabilities.js"
 import { Native } from "./native.js"
 
+const UnsupportedDockCapabilitySupport = {
+  status: "unsupported",
+  reason: "host adapter does not implement this Dock method on any platform",
+  platforms: [
+    {
+      platform: "macos",
+      status: "unsupported",
+      reason: "host adapter does not implement this Dock method on any platform"
+    },
+    {
+      platform: "linux",
+      status: "unsupported",
+      reason: "host adapter does not implement this Dock method on any platform"
+    },
+    {
+      platform: "windows",
+      status: "unsupported",
+      reason: "host adapter does not implement this Dock method on any platform"
+    }
+  ]
+} as const
+
 test("NativeCapabilities exposes support metadata from native surfaces", () => {
   const runtime = ManagedRuntime.make(NativeCapabilitiesLive)
   return runtime.runPromise(
@@ -22,6 +44,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const dockBadge = yield* capabilities.support("Dock.setBadgeCount")
       const dockBadgeText = yield* capabilities.support("Dock.setBadgeText")
       const dockJumpList = yield* capabilities.support("Dock.setJumpList")
+      const dockMenu = yield* capabilities.support("Dock.setMenu")
       const dockProgress = yield* capabilities.support("Dock.setProgress")
       const updaterCheck = yield* capabilities.support("Updater.check")
       const updaterDownload = yield* capabilities.support("Updater.download")
@@ -90,27 +113,8 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
           }
         ]
       })
-      expect(dockJumpList).toEqual({
-        status: "unsupported",
-        reason: "host adapter does not implement this Dock method on any platform",
-        platforms: [
-          {
-            platform: "macos",
-            status: "unsupported",
-            reason: "host adapter does not implement this Dock method on any platform"
-          },
-          {
-            platform: "linux",
-            status: "unsupported",
-            reason: "host adapter does not implement this Dock method on any platform"
-          },
-          {
-            platform: "windows",
-            status: "unsupported",
-            reason: "host adapter does not implement this Dock method on any platform"
-          }
-        ]
-      })
+      expect(dockJumpList).toEqual(UnsupportedDockCapabilitySupport)
+      expect(dockMenu).toEqual(UnsupportedDockCapabilitySupport)
       expect(dockProgress).toEqual({ status: "supported" })
       expect(globalShortcutRegister).toEqual({
         status: "unsupported",
