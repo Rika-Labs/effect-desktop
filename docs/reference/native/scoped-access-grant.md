@@ -53,6 +53,12 @@ The `grant` capability fact declares `native.invoke` authority for `ScopedAccess
 
 Persistent grants are valid only after host revalidation. The `resolve` capability fact's intended contract rejects a host response with `revalidated: false`; callers must treat that as a failed grant recovery, not as access. `resolve` is currently a non-callable capability fact.
 
+`resolve` remains unsupported as an explicit v1 native capability decision. A
+resolver would need a persisted grant store, platform-specific token decoding,
+fresh OS revalidation, and failure semantics for stale or revoked platform
+tokens. The current host has none of those pieces, so a routed `resolve` method
+would only turn an unsupported capability into a deferred runtime failure.
+
 ## Support
 
 The current Rust host adapter is intentionally fail-closed while OS persistent
