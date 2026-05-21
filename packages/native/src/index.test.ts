@@ -910,6 +910,16 @@ const webViewFindInPageUnsupportedSupport = {
   ]
 } as const
 
+const webViewNavigationTrackedSupport = {
+  status: "partial",
+  reason: "host-navigation-state-tracked",
+  platforms: [
+    { platform: "macos", status: "partial", reason: "host-navigation-state-tracked" },
+    { platform: "windows", status: "partial", reason: "host-navigation-state-tracked" },
+    { platform: "linux", status: "partial", reason: "host-navigation-state-tracked" }
+  ]
+} as const
+
 const webViewOpenDevToolsSupport = {
   status: "partial",
   reason: "host-devtools-build-gated",
@@ -2241,6 +2251,7 @@ test("WebView support metadata reflects resource lifecycle and devtools platform
   const byTag = new Map(WebViewSurface.schemaDocs.map((doc) => [doc.tag, doc] as const))
   expect(byTag.get("WebView.create")?.support).toEqual({ status: "supported" })
   expect(byTag.get("WebView.destroy")?.support).toEqual({ status: "supported" })
+  expect(byTag.get("WebView.getNavigationState")?.support).toEqual(webViewNavigationTrackedSupport)
   expect(byTag.get("WebView.openDevTools")?.support).toEqual(webViewOpenDevToolsSupport)
   expect(byTag.get("WebView.closeDevTools")?.support).toEqual(webViewCloseDevToolsSupport)
 })

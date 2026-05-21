@@ -123,6 +123,16 @@ const WebViewFindInPageUnavailableSupport = {
   ]
 } as const
 
+const WebViewNavigationTrackedSupport = {
+  status: "partial",
+  reason: "host-navigation-state-tracked",
+  platforms: [
+    { platform: "macos", status: "partial", reason: "host-navigation-state-tracked" },
+    { platform: "windows", status: "partial", reason: "host-navigation-state-tracked" },
+    { platform: "linux", status: "partial", reason: "host-navigation-state-tracked" }
+  ]
+} as const
+
 const WebViewOpenDevToolsSupport = {
   status: "partial",
   reason: "host-devtools-build-gated",
@@ -296,6 +306,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       )
       const webViewCreate = yield* capabilities.support("WebView.create")
       const webViewDestroy = yield* capabilities.support("WebView.destroy")
+      const webViewGetNavigationState = yield* capabilities.support("WebView.getNavigationState")
       const webViewOpenDevTools = yield* capabilities.support("WebView.openDevTools")
       const webViewCloseDevTools = yield* capabilities.support("WebView.closeDevTools")
       const webViewAttachDebugger = yield* capabilities.support("WebView.attachDebugger")
@@ -381,6 +392,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(webViewFindInPage).toEqual(WebViewFindInPageUnavailableSupport)
       expect(webViewCreate).toEqual({ status: "supported" })
       expect(webViewDestroy).toEqual({ status: "supported" })
+      expect(webViewGetNavigationState).toEqual(WebViewNavigationTrackedSupport)
       expect(menuClear).toEqual({
         status: "partial",
         reason: "macos-menu-clear-only",
