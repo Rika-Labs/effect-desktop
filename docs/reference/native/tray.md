@@ -30,6 +30,10 @@ method partial until that backend is shipped and probed.
 owned by the AppIndicator tray item; without that adapter and runtime probe, Linux menu mutation remains
 unsupported.
 
+`Tray.setTitle` is currently macOS-only. The local tray backend documents Windows title support as
+unsupported and its Windows implementation does not mutate a native title; Linux title support depends on
+the same AppIndicator-backed tray adapter that is not shipped yet.
+
 ## Methods
 
 | Method        | Payload                             | Success                  |

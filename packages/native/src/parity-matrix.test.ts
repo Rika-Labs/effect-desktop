@@ -936,6 +936,22 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
           ]
         }
       })
+      expect(result.rows.find((row) => row.tag === "Tray.setTitle")).toMatchObject({
+        hostStatus: "routed",
+        support: {
+          status: "partial",
+          reason: "windows-tray-title-unavailable",
+          platforms: [
+            { platform: "macos", status: "supported" },
+            {
+              platform: "windows",
+              status: "unsupported",
+              reason: "windows-tray-title-unavailable"
+            },
+            { platform: "linux", status: "unsupported", reason: "host-tray-unavailable" }
+          ]
+        }
+      })
     })
   ))
 

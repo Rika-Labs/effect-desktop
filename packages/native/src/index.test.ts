@@ -3848,6 +3848,18 @@ test("Tray lifecycle support metadata keeps Linux unavailable until tray depende
   }
 })
 
+test("Tray.setTitle support metadata keeps Windows and Linux unavailable", () => {
+  expect(TrayRpcs.requests.get("Tray.setTitle")!.pipe(rpcSupport)).toEqual({
+    status: "partial",
+    reason: "windows-tray-title-unavailable",
+    platforms: [
+      { platform: "macos", status: "supported" },
+      { platform: "windows", status: "unsupported", reason: "windows-tray-title-unavailable" },
+      { platform: "linux", status: "unsupported", reason: "host-tray-unavailable" }
+    ]
+  })
+})
+
 test("Tray service delegates through a substitutable TrayClient port", () =>
   Effect.runPromise(
     Effect.gen(function* () {
