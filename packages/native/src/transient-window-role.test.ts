@@ -52,6 +52,23 @@ test("TransientWindowRole.open stays unsupported until a role adapter owns rende
   })
 })
 
+test("TransientWindowRole.reposition stays unsupported until a role adapter owns placement", () => {
+  const repositionFact = TransientWindowRoleCapabilityFacts.find(
+    (fact) => fact.tag === "TransientWindowRole.reposition"
+  )
+
+  expect(repositionFact).toBeDefined()
+  expect(repositionFact?.support).toEqual({
+    status: "unsupported",
+    reason: "host-adapter-unimplemented",
+    platforms: [
+      { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
+    ]
+  })
+})
+
 test("TransientWindowRole.dismiss stays unsupported until an open role adapter owns handles", () => {
   const dismissFact = TransientWindowRoleCapabilityFacts.find(
     (fact) => fact.tag === "TransientWindowRole.dismiss"
