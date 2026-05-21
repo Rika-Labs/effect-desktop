@@ -66,6 +66,12 @@ previously installed by `watchFocus`, detach the platform observer, publish a
 `watch-stopped` event, and make repeated or unknown watch IDs deterministic.
 The current host has none of that lifecycle state.
 
+`watchFocus` remains unsupported because no platform focus or selection observer
+is wired to this surface. A truthful watch must install native observers,
+register the watch under an owner scope, emit ordered `focus-changed`,
+`selection-changed`, and `failed` events, and clean up on scope close. Returning
+a watch ID without those pieces would be false support.
+
 ## Support
 
 The current Rust host adapter is intentionally fail-closed while OS selection and document adapters are not implemented.
