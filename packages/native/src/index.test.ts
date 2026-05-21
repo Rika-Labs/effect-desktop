@@ -7000,6 +7000,12 @@ test("Updater.installAndRestart support metadata keeps restart handshake limitat
   })
 })
 
+test("Updater.readyForRestart support metadata reports the executable restart acknowledgement", () => {
+  expect(UpdaterRpcs.requests.get("Updater.readyForRestart")!.pipe(rpcSupport)).toEqual({
+    status: "supported"
+  })
+})
+
 test("Updater service delegates through a substitutable UpdaterClient port", () =>
   Effect.runPromise(
     Effect.gen(function* () {

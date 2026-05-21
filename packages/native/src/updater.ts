@@ -111,7 +111,7 @@ export const UpdaterReadyForRestart = NativeSurface.rpc("Updater", "readyForRest
     P.nativeInvoke({ primitive: "Updater", methods: ["readyForRestart"] })
   ),
   endpoint: "mutation",
-  support: UpdaterRestartSupport
+  support: NativeSurface.support.supported
 })
 
 export const UpdaterRpcEvents = Object.freeze({

@@ -235,7 +235,7 @@ The machine-readable matrix lives in [`parity-matrix.json`](parity-matrix.json).
 | `Updater`                   | `getStatus`                 | `supported`   | `Updater.getStatus`                       | `routed`          |
 | `Updater`                   | `install`                   | `partial`     | `Updater.install`                         | `routed`          |
 | `Updater`                   | `installAndRestart`         | `partial`     | `Updater.installAndRestart`               | `routed`          |
-| `Updater`                   | `readyForRestart`           | `partial`     | `Updater.readyForRestart`                 | `routed`          |
+| `Updater`                   | `readyForRestart`           | `supported`   | `Updater.readyForRestart`                 | `routed`          |
 | `WebRequest`                | `isSupported`               | `supported`   | `WebRequest.isSupported`                  | `routed`          |
 | `WebRequest`                | `onBeforeRequest`           | `unsupported` | `WebRequest.onBeforeRequest`              | `capability-fact` |
 | `WebRequest`                | `onHeadersReceived`         | `unsupported` | `WebRequest.onHeadersReceived`            | `capability-fact` |

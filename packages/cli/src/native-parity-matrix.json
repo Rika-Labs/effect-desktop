@@ -3523,25 +3523,7 @@
       "method": "readyForRestart",
       "capability": "native",
       "support": {
-        "status": "partial",
-        "reason": "signed-manifest-restart-handshake-only",
-        "platforms": [
-          {
-            "platform": "macos",
-            "status": "partial",
-            "reason": "signed-manifest-restart-handshake-only"
-          },
-          {
-            "platform": "windows",
-            "status": "partial",
-            "reason": "signed-manifest-restart-handshake-only"
-          },
-          {
-            "platform": "linux",
-            "status": "partial",
-            "reason": "signed-manifest-restart-handshake-only"
-          }
-        ]
+        "status": "supported"
       },
       "hostStatus": "routed"
     },
@@ -4890,8 +4872,8 @@
     "total": 288,
     "routed": 239,
     "missing": 0,
-    "supported": 174,
-    "partial": 65,
+    "supported": 175,
+    "partial": 64,
     "unsupported": 49
   }
 }

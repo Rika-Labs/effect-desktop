@@ -148,6 +148,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const updaterDownload = yield* capabilities.support("Updater.download")
       const updaterGetStatus = yield* capabilities.support("Updater.getStatus")
       const updaterInstall = yield* capabilities.support("Updater.install")
+      const updaterReadyForRestart = yield* capabilities.support("Updater.readyForRestart")
       const dialogOpenFile = yield* capabilities.support("Dialog.openFile")
       const dialogOpenDirectory = yield* capabilities.support("Dialog.openDirectory")
       const displayCaptureCaptureDisplay = yield* capabilities.support(
@@ -334,6 +335,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
           { platform: "linux", status: "partial", reason: "signed-manifest-staged-install-only" }
         ]
       })
+      expect(updaterReadyForRestart).toEqual({ status: "supported" })
       expect(dialogOpenDirectory).toEqual({
         status: "partial",
         reason: "linux-zenity-multi-selection-unavailable",
