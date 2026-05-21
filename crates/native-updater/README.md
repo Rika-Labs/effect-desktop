@@ -1,6 +1,6 @@
 # native-updater
 
-Native update-manifest verification for Effect Desktop.
+Native update-manifest verification for ORIKA.
 
 The crate owns the client-side trust decision for signed update manifests:
 

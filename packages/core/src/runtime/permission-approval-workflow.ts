@@ -1,7 +1,7 @@
 import { Clock, Effect, Exit, Schema } from "effect"
 import { DurableClock, DurableDeferred, Workflow, WorkflowEngine } from "effect/unstable/workflow"
 
-import { makeSecretString } from "@effect-desktop/bridge"
+import { makeSecretString } from "@orika/bridge"
 
 import { approvalAuditEvent, emitAuditEvent, type AuditEventsApi } from "./audit-events.js"
 import {

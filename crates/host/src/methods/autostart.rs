@@ -27,7 +27,7 @@ const AUTOSTART_EXE_ENV: &str = "EFFECT_DESKTOP_AUTOSTART_EXE";
 const AUTOSTART_ROOT_ENV: &str = "EFFECT_DESKTOP_AUTOSTART_ROOT";
 const APP_ID_ENV: &str = "EFFECT_DESKTOP_APP_ID";
 const DEFAULT_APP_ID: &str = "dev.effect-desktop.host";
-const DEFAULT_APP_NAME: &str = "Effect Desktop Host";
+const DEFAULT_APP_NAME: &str = "ORIKA Host";
 
 #[cfg(test)]
 pub(crate) fn is_enabled(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
@@ -846,10 +846,7 @@ mod tests {
             super::AUTOSTART_APP_ID_ENV,
             "dev.effect-desktop.autostart-test",
         );
-        env::set_var(
-            super::AUTOSTART_APP_NAME_ENV,
-            "Effect Desktop Autostart Test",
-        );
+        env::set_var(super::AUTOSTART_APP_NAME_ENV, "ORIKA Autostart Test");
         env::set_var(super::AUTOSTART_EXE_ENV, test_exe());
         run();
         restore_env(super::AUTOSTART_ROOT_ENV, previous_root);
@@ -877,9 +874,9 @@ mod tests {
 
     fn test_exe() -> PathBuf {
         if cfg!(windows) {
-            PathBuf::from(r"C:\Program Files\Effect Desktop\host.exe")
+            PathBuf::from(r"C:\Program Files\ORIKA\host.exe")
         } else {
-            PathBuf::from("/Applications/Effect Desktop.app/Contents/MacOS/host")
+            PathBuf::from("/Applications/ORIKA.app/Contents/MacOS/host")
         }
     }
 

@@ -2,7 +2,7 @@
 
 ## Planned
 
-Issue #1219 asked for `@effect-desktop/native` to stop exposing implementation modules and
+Issue #1219 asked for `@orika/native` to stop exposing implementation modules and
 schema contracts through the package root. The target shape was a root barrel for stable native
 services, a contracts subpath for schema-coded payloads, and an explicit protocol subpath for
 bridge-facing protocol consumers.
@@ -18,7 +18,7 @@ accident.
 `packages/native/src/contracts/index.ts` now aggregates the schema-coded native request, response,
 handle, result, and event contracts. `packages/native/package.json` exposes `./contracts` and
 `./protocol` as intentional subpaths. First-party consumers that needed payload contracts now import
-from `@effect-desktop/native/contracts`.
+from `@orika/native/contracts`.
 
 The native API snapshot records the intentional root reduction, and the roadmap progress table now
 marks #1205, #1178, and #1219 as implemented with concrete evidence.

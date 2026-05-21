@@ -8,14 +8,18 @@ export {
   NativeParityMatrixSummary,
   NativeParityPlatform,
   NativeParityPlatformSupport,
+  NativeParityReleaseDisposition,
+  NativeParityReleaseStatus,
   NativeParitySupport,
   NativeParitySupportStatus
-} from "@effect-desktop/core"
+} from "@orika/core"
 
 export type {
   NativeHostMethodInventorySnapshotType,
   NativeParityCapabilityKind,
   NativeParityMatrixResultType,
   NativeParityMatrixRowType,
-  NativeParityMatrixSummaryType
-} from "@effect-desktop/core"
+  NativeParityMatrixSummaryType,
+  NativeParityReleaseDispositionType,
+  NativeParityReleaseStatusType
+} from "@orika/core"

@@ -14,7 +14,7 @@ The goal was to give renderer code a typed `Desktop.Client` surface derived from
 
 ## What actually ended up working
 
-An in-process client factory in `@effect-desktop/bridge` was the right first slice. `Client({ namespace: Contract }, exchange, options)` builds frozen namespaces, mints request metadata, encodes typed inputs to wire payloads, sends a request envelope through a mockable exchange, decodes success payloads, and decodes failure payloads through the contract error schema before failing the Effect. `@effect-desktop/core` re-exports the factory as `Desktop.Client`.
+An in-process client factory in `@orika/bridge` was the right first slice. `Client({ namespace: Contract }, exchange, options)` builds frozen namespaces, mints request metadata, encodes typed inputs to wire payloads, sends a request envelope through a mockable exchange, decodes success payloads, and decodes failure payloads through the contract error schema before failing the Effect. `@orika/core` re-exports the factory as `Desktop.Client`.
 
 ```mermaid
 flowchart TD

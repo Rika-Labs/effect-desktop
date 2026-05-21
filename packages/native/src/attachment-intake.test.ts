@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
-import { makeHostProtocolInternalError } from "@effect-desktop/bridge"
-import { type AuditEvent, makePermissionRegistry, P } from "@effect-desktop/core"
+import { makeHostProtocolInternalError } from "@orika/bridge"
+import { type AuditEvent, makePermissionRegistry, P } from "@orika/core"
 import { Cause, Effect, Exit, ManagedRuntime, Option, Stream } from "effect"
 
 import {

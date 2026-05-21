@@ -1,4 +1,4 @@
-import type { ScreenError, SystemAppearanceError, PowerMonitorError } from "@effect-desktop/native"
+import type { ScreenError, SystemAppearanceError, PowerMonitorError } from "@orika/native"
 import type {
   PowerMonitorLockScreenEvent,
   PowerMonitorResumeEvent,
@@ -9,7 +9,7 @@ import type {
   ScreenDisplay,
   SystemAppearanceChangedEvent,
   SystemAppearanceMode
-} from "@effect-desktop/native/contracts"
+} from "@orika/native/contracts"
 import { Effect, Stream } from "effect"
 import { AsyncResult } from "effect/unstable/reactivity"
 

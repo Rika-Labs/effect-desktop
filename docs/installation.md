@@ -10,7 +10,7 @@ effect_version: 4
 
 > The full guide lives at [`start/install.md`](start/install.md). This page is the release-gated reference.
 
-Effect Desktop is a Bun + Rust monorepo. There is no published npm package yet — develop against this repository directly.
+ORIKA is a Bun + Rust monorepo. There is no published npm package yet — develop against this repository directly.
 
 ## Requirements
 
@@ -65,4 +65,4 @@ cargo check --workspace
 
 ## App scaffolding
 
-There is **no** `bun create effect-desktop` today. Use [`apps/inspector/`](../apps/inspector) as a reference scaffold and read the [first-app guide](start/first-app.md) for the manual setup.
+There is **no** `bun create orika` today. Use [`apps/inspector/`](../apps/inspector) as a reference scaffold and read the [first-app guide](start/first-app.md) for the manual setup.

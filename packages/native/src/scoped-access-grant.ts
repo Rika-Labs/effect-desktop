@@ -6,8 +6,8 @@ import {
   type HostProtocolError,
   HostProtocolUnsupportedError,
   RpcGroup
-} from "@effect-desktop/bridge"
-import { type DesktopRpcClient, P, type PermissionRegistry } from "@effect-desktop/core"
+} from "@orika/bridge"
+import { type DesktopRpcClient, P, type PermissionRegistry } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { runNativeRpc } from "./native-client.js"
@@ -77,7 +77,7 @@ export interface ScopedAccessGrantClientApi {
 export class ScopedAccessGrantClient extends Context.Service<
   ScopedAccessGrantClient,
   ScopedAccessGrantClientApi
->()("@effect-desktop/native/ScopedAccessGrantClient") {}
+>()("@orika/native/ScopedAccessGrantClient") {}
 
 export interface ScopedAccessGrantServiceApi {
   readonly isSupported: () => Effect.Effect<
@@ -91,7 +91,7 @@ export interface ScopedAccessGrantServiceApi {
 export class ScopedAccessGrant extends Context.Service<
   ScopedAccessGrant,
   ScopedAccessGrantServiceApi
->()("@effect-desktop/native/ScopedAccessGrant") {
+>()("@orika/native/ScopedAccessGrant") {
   static readonly layer = Layer.effect(ScopedAccessGrant)(
     Effect.gen(function* () {
       const client = yield* ScopedAccessGrantClient

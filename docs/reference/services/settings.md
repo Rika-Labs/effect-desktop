@@ -20,7 +20,7 @@ import {
   SettingsError,
   SettingsMigrated,
   SettingsRecoveredFromBackup
-} from "@effect-desktop/core"
+} from "@orika/core"
 ```
 
 ## API

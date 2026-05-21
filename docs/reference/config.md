@@ -8,7 +8,7 @@ effect_version: 4
 
 # Configuration
 
-`@effect-desktop/config` owns the typed `desktop.config.ts` schema and the production check rules enforced by `desktop check`.
+`@orika/config` owns the typed `desktop.config.ts` schema and the production check rules enforced by `desktop check`.
 
 ## Import
 
@@ -19,7 +19,7 @@ import {
   effectiveCspPolicy,
   runProductionCheck,
   formatProductionCheckReport
-} from "@effect-desktop/config"
+} from "@orika/config"
 ```
 
 ## `defineDesktopConfig(config)`
@@ -27,7 +27,7 @@ import {
 Typed identity function — gives you autocomplete and compile-time validation against `DesktopConfig`.
 
 ```ts
-import { defineDesktopConfig } from "@effect-desktop/config"
+import { defineDesktopConfig } from "@orika/config"
 
 export default defineDesktopConfig({
   app: {

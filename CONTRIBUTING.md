@@ -1,6 +1,6 @@
 # Contributing
 
-Effect Desktop follows the repository specification in `engineering/SPEC.md`. The
+ORIKA follows the repository specification in `engineering/SPEC.md`. The
 spec is normative; code changes should implement the smallest correct slice
 that preserves its boundaries.
 

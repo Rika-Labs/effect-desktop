@@ -12,7 +12,7 @@ import {
   Stream
 } from "effect"
 import type { PlatformError } from "effect/PlatformError"
-import type { TransportError } from "@effect-desktop/core/runtime/transport"
+import type { TransportError } from "@orika/core/runtime/transport"
 import type { ChildProcessSpawner } from "effect/unstable/process"
 import { makeRuntimeProcess, type RuntimeProcess } from "./runtime-process.js"
 import {

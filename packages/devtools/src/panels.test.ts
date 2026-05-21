@@ -4,7 +4,7 @@ import {
   emptyInspectorSafetySummary,
   InspectorSafetyPolicyLive,
   LayerGraphSnapshot
-} from "@effect-desktop/core"
+} from "@orika/core"
 import {
   Cause,
   Clock,

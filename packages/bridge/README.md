@@ -1,4 +1,4 @@
-# @effect-desktop/bridge
+# @orika/bridge
 
 > **Status:** Phase 3 host-protocol schema mirror. Public renderer-facing APIs
 > are populated in Phase 4. See `engineering/SPEC.md`.
@@ -40,7 +40,7 @@ import {
   bridgeContractFromRpcGroup,
   decodeHostProtocolEnvelope,
   type HostProtocolEnvelope
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import { Schema } from "effect"
 
 const OpenProject = Rpc.make("Project.open", {

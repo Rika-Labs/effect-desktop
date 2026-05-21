@@ -10,7 +10,7 @@ effect_version: 4
 
 > The deep dive lives at [`explanation/architecture.md`](explanation/architecture.md). This page is the release-gated reference summary.
 
-Effect Desktop splits a desktop app into four explicit owners:
+ORIKA splits a desktop app into four explicit owners:
 
 - **Rust** owns the native shell.
 - **Bun** owns the TypeScript runtime.

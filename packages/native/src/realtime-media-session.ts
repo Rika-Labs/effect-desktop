@@ -9,8 +9,8 @@ import {
   type RpcSupportMetadata,
   RpcGroup,
   type HostProtocolError
-} from "@effect-desktop/bridge"
-import { type DesktopRpcClient, type PermissionRegistry, P } from "@effect-desktop/core"
+} from "@orika/bridge"
+import { type DesktopRpcClient, type PermissionRegistry, P } from "@orika/core"
 import { Context, Effect, Layer, PubSub, Schema, Stream } from "effect"
 
 import { subscribeNativeEvent } from "./event-stream.js"
@@ -143,7 +143,7 @@ export interface RealtimeMediaSessionClientApi {
 export class RealtimeMediaSessionClient extends Context.Service<
   RealtimeMediaSessionClient,
   RealtimeMediaSessionClientApi
->()("@effect-desktop/native/RealtimeMediaSessionClient") {}
+>()("@orika/native/RealtimeMediaSessionClient") {}
 
 export interface RealtimeMediaSessionServiceApi extends Omit<
   RealtimeMediaSessionClientApi,
@@ -169,7 +169,7 @@ export interface RealtimeMediaSessionServiceApi extends Omit<
 export class RealtimeMediaSession extends Context.Service<
   RealtimeMediaSession,
   RealtimeMediaSessionServiceApi
->()("@effect-desktop/native/RealtimeMediaSession") {
+>()("@orika/native/RealtimeMediaSession") {
   static readonly layer = Layer.effect(RealtimeMediaSession)(
     Effect.gen(function* () {
       const client = yield* RealtimeMediaSessionClient

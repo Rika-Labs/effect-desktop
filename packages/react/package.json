@@ -1,8 +1,8 @@
 {
-  "name": "@effect-desktop/react",
+  "name": "@orika/react",
   "version": "2.0.0",
   "private": true,
-  "description": "React provider and hooks for Effect Desktop renderer clients.",
+  "description": "React provider and hooks for ORIKA renderer clients.",
   "license": "MIT OR Apache-2.0",
   "author": "Rika Labs, LLC",
   "repository": {
@@ -62,10 +62,10 @@
     "lint": "oxlint ."
   },
   "dependencies": {
-    "@effect-desktop/bridge": "workspace:*",
-    "@effect-desktop/core": "workspace:*",
-    "@effect-desktop/native": "workspace:*",
-    "@effect-desktop/platform-browser": "workspace:*",
+    "@orika/bridge": "workspace:*",
+    "@orika/core": "workspace:*",
+    "@orika/native": "workspace:*",
+    "@orika/platform-browser": "workspace:*",
     "@effect/atom-react": "4.0.0-beta.60",
     "effect": "4.0.0-beta.60"
   },

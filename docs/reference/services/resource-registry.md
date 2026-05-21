@@ -26,7 +26,7 @@ import {
   type RegistrySnapshot,
   type ResourceLifecycleEvent,
   ResourceHandleSchema
-} from "@effect-desktop/core"
+} from "@orika/core"
 ```
 
 ## API
@@ -43,7 +43,7 @@ import {
 
 ```ts
 import { Layer } from "effect"
-import { ResourceRegistry, makeResourceRegistry } from "@effect-desktop/core"
+import { ResourceRegistry, makeResourceRegistry } from "@orika/core"
 
 const ResourceRegistryLive = Layer.effect(ResourceRegistry)(makeResourceRegistry())
 ```
@@ -55,7 +55,7 @@ You usually don't. The runtime primitives (`Process`, `Worker`, `PTY`, `Filesyst
 ## Test integration
 
 ```ts
-import { assertNoOpenResourcesIn } from "@effect-desktop/test"
+import { assertNoOpenResourcesIn } from "@orika/test"
 
 const registry = yield * ResourceRegistry
 yield * assertNoOpenResourcesIn(registry, { testName: "no leaks" })

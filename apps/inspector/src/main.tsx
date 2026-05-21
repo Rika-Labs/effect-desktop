@@ -1,5 +1,5 @@
-import { makeInspectorTransport } from "@effect-desktop/core/inspector-transport"
-import { makeReplayTransport } from "@effect-desktop/devtools/testing"
+import { makeInspectorTransport } from "@orika/core/inspector-transport"
+import { makeReplayTransport } from "@orika/devtools/testing"
 import { Cause, Effect, Exit } from "effect"
 import { StrictMode, useState } from "react"
 import { createRoot } from "react-dom/client"

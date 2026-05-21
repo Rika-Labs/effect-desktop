@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Desktop } from "@effect-desktop/core"
+import { Desktop } from "@orika/core"
 
 import { NextDesktop } from "./index.js"
 

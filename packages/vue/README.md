@@ -1,10 +1,10 @@
-# @effect-desktop/vue
+# @orika/vue
 
-Vue adapter for app-scoped Effect Desktop RPC groups.
+Vue adapter for app-scoped ORIKA RPC groups.
 
 ## Purpose
 
-`@effect-desktop/vue` turns a `Desktop.manifest(App)` value and an imported Effect
+`@orika/vue` turns a `Desktop.manifest(App)` value and an imported Effect
 `RpcGroup` into Vue composables. The app contract stays in Effect RPC, the host owns
 the transport, and Vue owns refs, scopes, and disposal.
 
@@ -36,8 +36,8 @@ applications rely on the host-installed renderer transport.
 ## Usage
 
 ```ts
-import { Desktop } from "@effect-desktop/core"
-import { VueDesktop } from "@effect-desktop/vue"
+import { Desktop } from "@orika/core"
+import { VueDesktop } from "@orika/vue"
 import { App, NotesRpcs } from "./desktop"
 import Root from "./Root.vue"
 

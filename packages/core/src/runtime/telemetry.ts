@@ -1,4 +1,4 @@
-import type { RedactionFilterOptions } from "@effect-desktop/bridge"
+import type { RedactionFilterOptions } from "@orika/bridge"
 import {
   Cause,
   Clock,
@@ -551,7 +551,7 @@ export const makeTelemetry = (
   })
 
 export class Telemetry extends Context.Service<Telemetry, TelemetryApi>()(
-  "@effect-desktop/core/runtime/telemetry",
+  "@orika/core/runtime/telemetry",
   {
     make: makeTelemetry()
   }
@@ -560,7 +560,7 @@ export class Telemetry extends Context.Service<Telemetry, TelemetryApi>()(
 export class EffectTelemetryCollector extends Context.Service<
   EffectTelemetryCollector,
   EffectTelemetryCollectorApi
->()("@effect-desktop/core/runtime/telemetry/EffectTelemetryCollector") {}
+>()("@orika/core/runtime/telemetry/EffectTelemetryCollector") {}
 
 export const withDesktopSpan =
   (

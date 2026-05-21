@@ -91,7 +91,7 @@ pub(crate) fn show_with_event_sender(
         })?;
         let mut notification = notify_rust::Notification::new();
         notification
-            .appname("Effect Desktop")
+            .appname("ORIKA")
             .summary(input.title())
             .body(input.body());
         for action in input.actions() {

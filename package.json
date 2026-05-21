@@ -1,5 +1,5 @@
 {
-  "name": "effect-desktop-repo",
+  "name": "orika-repo",
   "private": true,
   "description": "Bun-powered, Rust-hosted, React-friendly desktop application framework modeled through Effect.",
   "license": "MIT OR Apache-2.0",

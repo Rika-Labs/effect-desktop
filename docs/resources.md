@@ -14,7 +14,7 @@ Resources model long-lived runtime or native ownership: windows, streams, file w
 
 ## Public surface
 
-`@effect-desktop/core` exports `ResourceRegistry`, `ManagedResource`, resource ids, resource kinds, snapshots, disposal helpers, and registry constructors.
+`@orika/core` exports `ResourceRegistry`, `ManagedResource`, resource ids, resource kinds, snapshots, disposal helpers, and registry constructors.
 
 ## Runtime rule
 
@@ -34,7 +34,7 @@ if (ResourceRegistry === undefined || documentedType.length === 0) {
 
 ## Testing
 
-Use `assertNoOpenResourcesIn(registry)` or `installResourceLeakDetection(registry)` from `@effect-desktop/test`. `HeadlessRuntime.run` installs leak detection by default.
+Use `assertNoOpenResourcesIn(registry)` or `installResourceLeakDetection(registry)` from `@orika/test`. `HeadlessRuntime.run` installs leak detection by default.
 
 ## Where to go next
 

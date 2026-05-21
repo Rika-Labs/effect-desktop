@@ -4,7 +4,7 @@ import {
   type RendererResumeDeniedReason,
   type RendererResumePayload,
   type ResumeTicket
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 
 export interface RendererResumePolicyInput {
   readonly ticket: ResumeTicket

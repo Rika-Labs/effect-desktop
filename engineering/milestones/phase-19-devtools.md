@@ -41,7 +41,7 @@ beyond the explicit devtools gate, and CI performance budget enforcement.
 
 ## Public APIs
 
-`@effect-desktop/devtools` exports:
+`@orika/devtools` exports:
 
 - `DevtoolsShell`, `makeDevtoolsShell`, and `shouldStartDevtools` for the
   shell/listener lifecycle and production gate.
@@ -52,7 +52,7 @@ beyond the explicit devtools gate, and CI performance budget enforcement.
 - `PerformanceOverlay` / `PerformanceOverlayLive` / `makePerformanceOverlay`
   for startup, bridge p99, and renderer frame budget rows.
 
-`@effect-desktop/core` exports `Telemetry` and telemetry snapshot types used by
+`@orika/core` exports `Telemetry` and telemetry snapshot types used by
 diagnostics and performance projections.
 
 ## Acceptance criteria
@@ -135,9 +135,9 @@ Milestone: Phase 19 - Devtools
 Files changed: devtools shell lifecycle; live runtime panels; diagnostics
 panels; performance overlay; telemetry runtime owner; trace identity propagation;
 Phase 19 learning records.
-Public APIs added: @effect-desktop/devtools DevtoolsShell, LiveRuntimePanels,
+Public APIs added: @orika/devtools DevtoolsShell, LiveRuntimePanels,
 DiagnosticsPanels, PerformanceOverlay, CommandsDevtools, WorkersJobsDevtools;
-@effect-desktop/core Telemetry and trace/metric/log snapshot types.
+@orika/core Telemetry and trace/metric/log snapshot types.
 Tests added: shell lifecycle tests; live panel projection tests; diagnostics and
 performance projection tests; telemetry tests; bridge and host trace identity
 tests.

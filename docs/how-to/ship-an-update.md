@@ -52,7 +52,7 @@ The runtime updater has an executable local subset: `Updater.check` verifies cal
 Do not wire `UpdaterRpcs` into production apps until the remaining updater lifecycle is complete. The manifest wiring is expected to look like this:
 
 ```ts
-import { Desktop } from "@effect-desktop/core"
+import { Desktop } from "@orika/core"
 
 export const App = Desktop.make({
   id: "dev.example.notes",

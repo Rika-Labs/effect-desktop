@@ -8,13 +8,13 @@ effect_version: 4
 
 # How to write a test with layers
 
-`@effect-desktop/test` provides a headless runtime that composes mock host, mock bridge, memory filesystem, mock process, and mock PTY into one layer. Most handler tests don't need anything more.
+`@orika/test` provides a headless runtime that composes mock host, mock bridge, memory filesystem, mock process, and mock PTY into one layer. Most handler tests don't need anything more.
 
 ## 1. Import
 
 ```ts
 import { Effect } from "effect"
-import { HeadlessRuntime } from "@effect-desktop/test"
+import { HeadlessRuntime } from "@orika/test"
 import { test, expect } from "bun:test"
 ```
 
@@ -44,7 +44,7 @@ If you need a specific native service in the test (say, `WindowTest` instead of 
 
 ```ts
 import { Layer } from "effect"
-import { HeadlessRuntime, TestWindow } from "@effect-desktop/test"
+import { HeadlessRuntime, TestWindow } from "@orika/test"
 
 const TestLive = Layer.merge(
   HeadlessRuntime.layer({ testName: "window create" }),
@@ -64,7 +64,7 @@ test("creates a window", async () => {
 ## 4. Pin RPC responses on the mock bridge
 
 ```ts
-import { makeMockBridge } from "@effect-desktop/test"
+import { makeMockBridge } from "@orika/test"
 
 const bridge = makeMockBridge({
   pin: [
@@ -79,8 +79,8 @@ The bridge enforces the contract — pinning a response with the wrong shape fai
 ## 5. Assert resource cleanup
 
 ```ts
-import { ResourceRegistry } from "@effect-desktop/core"
-import { assertNoOpenResourcesIn } from "@effect-desktop/test"
+import { ResourceRegistry } from "@orika/core"
+import { assertNoOpenResourcesIn } from "@orika/test"
 
 const registry = yield * ResourceRegistry
 yield * assertNoOpenResourcesIn(registry, { testName: "save persists" })
@@ -92,8 +92,8 @@ yield * assertNoOpenResourcesIn(registry, { testName: "save persists" })
 
 ```tsx
 import { render, screen } from "@testing-library/react"
-import { ReactDesktop } from "@effect-desktop/react"
-import { makeMockBridge } from "@effect-desktop/test"
+import { ReactDesktop } from "@orika/react"
+import { makeMockBridge } from "@orika/test"
 import { Manifest } from "../src/manifest.js"
 
 const bridge = makeMockBridge({
@@ -121,7 +121,7 @@ The renderer's transport is just another layer; substituting it gives you a dete
 - A mock window manager (`TestWindow`, `MockHost`).
 - A mock approval queue (test layer for `ApprovalBroker`).
 
-If a faked service you need isn't in `@effect-desktop/test`, that's an issue worth filing.
+If a faked service you need isn't in `@orika/test`, that's an issue worth filing.
 
 ## Related
 

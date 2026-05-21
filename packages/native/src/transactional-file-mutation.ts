@@ -12,7 +12,7 @@ import {
   type HostProtocolError,
   type RpcCapabilityMetadata,
   RpcGroup
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import {
   type AuditEventsApi,
   type DesktopRpcClient,
@@ -30,7 +30,7 @@ import {
   type ResourceId,
   ResourceRegistry,
   type ResourceRegistryApi
-} from "@effect-desktop/core"
+} from "@orika/core"
 import { Clock, Context, Effect, Layer, PubSub, Ref, Schema, Stream } from "effect"
 
 import {
@@ -143,7 +143,7 @@ export interface TransactionalFileMutationClientApi {
 export class TransactionalFileMutationClient extends Context.Service<
   TransactionalFileMutationClient,
   TransactionalFileMutationClientApi
->()("@effect-desktop/native/TransactionalFileMutationClient") {}
+>()("@orika/native/TransactionalFileMutationClient") {}
 
 export interface TransactionalFileMutationServiceApi {
   readonly prepare: (
@@ -178,7 +178,7 @@ export interface TransactionalFileMutationServiceOptions {
 export class TransactionalFileMutation extends Context.Service<
   TransactionalFileMutation,
   TransactionalFileMutationServiceApi
->()("@effect-desktop/native/TransactionalFileMutation") {
+>()("@orika/native/TransactionalFileMutation") {
   static readonly layer = Layer.effect(TransactionalFileMutation)(
     Effect.gen(function* () {
       const client = yield* TransactionalFileMutationClient

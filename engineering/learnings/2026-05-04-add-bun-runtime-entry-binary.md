@@ -34,7 +34,7 @@ flowchart LR
   parse --> host["future host launcher contract"]
 ```
 
-The implementation also replaced the `@effect-desktop/core` Phase 0 tautology
+The implementation also replaced the `@orika/core` Phase 0 tautology
 test with a real negative assertion: the public barrel still imports to `{}`.
 That kept the package honest after internal runtime code landed without making
 the runtime entry part of the public framework API.
@@ -52,7 +52,7 @@ surface.
 The invariant was not "there is a TypeScript file"; it was "there is one process
 entry whose stdout is safe for the host to parse." That reframed the work around
 observable process behavior rather than module shape. The second invariant was
-that `@effect-desktop/core` can contain internal runtime machinery before its
+that `@orika/core` can contain internal runtime machinery before its
 public `Desktop.*` facade exists. The public barrel test made that distinction
 executable instead of relying on reviewer memory.
 

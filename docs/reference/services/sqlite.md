@@ -13,7 +13,7 @@ Effect SQL service backed by `bun:sqlite` via `@effect/sql-sqlite-bun`. The fram
 ## Import
 
 ```ts
-import { SqlClient, SqlClientLive } from "@effect-desktop/core"
+import { SqlClient, SqlClientLive } from "@orika/core"
 ```
 
 `SqlClient`, `SqlError`, and `SqlModel` re-export from `@effect/sql-sqlite-bun`.
@@ -86,7 +86,7 @@ Bun-only. SQLite uses Bun's built-in `bun:sqlite` binding.
 
 ## Renderer-side equivalent
 
-`@effect-desktop/platform-browser` exports `RendererSqliteWorkerLive` (SQLite WASM in a Web Worker) for renderer persistence.
+`@orika/platform-browser` exports `RendererSqliteWorkerLive` (SQLite WASM in a Web Worker) for renderer persistence.
 
 ## Related
 

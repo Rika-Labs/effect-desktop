@@ -19,7 +19,7 @@ export interface PersistencePanelOptions {
 }
 
 export class PersistencePanel extends Context.Service<PersistencePanel, PersistencePanelApi>()(
-  "@effect-desktop/devtools/persistence-panel/PersistencePanel"
+  "@orika/devtools/persistence-panel/PersistencePanel"
 ) {}
 
 export const PersistencePanelLive = (

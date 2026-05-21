@@ -1,12 +1,12 @@
 ---
 date: 2026-05-05
 type: in-flight-feature
-topic: Window service definition in @effect-desktop/native + matching contract in packages/bridge
+topic: Window service definition in @orika/native + matching contract in packages/bridge
 issue: https://github.com/Rika-Labs/effect-desktop/issues/130
 pr: https://github.com/Rika-Labs/effect-desktop/pull/175
 ---
 
-# Window service definition in @effect-desktop/native + matching contract in packages/bridge
+# Window service definition in @orika/native + matching contract in packages/bridge
 
 ## What we set out to do
 
@@ -14,7 +14,7 @@ Issue #130 asked for the Phase 5 `Window` surface to stop being theoretical: app
 
 ## What actually ended up working
 
-The implementation made `@effect-desktop/native` own the public `Window` surface with three parts: `WindowApi` as the contract value, `WindowClient` as the substitutable port, and `Window` as the Effect service that delegates through the port. The original architecture assumed the contract could register itself globally at module import, but the final shape split pure contract declaration from explicit `registerWindowApi()` bootstrap registration. That preserves the contract surface without making package import order mutate global process state.
+The implementation made `@orika/native` own the public `Window` surface with three parts: `WindowApi` as the contract value, `WindowClient` as the substitutable port, and `Window` as the Effect service that delegates through the port. The original architecture assumed the contract could register itself globally at module import, but the final shape split pure contract declaration from explicit `registerWindowApi()` bootstrap registration. That preserves the contract surface without making package import order mutate global process state.
 
 ```mermaid
 flowchart LR

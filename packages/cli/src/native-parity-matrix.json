@@ -8,7 +8,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "ActivationRegistry.listSurfaces",
@@ -18,7 +21,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "ActivationRegistry.registerSurface",
@@ -28,7 +34,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "ActivationRegistry.unregisterSurface",
@@ -38,7 +47,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "App.activate",
@@ -48,7 +60,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "App.exit",
@@ -58,7 +73,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "App.focus",
@@ -68,7 +86,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "App.quit",
@@ -78,7 +99,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "App.relaunch",
@@ -88,7 +112,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "App.releaseSingleInstanceLock",
@@ -98,7 +125,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "App.requestSingleInstanceLock",
@@ -108,7 +138,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "App.restart",
@@ -118,7 +151,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "AppMetadata.getInfo",
@@ -128,7 +164,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "AppMetadata.getLaunchContext",
@@ -138,7 +177,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "AppMetadata.getPaths",
@@ -148,7 +190,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Association.getFileAssociations",
@@ -175,7 +220,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1443,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1443"
+      }
     },
     {
       "tag": "Association.isDefaultProtocolClient",
@@ -202,7 +252,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1443,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1443"
+      }
     },
     {
       "tag": "Association.setDefaultProtocolClient",
@@ -229,7 +284,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1443,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1443"
+      }
     },
     {
       "tag": "AttachmentIntake.dispose",
@@ -239,7 +299,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "AttachmentIntake.ingest",
@@ -249,7 +312,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "AttachmentIntake.inspect",
@@ -259,7 +325,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "AttachmentIntake.isSupported",
@@ -269,7 +338,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Autostart.disable",
@@ -279,7 +351,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Autostart.enable",
@@ -289,7 +364,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Autostart.isEnabled",
@@ -299,7 +377,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "BrowsingData.clear",
@@ -309,7 +390,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "BrowsingData.estimate",
@@ -337,7 +421,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1439,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1439"
+      }
     },
     {
       "tag": "BrowsingData.isSupported",
@@ -347,7 +436,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "BrowsingData.listTypes",
@@ -357,7 +449,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Clipboard.clear",
@@ -367,7 +462,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Clipboard.isSupported",
@@ -377,7 +475,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Clipboard.readHtml",
@@ -387,7 +488,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Clipboard.readImage",
@@ -397,7 +501,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Clipboard.readText",
@@ -407,7 +514,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Clipboard.writeHtml",
@@ -417,7 +527,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Clipboard.writeImage",
@@ -427,7 +540,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Clipboard.writeText",
@@ -437,7 +553,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "ContextMenu.show",
@@ -447,7 +566,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "CookieStore.get",
@@ -475,7 +597,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1439,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1439"
+      }
     },
     {
       "tag": "CookieStore.isSupported",
@@ -485,7 +612,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "CookieStore.remove",
@@ -513,7 +643,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1439,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1439"
+      }
     },
     {
       "tag": "CookieStore.set",
@@ -541,7 +676,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1439,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1439"
+      }
     },
     {
       "tag": "CrashReporter.flush",
@@ -551,7 +691,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "CrashReporter.getReports",
@@ -561,7 +704,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "CrashReporter.recordBreadcrumb",
@@ -571,7 +717,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "CrashReporter.start",
@@ -599,7 +748,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1445,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1445"
+      }
     },
     {
       "tag": "DiagnosticsBundle.collect",
@@ -609,7 +763,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "DiagnosticsBundle.isSupported",
@@ -619,7 +776,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "DiagnosticsBundle.redact",
@@ -629,7 +789,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "DiagnosticsBundle.write",
@@ -639,7 +802,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Dialog.confirm",
@@ -649,7 +815,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Dialog.message",
@@ -659,7 +828,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Dialog.openDirectory",
@@ -685,7 +857,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1442,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1442"
+      }
     },
     {
       "tag": "Dialog.openFile",
@@ -711,7 +888,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1442,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1442"
+      }
     },
     {
       "tag": "Dialog.saveFile",
@@ -721,7 +903,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "DisplayCapture.captureDisplay",
@@ -748,7 +933,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1445,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1445"
+      }
     },
     {
       "tag": "DisplayCapture.captureRegion",
@@ -775,7 +965,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1445,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1445"
+      }
     },
     {
       "tag": "DisplayCapture.captureWindow",
@@ -802,7 +997,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1445,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1445"
+      }
     },
     {
       "tag": "DisplayCapture.isSupported",
@@ -812,7 +1012,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "DistributionParity.isSupported",
@@ -822,7 +1025,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "DistributionParity.verify",
@@ -832,7 +1038,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Dock.isSupported",
@@ -842,7 +1051,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Dock.requestAttention",
@@ -852,7 +1064,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Dock.setBadgeCount",
@@ -879,7 +1094,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1441,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1441"
+      }
     },
     {
       "tag": "Dock.setBadgeText",
@@ -906,7 +1126,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1441,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1441"
+      }
     },
     {
       "tag": "Dock.setJumpList",
@@ -934,7 +1159,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1441,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1441"
+      }
     },
     {
       "tag": "Dock.setMenu",
@@ -962,7 +1192,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1441,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1441"
+      }
     },
     {
       "tag": "Dock.setProgress",
@@ -972,7 +1207,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Download.cancel",
@@ -1000,7 +1238,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1440,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1440"
+      }
     },
     {
       "tag": "Download.isSupported",
@@ -1010,7 +1253,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Download.list",
@@ -1038,7 +1284,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1440,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1440"
+      }
     },
     {
       "tag": "Download.pause",
@@ -1066,7 +1317,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1440,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1440"
+      }
     },
     {
       "tag": "Download.resume",
@@ -1094,7 +1350,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1440,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1440"
+      }
     },
     {
       "tag": "Download.start",
@@ -1122,7 +1383,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1440,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1440"
+      }
     },
     {
       "tag": "EgressPolicy.decide",
@@ -1150,7 +1416,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1444,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1444"
+      }
     },
     {
       "tag": "EgressPolicy.isSupported",
@@ -1178,7 +1449,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1444,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1444"
+      }
     },
     {
       "tag": "EgressPolicy.record",
@@ -1206,7 +1482,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1444,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1444"
+      }
     },
     {
       "tag": "ExecutionSandbox.create",
@@ -1234,7 +1515,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1444,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1444"
+      }
     },
     {
       "tag": "ExecutionSandbox.destroy",
@@ -1262,7 +1548,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1444,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1444"
+      }
     },
     {
       "tag": "ExecutionSandbox.isSupported",
@@ -1272,7 +1563,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "ExecutionSandbox.run",
@@ -1300,7 +1594,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1444,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1444"
+      }
     },
     {
       "tag": "ExtensionConfig.isSupported",
@@ -1310,7 +1609,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "ExtensionConfig.read",
@@ -1320,7 +1622,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "ExtensionConfig.redact",
@@ -1330,7 +1635,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "ExtensionConfig.reset",
@@ -1340,7 +1648,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "ExtensionConfig.write",
@@ -1350,7 +1661,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "ExtensionPackage.install",
@@ -1360,7 +1674,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "ExtensionPackage.isSupported",
@@ -1370,7 +1687,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "ExtensionPackage.list",
@@ -1380,7 +1700,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "ExtensionPackage.remove",
@@ -1390,7 +1713,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "ExtensionPackage.update",
@@ -1400,7 +1726,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "FocusedApplicationContext.isSupported",
@@ -1410,7 +1739,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "FocusedApplicationContext.snapshot",
@@ -1438,7 +1770,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1443,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1443"
+      }
     },
     {
       "tag": "FocusedApplicationContext.stopWatching",
@@ -1466,7 +1803,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1443,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1443"
+      }
     },
     {
       "tag": "FocusedApplicationContext.watch",
@@ -1494,7 +1836,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1443,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1443"
+      }
     },
     {
       "tag": "GlobalShortcut.isRegistered",
@@ -1504,7 +1851,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "GlobalShortcut.isSupported",
@@ -1514,7 +1864,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "GlobalShortcut.register",
@@ -1542,7 +1895,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1441,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1441"
+      }
     },
     {
       "tag": "GlobalShortcut.unregister",
@@ -1570,7 +1928,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1441,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1441"
+      }
     },
     {
       "tag": "GlobalShortcut.unregisterAll",
@@ -1598,7 +1961,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1441,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1441"
+      }
     },
     {
       "tag": "Job.fail",
@@ -1608,7 +1976,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Job.get",
@@ -1618,7 +1989,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Job.interrupt",
@@ -1628,7 +2002,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Job.isSupported",
@@ -1638,7 +2015,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Job.pause",
@@ -1648,7 +2028,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Job.reportProgress",
@@ -1658,7 +2041,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Job.resume",
@@ -1668,7 +2054,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Job.retry",
@@ -1678,7 +2067,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Job.start",
@@ -1688,7 +2080,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Job.succeed",
@@ -1698,7 +2093,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "LocalToolRuntime.health",
@@ -1708,7 +2106,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "LocalToolRuntime.isSupported",
@@ -1718,7 +2119,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "LocalToolRuntime.register",
@@ -1728,7 +2132,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "LocalToolRuntime.run",
@@ -1738,7 +2145,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "LocalToolRuntime.stop",
@@ -1748,7 +2158,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Menu.capability",
@@ -1758,7 +2171,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Menu.clear",
@@ -1785,7 +2201,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1441,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1441"
+      }
     },
     {
       "tag": "Menu.setApplicationMenu",
@@ -1795,7 +2216,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Menu.setWindowMenu",
@@ -1805,7 +2229,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "NativeFileSystem.isSupported",
@@ -1815,7 +2242,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "NativeFileSystem.open",
@@ -1825,7 +2255,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "NativeFileSystem.stat",
@@ -1835,7 +2268,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "NativeFileSystem.stopWatching",
@@ -1845,7 +2281,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "NativeFileSystem.watch",
@@ -1855,7 +2294,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "NativeNetwork.closeWebSocket",
@@ -1883,7 +2325,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1440,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1440"
+      }
     },
     {
       "tag": "NativeNetwork.connectWebSocket",
@@ -1911,7 +2358,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1440,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1440"
+      }
     },
     {
       "tag": "NativeNetwork.fetch",
@@ -1939,7 +2391,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1440,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1440"
+      }
     },
     {
       "tag": "NativeNetwork.isSupported",
@@ -1949,7 +2406,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "NativeNetwork.localhostUrl",
@@ -1977,7 +2437,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1440,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1440"
+      }
     },
     {
       "tag": "NativeNetwork.upload",
@@ -2005,7 +2470,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1440,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1440"
+      }
     },
     {
       "tag": "NetworkAuth.handleAuth",
@@ -2033,7 +2503,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1440,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1440"
+      }
     },
     {
       "tag": "NetworkAuth.handleCertificate",
@@ -2061,7 +2536,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1440,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1440"
+      }
     },
     {
       "tag": "NetworkAuth.isSupported",
@@ -2071,7 +2551,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "NetworkAuth.setProxy",
@@ -2099,7 +2582,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1440,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1440"
+      }
     },
     {
       "tag": "Notification.close",
@@ -2126,7 +2614,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1442,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1442"
+      }
     },
     {
       "tag": "Notification.getPermissionStatus",
@@ -2153,7 +2646,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1442,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1442"
+      }
     },
     {
       "tag": "Notification.isSupported",
@@ -2163,7 +2661,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Notification.requestPermission",
@@ -2190,7 +2691,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1442,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1442"
+      }
     },
     {
       "tag": "Notification.show",
@@ -2217,7 +2723,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1442,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1442"
+      }
     },
     {
       "tag": "Path.appData",
@@ -2227,7 +2738,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Path.cache",
@@ -2237,7 +2751,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Path.downloads",
@@ -2247,7 +2764,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Path.home",
@@ -2257,7 +2777,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Path.logs",
@@ -2267,7 +2790,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Path.temp",
@@ -2277,7 +2803,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "PowerMonitor.isSupported",
@@ -2304,7 +2833,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1445,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1445"
+      }
     },
     {
       "tag": "Protocol.deny",
@@ -2314,7 +2848,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Protocol.registerAppProtocol",
@@ -2324,7 +2861,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Protocol.serveAsset",
@@ -2334,7 +2874,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Protocol.serveRoute",
@@ -2344,7 +2887,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "RealtimeMediaSession.close",
@@ -2371,7 +2917,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1445,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1445"
+      }
     },
     {
       "tag": "RealtimeMediaSession.interrupt",
@@ -2398,7 +2949,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1445,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1445"
+      }
     },
     {
       "tag": "RealtimeMediaSession.isSupported",
@@ -2408,7 +2964,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "RealtimeMediaSession.open",
@@ -2435,7 +2994,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1445,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1445"
+      }
     },
     {
       "tag": "RealtimeMediaSession.selectDevice",
@@ -2462,7 +3026,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1445,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1445"
+      }
     },
     {
       "tag": "RecentDocuments.add",
@@ -2472,7 +3041,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "RecentDocuments.clear",
@@ -2482,7 +3054,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "RecentDocuments.list",
@@ -2492,7 +3067,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "ResidentLifecycle.disable",
@@ -2502,7 +3080,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "ResidentLifecycle.enable",
@@ -2512,7 +3093,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "ResidentLifecycle.getState",
@@ -2522,7 +3106,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "ResidentLifecycle.isSupported",
@@ -2532,7 +3119,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "SafeStorage.delete",
@@ -2542,7 +3132,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "SafeStorage.get",
@@ -2552,7 +3145,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "SafeStorage.isAvailable",
@@ -2562,7 +3158,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "SafeStorage.list",
@@ -2572,7 +3171,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "SafeStorage.set",
@@ -2582,7 +3184,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "ScopedAccessGrant.grant",
@@ -2610,7 +3215,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1443,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1443"
+      }
     },
     {
       "tag": "ScopedAccessGrant.isSupported",
@@ -2620,7 +3230,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "ScopedAccessGrant.resolve",
@@ -2648,7 +3261,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1443,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1443"
+      }
     },
     {
       "tag": "ScopedAccessGrant.revoke",
@@ -2676,7 +3294,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1443,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1443"
+      }
     },
     {
       "tag": "Screen.getDisplays",
@@ -2686,7 +3309,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Screen.getPointerPoint",
@@ -2696,7 +3322,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Screen.getPrimaryDisplay",
@@ -2706,7 +3335,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Screen.isSupported",
@@ -2716,7 +3348,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "SelectionContext.isSupported",
@@ -2726,7 +3361,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "SelectionContext.readDocumentContext",
@@ -2754,7 +3392,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1443,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1443"
+      }
     },
     {
       "tag": "SelectionContext.readSelection",
@@ -2782,7 +3425,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1443,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1443"
+      }
     },
     {
       "tag": "SelectionContext.stopWatching",
@@ -2810,7 +3458,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1443,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1443"
+      }
     },
     {
       "tag": "SelectionContext.watchFocus",
@@ -2838,7 +3491,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1443,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1443"
+      }
     },
     {
       "tag": "SessionPermission.decide",
@@ -2866,7 +3524,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1439,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1439"
+      }
     },
     {
       "tag": "SessionPermission.isSupported",
@@ -2876,7 +3539,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "SessionPermission.listDecisions",
@@ -2904,7 +3570,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1439,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1439"
+      }
     },
     {
       "tag": "SessionPermission.request",
@@ -2932,7 +3603,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1439,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1439"
+      }
     },
     {
       "tag": "SessionProfile.destroy",
@@ -2942,7 +3618,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "SessionProfile.fromPartition",
@@ -2952,7 +3631,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "SessionProfile.isSupported",
@@ -2962,7 +3644,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "SessionProfile.list",
@@ -2972,7 +3657,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Shell.openExternal",
@@ -2982,7 +3670,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Shell.openPath",
@@ -2992,7 +3683,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Shell.showItemInFolder",
@@ -3002,7 +3696,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Shell.trashItem",
@@ -3012,7 +3709,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "SystemAppearance.getAccentColor",
@@ -3022,7 +3722,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "SystemAppearance.getAppearance",
@@ -3048,7 +3751,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1445,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1445"
+      }
     },
     {
       "tag": "SystemAppearance.getReducedMotion",
@@ -3074,7 +3782,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1445,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1445"
+      }
     },
     {
       "tag": "SystemAppearance.getReducedTransparency",
@@ -3100,7 +3813,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1445,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1445"
+      }
     },
     {
       "tag": "SystemAppearance.isSupported",
@@ -3110,7 +3828,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "TransactionalFileMutation.commit",
@@ -3120,7 +3841,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "TransactionalFileMutation.isSupported",
@@ -3130,7 +3854,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "TransactionalFileMutation.prepare",
@@ -3140,7 +3867,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "TransactionalFileMutation.rollback",
@@ -3150,7 +3880,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "TransientWindowRole.dismiss",
@@ -3178,7 +3911,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1443,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1443"
+      }
     },
     {
       "tag": "TransientWindowRole.isSupported",
@@ -3188,7 +3926,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "TransientWindowRole.open",
@@ -3216,7 +3957,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1443,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1443"
+      }
     },
     {
       "tag": "TransientWindowRole.reposition",
@@ -3244,7 +3990,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1443,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1443"
+      }
     },
     {
       "tag": "Tray.create",
@@ -3270,7 +4021,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1442,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1442"
+      }
     },
     {
       "tag": "Tray.destroy",
@@ -3296,7 +4052,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1442,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1442"
+      }
     },
     {
       "tag": "Tray.isSupported",
@@ -3306,7 +4067,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Tray.setIcon",
@@ -3332,7 +4096,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1442,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1442"
+      }
     },
     {
       "tag": "Tray.setMenu",
@@ -3358,7 +4127,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1442,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1442"
+      }
     },
     {
       "tag": "Tray.setTitle",
@@ -3385,7 +4159,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1442,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1442"
+      }
     },
     {
       "tag": "Tray.setTooltip",
@@ -3411,7 +4190,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1442,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1442"
+      }
     },
     {
       "tag": "Updater.check",
@@ -3421,7 +4205,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Updater.download",
@@ -3449,7 +4236,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1445,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1445"
+      }
     },
     {
       "tag": "Updater.getStatus",
@@ -3459,7 +4251,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Updater.install",
@@ -3487,7 +4282,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1445,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1445"
+      }
     },
     {
       "tag": "Updater.installAndRestart",
@@ -3515,7 +4315,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1445,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1445"
+      }
     },
     {
       "tag": "Updater.readyForRestart",
@@ -3525,7 +4330,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "WebRequest.isSupported",
@@ -3535,7 +4343,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "WebRequest.onBeforeRequest",
@@ -3563,7 +4374,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1439,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1439"
+      }
     },
     {
       "tag": "WebRequest.onHeadersReceived",
@@ -3591,7 +4407,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1439,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1439"
+      }
     },
     {
       "tag": "WebRequest.removeListener",
@@ -3619,7 +4440,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1439,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1439"
+      }
     },
     {
       "tag": "WebView.attachDebugger",
@@ -3647,7 +4473,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1439,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1439"
+      }
     },
     {
       "tag": "WebView.captureScreenshot",
@@ -3675,7 +4506,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1439,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1439"
+      }
     },
     {
       "tag": "WebView.closeDevTools",
@@ -3703,7 +4539,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1439,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1439"
+      }
     },
     {
       "tag": "WebView.create",
@@ -3713,7 +4554,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "WebView.destroy",
@@ -3723,7 +4567,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "WebView.findInPage",
@@ -3751,7 +4598,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1439,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1439"
+      }
     },
     {
       "tag": "WebView.getNavigationState",
@@ -3779,7 +4631,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1439,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1439"
+      }
     },
     {
       "tag": "WebView.goBack",
@@ -3807,7 +4664,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1439,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1439"
+      }
     },
     {
       "tag": "WebView.goForward",
@@ -3835,7 +4697,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1439,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1439"
+      }
     },
     {
       "tag": "WebView.listFrames",
@@ -3863,7 +4730,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1439,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1439"
+      }
     },
     {
       "tag": "WebView.loadRoute",
@@ -3873,7 +4745,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "WebView.loadUrl",
@@ -3883,7 +4758,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "WebView.openDevTools",
@@ -3911,7 +4789,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1439,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1439"
+      }
     },
     {
       "tag": "WebView.postToFrame",
@@ -3939,7 +4822,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1439,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1439"
+      }
     },
     {
       "tag": "WebView.print",
@@ -3967,7 +4855,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1439,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1439"
+      }
     },
     {
       "tag": "WebView.printToPdf",
@@ -3995,7 +4888,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1439,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1439"
+      }
     },
     {
       "tag": "WebView.reload",
@@ -4023,7 +4921,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1439,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1439"
+      }
     },
     {
       "tag": "WebView.respondToPermission",
@@ -4051,7 +4954,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1439,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1439"
+      }
     },
     {
       "tag": "WebView.setAudioMuted",
@@ -4079,7 +4987,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1439,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1439"
+      }
     },
     {
       "tag": "WebView.setNavigationPolicy",
@@ -4107,7 +5020,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1439,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1439"
+      }
     },
     {
       "tag": "WebView.setUserAgent",
@@ -4135,7 +5053,12 @@
           }
         ]
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "capability-fact",
+      "release": {
+        "status": "tracked",
+        "issue": 1439,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1439"
+      }
     },
     {
       "tag": "WebView.setZoom",
@@ -4163,7 +5086,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1439,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1439"
+      }
     },
     {
       "tag": "WebView.stop",
@@ -4191,7 +5119,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1439,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1439"
+      }
     },
     {
       "tag": "Window.cancelAttention",
@@ -4201,7 +5134,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Window.center",
@@ -4211,7 +5147,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Window.centerOnDisplay",
@@ -4221,7 +5160,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Window.clearVibrancy",
@@ -4248,7 +5190,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1442,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1442"
+      }
     },
     {
       "tag": "Window.close",
@@ -4259,6 +5206,9 @@
         "status": "supported"
       },
       "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      },
       "hostMethod": "Window.destroy"
     },
     {
@@ -4269,7 +5219,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Window.destroy",
@@ -4279,7 +5232,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Window.focus",
@@ -4289,7 +5245,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Window.getBounds",
@@ -4299,7 +5258,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Window.getById",
@@ -4309,7 +5271,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Window.getChildren",
@@ -4319,7 +5284,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Window.getCurrent",
@@ -4329,7 +5297,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Window.getParent",
@@ -4339,7 +5310,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Window.getState",
@@ -4349,7 +5323,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Window.hide",
@@ -4359,7 +5336,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Window.list",
@@ -4369,7 +5349,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Window.maximize",
@@ -4379,7 +5362,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Window.minimize",
@@ -4389,7 +5375,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Window.requestAttention",
@@ -4399,7 +5388,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Window.restore",
@@ -4409,7 +5401,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Window.setAlwaysOnTop",
@@ -4419,7 +5414,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Window.setBounds",
@@ -4429,7 +5427,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Window.setBoundsOnDisplay",
@@ -4439,7 +5440,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Window.setDecorations",
@@ -4449,7 +5453,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Window.setFullscreen",
@@ -4459,7 +5466,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Window.setProgress",
@@ -4469,7 +5479,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Window.setResizable",
@@ -4479,7 +5492,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Window.setShadow",
@@ -4506,7 +5522,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1442,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1442"
+      }
     },
     {
       "tag": "Window.setSimpleFullscreen",
@@ -4533,7 +5554,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1442,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1442"
+      }
     },
     {
       "tag": "Window.setSkipTaskbar",
@@ -4559,7 +5585,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1442,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1442"
+      }
     },
     {
       "tag": "Window.setTitle",
@@ -4569,7 +5600,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Window.setTitleBarStyle",
@@ -4596,7 +5630,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1442,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1442"
+      }
     },
     {
       "tag": "Window.setTitleBarTransparent",
@@ -4623,7 +5662,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1442,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1442"
+      }
     },
     {
       "tag": "Window.setTrafficLights",
@@ -4650,7 +5694,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1442,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1442"
+      }
     },
     {
       "tag": "Window.setTransparent",
@@ -4677,7 +5726,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1442,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1442"
+      }
     },
     {
       "tag": "Window.setVibrancy",
@@ -4704,7 +5758,12 @@
           }
         ]
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "tracked",
+        "issue": 1442,
+        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1442"
+      }
     },
     {
       "tag": "Window.show",
@@ -4714,7 +5773,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "Window.subscribeEvents",
@@ -4725,6 +5787,9 @@
         "status": "supported"
       },
       "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      },
       "hostMethod": "Window.Event"
     },
     {
@@ -4735,7 +5800,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "WorkspaceIndex.isSupported",
@@ -4745,7 +5813,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "WorkspaceIndex.open",
@@ -4755,7 +5826,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     },
     {
       "tag": "WorkspaceIndex.refresh",
@@ -4765,7 +5839,10 @@
       "support": {
         "status": "supported"
       },
-      "hostStatus": "routed"
+      "hostStatus": "routed",
+      "release": {
+        "status": "complete"
+      }
     }
   ],
   "summary": {
@@ -4774,6 +5851,9 @@
     "missing": 0,
     "supported": 179,
     "partial": 60,
-    "unsupported": 48
+    "unsupported": 48,
+    "releaseComplete": 179,
+    "releaseTracked": 108,
+    "releaseUntracked": 0
   }
 }

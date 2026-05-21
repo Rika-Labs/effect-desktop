@@ -21,7 +21,7 @@ Add a first-party Notes example suite under `apps/examples`:
 - `notes-next` keeps RPC hooks inside a client component using `NextDesktop.from(NotesManifest)`.
 - `notes-astro` keeps `.astro` files as page shells and hydrates a React island that imports `ReactDesktop.from(NotesManifest)` directly.
 
-Expose a renderer-safe `@effect-desktop/core/renderer` subpath so frontend adapters and browser examples do not pull host-only Bun modules through the core package barrel. RPC group metadata lives in a small shared runtime module so both the host manifest and renderer descriptors can read the same `RpcGroup` without coupling renderer code to desktop startup code.
+Expose a renderer-safe `@orika/core/renderer` subpath so frontend adapters and browser examples do not pull host-only Bun modules through the core package barrel. RPC group metadata lives in a small shared runtime module so both the host manifest and renderer descriptors can read the same `RpcGroup` without coupling renderer code to desktop startup code.
 
 The examples are intentionally Apple Notes-style but brand-neutral. They exercise startup load, create, save, delete, selection, and editor state through the shared RPC boundary.
 

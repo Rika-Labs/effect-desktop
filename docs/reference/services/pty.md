@@ -23,7 +23,7 @@ import {
   type PtyBudgetPolicy,
   type PtyPermissionPolicy,
   makePty
-} from "@effect-desktop/core"
+} from "@orika/core"
 ```
 
 ## API
@@ -71,7 +71,7 @@ Uses the same `process.spawn` capability as `Process`.
 
 ## Test layer
 
-`MockPTY.layer(options)` from `@effect-desktop/test`.
+`MockPTY.layer(options)` from `@orika/test`.
 
 ## Related
 

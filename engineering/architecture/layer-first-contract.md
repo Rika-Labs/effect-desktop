@@ -97,7 +97,7 @@ Native capability modules must author host-backed endpoints through the package-
 
 - the capability `*Live` layer with an explicit deterministic `*Client` layer;
 - the capability `*Live` layer with `*Surface.bridgeClientLayer(...)`;
-- the matching deterministic `*Test(...)` layer from `@effect-desktop/test`.
+- the matching deterministic `*Test(...)` layer from `@orika/test`.
 
 That is the minimum substitution claim this contract requires: provider replacement changes layers, not user code.
 

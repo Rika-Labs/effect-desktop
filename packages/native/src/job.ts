@@ -12,7 +12,7 @@ import {
   type HostProtocolError,
   type RpcCapabilityMetadata,
   RpcGroup
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import {
   type AuditEventsApi,
   type DesktopRpcClient,
@@ -28,7 +28,7 @@ import {
   ResourceRegistry,
   type ResourceRegistryApi,
   makeResourceId
-} from "@effect-desktop/core"
+} from "@orika/core"
 import {
   Cause,
   Clock,
@@ -194,7 +194,7 @@ export interface JobClientApi {
 }
 
 export class JobClient extends Context.Service<JobClient, JobClientApi>()(
-  "@effect-desktop/native/job/JobClient"
+  "@orika/native/job/JobClient"
 ) {}
 
 export interface JobServiceApi extends JobClientApi {}
@@ -217,7 +217,7 @@ export interface JobServiceOptions {
   readonly nextJobId?: () => string
 }
 
-export class Job extends Context.Service<Job, JobServiceApi>()("@effect-desktop/native/job") {
+export class Job extends Context.Service<Job, JobServiceApi>()("@orika/native/job") {
   static readonly layer = Layer.effect(Job)(
     Effect.gen(function* () {
       const client = yield* JobClient
@@ -231,7 +231,7 @@ export class Job extends Context.Service<Job, JobServiceApi>()("@effect-desktop/
 export const JobLive = Job.layer
 
 export class JobRuntime extends Context.Service<JobRuntime, JobRuntimeApi>()(
-  "@effect-desktop/native/job/JobRuntime"
+  "@orika/native/job/JobRuntime"
 ) {
   static readonly layer = Layer.effect(JobRuntime)(makeJobRuntime())
 }

@@ -19,7 +19,7 @@ import {
   HOST_VERSION_METHOD,
   WINDOW_CREATE_METHOD,
   WINDOW_DESTROY_METHOD
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 ```
 
 ## Constants
@@ -33,7 +33,7 @@ import {
 ## Handshake clients
 
 ```ts
-import { makeHostHandshakeClient, makeHostWindowClient } from "@effect-desktop/bridge"
+import { makeHostHandshakeClient, makeHostWindowClient } from "@orika/bridge"
 ```
 
 `makeHostHandshakeClient(exchange)` returns `{ version(), ping() }`.

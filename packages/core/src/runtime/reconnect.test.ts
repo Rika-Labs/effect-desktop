@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 
-import type { RendererResumePayload, ResumeTicket } from "@effect-desktop/bridge"
+import type { RendererResumePayload, ResumeTicket } from "@orika/bridge"
 
 import { evaluateRendererResume } from "./reconnect.js"
 

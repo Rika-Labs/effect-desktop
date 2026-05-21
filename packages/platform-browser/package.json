@@ -1,8 +1,8 @@
 {
-  "name": "@effect-desktop/platform-browser",
+  "name": "@orika/platform-browser",
   "version": "2.0.0",
   "private": true,
-  "description": "Browser renderer Effect layers for Effect Desktop.",
+  "description": "Browser renderer Effect layers for ORIKA.",
   "license": "MIT OR Apache-2.0",
   "author": "Rika Labs, LLC",
   "repository": {

@@ -17,8 +17,8 @@ import {
   type DesktopRendererRpcTransport,
   type FrameworkRuntime,
   type DesktopRpcRegistrationGroup as RpcGroupWithRequests
-} from "@effect-desktop/core/renderer"
-import type { WithRpcEndpointKind } from "@effect-desktop/bridge"
+} from "@orika/core/renderer"
+import type { WithRpcEndpointKind } from "@orika/bridge"
 import { Effect, ManagedRuntime, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import { createContext, createElement, useContext, useEffect, useMemo, type ReactNode } from "react"
@@ -77,10 +77,7 @@ export interface ReactDesktopAdapter<App extends DesktopAppManifest> {
   readonly useDesktop: <Group extends RpcGroupWithRequests>(group: Group) => ReactDesktopRpcs<Group>
 }
 
-export {
-  MissingDesktopContextError,
-  MissingDesktopRpcClientError
-} from "@effect-desktop/core/renderer"
+export { MissingDesktopContextError, MissingDesktopRpcClientError } from "@orika/core/renderer"
 
 interface ReactDesktopContextValue {
   readonly clients: ReactDesktopClientMap

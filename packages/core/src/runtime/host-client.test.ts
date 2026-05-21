@@ -8,7 +8,7 @@ import {
   HostProtocolRequestEnvelope,
   HostProtocolResponseEnvelope,
   encodeHostProtocolEnvelope
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import { Effect, Exit, Fiber, Option, Queue, Schema, Stream } from "effect"
 
 import { AuditEvent, type AuditEventsApi } from "./audit-events.js"

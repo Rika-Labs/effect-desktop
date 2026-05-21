@@ -8,16 +8,16 @@ effect_version: 4
 
 # Errors catalog
 
-Every effectful surface in Effect Desktop returns failures as **typed values**, not thrown exceptions. Application code matches on `_tag` to discriminate. This page lists the framework's error families.
+Every effectful surface in ORIKA returns failures as **typed values**, not thrown exceptions. Application code matches on `_tag` to discriminate. This page lists the framework's error families.
 
 ## Import
 
 Most errors come from the package that owns the operation. The bridge re-exports the cross-package ones:
 
 ```ts
-import { HostProtocolError } from "@effect-desktop/bridge"
-import { WindowError } from "@effect-desktop/native"
-import { PermissionDeniedError, SecretsError } from "@effect-desktop/core"
+import { HostProtocolError } from "@orika/bridge"
+import { WindowError } from "@orika/native"
+import { PermissionDeniedError, SecretsError } from "@orika/core"
 ```
 
 ## Bridge / host protocol

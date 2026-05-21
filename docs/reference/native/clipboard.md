@@ -13,8 +13,8 @@ Clipboard host protocol surface.
 ## Import
 
 ```ts
-import { Desktop } from "@effect-desktop/core"
-import { Clipboard, ClipboardError, ClipboardRpcs, Native } from "@effect-desktop/native"
+import { Desktop } from "@orika/core"
+import { Clipboard, ClipboardError, ClipboardRpcs, Native } from "@orika/native"
 ```
 
 ## Status
@@ -62,7 +62,7 @@ Use `Native.Permissions.clipboard.all` only when the app grants every privileged
 
 ## Test layer
 
-`ClipboardTest()` from `@effect-desktop/test`.
+`ClipboardTest()` from `@orika/test`.
 
 ## Related
 

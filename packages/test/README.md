@@ -1,4 +1,4 @@
-# @effect-desktop/test
+# @orika/test
 
 > **Status:** Phase 3.5 headless harness is available. Phase 15 adds a memory
 > Secrets safe-storage adapter. See `engineering/SPEC.md`.
@@ -10,10 +10,10 @@ permissions, mock process, mock PTY, headless runtime, and memory secrets.
 
 ## Public API
 
-The root `@effect-desktop/test` export remains the aggregate compatibility
+The root `@orika/test` export remains the aggregate compatibility
 surface. New tests should prefer explicit fixture-family subpaths:
-`@effect-desktop/test/core`, `@effect-desktop/test/bridge`,
-`@effect-desktop/test/native`, and `@effect-desktop/test/renderer`.
+`@orika/test/core`, `@orika/test/bridge`,
+`@orika/test/native`, and `@orika/test/renderer`.
 
 `MockHostLive(options)` provides `MockHost`, an in-process host-protocol
 substitute that accepts real host-protocol request envelopes, preserves trace
@@ -62,7 +62,7 @@ fails with a typed `ResourceLeakError` if non-app resources remain open.
 that own a `ResourceRegistry`.
 
 `makeMemorySecretsSafeStorage(options)` returns a substitutable
-`SecretsSafeStorageApi` for `@effect-desktop/core` `Secrets` tests. It stores
+`SecretsSafeStorageApi` for `@orika/core` `Secrets` tests. It stores
 copied bytes in memory, returns typed not-found failures, can model unavailable
 platform storage, and exposes `snapshot()` for assertions without leaking
 mutable internal state.
@@ -76,8 +76,8 @@ See `engineering/SPEC.md` for the package's normative non-goals.
 ```ts
 import { Effect } from "effect"
 
-import { makeSecretBytesFromUtf8, makeSecrets } from "@effect-desktop/core"
-import { makeMemorySecretsSafeStorage } from "@effect-desktop/test"
+import { makeSecretBytesFromUtf8, makeSecrets } from "@orika/core"
+import { makeMemorySecretsSafeStorage } from "@orika/test"
 
 const program = Effect.gen(function* () {
   const secrets = yield* makeSecrets(makeMemorySecretsSafeStorage(), {
@@ -104,4 +104,4 @@ None until the package implements native-touching primitives.
 ## Internal architecture
 
 Test substitutes depend on public package contracts. Runtime packages do not
-depend on `@effect-desktop/test`.
+depend on `@orika/test`.

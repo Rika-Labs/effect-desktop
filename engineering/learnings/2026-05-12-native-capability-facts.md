@@ -15,7 +15,7 @@ second hand-authored table.
 
 ## What changed
 
-`@effect-desktop/native` now exports `NativeCapabilities`, a Layer-backed service that
+`@orika/native` now exports `NativeCapabilities`, a Layer-backed service that
 builds a manifest from native `RpcGroup.requests`. `support(tag)` returns the existing
 `RpcSupport` metadata for a method tag, and `require(tag)` succeeds for supported methods
 or fails with `UnsupportedCapability` when explicit unsupported metadata is present.

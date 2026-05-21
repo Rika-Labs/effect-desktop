@@ -15,7 +15,7 @@ host-client exchange loop.
 
 ## What changed
 
-`@effect-desktop/bridge` now exports host protocol frame codec helpers that encode and parse frame
+`@orika/bridge` now exports host protocol frame codec helpers that encode and parse frame
 bytes through Effect Schema JSON transformations and then apply the existing `HostProtocolEnvelope`
 schema checks.
 

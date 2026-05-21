@@ -2,7 +2,7 @@
 
 ## Decision
 
-Remove the phantom `@effect-desktop/react/api` subpath and add a package-boundary test that requires every `@effect-desktop/react` export target to resolve to a real source file.
+Remove the phantom `@orika/react/api` subpath and add a package-boundary test that requires every `@orika/react` export target to resolve to a real source file.
 
 ## Problem
 
@@ -35,7 +35,7 @@ What should be true: package exports describe loadable modules only, and CI catc
 ## Risks
 
 - Removing a public subpath is only safe because this package is still private and no repository code imports it.
-- A compatibility `src/api.ts` would preserve the subpath, but it would add a second name for an API already available from `@effect-desktop/react` and `@effect-desktop/react/desktop`.
+- A compatibility `src/api.ts` would preserve the subpath, but it would add a second name for an API already available from `@orika/react` and `@orika/react/desktop`.
 
 ## Verification
 

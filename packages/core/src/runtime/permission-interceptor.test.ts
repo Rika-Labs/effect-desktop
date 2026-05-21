@@ -4,7 +4,7 @@ import { Headers } from "effect/unstable/http"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import { RequestId } from "effect/unstable/rpc/RpcMessage"
 
-import { RpcCapability, rpcCapability } from "@effect-desktop/bridge"
+import { RpcCapability, rpcCapability } from "@orika/bridge"
 
 import {
   DesktopConfigError,

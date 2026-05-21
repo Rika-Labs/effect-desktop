@@ -64,7 +64,7 @@ A `Model.Class` for the event log round-trips a row through `Model.makeRepositor
 1. Delete the bespoke `SQLite`, `SQLiteLive`, `makeSQLite`, connection,
    statement, transaction, and local driver-error exports.
 2. Add re-exports of `SqlClient`, `SqlModel`, and `SqliteClient` from
-   `@effect-desktop/core`.
+   `@orika/core`.
 3. Keep `SqlClientLive` only as a desktop policy layer over Effect SQL.
 4. Register the `SqlClient` layer in `ResourceRegistry` for scope-tracked
    disposal and check `sqlite.open` before file-backed driver acquisition.

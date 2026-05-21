@@ -31,7 +31,7 @@ Use whatever shape you want for messages — the framework will Schema-validate 
 
 ```ts
 import { Effect, Schema } from "effect"
-import { Worker } from "@effect-desktop/core"
+import { Worker } from "@orika/core"
 
 const InMessage = Schema.Struct({
   kind: Schema.Literal("index"),

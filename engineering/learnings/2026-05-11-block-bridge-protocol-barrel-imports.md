@@ -2,7 +2,7 @@
 
 ## Context
 
-The production checker rejected `@effect-desktop/bridge/protocol` imports but allowed protocol envelope symbols imported from the public `@effect-desktop/bridge` barrel. Renderer code could construct host protocol envelopes while the production gate passed.
+The production checker rejected `@orika/bridge/protocol` imports but allowed protocol envelope symbols imported from the public `@orika/bridge` barrel. Renderer code could construct host protocol envelopes while the production gate passed.
 
 ## Change
 

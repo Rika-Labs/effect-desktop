@@ -10,7 +10,7 @@ effect_version: 4
 
 > Full references: [`reference/desktop-api.md`](reference/desktop-api.md), [`reference/rpc-surface.md`](reference/rpc-surface.md). How-to: [`define an RPC surface`](how-to/define-an-rpc-surface.md).
 
-Effect Desktop renderer APIs are Effect RPC contracts. A contract defines method names, input schemas, output schemas, error types, metadata, and support policy in **one place**.
+ORIKA renderer APIs are Effect RPC contracts. A contract defines method names, input schemas, output schemas, error types, metadata, and support policy in **one place**.
 
 ## Contract shape
 

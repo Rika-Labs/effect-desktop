@@ -1,11 +1,11 @@
-import type { HostProtocolError } from "@effect-desktop/bridge"
+import type { HostProtocolError } from "@orika/bridge"
 import {
   type WindowStateError,
   WindowDisplayBounds,
   WindowStateEvent,
   WindowStateRecord,
   makeWindowState
-} from "@effect-desktop/core/runtime/window-state"
+} from "@orika/core/runtime/window-state"
 import { Context, Effect, Layer, Option, Ref, Schema, Semaphore, Stream } from "effect"
 import { KeyValueStore } from "effect/unstable/persistence"
 
@@ -86,7 +86,7 @@ interface WindowPersistenceStateApi {
 }
 
 export class WindowPersistence extends Context.Service<WindowPersistence, WindowPersistenceApi>()(
-  "@effect-desktop/native/window-persistence/WindowPersistence"
+  "@orika/native/window-persistence/WindowPersistence"
 ) {
   static layer(
     options: WindowPersistenceOptions = {}

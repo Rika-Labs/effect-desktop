@@ -16,7 +16,7 @@ Issue #117 asked the bridge to carry runtime-owned `ResourceHandle`s into the re
 
 The bridge contract gained `Api.Resource(kind, state)` as a third output form next to schemas and streams. Handler output encoding now accepts resource handles through the resource handle schema, and client output decoding turns matching handles into frozen proxies whose `dispose()` delegates to a resource exchange. Cancellation ended up cleaner as two separate mechanisms: the client owns `AbortSignal` conversion into cancel envelopes, while the handler runtime owns the pending-call map and interrupts only the tracked handler fiber.
 
-The original issue diagram mentioned a renderer-scope registry inside the bridge. That was deliberately kept as an exchange boundary instead: `@effect-desktop/bridge` cannot depend on `@effect-desktop/core`, so the registry remains downstream and the bridge exports the typed port.
+The original issue diagram mentioned a renderer-scope registry inside the bridge. That was deliberately kept as an exchange boundary instead: `@orika/bridge` cannot depend on `@orika/core`, so the registry remains downstream and the bridge exports the typed port.
 
 ```mermaid
 flowchart LR

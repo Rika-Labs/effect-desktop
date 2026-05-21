@@ -10,8 +10,8 @@ import {
   WINDOW_GET_STATE_METHOD,
   WINDOW_SET_BOUNDS_METHOD,
   makeHostProtocolHostUnavailableError
-} from "@effect-desktop/bridge"
-import { ResourceRegistry, makeResourceId, makeResourceRegistry } from "@effect-desktop/core"
+} from "@orika/bridge"
+import { ResourceRegistry, makeResourceId, makeResourceRegistry } from "@orika/core"
 import { Effect, Exit, Fiber, Layer, ManagedRuntime, Stream } from "effect"
 import { KeyValueStore } from "effect/unstable/persistence"
 

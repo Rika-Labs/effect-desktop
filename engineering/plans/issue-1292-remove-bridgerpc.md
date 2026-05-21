@@ -11,7 +11,7 @@ limited to metadata annotations and host-protocol lowering.
 - Production native capabilities already author canonical Effect `RpcGroup` values.
 - `packages/bridge/src/contracts.ts` still exports `BridgeRpc.group(...)`,
   `BridgeRpc.fromGroup(...)`, `BridgeRpc.layer(...)`, and `BridgeRpc.Stream(...)`.
-- The remaining direct users are bridge tests and `@effect-desktop/test` helpers.
+- The remaining direct users are bridge tests and `@orika/test` helpers.
 - Durable bridge semantics still need a home: endpoint intent, capability metadata, support
   metadata, handler timeout/cancellation policy, stream/event backpressure, event streams, and
   validation before host protocol lowering.
@@ -50,6 +50,6 @@ limited to metadata annotations and host-protocol lowering.
 - `rg "BridgeRpc" packages apps templates tests docs api/snapshots` should find only historical
   engineering/learnings or this plan while the implementation is in flight.
 - `bun test packages/bridge/src/contracts.test.ts packages/bridge/src/client.test.ts packages/bridge/src/handlers.test.ts packages/bridge/src/streams.test.ts packages/test/src/index.test.ts`
-- `bun run typecheck --filter=@effect-desktop/bridge --filter=@effect-desktop/test`
+- `bun run typecheck --filter=@orika/bridge --filter=@orika/test`
 - `bun packages/cli/src/bin.ts check --api --write`
 - Full local validation before push.

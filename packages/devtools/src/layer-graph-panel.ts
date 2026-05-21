@@ -5,7 +5,7 @@ import {
   type InspectorSafetySummary,
   LayerGraphSnapshot,
   layerGraphSnapshotFromGraph
-} from "@effect-desktop/core"
+} from "@orika/core"
 import { Context, Effect, Layer, Option, Schedule, Stream } from "effect"
 
 import { positiveFrameInterval } from "./panel-options.js"
@@ -26,7 +26,7 @@ export interface LayerGraphPanelOptions {
 }
 
 export class LayerGraphPanel extends Context.Service<LayerGraphPanel, LayerGraphPanelApi>()(
-  "@effect-desktop/devtools/layer-graph-panel/LayerGraphPanel"
+  "@orika/devtools/layer-graph-panel/LayerGraphPanel"
 ) {}
 
 export const LayerGraphPanelLive = (

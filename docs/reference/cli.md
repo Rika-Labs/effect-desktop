@@ -8,7 +8,7 @@ effect_version: 4
 
 # CLI commands
 
-`@effect-desktop/cli` is the developer CLI. Run it via `bun run desktop <command>` from the repo root, or import the typed runners directly.
+`@orika/cli` is the developer CLI. Run it via `bun run desktop <command>` from the repo root, or import the typed runners directly.
 
 ## Import (programmatic)
 
@@ -24,7 +24,7 @@ import {
   runDesktopReproCheck,
   runDesktopDoctor,
   runReleaseWorkflow
-} from "@effect-desktop/cli"
+} from "@orika/cli"
 ```
 
 `runCli({ argv, cwd, writeStdout, writeStderr })` is the top-level entry point — wraps every subcommand and their flag parsing.
@@ -109,7 +109,7 @@ Each command exports a closed error union:
 Each report has a matching formatter:
 
 ```ts
-import { formatPackageReport, formatSignReport, formatDoctorReport } from "@effect-desktop/cli"
+import { formatPackageReport, formatSignReport, formatDoctorReport } from "@orika/cli"
 
 console.log(formatPackageReport(report))
 ```

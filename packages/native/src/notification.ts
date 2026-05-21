@@ -10,7 +10,7 @@ import {
   type RpcSupportMetadata,
   RpcGroup,
   type HostProtocolError
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import {
   type PermissionRegistry,
   P,
@@ -18,7 +18,7 @@ import {
   ResourceRegistry,
   type ResourceRegistryApi,
   ResourceRegistryLive
-} from "@effect-desktop/core"
+} from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
@@ -139,7 +139,7 @@ export interface NotificationClientApi {
 export class NotificationClient extends Context.Service<
   NotificationClient,
   NotificationClientApi
->()("@effect-desktop/native/NotificationClient") {}
+>()("@orika/native/NotificationClient") {}
 
 export interface NotificationServiceApi {
   readonly show: (
@@ -160,7 +160,7 @@ export interface NotificationServiceOptions {
 }
 
 export class Notification extends Context.Service<Notification, NotificationServiceApi>()(
-  "@effect-desktop/native/Notification"
+  "@orika/native/Notification"
 ) {
   static readonly layer = Layer.provide(
     Layer.effect(Notification)(

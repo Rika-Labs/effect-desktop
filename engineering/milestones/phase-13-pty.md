@@ -32,7 +32,7 @@ release documentation/API snapshot coverage.
 
 ## Public APIs
 
-`@effect-desktop/core` exports:
+`@orika/core` exports:
 
 - `PTY` / `PtyLayer` / `makePty` for typed PTY open operations. `makePty`
   requires an explicit platform adapter; there is no default unsupported
@@ -102,7 +102,7 @@ Specialized Phase 13 evidence:
 Milestone: Phase 13 - PTY
 Files changed: native-pty Rust crate, core PTY Effect service, tests, public
 export, and Phase 13 learning records.
-Public APIs added: @effect-desktop/core PTY, PtyLayer, makePty,
+Public APIs added: @orika/core PTY, PtyLayer, makePty,
 PtyApi, PtyHandle, PtyAdapter, PtyChild, PtyOptions, PtyPermissionPolicy,
 PtyBudgetPolicy, PtyOutputPolicy, PtyOpenOptions, PtyResizeInput,
 PtyExitStatus, and PtySignalInput; crates/native-pty Rust PTY primitive.

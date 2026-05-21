@@ -1045,7 +1045,7 @@ test("desktop check --production reports bridge protocol barrel imports in rende
         yield* Effect.promise(() =>
           writeFile(
             join(directory, "src", "renderer", "main.ts"),
-            "import { HostProtocolRequestEnvelope } from '@effect-desktop/bridge'\n"
+            "import { HostProtocolRequestEnvelope } from '@orika/bridge'\n"
           )
         )
 
@@ -2311,7 +2311,7 @@ test("desktop check --api writes and verifies public API snapshots", () =>
         })
 
         expect(checkExitCode).toBe(0)
-        expect(checkStdout.join("")).toContain("@effect-desktop/fixture")
+        expect(checkStdout.join("")).toContain("@orika/fixture")
       } finally {
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
@@ -2336,19 +2336,14 @@ test("desktop check --api rejects snapshots for the wrong package", () =>
           writeStderr: () => {}
         })
 
-        const snapshotPath = join(
-          directory,
-          "api",
-          "snapshots",
-          "@effect-desktop__fixture.snapshot.json"
-        )
+        const snapshotPath = join(directory, "api", "snapshots", "@orika__fixture.snapshot.json")
         const snapshot = decodeJsonObject(
           yield* Effect.promise(() => readFile(snapshotPath, "utf8"))
         )
         yield* Effect.promise(() =>
           writeFile(
             snapshotPath,
-            `${stringifyJson({ ...snapshot, packageName: "@effect-desktop/other" }, 2)}\n`
+            `${stringifyJson({ ...snapshot, packageName: "@orika/other" }, 2)}\n`
           )
         )
 
@@ -2398,7 +2393,7 @@ test("desktop check --api ignores non-package directories", () =>
         })
 
         expect(exitCode).toBe(0)
-        expect(stdout.join("")).toContain("@effect-desktop/fixture")
+        expect(stdout.join("")).toContain("@orika/fixture")
       } finally {
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
@@ -2491,7 +2486,7 @@ test("desktop check --api fails when the public API changes without a snapshot u
         })
 
         expect(exitCode).toBe(1)
-        expect(stderr.join("")).toContain("ADD @effect-desktop/fixture added")
+        expect(stderr.join("")).toContain("ADD @orika/fixture added")
       } finally {
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
@@ -2534,7 +2529,7 @@ test("desktop check --api fails when a public signature changes without a snapsh
         })
 
         expect(exitCode).toBe(1)
-        expect(stderr.join("")).toContain("SIGNATURE-CHANGED @effect-desktop/fixture Widget")
+        expect(stderr.join("")).toContain("SIGNATURE-CHANGED @orika/fixture Widget")
       } finally {
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
@@ -4079,9 +4074,7 @@ test("semver guard rejects package version drift from the release manifest", () 
         }).pipe(Effect.flip)
 
         expect((error as { readonly _tag: string })._tag).toBe("SemverGuardManifestError")
-        expect((error as { readonly message: string }).message).toContain(
-          "@effect-desktop/core@0.0.0"
-        )
+        expect((error as { readonly message: string }).message).toContain("@orika/core@0.0.0")
       } finally {
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
@@ -4573,7 +4566,7 @@ test("desktop sign signs macOS app bundle with hardened runtime entitlements", (
         })
 
         const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "macos")
-        const artifactRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.app")
+        const artifactRoot = join(outputRoot, "ORIKA-Playground-0.0.0-macos-arm64.app")
         const entitlements = yield* Effect.promise(() =>
           readFile(join(artifactRoot, "effect-desktop-entitlements.plist"), "utf8")
         )
@@ -4582,7 +4575,7 @@ test("desktop sign signs macOS app bundle with hardened runtime entitlements", (
         )
 
         expect(exitCode).toBe(0)
-        expect(stdout.join("")).toContain("Effect Desktop sign")
+        expect(stdout.join("")).toContain("ORIKA sign")
         expect(entitlements).toContain("<key>com.apple.security.cs.allow-jit</key>")
         expect(entitlements).toContain("<key>com.apple.security.device.camera</key>\n  <true/>")
         expect(entitlements).toContain(
@@ -4915,7 +4908,7 @@ test("desktop sign GPG-signs Linux AppImage and writes Linux metadata", () =>
         expect(metainfo).toContain(
           '<launchable type="desktop-id">dev.effect-desktop.inspector.desktop</launchable>'
         )
-        expect(desktop).toContain("Name=Effect Desktop Playground")
+        expect(desktop).toContain("Name=ORIKA Playground")
         expect(desktop).toContain("Exec=dev.effect-desktop.inspector")
         expect(desktop).toContain("Icon=dev.effect-desktop.inspector")
       } finally {
@@ -5041,7 +5034,7 @@ test("desktop sign rejects artifact fileName that escapes the metadata directory
               `${stringifyJson(
                 {
                   appId: "dev.effect-desktop.inspector",
-                  appName: "Effect Desktop Playground",
+                  appName: "ORIKA Playground",
                   appVersion: "0.0.0",
                   kind: "appimage",
                   target: "linux-x64",
@@ -5096,7 +5089,7 @@ test("desktop sign rejects path-shaped app.id before writing Linux sidecars", ()
         yield* writePlaygroundFixture(directory, {
           app: {
             id: "../../../../escaped",
-            name: "Effect Desktop Playground",
+            name: "ORIKA Playground",
             version: "0.0.0"
           }
         })
@@ -5374,7 +5367,7 @@ test("desktop notarize submits staples and assesses unstapled macOS artifacts", 
         )
 
         expect(exitCode).toBe(0)
-        expect(stdout.join("")).toContain("Effect Desktop notarize")
+        expect(stdout.join("")).toContain("ORIKA notarize")
         expect(calls).toEqual([
           `stapler-validate:xcrun stapler validate ${appPath}`,
           `notarytool-submit:xcrun notarytool submit ${appPath} --wait --output-format json --keychain-profile release-profile`,
@@ -5400,7 +5393,7 @@ test("desktop notarize rejects tampered package artifacts before submission", ()
         })
         const appPath = yield* writePackagedArtifactFixture(directory, "macos-arm64", "app")
         yield* Effect.promise(() =>
-          writeFile(join(appPath, "Contents", "MacOS", "Effect-Desktop-Playground"), "tampered")
+          writeFile(join(appPath, "Contents", "MacOS", "ORIKA-Playground"), "tampered")
         )
         const calls: string[] = []
         const stderr: string[] = []
@@ -5535,7 +5528,7 @@ test("desktop notarize rejects artifact file names outside the metadata director
               `${stringifyJson(
                 {
                   appId: "dev.effect-desktop.inspector",
-                  appName: "Effect Desktop Playground",
+                  appName: "ORIKA Playground",
                   appVersion: "0.0.0",
                   kind: "dmg",
                   target: "macos-arm64",
@@ -5598,7 +5591,7 @@ test("desktop notarize accepts contained artifact file names with consecutive do
             `${stringifyJson(
               {
                 appId: "dev.effect-desktop.inspector",
-                appName: "Effect Desktop Playground",
+                appName: "ORIKA Playground",
                 appVersion: "0.0.0",
                 kind: "dmg",
                 target: "macos-arm64",
@@ -5916,7 +5909,7 @@ test("desktop publish writes a byte-stable Ed25519-signed update manifest", () =
         expect(manifest.artifacts[0]).toMatchObject({
           platform: "macos-arm64",
           kind: "dmg",
-          url: "https://updates.example.invalid/macos-arm64/Effect-Desktop-Playground-0.0.0-macos-arm64.dmg",
+          url: "https://updates.example.invalid/macos-arm64/ORIKA-Playground-0.0.0-macos-arm64.dmg",
           signature: expect.stringContaining("ed25519:")
         })
       } finally {
@@ -6072,7 +6065,7 @@ test("desktop publish encodes artifact URLs for query-string feed URLs", () =>
 
         expect(exitCode).toBe(0)
         expect(manifest.artifacts[0]).toMatchObject({
-          url: "https://updates.example.invalid/Effect-Desktop-Playground-0.0.0-macos-arm64.dmg?platform=macos-arm64&channel=stable"
+          url: "https://updates.example.invalid/ORIKA-Playground-0.0.0-macos-arm64.dmg?platform=macos-arm64&channel=stable"
         })
       } finally {
         if (previousPrivateKey === undefined) {
@@ -6177,11 +6170,11 @@ test("desktop publish rejects stale package metadata before signing the manifest
             `${stringifyJson(
               {
                 appId: "dev.effect-desktop.inspector",
-                appName: "Effect Desktop Playground",
+                appName: "ORIKA Playground",
                 appVersion: "0.0.0",
                 kind: "dmg",
                 target: "macos-arm64",
-                fileName: "Effect-Desktop-Playground-0.0.0-macos-arm64.dmg",
+                fileName: "ORIKA-Playground-0.0.0-macos-arm64.dmg",
                 sizeBytes: 1,
                 sha256: "0".repeat(64)
               },
@@ -6225,7 +6218,7 @@ test("desktop publish rejects invalid app ids before writing manifests", () =>
         yield* writePlaygroundFixture(directory, {
           app: {
             id: "not a reverse dns id",
-            name: "Effect Desktop Playground",
+            name: "ORIKA Playground",
             version: "0.0.0"
           }
         })
@@ -6273,7 +6266,7 @@ test("desktop publish rejects non-SemVer app versions before writing manifests",
         yield* writePlaygroundFixture(directory, {
           app: {
             id: "dev.effect-desktop.inspector",
-            name: "Effect Desktop Playground",
+            name: "ORIKA Playground",
             version: "not-semver"
           },
           update: {
@@ -6604,7 +6597,7 @@ test("desktop publish rejects artifact fileName that escapes the metadata direct
             `${stringifyJson(
               {
                 appId: "dev.effect-desktop.inspector",
-                appName: "Effect Desktop Playground",
+                appName: "ORIKA Playground",
                 appVersion: "0.0.0",
                 kind: "dmg",
                 target: "macos-arm64",
@@ -6664,7 +6657,7 @@ test("desktop publish rejects update.minVersion greater than app.version", () =>
         yield* writePlaygroundFixture(directory, {
           app: {
             id: "dev.effect-desktop.inspector",
-            name: "Effect Desktop Playground",
+            name: "ORIKA Playground",
             version: "1.2.3"
           },
           update: {
@@ -6725,7 +6718,7 @@ test("desktop publish rejects rollback manifests without maxVersion", () =>
         yield* writePlaygroundFixture(directory, {
           app: {
             id: "dev.effect-desktop.inspector",
-            name: "Effect Desktop Playground",
+            name: "ORIKA Playground",
             version: "1.2.3"
           },
           update: {
@@ -6786,7 +6779,7 @@ test("desktop publish accepts rollback manifests with maxVersion", () =>
         yield* writePlaygroundFixture(directory, {
           app: {
             id: "dev.effect-desktop.inspector",
-            name: "Effect Desktop Playground",
+            name: "ORIKA Playground",
             version: "1.2.3"
           },
           update: {
@@ -6902,7 +6895,7 @@ test("desktop publish accepts update.minVersion equal to app.version", () =>
         yield* writePlaygroundFixture(directory, {
           app: {
             id: "dev.effect-desktop.inspector",
-            name: "Effect Desktop Playground",
+            name: "ORIKA Playground",
             version: "1.2.3"
           },
           update: {
@@ -7134,7 +7127,7 @@ test("desktop build stages renderer runtime host bridge manifests and report", (
         )
 
         expect(exitCode).toBe(0)
-        expect(stdout.join("")).toContain("Effect Desktop build")
+        expect(stdout.join("")).toContain("ORIKA build")
         expect(calls).toEqual([
           "renderer:bun run build",
           `runtime:bun build ${join(directory, "apps", "inspector", "runtime.ts")} --target=bun --outdir ${join(layout, "runtime")}`,
@@ -7176,7 +7169,7 @@ test("desktop build stages renderer runtime host bridge manifests and report", (
         )
         expect(appManifest).toMatchObject({
           id: "dev.effect-desktop.inspector",
-          name: "Effect Desktop Playground",
+          name: "ORIKA Playground",
           target: "linux-x64"
         })
         expect(bridgeManifest).toMatchObject({
@@ -7196,7 +7189,7 @@ test("desktop build stages renderer runtime host bridge manifests and report", (
               id: "bun",
               kind: "runtime",
               package: "@effect/platform-bun",
-              importPath: "@effect-desktop/core/providers/bun",
+              importPath: "@orika/core/providers/bun",
               startupBudgetMs: 25,
               bundleBudgetKb: 64
             }
@@ -7890,7 +7883,7 @@ test("desktop build rejects non-SemVer app.version", () =>
         yield* writePlaygroundFixture(directory, {
           app: {
             id: "dev.effect-desktop.inspector",
-            name: "Effect Desktop Playground",
+            name: "ORIKA Playground",
             version: "not-semver"
           }
         })
@@ -7925,7 +7918,7 @@ test("desktop build rejects invalid reverse-DNS app.id", () =>
         yield* writePlaygroundFixture(directory, {
           app: {
             id: "not a bundle id",
-            name: "Effect Desktop Playground",
+            name: "ORIKA Playground",
             version: "1.2.3"
           }
         })
@@ -8394,7 +8387,7 @@ test("desktop package rejects malformed build manifests as typed package errors"
             stringifyJson(
               {
                 id: "dev.effect-desktop.inspector",
-                name: "Effect Desktop Playground",
+                name: "ORIKA Playground",
                 version: "0.0.0",
                 target: "macos-arm64"
               },
@@ -8458,7 +8451,7 @@ test("desktop package rejects malformed runtime launch manifests", () =>
             stringifyJson(
               {
                 id: "dev.effect-desktop.inspector",
-                name: "Effect Desktop Playground",
+                name: "ORIKA Playground",
                 version: "0.0.0",
                 target: "macos-arm64",
                 renderer: { path: "renderer" },
@@ -8698,9 +8691,9 @@ test("desktop package emits macOS app dmg zip artifacts with metadata", () =>
           writeStderr: () => {}
         })
 
-        const appRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.app")
-        const dmgRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.dmg")
-        const zipRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.zip")
+        const appRoot = join(outputRoot, "ORIKA-Playground-0.0.0-macos-arm64.app")
+        const dmgRoot = join(outputRoot, "ORIKA-Playground-0.0.0-macos-arm64.dmg")
+        const zipRoot = join(outputRoot, "ORIKA-Playground-0.0.0-macos-arm64.zip")
         const appMetadata = decodePackageAppMetadataJson(
           yield* Effect.promise(() => readFile(join(appRoot, "artifact.json"), "utf8"))
         )
@@ -8709,17 +8702,14 @@ test("desktop package emits macOS app dmg zip artifacts with metadata", () =>
         )
 
         expect(exitCode).toBe(0)
-        expect(stdout.join("")).toContain("Effect Desktop package")
+        expect(stdout.join("")).toContain("ORIKA package")
         expect(calls).toEqual([
-          `macos-dmg:hdiutil create -srcFolder ${join(appRoot, "Effect-Desktop-Playground.app")} -o ${join(dmgRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.dmg")}`,
-          `macos-zip:ditto -c -k --keepParent ${join(appRoot, "Effect-Desktop-Playground.app")} ${join(zipRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.zip")}`
+          `macos-dmg:hdiutil create -srcFolder ${join(appRoot, "ORIKA-Playground.app")} -o ${join(dmgRoot, "ORIKA-Playground-0.0.0-macos-arm64.dmg")}`,
+          `macos-zip:ditto -c -k --keepParent ${join(appRoot, "ORIKA-Playground.app")} ${join(zipRoot, "ORIKA-Playground-0.0.0-macos-arm64.zip")}`
         ])
         expect(
           yield* Effect.promise(() =>
-            readFile(
-              join(appRoot, "Effect-Desktop-Playground.app", "Contents", "Info.plist"),
-              "utf8"
-            )
+            readFile(join(appRoot, "ORIKA-Playground.app", "Contents", "Info.plist"), "utf8")
           )
         ).toContain("dev.effect-desktop.inspector")
         expect(appMetadata.kind).toBe("app")
@@ -8760,7 +8750,7 @@ packageModeTest("desktop package metadata digest includes directory file modes",
         yield* writePlaygroundFixture(directory)
         yield* writeBuildLayoutFixture(directory, "macos-arm64")
         const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "macos")
-        const appRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.app")
+        const appRoot = join(outputRoot, "ORIKA-Playground-0.0.0-macos-arm64.app")
         const runtimeMain = join(
           directory,
           "apps",
@@ -8820,10 +8810,10 @@ test("desktop package stages macOS app bundle before explicit dmg artifact", () 
         yield* writePlaygroundFixture(directory)
         yield* writeBuildLayoutFixture(directory, "macos-arm64")
         const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "macos")
-        const appRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.app")
-        const appBundle = join(appRoot, "Effect-Desktop-Playground.app")
-        const dmgRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.dmg")
-        const dmgPath = join(dmgRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.dmg")
+        const appRoot = join(outputRoot, "ORIKA-Playground-0.0.0-macos-arm64.app")
+        const appBundle = join(appRoot, "ORIKA-Playground.app")
+        const dmgRoot = join(outputRoot, "ORIKA-Playground-0.0.0-macos-arm64.dmg")
+        const dmgPath = join(dmgRoot, "ORIKA-Playground-0.0.0-macos-arm64.dmg")
         const calls: string[] = []
         const runner: PackageCommandRunner = (invocation) =>
           Effect.gen(function* () {
@@ -8867,10 +8857,10 @@ test("desktop package stages macOS app bundle before explicit zip artifact", () 
         yield* writePlaygroundFixture(directory)
         yield* writeBuildLayoutFixture(directory, "macos-arm64")
         const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "macos")
-        const appRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.app")
-        const appBundle = join(appRoot, "Effect-Desktop-Playground.app")
-        const zipRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.zip")
-        const zipPath = join(zipRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.zip")
+        const appRoot = join(outputRoot, "ORIKA-Playground-0.0.0-macos-arm64.app")
+        const appBundle = join(appRoot, "ORIKA-Playground.app")
+        const zipRoot = join(outputRoot, "ORIKA-Playground-0.0.0-macos-arm64.zip")
+        const zipPath = join(zipRoot, "ORIKA-Playground-0.0.0-macos-arm64.zip")
         const calls: string[] = []
         const runner: PackageCommandRunner = (invocation) =>
           Effect.gen(function* () {
@@ -8914,10 +8904,10 @@ test("desktop package preserves sibling artifacts during targeted runs", () =>
         yield* writePlaygroundFixture(directory)
         yield* writeBuildLayoutFixture(directory, "macos-arm64")
         const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "macos")
-        const zipRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.zip")
-        const dmgRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.dmg")
-        const zipPath = join(zipRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.zip")
-        const dmgPath = join(dmgRoot, "Effect-Desktop-Playground-0.0.0-macos-arm64.dmg")
+        const zipRoot = join(outputRoot, "ORIKA-Playground-0.0.0-macos-arm64.zip")
+        const dmgRoot = join(outputRoot, "ORIKA-Playground-0.0.0-macos-arm64.dmg")
+        const zipPath = join(zipRoot, "ORIKA-Playground-0.0.0-macos-arm64.zip")
+        const dmgPath = join(dmgRoot, "ORIKA-Playground-0.0.0-macos-arm64.dmg")
         const runner: PackageCommandRunner = (invocation) =>
           Effect.gen(function* () {
             const output = invocation.args.at(-1)
@@ -8998,10 +8988,10 @@ test("desktop package rejects control characters in package metadata", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       for (const [label, appName] of [
-        ["newline", "Effect Desktop\nInjected=Value"],
-        ["carriage-return", "Effect Desktop\rInjected=Value"],
-        ["nul", `Effect Desktop${String.fromCharCode(0)}Injected=Value`],
-        ["del", `Effect Desktop${String.fromCharCode(127)}Injected=Value`]
+        ["newline", "ORIKA\nInjected=Value"],
+        ["carriage-return", "ORIKA\rInjected=Value"],
+        ["nul", `ORIKA${String.fromCharCode(0)}Injected=Value`],
+        ["del", `ORIKA${String.fromCharCode(127)}Injected=Value`]
       ] as const) {
         const directory = yield* Effect.promise(() =>
           mkdtemp(join(tmpdir(), `effect-desktop-cli-package-${label}-`))
@@ -9051,7 +9041,7 @@ test("desktop package rejects non-SemVer app.version", () =>
         yield* writePlaygroundFixture(directory, {
           app: {
             id: "dev.effect-desktop.inspector",
-            name: "Effect Desktop Playground",
+            name: "ORIKA Playground",
             version: "not-semver"
           }
         })
@@ -9085,7 +9075,7 @@ test("desktop package rejects path-shaped app.id before staging Linux sidecars",
         yield* writePlaygroundFixture(directory, {
           app: {
             id: "../../../escaped",
-            name: "Effect Desktop Playground",
+            name: "ORIKA Playground",
             version: "0.0.0"
           }
         })
@@ -9156,7 +9146,7 @@ test("desktop package rejects build manifest app name drift", () =>
         expect(exitCode).toBe(1)
         expect(stderr.join("")).toContain("PackageFileError")
         expect(stderr.join("")).toContain("app-manifest.json")
-        expect(stderr.join("")).toContain("Effect Desktop Playground")
+        expect(stderr.join("")).toContain("ORIKA Playground")
       } finally {
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
@@ -9176,18 +9166,18 @@ test("desktop package emits Linux AppImage deb rpm artifacts with metadata", () 
         const artifactPaths = {
           appimage: join(
             outputRoot,
-            "Effect-Desktop-Playground-0.0.0-linux-x64.AppImage",
-            "Effect-Desktop-Playground-0.0.0-linux-x64.AppImage"
+            "ORIKA-Playground-0.0.0-linux-x64.AppImage",
+            "ORIKA-Playground-0.0.0-linux-x64.AppImage"
           ),
           deb: join(
             outputRoot,
-            "Effect-Desktop-Playground-0.0.0-linux-x64.deb",
-            "Effect-Desktop-Playground-0.0.0-linux-x64.deb"
+            "ORIKA-Playground-0.0.0-linux-x64.deb",
+            "ORIKA-Playground-0.0.0-linux-x64.deb"
           ),
           rpm: join(
             outputRoot,
-            "Effect-Desktop-Playground-0.0.0-linux-x64.rpm",
-            "Effect-Desktop-Playground-0.0.0-linux-x64.rpm"
+            "ORIKA-Playground-0.0.0-linux-x64.rpm",
+            "ORIKA-Playground-0.0.0-linux-x64.rpm"
           )
         } as const
         const calls: string[] = []
@@ -9216,11 +9206,11 @@ test("desktop package emits Linux AppImage deb rpm artifacts with metadata", () 
           writeStderr: () => {}
         })
 
-        const appImageRoot = join(outputRoot, "Effect-Desktop-Playground-0.0.0-linux-x64.AppImage")
+        const appImageRoot = join(outputRoot, "ORIKA-Playground-0.0.0-linux-x64.AppImage")
         const debMetadata = decodeLinuxPackageArtifactJson(
           yield* Effect.promise(() =>
             readFile(
-              join(outputRoot, "Effect-Desktop-Playground-0.0.0-linux-x64.deb", "artifact.json"),
+              join(outputRoot, "ORIKA-Playground-0.0.0-linux-x64.deb", "artifact.json"),
               "utf8"
             )
           )
@@ -9244,7 +9234,7 @@ test("desktop package emits Linux AppImage deb rpm artifacts with metadata", () 
             readFile(
               join(
                 appImageRoot,
-                "Effect-Desktop-Playground.AppDir",
+                "ORIKA-Playground.AppDir",
                 "share",
                 "applications",
                 "dev.effect-desktop.inspector.desktop"
@@ -9256,13 +9246,7 @@ test("desktop package emits Linux AppImage deb rpm artifacts with metadata", () 
         expect(
           yield* Effect.promise(() =>
             readFile(
-              join(
-                appImageRoot,
-                "Effect-Desktop-Playground.AppDir",
-                "share",
-                "snap",
-                "snapcraft.yaml"
-              ),
+              join(appImageRoot, "ORIKA-Playground.AppDir", "share", "snap", "snapcraft.yaml"),
               "utf8"
             )
           )
@@ -9270,7 +9254,7 @@ test("desktop package emits Linux AppImage deb rpm artifacts with metadata", () 
         expect(
           yield* Effect.promise(() =>
             readFile(
-              join(outputRoot, "Effect-Desktop-Playground-0.0.0-linux-x64.rpm", "checksums.txt"),
+              join(outputRoot, "ORIKA-Playground-0.0.0-linux-x64.rpm", "checksums.txt"),
               "utf8"
             )
           )
@@ -9318,7 +9302,7 @@ test("desktop package rejects build layout symlinks that escape the layout", () 
           "dist",
           "desktop",
           "linux",
-          "Effect-Desktop-Playground-0.0.0-linux-x64.deb",
+          "ORIKA-Playground-0.0.0-linux-x64.deb",
           "root",
           "usr",
           "lib",
@@ -9349,8 +9333,8 @@ test("desktop package maps linux arm64 RPM metadata to aarch64", () =>
         const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "linux")
         const rpmPath = join(
           outputRoot,
-          "Effect-Desktop-Playground-0.0.0-linux-arm64.rpm",
-          "Effect-Desktop-Playground-0.0.0-linux-arm64.rpm"
+          "ORIKA-Playground-0.0.0-linux-arm64.rpm",
+          "ORIKA-Playground-0.0.0-linux-arm64.rpm"
         )
         let spec = ""
         let args: readonly string[] = []
@@ -9375,7 +9359,7 @@ test("desktop package maps linux arm64 RPM metadata to aarch64", () =>
 
         expect(exitCode).toBe(0)
         expect(spec).toContain("BuildArch: aarch64")
-        expect(args).toContain("_rpmfilename Effect-Desktop-Playground-0.0.0-linux-arm64.rpm")
+        expect(args).toContain("_rpmfilename ORIKA-Playground-0.0.0-linux-arm64.rpm")
       } finally {
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
@@ -9394,8 +9378,8 @@ test("desktop package emits Windows per-user MSI with app-specific UpgradeCode",
         const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "windows")
         const msiPath = join(
           outputRoot,
-          "Effect-Desktop-Playground-0.0.0-windows-x64.msi",
-          "Effect-Desktop-Playground-0.0.0-windows-x64.msi"
+          "ORIKA-Playground-0.0.0-windows-x64.msi",
+          "ORIKA-Playground-0.0.0-windows-x64.msi"
         )
         let wxs = ""
         const runner: PackageCommandRunner = (invocation) =>
@@ -9421,10 +9405,10 @@ test("desktop package emits Windows per-user MSI with app-specific UpgradeCode",
         expect(wxs).toContain('<ComponentGroupRef Id="StartMenuShortcuts" />')
         expect(wxs).toContain('<StandardDirectory Id="ProgramMenuFolder">')
         expect(wxs).toContain(
-          '<Directory Id="ApplicationProgramsFolder" Name="Effect Desktop Playground" />'
+          '<Directory Id="ApplicationProgramsFolder" Name="ORIKA Playground" />'
         )
         expect(wxs).toContain(
-          '<Shortcut Id="ApplicationStartMenuShortcut" Name="Effect Desktop Playground" Description="Effect Desktop Playground" Target="[INSTALLFOLDER]native\\host.exe" WorkingDirectory="INSTALLFOLDER" />'
+          '<Shortcut Id="ApplicationStartMenuShortcut" Name="ORIKA Playground" Description="ORIKA Playground" Target="[INSTALLFOLDER]native\\host.exe" WorkingDirectory="INSTALLFOLDER" />'
         )
         expect(wxs).toContain(
           '<RemoveFolder Id="RemoveApplicationProgramsFolder" Directory="ApplicationProgramsFolder" On="uninstall" />'
@@ -9487,7 +9471,7 @@ const writePlaygroundFixture = (
     const config = {
       app: {
         id: "dev.effect-desktop.inspector",
-        name: "Effect Desktop Playground",
+        name: "ORIKA Playground",
         version: "0.0.0"
       },
       runtime: { entry: "runtime.ts" },
@@ -9535,7 +9519,7 @@ const writeBuildLayoutFixture = (
         `${stringifyJson(
           {
             id: "dev.effect-desktop.inspector",
-            name: "Effect Desktop Playground",
+            name: "ORIKA Playground",
             version: "0.0.0",
             target,
             renderer: { path: "renderer" },
@@ -9558,7 +9542,7 @@ const writeBuildLayoutFixture = (
         `${stringifyJson(
           {
             appId: "dev.effect-desktop.inspector",
-            appName: "Effect Desktop Playground",
+            appName: "ORIKA Playground",
             appVersion: "0.0.0",
             target,
             providers: {
@@ -9571,7 +9555,7 @@ const writeBuildLayoutFixture = (
                 id: runtimeEngine,
                 kind: "runtime",
                 package: runtimeEngine === "bun" ? "@effect/platform-bun" : "@effect/platform-node",
-                importPath: `@effect-desktop/core/providers/${runtimeEngine}`,
+                importPath: `@orika/core/providers/${runtimeEngine}`,
                 startupBudgetMs: 25,
                 bundleBudgetKb: 64
               }
@@ -9590,7 +9574,7 @@ const fakeReleaseServices = (calls: string[], target: DesktopTargetId): ReleaseW
       calls.push("package")
       return {
         appId: "dev.effect-desktop.test",
-        appName: "Effect Desktop Test",
+        appName: "ORIKA Test",
         appVersion: "1.2.3",
         target,
         layoutPath: "/build",
@@ -9604,7 +9588,7 @@ const fakeReleaseServices = (calls: string[], target: DesktopTargetId): ReleaseW
             artifactJsonPath: "/release/artifact.json",
             checksumsPath: "/release/checksums.txt",
             appId: "dev.effect-desktop.test",
-            appName: "Effect Desktop Test",
+            appName: "ORIKA Test",
             appVersion: "1.2.3",
             sizeBytes: 12,
             sha256: "abc",
@@ -9619,7 +9603,7 @@ const fakeReleaseServices = (calls: string[], target: DesktopTargetId): ReleaseW
       calls.push("sign")
       return {
         appId: "dev.effect-desktop.test",
-        appName: "Effect Desktop Test",
+        appName: "ORIKA Test",
         appVersion: "1.2.3",
         target,
         outputPath: "/release",
@@ -9638,7 +9622,7 @@ const fakeReleaseServices = (calls: string[], target: DesktopTargetId): ReleaseW
       calls.push("notarize")
       return {
         appId: "dev.effect-desktop.test",
-        appName: "Effect Desktop Test",
+        appName: "ORIKA Test",
         appVersion: "1.2.3",
         target: "macos-arm64",
         outputPath: "/release",
@@ -9683,12 +9667,10 @@ const writePackagedArtifactFixture = (
       "dist",
       "desktop",
       platform,
-      `Effect-Desktop-Playground-0.0.0-${target}.${extension}`
+      `ORIKA-Playground-0.0.0-${target}.${extension}`
     )
     const fileName =
-      kind === "app"
-        ? "Effect-Desktop-Playground.app"
-        : `Effect-Desktop-Playground-0.0.0-${target}.${extension}`
+      kind === "app" ? "ORIKA-Playground.app" : `ORIKA-Playground-0.0.0-${target}.${extension}`
     const artifactPath = join(root, fileName)
     if (kind === "app") {
       yield* Effect.promise(() =>
@@ -9705,7 +9687,7 @@ const writePackagedArtifactFixture = (
         })
       )
       yield* Effect.promise(() =>
-        writeFile(join(artifactPath, "Contents", "MacOS", "Effect-Desktop-Playground"), "host")
+        writeFile(join(artifactPath, "Contents", "MacOS", "ORIKA-Playground"), "host")
       )
       yield* Effect.promise(() =>
         writeFile(
@@ -9741,7 +9723,7 @@ const writePackagedArtifactFixture = (
         `${stringifyJson(
           {
             appId: "dev.effect-desktop.inspector",
-            appName: "Effect Desktop Playground",
+            appName: "ORIKA Playground",
             appVersion: "0.0.0",
             kind,
             target,
@@ -9858,7 +9840,7 @@ const writeApiFixturePackage = (root: string, source: string): Effect.Effect<voi
         join(packageRoot, "package.json"),
         stringifyJson(
           {
-            name: "@effect-desktop/fixture",
+            name: "@orika/fixture",
             type: "module",
             exports: {
               ".": {
@@ -10206,7 +10188,7 @@ const writeSemverFixture = (
     yield* Effect.promise(() =>
       writeFile(
         join(root, "packages", "core", "package.json"),
-        stringifyJson({ name: "@effect-desktop/core", version: packageVersion }, 2)
+        stringifyJson({ name: "@orika/core", version: packageVersion }, 2)
       )
     )
   })
@@ -10292,7 +10274,7 @@ const publicApiReportFixture = (kind: "added" | "removed"): PublicApiSnapshotRep
   packages: [],
   changes: [
     {
-      packageName: "@effect-desktop/core",
+      packageName: "@orika/core",
       symbol: "Example",
       kind,
       ...(kind === "added"

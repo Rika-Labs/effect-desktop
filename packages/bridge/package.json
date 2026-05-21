@@ -1,8 +1,8 @@
 {
-  "name": "@effect-desktop/bridge",
+  "name": "@orika/bridge",
   "version": "2.0.0",
   "private": true,
-  "description": "Typed renderer-runtime bridge contracts, clients, events, streams, and host protocol schemas for Effect Desktop.",
+  "description": "Typed renderer-runtime bridge contracts, clients, events, streams, and host protocol schemas for ORIKA.",
   "license": "MIT OR Apache-2.0",
   "author": "Rika Labs, LLC",
   "repository": {

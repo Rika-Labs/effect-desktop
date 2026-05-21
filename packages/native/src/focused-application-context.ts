@@ -8,7 +8,7 @@ import {
   makeHostProtocolInternalError,
   type HostProtocolError,
   RpcGroup
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import {
   type AuditEventsApi,
   type DesktopRpcClient,
@@ -24,7 +24,7 @@ import {
   ResourceRegistry,
   type ResourceRegistryApi,
   permissionAuditEvent
-} from "@effect-desktop/core"
+} from "@orika/core"
 import { Clock, Context, Effect, Layer, Schema, Stream } from "effect"
 
 import {
@@ -130,7 +130,7 @@ export interface FocusedApplicationContextClientApi {
 export class FocusedApplicationContextClient extends Context.Service<
   FocusedApplicationContextClient,
   FocusedApplicationContextClientApi
->()("@effect-desktop/native/FocusedApplicationContextClient") {}
+>()("@orika/native/FocusedApplicationContextClient") {}
 
 export interface FocusedApplicationContextServiceApi {
   readonly snapshot: (
@@ -158,7 +158,7 @@ export interface FocusedApplicationContextServiceOptions {
 export class FocusedApplicationContext extends Context.Service<
   FocusedApplicationContext,
   FocusedApplicationContextServiceApi
->()("@effect-desktop/native/FocusedApplicationContext") {
+>()("@orika/native/FocusedApplicationContext") {
   static readonly layer = Layer.effect(FocusedApplicationContext)(
     Effect.gen(function* () {
       const client = yield* FocusedApplicationContextClient

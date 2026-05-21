@@ -11,7 +11,7 @@ import {
   type HostProtocolError,
   type RpcCapabilityMetadata,
   RpcGroup
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import {
   type AuditEventsApi,
   type DesktopRpcClient,
@@ -20,7 +20,7 @@ import {
   PermissionActor,
   type PermissionRegistry,
   permissionAuditEvent
-} from "@effect-desktop/core"
+} from "@orika/core"
 import { Clock, Context, Effect, Layer, PubSub, Ref, Schema, Stream } from "effect"
 
 import { subscribeNativeEvent } from "./event-stream.js"
@@ -143,7 +143,7 @@ export interface DiagnosticsBundleClientApi {
 export class DiagnosticsBundleClient extends Context.Service<
   DiagnosticsBundleClient,
   DiagnosticsBundleClientApi
->()("@effect-desktop/native/DiagnosticsBundleClient") {}
+>()("@orika/native/DiagnosticsBundleClient") {}
 
 export type DiagnosticsBundleServiceApi = DiagnosticsBundleClientApi
 
@@ -155,7 +155,7 @@ export interface DiagnosticsBundleServiceOptions {
 export class DiagnosticsBundle extends Context.Service<
   DiagnosticsBundle,
   DiagnosticsBundleServiceApi
->()("@effect-desktop/native/DiagnosticsBundle") {
+>()("@orika/native/DiagnosticsBundle") {
   static readonly layer = Layer.effect(DiagnosticsBundle)(
     Effect.gen(function* () {
       const client = yield* DiagnosticsBundleClient

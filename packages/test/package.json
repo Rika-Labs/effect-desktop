@@ -1,8 +1,8 @@
 {
-  "name": "@effect-desktop/test",
+  "name": "@orika/test",
   "version": "2.0.0",
   "private": true,
-  "description": "Headless runtime, mock host, mock bridge, and in-memory adapters for Effect Desktop tests.",
+  "description": "Headless runtime, mock host, mock bridge, and in-memory adapters for ORIKA tests.",
   "license": "MIT OR Apache-2.0",
   "author": "Rika Labs, LLC",
   "repository": {
@@ -46,9 +46,9 @@
     "lint": "oxlint ."
   },
   "dependencies": {
-    "@effect-desktop/bridge": "workspace:*",
-    "@effect-desktop/core": "workspace:*",
-    "@effect-desktop/native": "workspace:*",
+    "@orika/bridge": "workspace:*",
+    "@orika/core": "workspace:*",
+    "@orika/native": "workspace:*",
     "effect": "4.0.0-beta.60"
   }
 }

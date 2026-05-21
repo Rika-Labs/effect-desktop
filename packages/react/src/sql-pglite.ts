@@ -1,1 +1,1 @@
-export * from "@effect-desktop/platform-browser/sql-pglite"
+export * from "@orika/platform-browser/sql-pglite"

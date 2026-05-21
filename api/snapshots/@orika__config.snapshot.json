@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "packageName": "@effect-desktop/config",
+  "packageName": "@orika/config",
   "entrypoint": "src/index.ts",
   "symbols": [
     {

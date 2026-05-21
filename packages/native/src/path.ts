@@ -8,8 +8,8 @@ import {
   type RpcCapabilityMetadata,
   RpcGroup,
   type HostProtocolError
-} from "@effect-desktop/bridge"
-import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
+} from "@orika/bridge"
+import { type PermissionRegistry, P, type DesktopRpcClient } from "@orika/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
@@ -64,7 +64,7 @@ export interface PathClientApi {
 }
 
 export class PathClient extends Context.Service<PathClient, PathClientApi>()(
-  "@effect-desktop/native/PathClient"
+  "@orika/native/PathClient"
 ) {}
 
 export interface PathServiceApi {
@@ -76,7 +76,7 @@ export interface PathServiceApi {
   readonly downloads: () => Effect.Effect<string, PathError, never>
 }
 
-export class Path extends Context.Service<Path, PathServiceApi>()("@effect-desktop/native/Path") {
+export class Path extends Context.Service<Path, PathServiceApi>()("@orika/native/Path") {
   static readonly layer = Layer.effect(Path)(
     Effect.gen(function* () {
       const client = yield* PathClient

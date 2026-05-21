@@ -23,7 +23,7 @@ import {
   type CommandInvocation,
   type CommandRegistrationError,
   CommandError
-} from "@effect-desktop/core"
+} from "@orika/core"
 ```
 
 ## API
@@ -46,7 +46,7 @@ So `Menu.setMenu`, `GlobalShortcut.bindCommand`, and `ContextMenu` all bind by *
 
 ## Devtools
 
-`CommandsDevtools` and `CommandsDevtoolsLive` (from `@effect-desktop/devtools`) render the registry and observe invocations live.
+`CommandsDevtools` and `CommandsDevtoolsLive` (from `@orika/devtools`) render the registry and observe invocations live.
 
 ## Related
 

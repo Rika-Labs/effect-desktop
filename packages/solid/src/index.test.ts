@@ -1,10 +1,6 @@
 import { expect, test } from "bun:test"
-import { RpcEndpoint, RpcSupport } from "@effect-desktop/bridge"
-import {
-  Desktop,
-  DuplicateDesktopRpcNameError,
-  MissingDesktopRpcClientError
-} from "@effect-desktop/core"
+import { RpcEndpoint, RpcSupport } from "@orika/bridge"
+import { Desktop, DuplicateDesktopRpcNameError, MissingDesktopRpcClientError } from "@orika/core"
 import { Deferred, Effect, Exit, Schedule, Schema, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import { createRoot } from "solid-js"

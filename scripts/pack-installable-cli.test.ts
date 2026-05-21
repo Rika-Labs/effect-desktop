@@ -30,9 +30,9 @@ test("pack-installable-cli emits a workspace-free CLI package installable by a t
       "utf8"
     )
     expect(packedManifest).not.toContain("workspace:*")
-    expect(packedManifest).toContain('"@effect-desktop/bridge": "file:../bridge"')
-    expect(packedManifest).toContain('"@effect-desktop/config": "file:../config"')
-    expect(packedManifest).toContain('"@effect-desktop/core": "file:../core"')
+    expect(packedManifest).toContain('"@orika/bridge": "file:../bridge"')
+    expect(packedManifest).toContain('"@orika/config": "file:../config"')
+    expect(packedManifest).toContain('"@orika/core": "file:../core"')
 
     const appRoot = join(directory, "app")
     await mkdir(appRoot)
@@ -42,7 +42,7 @@ test("pack-installable-cli emits a workspace-free CLI package installable by a t
         type: "module",
         packageManager: "bun@1.3.13",
         dependencies: {
-          "@effect-desktop/cli": `file:${join(artifactRoot, "packages", "cli")}`
+          "@orika/cli": `file:${join(artifactRoot, "packages", "cli")}`
         }
       })
     )
@@ -81,7 +81,7 @@ test("pack-installable-cli emits a workspace-free CLI package installable by a t
     )
 
     const installedMatrix = await readFile(
-      join(appRoot, "node_modules", "@effect-desktop", "cli", "src", "native-parity-matrix.json"),
+      join(appRoot, "node_modules", "@orika", "cli", "src", "native-parity-matrix.json"),
       "utf8"
     )
     expect(installedMatrix).toContain('"total": 291')

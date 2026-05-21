@@ -18,7 +18,7 @@ Establish the monorepo foundation defined by `engineering/SPEC.md` §24.0 — ro
 
 The plan stated `workspaces` would be narrowed to `packages/*` only to avoid empty workspace dirs breaking `bun install`. The shipped version includes the full four-glob shape from §5.4: `["apps/*", "apps/examples/*", "packages/*", "templates/*"]` — corrected during code review when the premise was empirically refuted (Bun ignores glob matches without `package.json`).
 
-The plan specified `tsconfig.base.json` would have `lib: ["ESNext", "DOM"]`. Shipped: `lib: ["ESNext"]` only, with DOM types added in `packages/react/tsconfig.json` as a renderer-only override. The maintainability reviewer caught this as a complecting violation — DOM globals would have silently typechecked inside `@effect-desktop/core`, a Bun-runtime-only package.
+The plan specified `tsconfig.base.json` would have `lib: ["ESNext", "DOM"]`. Shipped: `lib: ["ESNext"]` only, with DOM types added in `packages/react/tsconfig.json` as a renderer-only override. The maintainability reviewer caught this as a complecting violation — DOM globals would have silently typechecked inside `@orika/core`, a Bun-runtime-only package.
 
 The plan said CI would intentionally exclude clippy, fmt, and lint to "avoid scope creep" and run only the spec's four required commands. Shipped: CI runs the full extended gate — `bun run check`, `lint`, `format:check`, plus `cargo fmt --check` and `cargo clippy -D warnings`. The testing reviewer flagged the local/CI asymmetry; the plan's "lighter CI for Phase 0" assumption was overridden.
 

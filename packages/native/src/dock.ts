@@ -11,8 +11,8 @@ import {
   type RpcSupportMetadata,
   RpcGroup,
   type HostProtocolError
-} from "@effect-desktop/bridge"
-import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
+} from "@orika/bridge"
+import { type PermissionRegistry, P, type DesktopRpcClient } from "@orika/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
@@ -157,14 +157,14 @@ export interface DockClientApi {
 }
 
 export class DockClient extends Context.Service<DockClient, DockClientApi>()(
-  "@effect-desktop/native/DockClient"
+  "@orika/native/DockClient"
 ) {}
 
 export interface DockServiceApi extends Omit<DockClientApi, "isSupported"> {
   readonly isSupported: (method: DockMethod) => Effect.Effect<boolean, DockError, never>
 }
 
-export class Dock extends Context.Service<Dock, DockServiceApi>()("@effect-desktop/native/Dock") {
+export class Dock extends Context.Service<Dock, DockServiceApi>()("@orika/native/Dock") {
   static readonly layer = Layer.effect(Dock)(
     Effect.gen(function* () {
       const client = yield* DockClient

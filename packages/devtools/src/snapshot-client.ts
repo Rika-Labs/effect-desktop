@@ -1,4 +1,4 @@
-import { InspectorSafetyPolicy, type InspectorSafetySummary } from "@effect-desktop/core"
+import { InspectorSafetyPolicy, type InspectorSafetySummary } from "@orika/core"
 import { Context, Data, Effect, Layer, Option } from "effect"
 
 import type { ClusterPanelSnapshot } from "./cluster-panel.js"
@@ -52,7 +52,7 @@ export class DevtoolsSnapshotSafetyError extends Data.TaggedError("SnapshotSafet
 export class DevtoolsSnapshotClient extends Context.Service<
   DevtoolsSnapshotClient,
   DevtoolsSnapshotClientApi
->()("@effect-desktop/devtools/snapshot-client/DevtoolsSnapshotClient") {}
+>()("@orika/devtools/snapshot-client/DevtoolsSnapshotClient") {}
 
 export type DevtoolsSnapshotClientRequirements =
   | LiveRuntimePanels

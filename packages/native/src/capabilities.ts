@@ -1,5 +1,5 @@
-import type { RpcCapabilityMetadata, RpcSupportMetadata } from "@effect-desktop/bridge"
-import { type DesktopNativeLayer, type DesktopRpcSchemaDoc } from "@effect-desktop/core"
+import type { RpcCapabilityMetadata, RpcSupportMetadata } from "@orika/bridge"
+import { type DesktopNativeLayer, type DesktopRpcSchemaDoc } from "@orika/core"
 import { Context, Effect, Layer, Option, Schema } from "effect"
 
 import { all as NativeAll, available as nativeAvailable } from "./native.js"
@@ -108,7 +108,7 @@ export interface NativeCapabilitiesApi {
 export class NativeCapabilities extends Context.Service<
   NativeCapabilities,
   NativeCapabilitiesApi
->()("@effect-desktop/native/NativeCapabilities") {}
+>()("@orika/native/NativeCapabilities") {}
 
 export const makeNativeCapabilityManifest = (
   surfaces: Iterable<NativeCapabilitySurface>

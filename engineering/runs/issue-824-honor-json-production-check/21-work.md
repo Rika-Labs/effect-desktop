@@ -12,7 +12,7 @@ Changes:
 Verification:
 
 - `bun test packages/cli/src/index.test.ts -t "desktop check --production"`
-- `bun run typecheck --filter=@effect-desktop/cli`
-- `bun run lint --filter=@effect-desktop/cli`
+- `bun run typecheck --filter=@orika/cli`
+- `bun run lint --filter=@orika/cli`
 - `bun packages/cli/src/bin.ts check --production --config apps/playground/desktop.config.ts --json`
 - `bun prettier --check packages/cli/src/index.ts packages/cli/src/index.test.ts`

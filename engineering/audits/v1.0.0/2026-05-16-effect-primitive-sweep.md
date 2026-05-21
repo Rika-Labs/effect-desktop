@@ -781,128 +781,128 @@ Verification:
 
 - `bun test packages/devtools/src/panels.test.ts`
 - `bun x ultracite check apps/inspector/src/inspector-app.ts packages/devtools/src/event-log-panel.ts packages/devtools/src/diagnostics-panels.ts packages/devtools/src/embedded-inspector-panel.ts packages/devtools/src/persistence-panel.ts packages/devtools/src/layer-graph-panel.ts packages/devtools/src/performance-overlay.ts packages/devtools/src/live-panels.ts packages/devtools/src/index.ts packages/devtools/src/logs-panel.ts packages/devtools/src/panels.test.ts --type-aware --type-check --deny-warnings --disable-nested-config --quiet`
-- `bun run typecheck --filter @effect-desktop/devtools`
-- `bun run typecheck --filter @effect-desktop/inspector`
+- `bun run typecheck --filter @orika/devtools`
+- `bun run typecheck --filter @orika/inspector`
 - `bun test apps/inspector/src/inspector-app.test.ts`
 - `bunx ultracite check apps/inspector/src/main.tsx apps/inspector/src/styles.css`
-- `bun run typecheck --filter @effect-desktop/inspector`
+- `bun run typecheck --filter @orika/inspector`
 - `bun test packages/solid/src/index.test.ts packages/vue/src/index.test.ts packages/vite/src/hmr-controller.test.ts packages/bridge/src/client.test.ts packages/bridge/src/streams.test.ts`
 - `bun x ultracite check packages/solid/src/index.test.ts packages/vue/src/index.test.ts packages/vite/src/hmr-controller.test.ts packages/bridge/src/client.test.ts packages/bridge/src/streams.test.ts --type-aware --type-check --deny-warnings --disable-nested-config --quiet`
-- `bun run typecheck --filter @effect-desktop/bridge`
-- `bun run typecheck --filter @effect-desktop/solid`
-- `bun run typecheck --filter @effect-desktop/vue`
-- `bun run typecheck --filter @effect-desktop/vite`
+- `bun run typecheck --filter @orika/bridge`
+- `bun run typecheck --filter @orika/solid`
+- `bun run typecheck --filter @orika/vue`
+- `bun run typecheck --filter @orika/vite`
 - `bun test packages/devtools/src/index.test.ts packages/devtools/src/panels.test.ts`
 - `bun x ultracite check packages/devtools/src/index.test.ts packages/devtools/src/panels.test.ts --type-aware --type-check --deny-warnings --disable-nested-config --quiet`
-- `bun run typecheck --filter @effect-desktop/devtools`
+- `bun run typecheck --filter @orika/devtools`
 - `bun test packages/core/src/runtime/renderer-stream.test.ts`
 - `bun x ultracite check packages/core/src/runtime/renderer-stream.ts packages/core/src/runtime/renderer-stream.test.ts --type-aware --type-check --deny-warnings --disable-nested-config --quiet`
-- `bun run typecheck --filter @effect-desktop/core`
+- `bun run typecheck --filter @orika/core`
 - `bun test packages/core/src/runtime/renderer-stream.test.ts`
 - `bun test packages/react/src/index.test.ts --test-name-pattern "React adapter lifecycle paths"`
 - `bun test packages/react/src/index.test.ts packages/react/src/hooks/effect-runner.test.ts packages/react/src/permission-approval.test.ts packages/react/src/sql-pglite.test.ts packages/react/src/sqlite-wasm.test.ts`
 - `bunx ultracite check packages/core/src/runtime/renderer-stream.ts packages/core/src/runtime/renderer-stream.test.ts packages/react/src/hooks/desktop.ts packages/react/src/index.test.ts`
-- `bun run typecheck --filter @effect-desktop/core --filter @effect-desktop/react`
+- `bun run typecheck --filter @orika/core --filter @orika/react`
 - `bun test packages/core/src/runtime/stdio-socket.test.ts`
 - `bun x ultracite check packages/core/src/runtime/stdio-socket.ts packages/core/src/runtime/stdio-socket.test.ts --type-aware --type-check --deny-warnings --disable-nested-config --quiet`
-- `bun run typecheck --filter @effect-desktop/core`
+- `bun run typecheck --filter @orika/core`
 - `bun test packages/core/src/runtime/telemetry.test.ts packages/core/src/runtime/inspector-transport.test.ts packages/core/src/runtime/process.test.ts`
 - `bun x ultracite check packages/core/src/runtime/telemetry.test.ts packages/core/src/runtime/inspector-transport.test.ts packages/core/src/runtime/process.test.ts --type-aware --type-check --deny-warnings --disable-nested-config --quiet`
-- `bun run typecheck --filter @effect-desktop/core`
+- `bun run typecheck --filter @orika/core`
 - `bun test packages/core/src/runtime/inspector-transport.test.ts`
 - `bunx ultracite check packages/core/src/runtime/inspector-transport.test.ts packages/core/src/runtime/inspector-transport.ts`
-- `bun run typecheck --filter @effect-desktop/core`
+- `bun run typecheck --filter @orika/core`
 - `bun test packages/core/src/runtime/approval-broker.test.ts`
 - `bunx ultracite check packages/core/src/runtime/approval-broker.test.ts packages/core/src/runtime/approval-broker.ts`
-- `bun run typecheck --filter @effect-desktop/core`
+- `bun run typecheck --filter @orika/core`
 - `bun test packages/react/src/index.test.ts`
 - `bun x ultracite check packages/react/src/index.test.ts --type-aware --type-check --deny-warnings --disable-nested-config --quiet`
-- `bun run typecheck --filter @effect-desktop/react`
+- `bun run typecheck --filter @orika/react`
 - `bun test packages/test/src/index.test.ts`
 - `bun x ultracite check packages/test/src/index.test.ts --type-aware --type-check --deny-warnings --disable-nested-config --quiet`
-- `bun run typecheck --filter @effect-desktop/test`
+- `bun run typecheck --filter @orika/test`
 - `bun test packages/vue/src/index.test.ts`
 - `bun x ultracite check packages/vue/src/index.ts packages/vue/src/index.test.ts --type-aware --type-check --deny-warnings --disable-nested-config --quiet`
-- `bun run typecheck --filter @effect-desktop/vue`
+- `bun run typecheck --filter @orika/vue`
 - `bun test packages/core/src/runtime/permission-approval-workflow.test.ts`
 - `bun x ultracite check packages/core/src/runtime/permission-approval-workflow.test.ts --type-aware --type-check --deny-warnings --disable-nested-config --quiet`
-- `bun run typecheck --filter @effect-desktop/core`
+- `bun run typecheck --filter @orika/core`
 - `bun test packages/core/src/runtime/filesystem.test.ts`
 - `bun x ultracite check packages/core/src/runtime/filesystem.test.ts --type-aware --type-check --deny-warnings --disable-nested-config --quiet`
-- `bun run typecheck --filter @effect-desktop/core`
+- `bun run typecheck --filter @orika/core`
 - `bun test packages/core/src/runtime/worker.test.ts`
 - `bun x ultracite check packages/core/src/runtime/worker.test.ts --type-aware --type-check --deny-warnings --disable-nested-config --quiet`
-- `bun run typecheck --filter @effect-desktop/core`
+- `bun run typecheck --filter @orika/core`
 - `bun test packages/core/src/runtime/process.test.ts`
 - `bun test packages/core/src/runtime/process.test.ts --test-name-pattern "BackpressureOverflow"`
 - `bunx ultracite check packages/core/src/runtime/process.ts packages/core/src/runtime/process.test.ts`
 - `bun x ultracite check packages/core/src/runtime/process.test.ts --type-aware --type-check --deny-warnings --disable-nested-config --quiet`
-- `bun run typecheck --filter @effect-desktop/core`
+- `bun run typecheck --filter @orika/core`
 - `bun test packages/core/src/runtime/pty.test.ts`
 - `bun x ultracite check packages/core/src/runtime/pty.test.ts --type-aware --type-check --deny-warnings --disable-nested-config --quiet`
-- `bun run typecheck --filter @effect-desktop/core`
+- `bun run typecheck --filter @orika/core`
 - `bun test packages/core/src/runtime/commands.test.ts`
 - `bun x ultracite check packages/core/src/runtime/commands.test.ts --type-aware --type-check --deny-warnings --disable-nested-config --quiet`
-- `bun run typecheck --filter @effect-desktop/core`
+- `bun run typecheck --filter @orika/core`
 - `bun test packages/react/src/index.test.ts packages/solid/src/index.test.ts packages/vue/src/index.test.ts`
 - `bun x ultracite check packages/react/src/index.test.ts packages/solid/src/index.test.ts packages/vue/src/index.test.ts --type-aware --type-check --deny-warnings --disable-nested-config --quiet`
-- `bun run typecheck --filter @effect-desktop/react --filter @effect-desktop/solid --filter @effect-desktop/vue`
+- `bun run typecheck --filter @orika/react --filter @orika/solid --filter @orika/vue`
 - `bun test packages/vite/src/virtual-module.test.ts packages/vite/src/hmr-controller.test.ts`
 - `bun test packages/vite/src/virtual-module.test.ts packages/vite/src/hmr-controller.test.ts packages/vite/src/index.test.ts`
 - `bun x ultracite check packages/vite/src/virtual-module.ts packages/vite/src/virtual-module.test.ts packages/vite/src/hmr-controller.test.ts --type-aware --type-check --deny-warnings --disable-nested-config --quiet`
 - `bun x ultracite check packages/vite/src/virtual-module.ts packages/vite/src/virtual-module.test.ts packages/vite/src/hmr-controller.test.ts packages/vite/src/index.test.ts --type-aware --type-check --deny-warnings --disable-nested-config --quiet`
-- `bun run typecheck --filter @effect-desktop/vite`
+- `bun run typecheck --filter @orika/vite`
 - `bun test packages/core/src/runtime/transport.test.ts`
 - `bun x ultracite check packages/core/src/runtime/transport.test.ts --type-aware --type-check --deny-warnings --disable-nested-config --quiet`
-- `bun run typecheck --filter @effect-desktop/core`
+- `bun run typecheck --filter @orika/core`
 - `bun test packages/core/src/runtime/auto-save.test.ts`
 - `bun x ultracite check packages/core/src/runtime/auto-save.ts packages/core/src/runtime/auto-save.test.ts --type-aware --type-check --deny-warnings --disable-nested-config --quiet`
-- `bun run typecheck --filter @effect-desktop/core`
+- `bun run typecheck --filter @orika/core`
 - `bun test packages/bridge/src/streams.test.ts`
 - `bun x ultracite check packages/bridge/src/streams.ts packages/bridge/src/streams.test.ts --type-aware --type-check --deny-warnings --disable-nested-config --quiet`
-- `bun run typecheck --filter @effect-desktop/bridge`
+- `bun run typecheck --filter @orika/bridge`
 - `bun run typecheck`
 - `bun test packages/core/src/runtime/renderer-rpc-client.test.ts`
 - `bun x ultracite check packages/core/src/runtime/renderer-rpc-client.test.ts --type-aware --type-check --deny-warnings --disable-nested-config --quiet`
-- `bun run typecheck --filter @effect-desktop/core`
+- `bun run typecheck --filter @orika/core`
 - `bun test packages/devtools/src/shell.test.ts`
 - `bun x ultracite check packages/devtools/src/shell.test.ts --type-aware --type-check --deny-warnings --disable-nested-config --quiet`
-- `bun run typecheck --filter @effect-desktop/devtools`
+- `bun run typecheck --filter @orika/devtools`
 - `bun test packages/test/src/index.test.ts --test-name-pattern MockPTY`
 - `bun x ultracite check packages/test/src/index.ts packages/test/src/index.test.ts --type-aware --type-check --deny-warnings --disable-nested-config --quiet`
-- `bun run typecheck --filter @effect-desktop/test`
+- `bun run typecheck --filter @orika/test`
 - `bun test packages/core/src/runtime/pty.test.ts`
 - `bun x ultracite check packages/core/src/runtime/pty.test.ts --type-aware --type-check --deny-warnings --disable-nested-config --quiet`
-- `bun run typecheck --filter @effect-desktop/core`
+- `bun run typecheck --filter @orika/core`
 - `bun test packages/core/src/index.test.ts --test-name-pattern "lazy runtime provider load failures"`
 - `bun test packages/core/src/index.test.ts`
 - `bunx ultracite check packages/core/src/runtime/desktop-app.ts packages/core/src/index.test.ts`
-- `bun run typecheck --filter @effect-desktop/core`
+- `bun run typecheck --filter @orika/core`
 - `bun test packages/core/src/index.test.ts --test-name-pattern "deleted zero-policy runtime wrapper|lazy runtime provider load failures"`
 - `bunx ultracite check packages/core/src/runtime/desktop-app.ts packages/core/src/index.test.ts`
-- `bun run typecheck --filter @effect-desktop/core`
+- `bun run typecheck --filter @orika/core`
 - `bun test packages/bridge/src/protocol.rpc.test.ts --test-name-pattern "makeDesktop(Client|Server)Protocol"`
 - `bun test packages/bridge/src/protocol.rpc.test.ts`
 - `bun test packages/core/src/index.test.ts --test-name-pattern "Desktop\.Rpc\.surface derives|Desktop\.app permission middleware declares"`
 - `bun test packages/core/src/index.test.ts`
 - `bunx ultracite check packages/bridge/src/protocol.rpc.test.ts packages/core/src/index.test.ts`
-- `bun run typecheck --filter @effect-desktop/bridge`
-- `bun run typecheck --filter @effect-desktop/core`
+- `bun run typecheck --filter @orika/bridge`
+- `bun run typecheck --filter @orika/core`
 - `rg -n "Effect\.forever\(Queue\.take|Queue\.take\(.*Effect\.flatMap" packages apps tests --glob '!**/node_modules/**'`
 - `bun test packages/core/src/runtime/postmessage-socket.test.ts`
 - `bunx ultracite fix packages/core/src/runtime/postmessage-socket.ts packages/core/src/runtime/postmessage-socket.test.ts`
-- `bun run typecheck --filter @effect-desktop/core`
+- `bun run typecheck --filter @orika/core`
 - `bun test packages/cli/src/index.test.ts --test-name-pattern "desktop doctor reports config import failures"`
 - `bunx ultracite check packages/cli/src/doctor.ts`
-- `bun run typecheck --filter @effect-desktop/cli`
+- `bun run typecheck --filter @orika/cli`
 - `bun test packages/native/src/crash-report-workflow.test.ts --test-name-pattern "CrashReport drain consumes queued reports"`
 - `bun test packages/native/src/crash-report-workflow.test.ts --test-name-pattern "dropped reports"`
 - `bun test packages/native/src/crash-report-workflow.test.ts`
 - `bunx ultracite check packages/native/src/crash-report-workflow.test.ts`
-- `bun run typecheck --filter @effect-desktop/native`
+- `bun run typecheck --filter @orika/native`
 - `bun test packages/native/src/updater-workflow.test.ts`
 - `bunx ultracite check packages/native/src/updater-workflow.ts packages/native/src/updater-workflow.test.ts`
-- `bun run typecheck --filter @effect-desktop/native`
+- `bun run typecheck --filter @orika/native`
 - `bun test packages/cli/src/index.test.ts --test-name-pattern "desktop build (stages renderer runtime host bridge manifests and report|emits explicit chrome web engine selection|emits node runtime launch manifest|reuses provider-owned nodes|reuses native host)"`
 - `bun test packages/cli/src/index.test.ts --test-name-pattern "desktop build (refuses renderer dist symlinks|emits validated renderer security policy|emits disabled renderer CSP policy|emits validated window config)"`
 - `bun test packages/cli/src/index.test.ts --test-name-pattern "desktop sign (GPG-signs Linux AppImage|rejects artifact fileName)"`
@@ -913,9 +913,9 @@ Verification:
 - `bun test packages/core/src/runtime/main.test.ts`
 - `bunx ultracite check packages/core/src/runtime/main.test.ts`
 - `bunx ultracite check packages/cli/src/index.test.ts`
-- `bun run typecheck --filter @effect-desktop/cli`
+- `bun run typecheck --filter @orika/cli`
 - `bun test packages/native/src/capabilities.test.ts packages/native/src/index.test.ts --test-name-pattern "NativeCapabilities|Native\.all|Native\.clipboard|permission"`
-- `bun run typecheck --filter @effect-desktop/native`
+- `bun run typecheck --filter @orika/native`
 - `bun run typecheck`
 - `git diff --check`
 - `bunx ultracite check engineering/audits/v1.0.0/2026-05-16-effect-primitive-sweep.md`
@@ -923,71 +923,71 @@ Verification:
 - `rg -n "while \\(true\\)|for \\(;;\\)|new Promise|Promise\\.race|setTimeout|setInterval|Bun\\.sleep\\(|Queue\\.offerUnsafe|Effect\\.async\\(|Effect\\.promise\\(" packages/core/src/runtime/resources.ts packages/core/src/runtime/transport.ts packages/core/src/runtime/process.ts packages/bridge/src/streams.ts packages/test/src/index.ts packages/vite/src/virtual-module.ts --glob '!**/node_modules/**'`
 - `bun test packages/vite/src/hmr-controller.test.ts`
 - `bunx ultracite check packages/vite/src/hmr-controller.ts packages/vite/src/hmr-controller.test.ts`
-- `bun run typecheck --filter @effect-desktop/vite`
+- `bun run typecheck --filter @orika/vite`
 - `bun test packages/vite/src/hmr-controller.test.ts packages/vite/src/virtual-module.test.ts packages/vite/src/index.test.ts`
 - `bunx ultracite check packages/vite/src/hmr-controller.ts packages/vite/src/hmr-controller.test.ts packages/vite/src/virtual-module.ts packages/vite/src/virtual-module.test.ts`
-- `bun run typecheck --filter @effect-desktop/vite`
+- `bun run typecheck --filter @orika/vite`
 - `bun test packages/vite/src/hmr-controller.test.ts`
 - `bunx ultracite check packages/vite/src/hmr-controller.ts packages/vite/src/hmr-controller.test.ts`
-- `bun run typecheck --filter @effect-desktop/vite`
+- `bun run typecheck --filter @orika/vite`
 - `bun test packages/vite/src/hmr-controller.test.ts packages/vite/src/virtual-module.test.ts packages/vite/src/index.test.ts`
 - `bun test packages/bridge/src/client.test.ts --test-name-pattern "makeUnaryDesktopTransportFromBridgeClientExchange"`
 - `bunx ultracite check packages/bridge/src/client.ts packages/bridge/src/client.test.ts`
-- `bun run typecheck --filter @effect-desktop/bridge`
+- `bun run typecheck --filter @orika/bridge`
 - `bun test packages/bridge/src/client.test.ts`
 - `bunx ultracite check packages/bridge/src/client.ts packages/bridge/src/client.test.ts`
-- `bun run typecheck --filter @effect-desktop/bridge`
+- `bun run typecheck --filter @orika/bridge`
 - `bun test packages/cli/src/index.test.ts --test-name-pattern "desktop build emits explicit chrome web engine selection"`
 - `bunx ultracite check packages/cli/src/index.ts packages/cli/src/index.test.ts`
-- `bun run typecheck --filter @effect-desktop/cli`
+- `bun run typecheck --filter @orika/cli`
 - `bun test packages/native/src/index.test.ts --test-name-pattern "native host RPC runtime uses the Effect Clock"`
 - `bunx ultracite check packages/native/src/native-rpc-runtime.ts packages/native/src/index.test.ts`
-- `bun run typecheck --filter @effect-desktop/native`
+- `bun run typecheck --filter @orika/native`
 - `bun test packages/devtools/src/panels.test.ts --test-name-pattern "ReactivityTracker records invalidation events"`
 - `bun test packages/devtools/src/index.test.ts --test-name-pattern "LiveRuntimePanels projects"`
 - `bunx ultracite check packages/devtools/src/live-panels.ts packages/devtools/src/reactivity-panel.ts packages/devtools/src/panels.test.ts packages/devtools/src/index.test.ts`
-- `bun run typecheck --filter @effect-desktop/devtools`
+- `bun run typecheck --filter @orika/devtools`
 - `bun test packages/test/src/index.test.ts --test-name-pattern "MockHost calls returns immutable|MockBridge replays pinned stream"`
 - `bunx ultracite check packages/test/src/index.ts packages/test/src/index.test.ts`
-- `bun run typecheck --filter @effect-desktop/test`
+- `bun run typecheck --filter @orika/test`
 - `bun test packages/native/src/crash-report-workflow.test.ts`
 - `bunx ultracite check packages/native/src/crash-report-workflow.test.ts`
 - `bun test packages/core/src/runtime/renderer-rpc-client.test.ts`
 - `bunx ultracite check packages/core/src/runtime/desktop-rpc-registry.ts packages/core/src/runtime/renderer-rpc-client.ts packages/core/src/runtime/renderer-rpc-client.test.ts`
-- `bun run typecheck --filter @effect-desktop/core`
+- `bun run typecheck --filter @orika/core`
 - `bun test packages/core/src/runtime/renderer-rpc-client.test.ts`
 - `bunx ultracite check packages/core/src/runtime/renderer-rpc-client.ts packages/core/src/runtime/renderer-rpc-client.test.ts`
-- `bun run typecheck --filter @effect-desktop/core`
+- `bun run typecheck --filter @orika/core`
 - `bun test packages/core/src/runtime/audit-events.test.ts`
 - `bunx ultracite check packages/core/src/runtime/audit-events.ts packages/core/src/runtime/audit-events.test.ts`
-- `bun run typecheck --filter @effect-desktop/core`
+- `bun run typecheck --filter @orika/core`
 - `bun test packages/core/src/runtime/settings.test.ts`
 - `bunx ultracite check packages/core/src/runtime/settings.ts packages/core/src/runtime/settings.test.ts`
-- `bun run typecheck --filter @effect-desktop/core`
+- `bun run typecheck --filter @orika/core`
 - `bun test packages/core/src/runtime/settings.test.ts -t "invalid set value returns typed InvalidArgument before writing"`
-- `bun run typecheck --filter @effect-desktop/core`
+- `bun run typecheck --filter @orika/core`
 - `bun test packages/core/src/runtime/permission-registry.test.ts -t "validates inputs before audit side effects|rejects control bytes in actor ids"`
-- `bun run typecheck --filter @effect-desktop/core`
+- `bun run typecheck --filter @orika/core`
 - `bun test packages/core/src/runtime/worker.test.ts -t "Worker validates channel send"`
-- `bun run typecheck --filter @effect-desktop/core`
+- `bun run typecheck --filter @orika/core`
 - `bun test packages/core/src/runtime/commands.test.ts -t "CommandRegistry rejects control characters in command ids"`
-- `bun run typecheck --filter @effect-desktop/core`
+- `bun run typecheck --filter @orika/core`
 - `bun test packages/core/src/runtime/commands.test.ts`
 - `bun test packages/core/src/runtime/transport.test.ts -t "Transport service validates unframeStream chunks input|Transport service returns typed failures"`
-- `bun run typecheck --filter @effect-desktop/core`
+- `bun run typecheck --filter @orika/core`
 - `bun test packages/core/src/runtime/transport.test.ts`
 - `bunx ultracite check packages/core/src/runtime/transport.ts packages/core/src/runtime/transport.test.ts`
 - `bun test packages/core/src/runtime/pty.test.ts -t "PTY rejects invalid output overflow policies before adapter open"`
-- `bun run typecheck --filter @effect-desktop/core`
+- `bun run typecheck --filter @orika/core`
 - `bun test packages/core/src/runtime/pty.test.ts`
 - `bunx ultracite check packages/core/src/runtime/pty.ts packages/core/src/runtime/pty.test.ts`
 - `bun test packages/core/src/index.test.ts -t "Desktop.make returns metadata descriptor"`
-- `bun run typecheck --filter @effect-desktop/core`
+- `bun run typecheck --filter @orika/core`
 - `bun test packages/core/src/index.test.ts`
 - `bunx ultracite check packages/core/src/index.ts packages/core/src/index.test.ts packages/core/src/runtime/desktop-app.ts`
 - `bun test packages/bridge/src/client.test.ts -t "Client normalizes outbound requests before exchange dispatch"`
-- `bun run typecheck --filter @effect-desktop/bridge`
-- `bun run typecheck --filter @effect-desktop/native`
+- `bun run typecheck --filter @orika/bridge`
+- `bun run typecheck --filter @orika/native`
 - `bun test packages/bridge/src/client.test.ts`
 - `bun test packages/native/src/index.test.ts -t "Screen bridge client sends typed host envelopes and decodes values"`
 - `bunx ultracite check packages/bridge/src/client.ts packages/bridge/src/client.test.ts packages/native/src/screen.ts`
@@ -995,14 +995,14 @@ Verification:
 - `bun desktop check --api`
 - `bun test packages/bridge/src/protocol.rpc.test.ts`
 - `bunx ultracite check packages/bridge/src/rpc-handlers.ts packages/bridge/src/protocol.rpc.test.ts`
-- `bun run typecheck --filter @effect-desktop/bridge`
+- `bun run typecheck --filter @orika/bridge`
 - `bun test packages/native/src/index.test.ts --test-name-pattern "native host RPC runtime uses the Effect Clock"`
 - `bunx ultracite check packages/bridge/src/rpc-handlers.ts packages/native/src/native-rpc-runtime.ts packages/native/src/native-surface.ts packages/native/src/*.ts`
-- `bun run typecheck --filter @effect-desktop/native`
+- `bun run typecheck --filter @orika/native`
 - `git diff --check`
 - `bun test packages/core/src/runtime/telemetry.test.ts`
 - `bunx ultracite check packages/core/src/runtime/telemetry.ts packages/core/src/runtime/telemetry.test.ts`
-- `bun run typecheck --filter @effect-desktop/core`
+- `bun run typecheck --filter @orika/core`
 
 ## Verified but not durable
 

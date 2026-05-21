@@ -10,7 +10,7 @@ import {
   type HostProtocolError,
   type RpcCapabilityMetadata,
   RpcGroup
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import {
   type AuditEventsApi,
   type DesktopRpcClient,
@@ -24,7 +24,7 @@ import {
   type PermissionRegistryApi,
   type PermissionRegistryError,
   permissionAuditEvent
-} from "@effect-desktop/core"
+} from "@orika/core"
 import { Clock, Context, Effect, Layer, PubSub, Ref, Schema, Stream } from "effect"
 
 import { subscribeNativeEvent } from "./event-stream.js"
@@ -129,7 +129,7 @@ export interface AttachmentIntakeClientApi {
 export class AttachmentIntakeClient extends Context.Service<
   AttachmentIntakeClient,
   AttachmentIntakeClientApi
->()("@effect-desktop/native/AttachmentIntakeClient") {}
+>()("@orika/native/AttachmentIntakeClient") {}
 
 export interface AttachmentIntakeServiceApi {
   readonly ingest: (
@@ -167,7 +167,7 @@ interface IntakeState {
 export class AttachmentIntake extends Context.Service<
   AttachmentIntake,
   AttachmentIntakeServiceApi
->()("@effect-desktop/native/AttachmentIntake") {
+>()("@orika/native/AttachmentIntake") {
   static readonly layer = Layer.effect(AttachmentIntake)(
     Effect.gen(function* () {
       const client = yield* AttachmentIntakeClient

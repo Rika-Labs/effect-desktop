@@ -3,14 +3,14 @@ import {
   type InspectorTransportApi,
   type InspectorTransportEvent,
   type InspectorTransportInvalidArgumentError
-} from "@effect-desktop/core/inspector-transport"
+} from "@orika/core/inspector-transport"
 import {
   type InspectorSurface,
   type RecordedInspectorFrame,
   recordedDiagnosticsSession,
   ReplayTransport,
   type ReplayTransportApi
-} from "@effect-desktop/devtools/testing"
+} from "@orika/devtools/testing"
 import { Context, Effect, Layer, Schedule, Stream } from "effect"
 
 export type InspectorSessionKind = "live" | "recorded"
@@ -59,7 +59,7 @@ export interface InspectorAppOptions {
 }
 
 export class InspectorApp extends Context.Service<InspectorApp, InspectorAppApi>()(
-  "@effect-desktop/inspector/inspector-app/InspectorApp"
+  "@orika/inspector/inspector-app/InspectorApp"
 ) {}
 
 export const InspectorAppLive = (

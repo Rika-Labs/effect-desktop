@@ -10,7 +10,7 @@ effect_version: 4
 
 > Full reference: [`reference/errors.md`](reference/errors.md). How-to: [`diagnose with doctor`](how-to/diagnose-with-doctor.md).
 
-Effect Desktop failures are typed and observable. Start with the narrowest command that exercises the failing path.
+ORIKA failures are typed and observable. Start with the narrowest command that exercises the failing path.
 
 ## CLI fails before running
 

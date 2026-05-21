@@ -13,7 +13,7 @@ Native file, save, message, and confirmation dialogs.
 ## Import
 
 ```ts
-import { Dialog, DialogClient, DialogRpcs, DialogError } from "@effect-desktop/native"
+import { Dialog, DialogClient, DialogRpcs, DialogError } from "@orika/native"
 ```
 
 ## Methods
@@ -43,7 +43,7 @@ arguments, invalid host output, and host failures are tagged errors.
 
 ## Test layer
 
-`DialogTest(options)` from `@effect-desktop/test`.
+`DialogTest(options)` from `@orika/test`.
 
 ## Related
 

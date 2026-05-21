@@ -9,8 +9,8 @@ import {
   RpcGroup,
   type HostProtocolError,
   type RpcSupportMetadata
-} from "@effect-desktop/bridge"
-import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
+} from "@orika/bridge"
+import { type PermissionRegistry, P, type DesktopRpcClient } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
@@ -450,7 +450,7 @@ export interface WebViewClientApi {
 }
 
 export class WebViewClient extends Context.Service<WebViewClient, WebViewClientApi>()(
-  "@effect-desktop/native/WebViewClient"
+  "@orika/native/WebViewClient"
 ) {}
 
 export interface WebViewServiceApi extends Omit<WebViewClientApi, "create"> {
@@ -461,7 +461,7 @@ export interface WebViewServiceApi extends Omit<WebViewClientApi, "create"> {
 }
 
 export class WebView extends Context.Service<WebView, WebViewServiceApi>()(
-  "@effect-desktop/native/WebView"
+  "@orika/native/WebView"
 ) {
   static readonly layer = Layer.effect(WebView)(
     Effect.gen(function* () {

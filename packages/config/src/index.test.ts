@@ -521,9 +521,7 @@ test("ProductionChecker fails renderer raw bridge calls with file and line", () 
         rendererFiles: [
           {
             path: "src/renderer/main.ts",
-            content: ["import { Client } from '@effect-desktop/bridge'", "rawBridge.send({})"].join(
-              "\n"
-            )
+            content: ["import { Client } from '@orika/bridge'", "rawBridge.send({})"].join("\n")
           }
         ]
       })
@@ -572,7 +570,7 @@ test("ProductionChecker blocks host protocol symbols imported from the bridge ba
           {
             path: "src/renderer/main.ts",
             content: [
-              "import { HostProtocolRequestEnvelope } from '@effect-desktop/bridge'",
+              "import { HostProtocolRequestEnvelope } from '@orika/bridge'",
               "new HostProtocolRequestEnvelope({ id: '1' })"
             ].join("\n")
           }
@@ -600,7 +598,7 @@ test("ProductionChecker still blocks bridge protocol subpath imports", () =>
         rendererFiles: [
           {
             path: "src/renderer/main.ts",
-            content: "import { HostProtocolRequestEnvelope } from '@effect-desktop/bridge/protocol'"
+            content: "import { HostProtocolRequestEnvelope } from '@orika/bridge/protocol'"
           }
         ]
       })
@@ -620,7 +618,7 @@ test("ProductionChecker allows renderer-safe bridge barrel imports", () =>
         rendererFiles: [
           {
             path: "src/renderer/main.ts",
-            content: "import { Client } from '@effect-desktop/bridge'"
+            content: "import { Client } from '@orika/bridge'"
           }
         ]
       })
@@ -939,7 +937,7 @@ test("ProductionChecker rule registry covers the current production rule set", (
           {
             path: "src/renderer/main.ts",
             content: [
-              "import { Filesystem } from '@effect-desktop/core'",
+              "import { Filesystem } from '@orika/core'",
               "HostProtocol.send({})",
               "sendRaw({})"
             ].join("\n")

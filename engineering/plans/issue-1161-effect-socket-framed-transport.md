@@ -82,7 +82,7 @@ flowchart LR
 Focused:
 
 - `bun test packages/core/src/runtime/transport.test.ts packages/core/src/runtime/host-client.test.ts packages/core/src/runtime/main.test.ts packages/core/src/runtime/stdio-socket.test.ts packages/core/src/index.test.ts`
-- `bun run --filter @effect-desktop/core typecheck`
+- `bun run --filter @orika/core typecheck`
 - `bun run desktop check --api --write`
 - `bun run desktop check --api`
 

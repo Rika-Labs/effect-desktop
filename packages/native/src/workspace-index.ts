@@ -10,7 +10,7 @@ import {
   type HostProtocolError,
   type RpcCapabilityMetadata,
   RpcGroup
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import {
   type AuditEventsApi,
   type DesktopRpcClient,
@@ -24,7 +24,7 @@ import {
   type PermissionRegistryApi,
   type PermissionRegistryError,
   permissionAuditEvent
-} from "@effect-desktop/core"
+} from "@orika/core"
 import { Clock, Context, Effect, Layer, PubSub, Ref, Schema, Stream } from "effect"
 
 import { subscribeNativeEvent } from "./event-stream.js"
@@ -131,7 +131,7 @@ export interface WorkspaceIndexClientApi {
 export class WorkspaceIndexClient extends Context.Service<
   WorkspaceIndexClient,
   WorkspaceIndexClientApi
->()("@effect-desktop/native/WorkspaceIndexClient") {}
+>()("@orika/native/WorkspaceIndexClient") {}
 
 export interface WorkspaceIndexServiceApi {
   readonly open: (
@@ -159,7 +159,7 @@ export interface WorkspaceIndexServiceOptions {
 }
 
 export class WorkspaceIndex extends Context.Service<WorkspaceIndex, WorkspaceIndexServiceApi>()(
-  "@effect-desktop/native/WorkspaceIndex"
+  "@orika/native/WorkspaceIndex"
 ) {
   static readonly layer = Layer.effect(WorkspaceIndex)(
     Effect.gen(function* () {

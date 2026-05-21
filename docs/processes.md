@@ -14,7 +14,7 @@ The `Process` service owns shellless process execution, output collection, permi
 
 ## Public surface
 
-`@effect-desktop/core` exports `Process`, `ProcessSpawnInput`, `ProcessExitStatus`, process errors, budget policy types, permission policy types, and constructors such as `makeProcess`.
+`@orika/core` exports `Process`, `ProcessSpawnInput`, `ProcessExitStatus`, process errors, budget policy types, permission policy types, and constructors such as `makeProcess`.
 
 ## Security model
 
@@ -33,7 +33,7 @@ if (Process === undefined || MockProcess === undefined) {
 
 ## Testing
 
-`MockProcess.layer(options)` from `@effect-desktop/test` for deterministic stdout, stderr, exit status, spawn records, and denied-path assertions.
+`MockProcess.layer(options)` from `@orika/test` for deterministic stdout, stderr, exit status, spawn records, and denied-path assertions.
 
 ## Where to go next
 

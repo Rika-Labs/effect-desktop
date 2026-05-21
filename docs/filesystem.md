@@ -14,7 +14,7 @@ The `Filesystem` service owns runtime filesystem access behind permission policy
 
 ## Public surface
 
-`@effect-desktop/core` exports `Filesystem`, filesystem options, permission policy types, and constructors such as `makeFilesystem`.
+`@orika/core` exports `Filesystem`, filesystem options, permission policy types, and constructors such as `makeFilesystem`.
 
 ## Security model
 
@@ -33,7 +33,7 @@ if (Filesystem === undefined || MemoryFilesystem === undefined) {
 
 ## Testing
 
-`MemoryFilesystem.layer(options)` from `@effect-desktop/test` for deterministic files, directories, symlinks, reads, writes, deletes, and denied-path assertions.
+`MemoryFilesystem.layer(options)` from `@orika/test` for deterministic files, directories, symlinks, reads, writes, deletes, and denied-path assertions.
 
 ## Where to go next
 

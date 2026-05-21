@@ -1,4 +1,4 @@
-# @effect-desktop/core
+# @orika/core
 
 > **Status:** Phase 2 runtime entry exists; the public API remains reserved for Phase 4+. See `engineering/SPEC.md`.
 
@@ -61,8 +61,8 @@ after construction.
 
 ### EventLog
 
-Effect Desktop keeps the raw `effect/unstable/eventlog` primitive as the
-advanced dependency and exposes `@effect-desktop/core/runtime/event-log` for
+ORIKA keeps the raw `effect/unstable/eventlog` primitive as the
+advanced dependency and exposes `@orika/core/runtime/event-log` for
 desktop policy. `DesktopEventLog` owns the closed desktop operation event
 schema, redaction before append, bounded query results, identity setup, and
 Inspector emission for append, query, recovery, and read-only transitions.
@@ -284,7 +284,7 @@ import {
   SqlClient,
   SqlClientLive,
   makePermissionRegistry
-} from "@effect-desktop/core"
+} from "@orika/core"
 
 const program = Effect.gen(function* () {
   const sql = yield* SqlClient
@@ -315,7 +315,7 @@ import {
   ResourceRegistryLive,
   Settings,
   makePermissionRegistry
-} from "@effect-desktop/core"
+} from "@orika/core"
 
 const settingsPath = "settings.sqlite"
 
@@ -358,7 +358,7 @@ package runs under Bun.
 
 ## Dependency notes
 
-- `@effect-desktop/bridge` owns the shared host-protocol schemas plus the
+- `@orika/bridge` owns the shared host-protocol schemas plus the
   handshake and window client wrappers used by the runtime entry.
 - `effect@4.0.0-beta.60` owns the Effect v4 runtime used to execute those
   handshake wrappers. The version matches the bridge package and the repo's

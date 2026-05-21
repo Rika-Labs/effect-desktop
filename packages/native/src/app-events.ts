@@ -121,7 +121,7 @@ export interface AppEventRouterOptions {
 }
 
 export class AppEventRouter extends Context.Service<AppEventRouter, AppEventRouterApi>()(
-  "@effect-desktop/native/AppEventRouter"
+  "@orika/native/AppEventRouter"
 ) {
   static readonly layer = Layer.effect(AppEventRouter)(
     makeAppEventRouter().pipe(Effect.map(AppEventRouter.of))

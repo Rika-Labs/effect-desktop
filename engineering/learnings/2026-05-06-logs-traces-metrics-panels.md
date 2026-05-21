@@ -14,7 +14,7 @@ Issue #22 asked for devtools logs, traces, and metrics panels that read from the
 
 ## What actually ended up working
 
-The implementation introduced `Telemetry` in `@effect-desktop/core` as the owner of structured logs, trace spans, and metric snapshots. Logs are redacted before storage, traces live in a bounded ring with a default capacity of 10,000, and metrics aggregate counters and histograms by name and tags under a bounded snapshot map. `DiagnosticsPanels` in devtools stays a read-only projection: it asks `Telemetry` for one snapshot, groups trace spans by `traceId`, slices display rows, and applies the shared redaction filter before returning panel data.
+The implementation introduced `Telemetry` in `@orika/core` as the owner of structured logs, trace spans, and metric snapshots. Logs are redacted before storage, traces live in a bounded ring with a default capacity of 10,000, and metrics aggregate counters and histograms by name and tags under a bounded snapshot map. `DiagnosticsPanels` in devtools stays a read-only projection: it asks `Telemetry` for one snapshot, groups trace spans by `traceId`, slices display rows, and applies the shared redaction filter before returning panel data.
 
 ```mermaid
 flowchart LR

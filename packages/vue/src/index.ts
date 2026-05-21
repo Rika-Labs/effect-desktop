@@ -23,8 +23,8 @@ import {
   type FrameworkRuntime,
   type MissingDesktopRpcClientError,
   type DesktopRpcRegistrationGroup as RpcGroupWithRequests
-} from "@effect-desktop/core/renderer"
-import type { WithRpcEndpointKind } from "@effect-desktop/bridge"
+} from "@orika/core/renderer"
+import type { WithRpcEndpointKind } from "@orika/bridge"
 import { Cause, Effect, Exit, ManagedRuntime, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import {
@@ -133,10 +133,7 @@ export interface VueDesktopAdapter<App extends DesktopAppManifest> {
   readonly useDesktop: <Group extends RpcGroupWithRequests>(group: Group) => VueDesktopRpcs<Group>
 }
 
-export {
-  MissingDesktopContextError,
-  MissingDesktopRpcClientError
-} from "@effect-desktop/core/renderer"
+export { MissingDesktopContextError, MissingDesktopRpcClientError } from "@orika/core/renderer"
 
 interface VueDesktopContext {
   readonly clients: DesktopRendererRpcClientMap

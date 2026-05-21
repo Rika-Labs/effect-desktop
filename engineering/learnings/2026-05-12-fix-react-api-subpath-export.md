@@ -10,11 +10,11 @@ pr: https://github.com/Rika-Labs/effect-desktop/pull/1263
 
 ## What we set out to do
 
-`@effect-desktop/react` advertised `./api` in `package.json`, but no `packages/react/src/api.ts` existed. The goal was to make the package boundary truthful: every published React subpath should either resolve to a checked-in source module or be removed.
+`@orika/react` advertised `./api` in `package.json`, but no `packages/react/src/api.ts` existed. The goal was to make the package boundary truthful: every published React subpath should either resolve to a checked-in source module or be removed.
 
 ## What actually ended up working
 
-The smallest correct fix was to remove `./api` rather than create a compatibility barrel. The root export and `./desktop` already expose the real React adapter surface, and no repository code imported `@effect-desktop/react/api`, so adding `src/api.ts` would have created a second name without hiding new complexity.
+The smallest correct fix was to remove `./api` rather than create a compatibility barrel. The root export and `./desktop` already expose the real React adapter surface, and no repository code imported `@orika/react/api`, so adding `src/api.ts` would have created a second name without hiding new complexity.
 
 ```mermaid
 flowchart LR

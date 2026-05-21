@@ -3430,14 +3430,11 @@ mod tests {
             "EFFECT_DESKTOP_AUTOSTART_APP_ID",
             "dev.effect-desktop.route-test",
         );
-        std::env::set_var(
-            "EFFECT_DESKTOP_AUTOSTART_APP_NAME",
-            "Effect Desktop Route Test",
-        );
+        std::env::set_var("EFFECT_DESKTOP_AUTOSTART_APP_NAME", "ORIKA Route Test");
         let test_exe = if cfg!(windows) {
-            r"C:\Program Files\Effect Desktop\host.exe"
+            r"C:\Program Files\ORIKA\host.exe"
         } else {
-            "/Applications/Effect Desktop.app/Contents/MacOS/host"
+            "/Applications/ORIKA.app/Contents/MacOS/host"
         };
         std::env::set_var("EFFECT_DESKTOP_AUTOSTART_EXE", test_exe);
 

@@ -3,7 +3,7 @@ import {
   type DesktopProtocolOptions,
   type DesktopTransportRun,
   type DesktopTransportSend
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import { Clock, Context, Effect, Exit, Layer, Scope, Stream } from "effect"
 import { Rpc, RpcClient, RpcGroup, RpcTest } from "effect/unstable/rpc"
 
@@ -49,12 +49,12 @@ export interface RendererRpcClientsApi {
 export class RendererRpcClients extends Context.Service<
   RendererRpcClients,
   RendererRpcClientsApi
->()("@effect-desktop/core/runtime/renderer-rpc-client/RendererRpcClients") {}
+>()("@orika/core/runtime/renderer-rpc-client/RendererRpcClients") {}
 
 export class RendererRpcTransport extends Context.Service<
   RendererRpcTransport,
   DesktopRendererRpcTransport
->()("@effect-desktop/core/runtime/renderer-rpc-client/RendererRpcTransport") {}
+>()("@orika/core/runtime/renderer-rpc-client/RendererRpcTransport") {}
 
 export interface DesktopRendererRpcClientLayerOptions extends DesktopProtocolOptions {
   readonly framework: DesktopFramework

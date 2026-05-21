@@ -11,7 +11,7 @@ import {
   type ResourceHandle,
   type ResourceId,
   type ResourceRegistry
-} from "@effect-desktop/core"
+} from "@orika/core"
 import {
   type BridgeClientExchange,
   type BridgeClientOptions,
@@ -19,7 +19,7 @@ import {
   type BridgeHandlerRuntimeOptions,
   RpcGroup,
   type HostProtocolError
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
@@ -80,7 +80,7 @@ export interface ContextMenuClientApi {
 }
 
 export class ContextMenuClient extends Context.Service<ContextMenuClient, ContextMenuClientApi>()(
-  "@effect-desktop/native/ContextMenuClient"
+  "@orika/native/ContextMenuClient"
 ) {}
 
 export interface ContextMenuServiceApi extends Omit<ContextMenuClientApi, "bindCommand"> {
@@ -95,7 +95,7 @@ export interface ContextMenuServiceApi extends Omit<ContextMenuClientApi, "bindC
 }
 
 export class ContextMenu extends Context.Service<ContextMenu, ContextMenuServiceApi>()(
-  "@effect-desktop/native/ContextMenu"
+  "@orika/native/ContextMenu"
 ) {
   static readonly layer = Layer.effect(ContextMenu)(
     Effect.gen(function* () {

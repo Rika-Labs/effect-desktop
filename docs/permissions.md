@@ -18,14 +18,14 @@ capture still need a dedicated profile/session-partitioned native service.
 
 ## Public surface
 
-`@effect-desktop/core` exports:
+`@orika/core` exports:
 
 - `PermissionRegistry`.
 - Permission interceptor helpers (`PermissionInterceptor`, `makePermissionInterceptorLayer`).
 - `PermissionApprovalWorkflow`.
 - Capability declarations and approval records.
 
-`@effect-desktop/react` exports `usePermission`, `usePermissionApproval`, `useApprovalNotifications`, and `<PermissionApprovalQueue />` for UI-driven approval flows.
+`@orika/react` exports `usePermission`, `usePermissionApproval`, `useApprovalNotifications`, and `<PermissionApprovalQueue />` for UI-driven approval flows.
 
 ## Decision order (fixed)
 

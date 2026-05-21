@@ -1,8 +1,8 @@
 {
-  "name": "@effect-desktop/vite",
+  "name": "@orika/vite",
   "version": "2.0.0",
   "private": true,
-  "description": "Vite plugin for Effect Desktop: splits app.ts into renderer and runtime chunks, spawns the runtime as a child process during vite dev, and pipes effect/unstable/socket frames over the Vite HMR WebSocket.",
+  "description": "Vite plugin for ORIKA: splits app.ts into renderer and runtime chunks, spawns the runtime as a child process during vite dev, and pipes effect/unstable/socket frames over the Vite HMR WebSocket.",
   "license": "MIT OR Apache-2.0",
   "author": "Rika Labs, LLC",
   "repository": {
@@ -30,7 +30,7 @@
     "lint": "oxlint ."
   },
   "dependencies": {
-    "@effect-desktop/core": "workspace:*",
+    "@orika/core": "workspace:*",
     "@effect/platform-node": "4.0.0-beta.60",
     "effect": "4.0.0-beta.60"
   },

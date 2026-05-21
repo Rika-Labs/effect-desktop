@@ -10,7 +10,7 @@ Production permission scope lists now reject blank and wildcard-shaped entries a
 
 ## Review Surface
 
-The only behavior change is `@effect-desktop/config` scope-list validation. The bridge test is coverage for existing schema behavior and does not change public API shape.
+The only behavior change is `@orika/config` scope-list validation. The bridge test is coverage for existing schema behavior and does not change public API shape.
 
 ## Lesson
 

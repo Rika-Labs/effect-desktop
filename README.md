@@ -1,4 +1,4 @@
-# Effect Desktop
+# ORIKA
 
 Build local-first desktop apps with **Rust for the shell**, **Bun for the runtime**, **React (or your framework) for the UI**, and **Effect for correctness**.
 
@@ -24,7 +24,7 @@ The renderer never receives raw native authority. Privileged work crosses named 
 
 ## Status
 
-Effect Desktop is **pre-v1**. Workspace packages are `private: true` at version `0.0.0` and not yet published to npm. Develop against this repository directly.
+ORIKA is **pre-v1**. Workspace packages are `private: true` at version `0.0.0` and not yet published to npm. Develop against this repository directly.
 
 Public APIs are stable in shape but not in version. Anything described in `docs/` is grounded in current source — if you can read it, you can grep it.
 
@@ -118,4 +118,4 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`AGENTS.md`](AGENTS.md). The archi
 
 ## License
 
-Effect Desktop is provided by Rika Labs, LLC under either the MIT license or the Apache License 2.0, at your option. See [`LICENSE`](LICENSE), [`LICENSE-MIT`](LICENSE-MIT), and [`LICENSE-APACHE`](LICENSE-APACHE).
+ORIKA is provided by Rika Labs, LLC under either the MIT license or the Apache License 2.0, at your option. See [`LICENSE`](LICENSE), [`LICENSE-MIT`](LICENSE-MIT), and [`LICENSE-APACHE`](LICENSE-APACHE).

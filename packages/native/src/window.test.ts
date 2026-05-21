@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { rpcSupport, type Rpc } from "@effect-desktop/bridge"
+import { rpcSupport, type Rpc } from "@orika/bridge"
 
 import { WindowRpcs } from "./window.js"
 

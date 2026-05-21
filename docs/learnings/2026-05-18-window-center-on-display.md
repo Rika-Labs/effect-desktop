@@ -11,7 +11,7 @@ Window placement now has one host-owned display-relative operation:
 window size on the selected display through the Rust host.
 
 This is narrower than a general placement policy. Tao exposes monitor bounds
-but not a cross-platform monitor work-area API, so Effect Desktop still reports
+but not a cross-platform monitor work-area API, so ORIKA still reports
 `workArea` from monitor bounds and cannot yet clip arbitrary bounds around OS
 reserved areas.
 

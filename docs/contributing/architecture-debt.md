@@ -69,9 +69,7 @@ The wrapper added a name and removed a `pipe` call. It did not add durable seman
 
 ```ts
 // packages/core/src/runtime/secrets.ts — keeps its place
-export class Secrets extends Context.Service<Secrets, SecretsApi>()(
-  "@effect-desktop/core/Secrets"
-) {}
+export class Secrets extends Context.Service<Secrets, SecretsApi>()("@orika/core/Secrets") {}
 ```
 
 `Secrets` wraps `SafeStorage` (the native primitive). It earns its place because it:

@@ -1,4 +1,4 @@
-import { BridgeInspectorEvent, type BridgeInspector } from "@effect-desktop/bridge"
+import { BridgeInspectorEvent, type BridgeInspector } from "@orika/bridge"
 import {
   Cause,
   Clock,
@@ -184,7 +184,7 @@ export const makeTransport = (): Effect.Effect<TransportApi, never, never> =>
   )
 
 export class Transport extends Context.Service<Transport, TransportApi>()(
-  "@effect-desktop/core/runtime/transport",
+  "@orika/core/runtime/transport",
   {
     make: makeTransport()
   }

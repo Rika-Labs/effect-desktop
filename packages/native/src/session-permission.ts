@@ -6,8 +6,8 @@ import {
   type HostProtocolError,
   HostProtocolUnsupportedError,
   RpcGroup
-} from "@effect-desktop/bridge"
-import { type DesktopRpcClient, P, type PermissionRegistry } from "@effect-desktop/core"
+} from "@orika/bridge"
+import { type DesktopRpcClient, P, type PermissionRegistry } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import {
@@ -81,7 +81,7 @@ export interface SessionPermissionClientApi {
 export class SessionPermissionClient extends Context.Service<
   SessionPermissionClient,
   SessionPermissionClientApi
->()("@effect-desktop/native/SessionPermissionClient") {}
+>()("@orika/native/SessionPermissionClient") {}
 
 export interface SessionPermissionServiceApi {
   readonly isSupported: () => Effect.Effect<
@@ -97,7 +97,7 @@ export interface SessionPermissionServiceApi {
 export class SessionPermission extends Context.Service<
   SessionPermission,
   SessionPermissionServiceApi
->()("@effect-desktop/native/SessionPermission") {
+>()("@orika/native/SessionPermission") {
   static readonly layer = Layer.effect(SessionPermission)(
     Effect.gen(function* () {
       const client = yield* SessionPermissionClient

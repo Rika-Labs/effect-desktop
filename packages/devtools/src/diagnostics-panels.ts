@@ -7,7 +7,7 @@ import {
   type TelemetryLogRecord,
   type TelemetryMetricSnapshot,
   type TelemetryTraceSpan
-} from "@effect-desktop/core"
+} from "@orika/core"
 import { Context, Effect, Layer, Option, Schedule, Stream } from "effect"
 
 import { positiveFrameInterval, positiveRowLimit } from "./panel-options.js"
@@ -36,7 +36,7 @@ export interface DiagnosticsPanelsOptions {
 }
 
 export class DiagnosticsPanels extends Context.Service<DiagnosticsPanels, DiagnosticsPanelsApi>()(
-  "@effect-desktop/devtools/diagnostics-panels/DiagnosticsPanels"
+  "@orika/devtools/diagnostics-panels/DiagnosticsPanels"
 ) {}
 
 export const DiagnosticsPanelsLive = (

@@ -2,7 +2,7 @@ import {
   redactForJsonWithEvidence,
   type RedactionFilterOptions,
   type RedactionResult
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import { Context, Data, Effect, Layer, Option, Schema, Stream } from "effect"
 
 export type InspectorSafetyMode = "development" | "production"
@@ -251,7 +251,7 @@ export const makeInspectorSafetyPolicy = (
 export class InspectorSafetyPolicy extends Context.Service<
   InspectorSafetyPolicy,
   InspectorSafetyPolicyApi
->()("@effect-desktop/core/runtime/inspector-safety-policy/InspectorSafetyPolicy", {
+>()("@orika/core/runtime/inspector-safety-policy/InspectorSafetyPolicy", {
   make: makeInspectorSafetyPolicy()
 }) {}
 

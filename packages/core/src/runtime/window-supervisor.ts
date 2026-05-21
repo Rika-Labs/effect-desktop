@@ -1,6 +1,6 @@
 import { pathToFileURL } from "node:url"
 
-import type { HostProtocolError, HostWindowClient, WindowCreateInput } from "@effect-desktop/bridge"
+import type { HostProtocolError, HostWindowClient, WindowCreateInput } from "@orika/bridge"
 import { Config, ConfigProvider, Data, Effect, Exit, Layer, Option, Schema, Scope } from "effect"
 
 import type { DesktopWindowRegistration, WindowSpec } from "./desktop-app.js"

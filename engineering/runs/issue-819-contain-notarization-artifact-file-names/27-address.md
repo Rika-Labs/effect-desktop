@@ -16,6 +16,6 @@ Changes:
 Verification:
 
 - `bun test packages/cli/src/index.test.ts -t "desktop notarize"`
-- `bun run typecheck --filter=@effect-desktop/cli`
-- `bun run lint --filter=@effect-desktop/cli`
+- `bun run typecheck --filter=@orika/cli`
+- `bun run lint --filter=@orika/cli`
 - `bun prettier --check packages/cli/src/notarization-pipeline.ts packages/cli/src/index.test.ts engineering/runs/issue-819-contain-notarization-artifact-file-names/20-review.md engineering/runs/issue-819-contain-notarization-artifact-file-names/21-work.md`

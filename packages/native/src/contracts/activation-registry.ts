@@ -1,4 +1,4 @@
-import { ResourceHandleSchema, type ResourceHandle } from "@effect-desktop/core"
+import { ResourceHandleSchema, type ResourceHandle } from "@orika/core"
 import { Schema } from "effect"
 
 import { BridgeSafeNonEmptyString, BridgeSafeString, PrintableNonEmptyString } from "./strings.js"

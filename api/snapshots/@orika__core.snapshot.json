@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "packageName": "@effect-desktop/core",
+  "packageName": "@orika/core",
   "entrypoint": "src/index.ts",
   "symbols": [
     {
@@ -36,7 +36,7 @@
     {
       "name": "ApprovalBroker",
       "kind": "class",
-      "signature": "export class ApprovalBroker extends Context.Service<ApprovalBroker, ApprovalBrokerApi>()( \"@effect-desktop/core/runtime/approval-broker/ApprovalBroker\", { make: Effect.fail( new ApprovalBrokerInvalidArgumentError({ operation: \"ApprovalBroker.make\", field: \"prompt\", message: \"ApprovalBroker requires an explicit host prompt port\", cause: Option.none() }) ) } ) {}"
+      "signature": "export class ApprovalBroker extends Context.Service<ApprovalBroker, ApprovalBrokerApi>()( \"@orika/core/runtime/approval-broker/ApprovalBroker\", { make: Effect.fail( new ApprovalBrokerInvalidArgumentError({ operation: \"ApprovalBroker.make\", field: \"prompt\", message: \"ApprovalBroker requires an explicit host prompt port\", cause: Option.none() }) ) } ) {}"
     },
     {
       "name": "ApprovalBrokerApi",
@@ -116,7 +116,7 @@
     {
       "name": "AuditEvents",
       "kind": "class",
-      "signature": "export class AuditEvents extends Context.Service<AuditEvents, AuditEventsApi>()( \"@effect-desktop/core/runtime/audit-events/AuditEvents\", { make: Effect.succeed({ emit: () => Effect.void, observe: () => Stream.empty } satisfies AuditEventsApi) } ) {}"
+      "signature": "export class AuditEvents extends Context.Service<AuditEvents, AuditEventsApi>()( \"@orika/core/runtime/audit-events/AuditEvents\", { make: Effect.succeed({ emit: () => Effect.void, observe: () => Stream.empty } satisfies AuditEventsApi) } ) {}"
     },
     {
       "name": "AuditEventsApi",
@@ -231,7 +231,7 @@
     {
       "name": "CollectorRegistry",
       "kind": "class",
-      "signature": "export class CollectorRegistry extends Context.Service<CollectorRegistry, CollectorRegistryApi>()( \"@effect-desktop/core/runtime/desktop-observability/CollectorRegistry\" ) {}"
+      "signature": "export class CollectorRegistry extends Context.Service<CollectorRegistry, CollectorRegistryApi>()( \"@orika/core/runtime/desktop-observability/CollectorRegistry\" ) {}"
     },
     {
       "name": "CollectorRegistryApi",
@@ -251,7 +251,7 @@
     {
       "name": "CommandRegistry",
       "kind": "class",
-      "signature": "export class CommandRegistry extends Context.Service<CommandRegistry, CommandRegistryApi>()( \"@effect-desktop/core/runtime/commands/CommandRegistry\", { make: Effect.gen(function* () { const resources = yield* ResourceRegistry const permissions = yield* PermissionRegistry return yield* makeCommandRegistry(resources, permissions) }) } ) {}"
+      "signature": "export class CommandRegistry extends Context.Service<CommandRegistry, CommandRegistryApi>()( \"@orika/core/runtime/commands/CommandRegistry\", { make: Effect.gen(function* () { const resources = yield* ResourceRegistry const permissions = yield* PermissionRegistry return yield* makeCommandRegistry(resources, permissions) }) } ) {}"
     },
     {
       "name": "CommandRegistryApi",
@@ -331,12 +331,12 @@
     {
       "name": "Desktop",
       "kind": "value",
-      "signature": "const Desktop: Readonly<{ RedactionFilter: Readonly<{ redact: <A>(record: A, options?: import(\"@effect-desktop/bridge\").RedactionFilterOptions) => A; redactForJson: <A>(record: A, options?: import(\"@effect-desktop/bridge\").RedactionFilterOptions) => A; redactWithEvidence: <A>(record: A, options?: import(\"@effect-desktop/bridge\").RedactionFilterOptions) => import(\"@effect-desktop/bridge\").RedactionResult<A>; redactForJsonWithEvidence: <A>(record: A, options?: import(\"@effect-desktop/bridge\").RedactionFilterOptions) => import(\"@effect-desktop/bridge\").RedactionResult<A>; redactedValue: import(\"effect/Redacted\").Redacted<string>; defaultPattern: RegExp; }>; RpcCapability: <Capability extends import(\"@effect-desktop/bridge\").RpcCapabilityMetadata>(capability: Capability) => <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@effect-desktop/bridge\").WithRpcCapability<R, Capability>; RpcEndpoint: Readonly<{ query: <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@effect-desktop/bridge\").WithRpcEndpointKind<R, \"query\">; mutation: <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@effect-desktop/bridge\").WithRpcEndpointKind<R, \"mutation\">; }>; RpcSupport: Readonly<{ supported: <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R, options?: { readonly platforms?: readonly import(\"@effect-desktop/bridge\").RpcPlatformSupportMetadata[]; }) => import(\"@effect-desktop/bridge\").WithRpcSupport<R, { readonly status: \"supported\"; readonly platforms?: readonly import(\"@effect-desktop/bridge\").RpcPlatformSupportMetadata[]; }>; partial: (reason: string, options?: { readonly platforms?: readonly import(\"@effect-desktop/bridge\").RpcPlatformSupportMetadata[]; }) => <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@effect-desktop/bridge\").WithRpcSupport<R, { readonly status: \"partial\"; readonly reason: string; readonly platforms?: readonly import(\"@effect-desktop/bridge\").RpcPlatformSupportMetadata[]; }>; unsupported: (reason: string, options?: { readonly platforms?: readonly import(\"@effect-desktop/bridge\").RpcPlatformSupportMetadata[]; }) => <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@effect-desktop/bridge\").WithRpcSupport<R, { readonly status: \"unsupported\"; readonly reason: string; readonly platforms?: readonly import(\"@effect-desktop/bridge\").RpcPlatformSupportMetadata[]; }>; }>; layer: <RIn = never, E = never>(descriptor: import(\"./runtime/desktop-app.js\").DesktopAppDescriptor<RIn, E>) => Layer.Layer<import(\"./runtime/desktop-app.js\").DesktopRuntimeServices, import(\"./runtime/desktop-app.js\").DesktopConfigError | E, Exclude<RIn, import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderServices | import(\"./runtime/resource-owner.js\").ResourceOwner>>; workflowEngine: { (): Layer.Layer<WorkflowEngine.WorkflowEngine, never, never>; <RIn = never, E = never>(options: DesktopWorkflowEngineOptionsWithPermissions<RIn, E>): Layer.Layer<WorkflowEngine.WorkflowEngine, E, RIn | PermissionRegistry>; <RIn = never, E = never>(options: DesktopWorkflowEngineOptions<RIn, E>): Layer.Layer<WorkflowEngine.WorkflowEngine, E, RIn>; }; WorkflowEngineDurable: import(\"./runtime/desktop-app.js\").DesktopWorkflowEngineLayer<import(\"effect/unstable/sql/SqlClient\").SqlClient, import(\"effect/unstable/sql/SqlError\").SqlError>; WorkflowEngineMemory: import(\"./runtime/desktop-app.js\").DesktopWorkflowEngineLayer<never, never>; launch: (layer: Layer.Layer<import(\"./runtime/desktop-app.js\").DesktopApp, import(\"./runtime/desktop-app.js\").DesktopConfigError, never>) => Effect.Effect<never, import(\"./runtime/desktop-app.js\").DesktopConfigError, never>; make: <RIn = never, E = never>(config: import(\"./runtime/desktop-app.js\").DesktopMakeConfig<RIn, E>) => import(\"./runtime/desktop-app.js\").DesktopAppDescriptor<RIn, E>; manifest: <RIn = never, E = never>(config: import(\"./runtime/desktop-app.js\").DesktopManifestSource<RIn, E>) => import(\"./runtime/desktop-app.js\").DesktopAppManifest; native: (...declarations: readonly import(\"./runtime/desktop-app.js\").DesktopNativeDeclaration[]) => import(\"./runtime/desktop-app.js\").DesktopNativeLayer; permission: (capability: import(\"./runtime/permission-contracts.js\").NormalizedCapability) => DesktopPermissionsLayer; permissions: (...layers: readonly DesktopPermissionsLayer[]) => DesktopPermissionsLayer; provider: (descriptor: import(\"./runtime/desktop-app.js\").DesktopProviderDescriptor) => import(\"./runtime/desktop-app.js\").DesktopProvidersLayer; providers: (...layers: readonly import(\"./runtime/desktop-app.js\").DesktopProvidersLayer[]) => import(\"./runtime/desktop-app.js\").DesktopProvidersLayer; Provider: Readonly<{ runtime: (options: import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderOptions) => import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderDescriptor; webview: (options: import(\"./runtime/desktop-app.js\").DesktopWebViewProviderOptions) => import(\"./runtime/desktop-app.js\").DesktopWebViewProviderDescriptor; Runtime: Readonly<{ bun: import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderDescriptor; node: import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderDescriptor; test: import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderDescriptor; }>; WebView: Readonly<{ system: Readonly<{ kind: \"webview\"; id: \"system\"; hostEngine: \"system\"; capabilities: import(\"./runtime/provider-registry.js\").ProviderCapability[]; node: import(\"./runtime/desktop-app.js\").DesktopRuntimeGraphNode; }>; chrome: Readonly<{ kind: \"webview\"; id: \"chrome\"; hostEngine: \"chrome\"; capabilities: import(\"./runtime/provider-registry.js\").ProviderCapability[]; node: import(\"./runtime/desktop-app.js\").DesktopRuntimeGraphNode; }>; }>; }>; providerLayerFor: (choice: Pick<import(\"./runtime/desktop-app.js\").DesktopRuntimeSelectedProviders, \"runtime\">) => Layer.Layer<import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderServices, import(\"effect/Config\").ConfigError | import(\"./runtime/desktop-app.js\").DesktopConfigError, never>; rpc: <Rpcs extends import(\"effect/unstable/rpc/Rpc\").Any, E, R>(group: import(\"effect/unstable/rpc/RpcGroup\").RpcGroup<Rpcs>, handlers: Layer.Layer<import(\"effect/unstable/rpc/Rpc\").ToHandler<Rpcs>, E, R>) => import(\"./runtime/desktop-app.js\").DesktopRpcsLayer<E, R>; rpcs: <E = never, RIn = never>(...layers: readonly import(\"./runtime/desktop-app.js\").DesktopRpcsLayer<E, RIn>[]) => import(\"./runtime/desktop-app.js\").DesktopRpcsLayer<E, RIn>; window: <RIn = never>(id: string, spec: import(\"./runtime/desktop-app.js\").WindowSpec, services?: Layer.Layer<never, never, RIn | import(\"effect/Scope\").Scope>) => import(\"./runtime/desktop-app.js\").DesktopWindowsLayer<RIn>; windows: <RIn = never>(...layers: readonly import(\"./runtime/desktop-app.js\").DesktopWindowsLayer<RIn>[]) => import(\"./runtime/desktop-app.js\").DesktopWindowsLayer<RIn>; workflow: <RIn = never, E = never>(layer: import(\"./runtime/desktop-app.js\").DesktopWorkflowLayer<RIn, E>) => DesktopWorkflowsLayer<RIn, E>; workflows: <RIn = never, E = never>(...layers: readonly DesktopWorkflowsLayer<RIn, E>[]) => DesktopWorkflowsLayer<RIn, E>; Rpc: Readonly<{ surface: { <const Tag extends string, Group extends import(\"effect/unstable/rpc/RpcGroup\").RpcGroup<import(\"effect/unstable/rpc/RpcGroup\").Rpcs<Group>>, ServiceId, ServerE, ServerR>(tag: Tag, group: Group, options: import(\"./runtime/desktop-rpc-surface.js\").DesktopRpcSurfaceDirectOptions<import(\"effect/unstable/rpc/RpcGroup\").Rpcs<Group>, ServiceId, ServerE, ServerR>): import(\"./runtime/desktop-rpc-surface.js\").DesktopRpcSurface<Tag, Group, import(\"effect/unstable/rpc/RpcGroup\").Rpcs<Group>, ServiceId, ServerE, ServerR>; <const Tag extends string, Group extends import(\"effect/unstable/rpc/RpcGroup\").RpcGroup<import(\"effect/unstable/rpc/RpcGroup\").Rpcs<Group>>, ServiceId, Service, ServerE, ServerR>(tag: Tag, group: Group, options: import(\"./runtime/desktop-rpc-surface.js\").DesktopRpcSurfaceMappedOptions<import(\"effect/unstable/rpc/RpcGroup\").Rpcs<Group>, ServiceId, Service, ServerE, ServerR>): import(\"./runtime/desktop-rpc-surface.js\").DesktopRpcSurface<Tag, Group, import(\"effect/unstable/rpc/RpcGroup\").Rpcs<Group>, ServiceId, ServerE, ServerR>; }; supportedGroup: <Rpcs extends import(\"effect/unstable/rpc/Rpc\").Any>(group: import(\"effect/unstable/rpc/RpcGroup\").RpcGroup<Rpcs>) => import(\"effect/unstable/rpc/RpcGroup\").RpcGroup<import(\"./runtime/desktop-rpc-surface.js\").SupportedRpc<Rpcs>>; }>; runtime: <RIn = never, E = never>(config: import(\"./runtime/desktop-app.js\").DesktopConfig<RIn, E>) => Layer.Layer<import(\"./runtime/desktop-app.js\").DesktopRuntimeServices, import(\"./runtime/desktop-app.js\").DesktopConfigError | E, Exclude<RIn, import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderServices | import(\"./runtime/resource-owner.js\").ResourceOwner>>; runtimeGraph: <RIn, E>(config: import(\"./runtime/desktop-app.js\").DesktopConfig<RIn, E>) => Effect.Effect<import(\"./runtime/desktop-app.js\").DesktopRuntimeGraph, import(\"./runtime/desktop-app.js\").DesktopConfigError, never>; runtimeGraphSnapshot: <RIn, E>(config: import(\"./runtime/desktop-app.js\").DesktopConfig<RIn, E>) => Effect.Effect<import(\"./runtime/desktop-app.js\").LayerGraphSnapshot, never, never>; describeRpcs: <Group extends import(\"./runtime/desktop-app.js\").DesktopRpcRegistrationGroup>(app: import(\"./runtime/rpc-descriptors.js\").DesktopRpcDescriptorSource, group: Group) => readonly import(\"./runtime/rpc-descriptors.js\").RpcEndpointDescriptor[]; }>"
+      "signature": "const Desktop: Readonly<{ RedactionFilter: Readonly<{ redact: <A>(record: A, options?: import(\"@orika/bridge\").RedactionFilterOptions) => A; redactForJson: <A>(record: A, options?: import(\"@orika/bridge\").RedactionFilterOptions) => A; redactWithEvidence: <A>(record: A, options?: import(\"@orika/bridge\").RedactionFilterOptions) => import(\"@orika/bridge\").RedactionResult<A>; redactForJsonWithEvidence: <A>(record: A, options?: import(\"@orika/bridge\").RedactionFilterOptions) => import(\"@orika/bridge\").RedactionResult<A>; redactedValue: import(\"effect/Redacted\").Redacted<string>; defaultPattern: RegExp; }>; RpcCapability: <Capability extends import(\"@orika/bridge\").RpcCapabilityMetadata>(capability: Capability) => <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@orika/bridge\").WithRpcCapability<R, Capability>; RpcEndpoint: Readonly<{ query: <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@orika/bridge\").WithRpcEndpointKind<R, \"query\">; mutation: <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@orika/bridge\").WithRpcEndpointKind<R, \"mutation\">; }>; RpcSupport: Readonly<{ supported: <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R, options?: { readonly platforms?: readonly import(\"@orika/bridge\").RpcPlatformSupportMetadata[]; }) => import(\"@orika/bridge\").WithRpcSupport<R, { readonly status: \"supported\"; readonly platforms?: readonly import(\"@orika/bridge\").RpcPlatformSupportMetadata[]; }>; partial: (reason: string, options?: { readonly platforms?: readonly import(\"@orika/bridge\").RpcPlatformSupportMetadata[]; }) => <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@orika/bridge\").WithRpcSupport<R, { readonly status: \"partial\"; readonly reason: string; readonly platforms?: readonly import(\"@orika/bridge\").RpcPlatformSupportMetadata[]; }>; unsupported: (reason: string, options?: { readonly platforms?: readonly import(\"@orika/bridge\").RpcPlatformSupportMetadata[]; }) => <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@orika/bridge\").WithRpcSupport<R, { readonly status: \"unsupported\"; readonly reason: string; readonly platforms?: readonly import(\"@orika/bridge\").RpcPlatformSupportMetadata[]; }>; }>; layer: <RIn = never, E = never>(descriptor: import(\"./runtime/desktop-app.js\").DesktopAppDescriptor<RIn, E>) => Layer.Layer<import(\"./runtime/desktop-app.js\").DesktopRuntimeServices, import(\"./runtime/desktop-app.js\").DesktopConfigError | E, Exclude<RIn, import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderServices | import(\"./runtime/resource-owner.js\").ResourceOwner>>; workflowEngine: { (): Layer.Layer<WorkflowEngine.WorkflowEngine, never, never>; <RIn = never, E = never>(options: DesktopWorkflowEngineOptionsWithPermissions<RIn, E>): Layer.Layer<WorkflowEngine.WorkflowEngine, E, RIn | PermissionRegistry>; <RIn = never, E = never>(options: DesktopWorkflowEngineOptions<RIn, E>): Layer.Layer<WorkflowEngine.WorkflowEngine, E, RIn>; }; WorkflowEngineDurable: import(\"./runtime/desktop-app.js\").DesktopWorkflowEngineLayer<import(\"effect/unstable/sql/SqlClient\").SqlClient, import(\"effect/unstable/sql/SqlError\").SqlError>; WorkflowEngineMemory: import(\"./runtime/desktop-app.js\").DesktopWorkflowEngineLayer<never, never>; launch: (layer: Layer.Layer<import(\"./runtime/desktop-app.js\").DesktopApp, import(\"./runtime/desktop-app.js\").DesktopConfigError, never>) => Effect.Effect<never, import(\"./runtime/desktop-app.js\").DesktopConfigError, never>; make: <RIn = never, E = never>(config: import(\"./runtime/desktop-app.js\").DesktopMakeConfig<RIn, E>) => import(\"./runtime/desktop-app.js\").DesktopAppDescriptor<RIn, E>; manifest: <RIn = never, E = never>(config: import(\"./runtime/desktop-app.js\").DesktopManifestSource<RIn, E>) => import(\"./runtime/desktop-app.js\").DesktopAppManifest; native: (...declarations: readonly import(\"./runtime/desktop-app.js\").DesktopNativeDeclaration[]) => import(\"./runtime/desktop-app.js\").DesktopNativeLayer; permission: (capability: import(\"./runtime/permission-contracts.js\").NormalizedCapability) => DesktopPermissionsLayer; permissions: (...layers: readonly DesktopPermissionsLayer[]) => DesktopPermissionsLayer; provider: (descriptor: import(\"./runtime/desktop-app.js\").DesktopProviderDescriptor) => import(\"./runtime/desktop-app.js\").DesktopProvidersLayer; providers: (...layers: readonly import(\"./runtime/desktop-app.js\").DesktopProvidersLayer[]) => import(\"./runtime/desktop-app.js\").DesktopProvidersLayer; Provider: Readonly<{ runtime: (options: import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderOptions) => import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderDescriptor; webview: (options: import(\"./runtime/desktop-app.js\").DesktopWebViewProviderOptions) => import(\"./runtime/desktop-app.js\").DesktopWebViewProviderDescriptor; Runtime: Readonly<{ bun: import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderDescriptor; node: import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderDescriptor; test: import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderDescriptor; }>; WebView: Readonly<{ system: Readonly<{ kind: \"webview\"; id: \"system\"; hostEngine: \"system\"; capabilities: import(\"./runtime/provider-registry.js\").ProviderCapability[]; node: import(\"./runtime/desktop-app.js\").DesktopRuntimeGraphNode; }>; chrome: Readonly<{ kind: \"webview\"; id: \"chrome\"; hostEngine: \"chrome\"; capabilities: import(\"./runtime/provider-registry.js\").ProviderCapability[]; node: import(\"./runtime/desktop-app.js\").DesktopRuntimeGraphNode; }>; }>; }>; providerLayerFor: (choice: Pick<import(\"./runtime/desktop-app.js\").DesktopRuntimeSelectedProviders, \"runtime\">) => Layer.Layer<import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderServices, import(\"effect/Config\").ConfigError | import(\"./runtime/desktop-app.js\").DesktopConfigError, never>; rpc: <Rpcs extends import(\"effect/unstable/rpc/Rpc\").Any, E, R>(group: import(\"effect/unstable/rpc/RpcGroup\").RpcGroup<Rpcs>, handlers: Layer.Layer<import(\"effect/unstable/rpc/Rpc\").ToHandler<Rpcs>, E, R>) => import(\"./runtime/desktop-app.js\").DesktopRpcsLayer<E, R>; rpcs: <E = never, RIn = never>(...layers: readonly import(\"./runtime/desktop-app.js\").DesktopRpcsLayer<E, RIn>[]) => import(\"./runtime/desktop-app.js\").DesktopRpcsLayer<E, RIn>; window: <RIn = never>(id: string, spec: import(\"./runtime/desktop-app.js\").WindowSpec, services?: Layer.Layer<never, never, RIn | import(\"effect/Scope\").Scope>) => import(\"./runtime/desktop-app.js\").DesktopWindowsLayer<RIn>; windows: <RIn = never>(...layers: readonly import(\"./runtime/desktop-app.js\").DesktopWindowsLayer<RIn>[]) => import(\"./runtime/desktop-app.js\").DesktopWindowsLayer<RIn>; workflow: <RIn = never, E = never>(layer: import(\"./runtime/desktop-app.js\").DesktopWorkflowLayer<RIn, E>) => DesktopWorkflowsLayer<RIn, E>; workflows: <RIn = never, E = never>(...layers: readonly DesktopWorkflowsLayer<RIn, E>[]) => DesktopWorkflowsLayer<RIn, E>; Rpc: Readonly<{ surface: { <const Tag extends string, Group extends import(\"effect/unstable/rpc/RpcGroup\").RpcGroup<import(\"effect/unstable/rpc/RpcGroup\").Rpcs<Group>>, ServiceId, ServerE, ServerR>(tag: Tag, group: Group, options: import(\"./runtime/desktop-rpc-surface.js\").DesktopRpcSurfaceDirectOptions<import(\"effect/unstable/rpc/RpcGroup\").Rpcs<Group>, ServiceId, ServerE, ServerR>): import(\"./runtime/desktop-rpc-surface.js\").DesktopRpcSurface<Tag, Group, import(\"effect/unstable/rpc/RpcGroup\").Rpcs<Group>, ServiceId, ServerE, ServerR>; <const Tag extends string, Group extends import(\"effect/unstable/rpc/RpcGroup\").RpcGroup<import(\"effect/unstable/rpc/RpcGroup\").Rpcs<Group>>, ServiceId, Service, ServerE, ServerR>(tag: Tag, group: Group, options: import(\"./runtime/desktop-rpc-surface.js\").DesktopRpcSurfaceMappedOptions<import(\"effect/unstable/rpc/RpcGroup\").Rpcs<Group>, ServiceId, Service, ServerE, ServerR>): import(\"./runtime/desktop-rpc-surface.js\").DesktopRpcSurface<Tag, Group, import(\"effect/unstable/rpc/RpcGroup\").Rpcs<Group>, ServiceId, ServerE, ServerR>; }; supportedGroup: <Rpcs extends import(\"effect/unstable/rpc/Rpc\").Any>(group: import(\"effect/unstable/rpc/RpcGroup\").RpcGroup<Rpcs>) => import(\"effect/unstable/rpc/RpcGroup\").RpcGroup<import(\"./runtime/desktop-rpc-surface.js\").SupportedRpc<Rpcs>>; }>; runtime: <RIn = never, E = never>(config: import(\"./runtime/desktop-app.js\").DesktopConfig<RIn, E>) => Layer.Layer<import(\"./runtime/desktop-app.js\").DesktopRuntimeServices, import(\"./runtime/desktop-app.js\").DesktopConfigError | E, Exclude<RIn, import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderServices | import(\"./runtime/resource-owner.js\").ResourceOwner>>; runtimeGraph: <RIn, E>(config: import(\"./runtime/desktop-app.js\").DesktopConfig<RIn, E>) => Effect.Effect<import(\"./runtime/desktop-app.js\").DesktopRuntimeGraph, import(\"./runtime/desktop-app.js\").DesktopConfigError, never>; runtimeGraphSnapshot: <RIn, E>(config: import(\"./runtime/desktop-app.js\").DesktopConfig<RIn, E>) => Effect.Effect<import(\"./runtime/desktop-app.js\").LayerGraphSnapshot, never, never>; describeRpcs: <Group extends import(\"./runtime/desktop-app.js\").DesktopRpcRegistrationGroup>(app: import(\"./runtime/rpc-descriptors.js\").DesktopRpcDescriptorSource, group: Group) => readonly import(\"./runtime/rpc-descriptors.js\").RpcEndpointDescriptor[]; }>"
     },
     {
       "name": "DesktopApp",
       "kind": "class",
-      "signature": "export class DesktopApp extends Context.Service<DesktopApp, DesktopAppApi>()( \"@effect-desktop/core/runtime/desktop-app/DesktopApp\" ) {}"
+      "signature": "export class DesktopApp extends Context.Service<DesktopApp, DesktopAppApi>()( \"@orika/core/runtime/desktop-app/DesktopApp\" ) {}"
     },
     {
       "name": "DesktopAppApi",
@@ -371,7 +371,7 @@
     {
       "name": "DesktopDevtools",
       "kind": "class",
-      "signature": "export class DesktopDevtools extends Context.Service<DesktopDevtools, DesktopDevtoolsApi>()( \"@effect-desktop/core/runtime/desktop-devtools/DesktopDevtools\" ) {}"
+      "signature": "export class DesktopDevtools extends Context.Service<DesktopDevtools, DesktopDevtoolsApi>()( \"@orika/core/runtime/desktop-devtools/DesktopDevtools\" ) {}"
     },
     {
       "name": "DesktopDevtoolsApi",
@@ -436,7 +436,7 @@
     {
       "name": "DesktopObservability",
       "kind": "class",
-      "signature": "export class DesktopObservability extends Context.Service< DesktopObservability, DesktopObservabilityApi >()(\"@effect-desktop/core/runtime/desktop-observability/DesktopObservability\") {}"
+      "signature": "export class DesktopObservability extends Context.Service< DesktopObservability, DesktopObservabilityApi >()(\"@orika/core/runtime/desktop-observability/DesktopObservability\") {}"
     },
     {
       "name": "DesktopObservabilityApi",
@@ -561,7 +561,7 @@
     {
       "name": "DesktopRuntime",
       "kind": "class",
-      "signature": "export class DesktopRuntime extends Context.Service<DesktopRuntime, DesktopRuntimeApi>()( \"@effect-desktop/core/runtime/desktop-app/DesktopRuntime\" ) {}"
+      "signature": "export class DesktopRuntime extends Context.Service<DesktopRuntime, DesktopRuntimeApi>()( \"@orika/core/runtime/desktop-app/DesktopRuntime\" ) {}"
     },
     {
       "name": "DesktopRuntimeApi",
@@ -741,7 +741,7 @@
     {
       "name": "EffectTelemetryCollector",
       "kind": "class",
-      "signature": "export class EffectTelemetryCollector extends Context.Service< EffectTelemetryCollector, EffectTelemetryCollectorApi >()(\"@effect-desktop/core/runtime/telemetry/EffectTelemetryCollector\") {}"
+      "signature": "export class EffectTelemetryCollector extends Context.Service< EffectTelemetryCollector, EffectTelemetryCollectorApi >()(\"@orika/core/runtime/telemetry/EffectTelemetryCollector\") {}"
     },
     {
       "name": "EffectTelemetryCollectorApi",
@@ -771,7 +771,7 @@
     {
       "name": "EventLogInspectorCollector",
       "kind": "class",
-      "signature": "export class EventLogInspectorCollector extends Context.Service< EventLogInspectorCollector, EventLogInspectorCollectorApi >()(\"@effect-desktop/core/runtime/inspector-events/EventLogInspectorCollector\") {}"
+      "signature": "export class EventLogInspectorCollector extends Context.Service< EventLogInspectorCollector, EventLogInspectorCollectorApi >()(\"@orika/core/runtime/inspector-events/EventLogInspectorCollector\") {}"
     },
     {
       "name": "EventLogInspectorCollectorApi",
@@ -796,7 +796,7 @@
     {
       "name": "ExecutionInspectorCollector",
       "kind": "class",
-      "signature": "export class ExecutionInspectorCollector extends Context.Service< ExecutionInspectorCollector, ExecutionInspectorCollectorApi >()(\"@effect-desktop/core/runtime/inspector-events/ExecutionInspectorCollector\") {}"
+      "signature": "export class ExecutionInspectorCollector extends Context.Service< ExecutionInspectorCollector, ExecutionInspectorCollectorApi >()(\"@orika/core/runtime/inspector-events/ExecutionInspectorCollector\") {}"
     },
     {
       "name": "ExecutionInspectorCollectorApi",
@@ -811,7 +811,7 @@
     {
       "name": "Filesystem",
       "kind": "class",
-      "signature": "export class Filesystem extends Context.Service<Filesystem, FilesystemApi>()( \"@effect-desktop/core/runtime/filesystem\" ) {}"
+      "signature": "export class Filesystem extends Context.Service<Filesystem, FilesystemApi>()( \"@orika/core/runtime/filesystem\" ) {}"
     },
     {
       "name": "FilesystemApi",
@@ -841,7 +841,7 @@
     {
       "name": "FilesystemInspectorCollector",
       "kind": "class",
-      "signature": "export class FilesystemInspectorCollector extends Context.Service< FilesystemInspectorCollector, FilesystemInspectorCollectorApi >()(\"@effect-desktop/core/runtime/inspector-events/FilesystemInspectorCollector\") {}"
+      "signature": "export class FilesystemInspectorCollector extends Context.Service< FilesystemInspectorCollector, FilesystemInspectorCollectorApi >()(\"@orika/core/runtime/inspector-events/FilesystemInspectorCollector\") {}"
     },
     {
       "name": "FilesystemInspectorCollectorApi",
@@ -941,7 +941,7 @@
     {
       "name": "InspectorCollectors",
       "kind": "class",
-      "signature": "export class InspectorCollectors extends Context.Service< InspectorCollectors, InspectorCollectorsApi >()(\"@effect-desktop/core/runtime/inspector-events/InspectorCollectors\") {}"
+      "signature": "export class InspectorCollectors extends Context.Service< InspectorCollectors, InspectorCollectorsApi >()(\"@orika/core/runtime/inspector-events/InspectorCollectors\") {}"
     },
     {
       "name": "InspectorCollectorsApi",
@@ -1051,7 +1051,7 @@
     {
       "name": "InspectorSafetyPolicy",
       "kind": "class",
-      "signature": "export class InspectorSafetyPolicy extends Context.Service< InspectorSafetyPolicy, InspectorSafetyPolicyApi >()(\"@effect-desktop/core/runtime/inspector-safety-policy/InspectorSafetyPolicy\", { make: makeInspectorSafetyPolicy() }) {}"
+      "signature": "export class InspectorSafetyPolicy extends Context.Service< InspectorSafetyPolicy, InspectorSafetyPolicyApi >()(\"@orika/core/runtime/inspector-safety-policy/InspectorSafetyPolicy\", { make: makeInspectorSafetyPolicy() }) {}"
     },
     {
       "name": "InspectorSafetyPolicyApi",
@@ -1096,7 +1096,7 @@
     {
       "name": "InspectorTransport",
       "kind": "class",
-      "signature": "export class InspectorTransport extends Context.Service< InspectorTransport, InspectorTransportApi >()(\"@effect-desktop/core/runtime/inspector-transport/InspectorTransport\", { make: makeInspectorTransport() }) {}"
+      "signature": "export class InspectorTransport extends Context.Service< InspectorTransport, InspectorTransportApi >()(\"@orika/core/runtime/inspector-transport/InspectorTransport\", { make: makeInspectorTransport() }) {}"
     },
     {
       "name": "InspectorTransportApi",
@@ -1431,7 +1431,7 @@
     {
       "name": "NativeHostInspectorCollector",
       "kind": "class",
-      "signature": "export class NativeHostInspectorCollector extends Context.Service< NativeHostInspectorCollector, NativeHostInspectorCollectorApi >()(\"@effect-desktop/core/runtime/inspector-events/NativeHostInspectorCollector\") {}"
+      "signature": "export class NativeHostInspectorCollector extends Context.Service< NativeHostInspectorCollector, NativeHostInspectorCollectorApi >()(\"@orika/core/runtime/inspector-events/NativeHostInspectorCollector\") {}"
     },
     {
       "name": "NativeHostInspectorCollectorApi",
@@ -1486,7 +1486,7 @@
     {
       "name": "NativeParityMatrixRow",
       "kind": "class",
-      "signature": "export class NativeParityMatrixRow extends Schema.Class<NativeParityMatrixRow>( \"NativeParityMatrixRow\" )({ tag: Schema.NonEmptyString, surface: Schema.NonEmptyString, method: Schema.NonEmptyString, capability: NativeParityCapabilityKind, support: NativeParitySupport, hostStatus: NativeParityHostStatus, hostMethod: Schema.optionalKey(Schema.NonEmptyString) }) {}"
+      "signature": "export class NativeParityMatrixRow extends Schema.Class<NativeParityMatrixRow>( \"NativeParityMatrixRow\" )({ tag: Schema.NonEmptyString, surface: Schema.NonEmptyString, method: Schema.NonEmptyString, capability: NativeParityCapabilityKind, support: NativeParitySupport, hostStatus: NativeParityHostStatus, release: NativeParityReleaseDisposition, hostMethod: Schema.optionalKey(Schema.NonEmptyString) }) {}"
     },
     {
       "name": "NativeParityMatrixRowType",
@@ -1496,7 +1496,7 @@
     {
       "name": "NativeParityMatrixSummary",
       "kind": "class",
-      "signature": "export class NativeParityMatrixSummary extends Schema.Class<NativeParityMatrixSummary>( \"NativeParityMatrixSummary\" )({ total: NativeParityCount, routed: NativeParityCount, missing: NativeParityCount, supported: NativeParityCount, partial: NativeParityCount, unsupported: NativeParityCount }) {}"
+      "signature": "export class NativeParityMatrixSummary extends Schema.Class<NativeParityMatrixSummary>( \"NativeParityMatrixSummary\" )({ total: NativeParityCount, routed: NativeParityCount, missing: NativeParityCount, supported: NativeParityCount, partial: NativeParityCount, unsupported: NativeParityCount, releaseComplete: NativeParityCount, releaseTracked: NativeParityCount, releaseUntracked: NativeParityCount }) {}"
     },
     {
       "name": "NativeParityMatrixSummaryType",
@@ -1512,6 +1512,26 @@
       "name": "NativeParityPlatformSupport",
       "kind": "type",
       "signature": "const NativeParityPlatformSupport: Schema.Union<readonly [Schema.Struct<{ readonly platform: Schema.Literals<readonly [\"macos\", \"windows\", \"linux\"]>; readonly status: Schema.Literal<\"supported\">; }>, Schema.Struct<{ readonly platform: Schema.Literals<readonly [\"macos\", \"windows\", \"linux\"]>; readonly status: Schema.Literal<\"partial\">; readonly reason: Schema.NonEmptyString; }>, Schema.Struct<{ readonly platform: Schema.Literals<readonly [\"macos\", \"windows\", \"linux\"]>; readonly status: Schema.Literal<\"unsupported\">; readonly reason: Schema.NonEmptyString; }>]>"
+    },
+    {
+      "name": "NativeParityReleaseDisposition",
+      "kind": "type",
+      "signature": "const NativeParityReleaseDisposition: Schema.Union<readonly [Schema.Struct<{ readonly status: Schema.Literal<\"complete\">; }>, Schema.Struct<{ readonly status: Schema.Literal<\"tracked\">; readonly issue: Schema.Int; readonly url: Schema.NonEmptyString; }>, Schema.Struct<{ readonly status: Schema.Literal<\"untracked\">; readonly reason: Schema.NonEmptyString; }>]>"
+    },
+    {
+      "name": "NativeParityReleaseDispositionType",
+      "kind": "type",
+      "signature": "const NativeParityReleaseDisposition: Schema.Union<readonly [Schema.Struct<{ readonly status: Schema.Literal<\"complete\">; }>, Schema.Struct<{ readonly status: Schema.Literal<\"tracked\">; readonly issue: Schema.Int; readonly url: Schema.NonEmptyString; }>, Schema.Struct<{ readonly status: Schema.Literal<\"untracked\">; readonly reason: Schema.NonEmptyString; }>]>"
+    },
+    {
+      "name": "NativeParityReleaseStatus",
+      "kind": "type",
+      "signature": "const NativeParityReleaseStatus: Schema.Literals<readonly [\"complete\", \"tracked\", \"untracked\"]>"
+    },
+    {
+      "name": "NativeParityReleaseStatusType",
+      "kind": "type",
+      "signature": "const NativeParityReleaseStatus: Schema.Literals<readonly [\"complete\", \"tracked\", \"untracked\"]>"
     },
     {
       "name": "NativeParitySupport",
@@ -1651,7 +1671,7 @@
     {
       "name": "PermissionRegistry",
       "kind": "class",
-      "signature": "export class PermissionRegistry extends Context.Service< PermissionRegistry, PermissionRegistryApi >()(\"@effect-desktop/core/runtime/permission-registry/PermissionRegistry\", { make: makePermissionRegistry() }) {}"
+      "signature": "export class PermissionRegistry extends Context.Service< PermissionRegistry, PermissionRegistryApi >()(\"@orika/core/runtime/permission-registry/PermissionRegistry\", { make: makePermissionRegistry() }) {}"
     },
     {
       "name": "PermissionRegistryApi",
@@ -1686,7 +1706,7 @@
     {
       "name": "PersistenceInspectorCollector",
       "kind": "class",
-      "signature": "export class PersistenceInspectorCollector extends Context.Service< PersistenceInspectorCollector, PersistenceInspectorCollectorApi >()(\"@effect-desktop/core/runtime/inspector-events/PersistenceInspectorCollector\") {}"
+      "signature": "export class PersistenceInspectorCollector extends Context.Service< PersistenceInspectorCollector, PersistenceInspectorCollectorApi >()(\"@orika/core/runtime/inspector-events/PersistenceInspectorCollector\") {}"
     },
     {
       "name": "PersistenceInspectorCollectorApi",
@@ -1706,7 +1726,7 @@
     {
       "name": "Process",
       "kind": "class",
-      "signature": "export class Process extends Context.Service<Process, ProcessApi>()( \"@effect-desktop/core/runtime/process\" ) {}"
+      "signature": "export class Process extends Context.Service<Process, ProcessApi>()( \"@orika/core/runtime/process\" ) {}"
     },
     {
       "name": "ProcessApi",
@@ -1821,7 +1841,7 @@
     {
       "name": "PTY",
       "kind": "class",
-      "signature": "export class PTY extends Context.Service<PTY, PtyApi>()(\"@effect-desktop/core/runtime/pty\") {}"
+      "signature": "export class PTY extends Context.Service<PTY, PtyApi>()(\"@orika/core/runtime/pty\") {}"
     },
     {
       "name": "PtyAdapter",
@@ -1926,7 +1946,7 @@
     {
       "name": "RendererInspectorCollector",
       "kind": "class",
-      "signature": "export class RendererInspectorCollector extends Context.Service< RendererInspectorCollector, RendererInspectorCollectorApi >()(\"@effect-desktop/core/runtime/inspector-events/RendererInspectorCollector\") {}"
+      "signature": "export class RendererInspectorCollector extends Context.Service< RendererInspectorCollector, RendererInspectorCollectorApi >()(\"@orika/core/runtime/inspector-events/RendererInspectorCollector\") {}"
     },
     {
       "name": "RendererInspectorCollectorApi",
@@ -2001,7 +2021,7 @@
     {
       "name": "ResourceOwner",
       "kind": "class",
-      "signature": "export class ResourceOwner extends Context.Service<ResourceOwner, ResourceOwnerApi>()( \"@effect-desktop/core/runtime/resource-owner/ResourceOwner\" ) { static app(appId: string): Layer.Layer<ResourceOwner, ResourceOwnerInvalidArgumentError> { return Layer.effect(ResourceOwner, makeAppResourceOwner(appId)) } static window(input: { readonly registrationId: string readonly hostWindowId: string }): Layer.Layer<ResourceOwner, ResourceOwnerInvalidArgumentError> { return Layer.unwrap( Effect.gen(function* () { const registrationId = yield* decodeOwnerText( input.registrationId, \"registrationId\", \"ResourceOwner.window\" ) const hostWindowId = yield* decodeOwnerText( input.hostWindowId, \"hostWindowId\", \"ResourceOwner.window\" ) const scopeId = `window:${hostWindowId}` return resourceOwnerLayer(\"ResourceOwner.window\", { kind: \"window\", scopeId, actor: new PermissionActor({ kind: \"window\", id: scopeId }), attributes: { registrationId, hostWindowId } }) }) ) } static job(jobId: string): Layer.Layer<ResourceOwner, ResourceOwnerInvalidArgumentError> { return Layer.effect(ResourceOwner, makeJobResourceOwner(jobId)) } static test(scopeId: string): Layer.Layer<ResourceOwner, ResourceOwnerInvalidArgumentError> { return Layer.effect(ResourceOwner, makeTestResourceOwner(scopeId)) } }"
+      "signature": "export class ResourceOwner extends Context.Service<ResourceOwner, ResourceOwnerApi>()( \"@orika/core/runtime/resource-owner/ResourceOwner\" ) { static app(appId: string): Layer.Layer<ResourceOwner, ResourceOwnerInvalidArgumentError> { return Layer.effect(ResourceOwner, makeAppResourceOwner(appId)) } static window(input: { readonly registrationId: string readonly hostWindowId: string }): Layer.Layer<ResourceOwner, ResourceOwnerInvalidArgumentError> { return Layer.unwrap( Effect.gen(function* () { const registrationId = yield* decodeOwnerText( input.registrationId, \"registrationId\", \"ResourceOwner.window\" ) const hostWindowId = yield* decodeOwnerText( input.hostWindowId, \"hostWindowId\", \"ResourceOwner.window\" ) const scopeId = `window:${hostWindowId}` return resourceOwnerLayer(\"ResourceOwner.window\", { kind: \"window\", scopeId, actor: new PermissionActor({ kind: \"window\", id: scopeId }), attributes: { registrationId, hostWindowId } }) }) ) } static job(jobId: string): Layer.Layer<ResourceOwner, ResourceOwnerInvalidArgumentError> { return Layer.effect(ResourceOwner, makeJobResourceOwner(jobId)) } static test(scopeId: string): Layer.Layer<ResourceOwner, ResourceOwnerInvalidArgumentError> { return Layer.effect(ResourceOwner, makeTestResourceOwner(scopeId)) } }"
     },
     {
       "name": "ResourceOwnerApi",
@@ -2021,7 +2041,7 @@
     {
       "name": "ResourceRegistry",
       "kind": "class",
-      "signature": "export class ResourceRegistry extends Context.Service<ResourceRegistry, ResourceRegistryApi>()( \"@effect-desktop/core/runtime/resources/ResourceRegistry\" ) {}"
+      "signature": "export class ResourceRegistry extends Context.Service<ResourceRegistry, ResourceRegistryApi>()( \"@orika/core/runtime/resources/ResourceRegistry\" ) {}"
     },
     {
       "name": "ResourceRegistryApi",
@@ -2126,7 +2146,7 @@
     {
       "name": "Secrets",
       "kind": "class",
-      "signature": "export class Secrets extends Context.Service<Secrets, SecretsApi>()( \"@effect-desktop/core/runtime/secrets\" ) {}"
+      "signature": "export class Secrets extends Context.Service<Secrets, SecretsApi>()( \"@orika/core/runtime/secrets\" ) {}"
     },
     {
       "name": "SecretsApi",
@@ -2201,7 +2221,7 @@
     {
       "name": "SecretsSafeStorage",
       "kind": "class",
-      "signature": "export class SecretsSafeStorage extends Context.Service< SecretsSafeStorage, SecretsSafeStorageApi >()(\"@effect-desktop/core/runtime/secrets/SecretsSafeStorage\") {}"
+      "signature": "export class SecretsSafeStorage extends Context.Service< SecretsSafeStorage, SecretsSafeStorageApi >()(\"@orika/core/runtime/secrets/SecretsSafeStorage\") {}"
     },
     {
       "name": "SecretsSafeStorageApi",
@@ -2236,7 +2256,7 @@
     {
       "name": "Settings",
       "kind": "class",
-      "signature": "export class Settings extends Context.Service<Settings, SettingsApi>()( \"@effect-desktop/core/runtime/settings\" ) { static layer( options: SettingsOptions ): Layer.Layer< Settings, SettingsError | SqlitePolicyError, ResourceOwner | PermissionRegistry | ResourceRegistry | FileSystem | Path > { return Layer.unwrap( Effect.gen(function* () { const owner = yield* ResourceOwner return settingsLayer(options, owner.scopeId) }) ) } static window( options: SettingsOptions ): Layer.Layer< Settings, SettingsError | SqlitePolicyError, ResourceOwner | PermissionRegistry | ResourceRegistry | FileSystem | Path > { return Settings.layer(options) } static memory(options: SettingsMemoryOptions = {}): Layer.Layer<Settings, SettingsError, never> { return settingsMemoryLayer(options) } }"
+      "signature": "export class Settings extends Context.Service<Settings, SettingsApi>()( \"@orika/core/runtime/settings\" ) { static layer( options: SettingsOptions ): Layer.Layer< Settings, SettingsError | SqlitePolicyError, ResourceOwner | PermissionRegistry | ResourceRegistry | FileSystem | Path > { return Layer.unwrap( Effect.gen(function* () { const owner = yield* ResourceOwner return settingsLayer(options, owner.scopeId) }) ) } static window( options: SettingsOptions ): Layer.Layer< Settings, SettingsError | SqlitePolicyError, ResourceOwner | PermissionRegistry | ResourceRegistry | FileSystem | Path > { return Settings.layer(options) } static memory(options: SettingsMemoryOptions = {}): Layer.Layer<Settings, SettingsError, never> { return settingsMemoryLayer(options) } }"
     },
     {
       "name": "SettingsApi",
@@ -2321,7 +2341,7 @@
     {
       "name": "Sidecar",
       "kind": "class",
-      "signature": "export class Sidecar extends Context.Service<Sidecar, SidecarApi>()( \"@effect-desktop/core/runtime/sidecar\" ) {}"
+      "signature": "export class Sidecar extends Context.Service<Sidecar, SidecarApi>()( \"@orika/core/runtime/sidecar\" ) {}"
     },
     {
       "name": "SidecarApi",
@@ -2466,7 +2486,7 @@
     {
       "name": "Telemetry",
       "kind": "class",
-      "signature": "export class Telemetry extends Context.Service<Telemetry, TelemetryApi>()( \"@effect-desktop/core/runtime/telemetry\", { make: makeTelemetry() } ) {}"
+      "signature": "export class Telemetry extends Context.Service<Telemetry, TelemetryApi>()( \"@orika/core/runtime/telemetry\", { make: makeTelemetry() } ) {}"
     },
     {
       "name": "TelemetryApi",
@@ -2556,7 +2576,7 @@
     {
       "name": "WindowContext",
       "kind": "class",
-      "signature": "export class WindowContext extends Context.Service<WindowContext, WindowContextApi>()( \"@effect-desktop/core/runtime/window-context/WindowContext\" ) {}"
+      "signature": "export class WindowContext extends Context.Service<WindowContext, WindowContextApi>()( \"@orika/core/runtime/window-context/WindowContext\" ) {}"
     },
     {
       "name": "WindowContextApi",
@@ -2591,7 +2611,7 @@
     {
       "name": "Worker",
       "kind": "class",
-      "signature": "export class Worker extends Context.Service<Worker, WorkerApi>()( \"@effect-desktop/core/runtime/worker\" ) {}"
+      "signature": "export class Worker extends Context.Service<Worker, WorkerApi>()(\"@orika/core/runtime/worker\") {}"
     },
     {
       "name": "WorkerAdapter",
@@ -2716,7 +2736,7 @@
     {
       "name": "WorkflowInspectorCollector",
       "kind": "class",
-      "signature": "export class WorkflowInspectorCollector extends Context.Service< WorkflowInspectorCollector, WorkflowInspectorCollectorApi >()(\"@effect-desktop/core/runtime/inspector-events/WorkflowInspectorCollector\") {}"
+      "signature": "export class WorkflowInspectorCollector extends Context.Service< WorkflowInspectorCollector, WorkflowInspectorCollectorApi >()(\"@orika/core/runtime/inspector-events/WorkflowInspectorCollector\") {}"
     },
     {
       "name": "WorkflowInspectorCollectorApi",

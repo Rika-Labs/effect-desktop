@@ -13,7 +13,7 @@ effect_version: 4
 ## 1. Declare the root
 
 ```ts
-import { PermissionRegistry } from "@effect-desktop/core"
+import { PermissionRegistry } from "@orika/core"
 
 const permissions = yield * PermissionRegistry
 yield *
@@ -34,7 +34,7 @@ Reads under `/Users/me/Documents` are allowed. Writes prompt the user the first 
 
 ```ts
 import { Effect } from "effect"
-import { Filesystem } from "@effect-desktop/core"
+import { Filesystem } from "@orika/core"
 
 const program = Effect.gen(function* () {
   const fs = yield* Filesystem

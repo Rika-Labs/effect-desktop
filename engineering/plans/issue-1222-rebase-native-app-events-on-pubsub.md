@@ -79,7 +79,7 @@ Focused:
 
 ```bash
 bun test packages/native/src/index.test.ts
-bun run typecheck --filter=@effect-desktop/native
+bun run typecheck --filter=@orika/native
 ```
 
 Full local gate before push:

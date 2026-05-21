@@ -10,7 +10,7 @@ Accepted
 
 ## Decision
 
-Add `@effect/sql-sqlite-bun@4.0.0-beta.60` (matching the Effect `^4.0.0-beta.60` peer) as a production dependency of `@effect-desktop/core`. Expose `SqlClient`, `SqlError`, `SqlModel`, and the concrete `SqliteClient` namespace as re-exports from `runtime/sqlite.ts`. Provide `SqlClientLive(config)` as the canonical desktop policy layer for runtime SQLite call-sites.
+Add `@effect/sql-sqlite-bun@4.0.0-beta.60` (matching the Effect `^4.0.0-beta.60` peer) as a production dependency of `@orika/core`. Expose `SqlClient`, `SqlError`, `SqlModel`, and the concrete `SqliteClient` namespace as re-exports from `runtime/sqlite.ts`. Provide `SqlClientLive(config)` as the canonical desktop policy layer for runtime SQLite call-sites.
 
 Issue #1267 completed the planned removal. The bespoke `SQLite` service,
 `SQLiteLive`, `makeSQLite`, connection, statement, transaction, and local driver

@@ -14,7 +14,7 @@ export function App({ onSelectSession, snapshot }: AppProps) {
     <main className="inspector-shell">
       <aside className="session-rail" aria-label="Inspector sessions">
         <div className="brand-block">
-          <p>Effect Desktop</p>
+          <p>ORIKA</p>
           <h1>Inspector</h1>
         </div>
         <nav className="session-list" aria-label="Sessions">

@@ -39,7 +39,7 @@ Unknown provider ids should fail as typed `DesktopConfigError` failures from bot
   - Export the new runtime graph/service APIs through the root and `Desktop` facade.
 - `packages/core/src/index.test.ts`
   - Add tests for two provider graphs, unknown provider failure, and graph inspection without host launch.
-- `api/snapshots/@effect-desktop__core.snapshot.json`
+- `api/snapshots/@orika__core.snapshot.json`
   - Update API snapshot after exports change.
 - `engineering/roadmap/layer-first-issue-order.md`
   - Mark #1229 implemented.

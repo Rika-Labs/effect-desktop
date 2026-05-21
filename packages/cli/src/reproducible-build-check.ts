@@ -171,7 +171,7 @@ export const runDesktopReproCheck = (
 export const formatReproReport = (report: DesktopReproReport): string => {
   if (report.passed) {
     return [
-      "Effect Desktop reproducibility check",
+      "ORIKA reproducibility check",
       `target            ${report.target}`,
       `compared files    ${report.comparedFiles.toString()}`,
       "result            byte-identical",
@@ -180,7 +180,7 @@ export const formatReproReport = (report: DesktopReproReport): string => {
   }
 
   return [
-    "Effect Desktop reproducibility check",
+    "ORIKA reproducibility check",
     `target            ${report.target}`,
     `compared files    ${report.comparedFiles.toString()}`,
     `differences       ${report.differences.length.toString()}`,

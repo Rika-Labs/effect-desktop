@@ -60,7 +60,7 @@ import {
   HostProtocolEventEnvelope,
   type HostWindowClientOptions,
   type HostWindowExchange
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import {
   AuditEvent,
   CommandRegistryHandlerFailureError,
@@ -81,7 +81,7 @@ import {
   type CommandRegistryApi,
   type DesktopRpcClient,
   type NormalizedCapability
-} from "@effect-desktop/core"
+} from "@orika/core"
 import {
   Cause,
   Clock,
@@ -511,7 +511,7 @@ const snapshotSurfaceRegistrations = (
 test("native package root keeps contracts and implementation helpers behind subpaths", () =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const native = yield* Effect.promise(() => import("@effect-desktop/native"))
+      const native = yield* Effect.promise(() => import("@orika/native"))
 
       expect(native.Window).toBeFunction()
       expect(native.WindowLive).toBeDefined()
@@ -653,7 +653,7 @@ test("native availability selection does not grant authority", () => {
 test("native contracts subpath exposes schema-coded payload contracts", () =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const contracts = yield* Effect.promise(() => import("@effect-desktop/native/contracts"))
+      const contracts = yield* Effect.promise(() => import("@orika/native/contracts"))
 
       expect(contracts.WindowCreateInput).toBeFunction()
       expect(contracts.ClipboardText).toBeFunction()
@@ -761,8 +761,8 @@ test("Native.all registers every built-in native surface", () => {
 test("native package exports reject implementation-only subpaths", () =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const appHttpServerSpecifier = "@effect-desktop/native/" + "app-http-server"
-      const updaterWorkflowSpecifier = "@effect-desktop/native/" + "updater-workflow"
+      const appHttpServerSpecifier = "@orika/native/" + "app-http-server"
+      const updaterWorkflowSpecifier = "@orika/native/" + "updater-workflow"
 
       yield* expectImportRejected(appHttpServerSpecifier)
       yield* expectImportRejected(updaterWorkflowSpecifier)
@@ -1229,7 +1229,7 @@ const primaryDisplay = new ScreenDisplay({
 const accentColor = new SystemAppearanceColor({ r: 0.1, g: 0.2, b: 0.3, a: 1 })
 const appMetadataInfo = new AppMetadataInfo({
   id: "dev.effect-desktop.test",
-  name: "Effect Desktop Test",
+  name: "ORIKA Test",
   version: "0.0.0"
 })
 const appMetadataPaths = new AppMetadataPaths({
@@ -2007,7 +2007,7 @@ test("AppMetadata bridge client sends typed host envelopes and decodes events an
             kind: "success",
             payload: {
               id: "dev.effect-desktop.test",
-              name: "Effect Desktop Test",
+              name: "ORIKA Test",
               version: "0.0.0"
             }
           }
@@ -2084,7 +2084,7 @@ test("AppMetadata bridge client rejects malformed host output as InvalidOutput",
               if (request.method === "AppMetadata.getInfo") {
                 return {
                   kind: "success",
-                  payload: { id: "", name: "Effect Desktop Test", version: "not-semver" }
+                  payload: { id: "", name: "ORIKA Test", version: "not-semver" }
                 }
               }
               if (request.method === "AppMetadata.getPaths") {
@@ -2199,7 +2199,7 @@ test("native host RPC runtime allows declared AppMetadata permissions", () =>
       if (response.kind === "success") {
         expect(response.payload).toEqual({
           id: "dev.effect-desktop.test",
-          name: "Effect Desktop Test",
+          name: "ORIKA Test",
           version: "0.0.0"
         })
       }
@@ -3993,7 +3993,7 @@ test("Tray service delegates through a substitutable TrayClient port", () =>
           const tray = yield* Tray
           const created = yield* tray.create({
             icon: "solid:#3366ccff",
-            tooltip: "Effect Desktop",
+            tooltip: "ORIKA",
             title: "ED",
             menu: menuTemplate
           })
@@ -4014,7 +4014,7 @@ test("Tray service delegates through a substitutable TrayClient port", () =>
         new TrayActivatedEvent({ tray: trayHandle, ownerWindowId: "window-1" })
       ])
       expect(calls).toEqual([
-        "create:solid:#3366ccff:Effect Desktop:ED:3",
+        "create:solid:#3366ccff:ORIKA:ED:3",
         "setIcon:tray-1:solid:#22aa66ff",
         "setTooltip:tray-1:Running",
         "setTitle:tray-1:OK",
@@ -4038,7 +4038,7 @@ test("Tray bridge client sends typed host envelopes and decodes activation event
           const tray = yield* Tray
           const created = yield* tray.create({
             icon: "solid:#3366ccff",
-            tooltip: "Effect Desktop",
+            tooltip: "ORIKA",
             title: "ED",
             menu: menuTemplate
           })
@@ -4062,7 +4062,7 @@ test("Tray bridge client sends typed host envelopes and decodes activation event
       expect(requests.map((request) => [request.method, request.payload])).toEqual([
         [
           "Tray.create",
-          { icon: "solid:#3366ccff", tooltip: "Effect Desktop", title: "ED", menu: expectedMenu }
+          { icon: "solid:#3366ccff", tooltip: "ORIKA", title: "ED", menu: expectedMenu }
         ],
         ["Tray.setIcon", { tray: trayHandle, icon: "solid:#22aa66ff" }],
         ["Tray.setTooltip", { tray: trayHandle, tooltip: "Running" }],

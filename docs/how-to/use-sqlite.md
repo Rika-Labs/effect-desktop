@@ -14,7 +14,7 @@ effect_version: 4
 
 ```ts
 import { Effect, Layer } from "effect"
-import { ResourceOwner, SqlClient, SqlClientLive } from "@effect-desktop/core"
+import { ResourceOwner, SqlClient, SqlClientLive } from "@orika/core"
 
 const SqliteLive = SqlClientLive({
   filename: "app.sqlite"
@@ -101,7 +101,7 @@ yield *
 ## When NOT to use SQLite
 
 - For preferences and small key/value, `Settings` is friendlier.
-- For renderer-side persistence in a browser context, use `RendererSqliteWorkerLive` from `@effect-desktop/platform-browser` (SQLite WASM in a Web Worker) or `RendererPgliteLive` (PGlite).
+- For renderer-side persistence in a browser context, use `RendererSqliteWorkerLive` from `@orika/platform-browser` (SQLite WASM in a Web Worker) or `RendererPgliteLive` (PGlite).
 
 ## Related
 

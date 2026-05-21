@@ -152,7 +152,7 @@ export interface BridgeRuntimeMetadata {
 class BridgeRuntimeAnnotation extends Context.Service<
   BridgeRuntimeAnnotation,
   BridgeRuntimeMetadata
->()("@effect-desktop/bridge/contracts/BridgeRuntimeAnnotation") {}
+>()("@orika/bridge/contracts/BridgeRuntimeAnnotation") {}
 
 export const BridgeRuntime =
   (metadata: BridgeRuntimeMetadata) =>

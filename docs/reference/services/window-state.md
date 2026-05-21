@@ -13,7 +13,7 @@ Persists per-window geometry and UI state across launches. Restore applies calle
 ## Import
 
 ```ts
-import { WindowState, type WindowStateApi } from "@effect-desktop/core"
+import { WindowState, type WindowStateApi } from "@orika/core"
 ```
 
 ## API
@@ -38,7 +38,7 @@ import { WindowState, type WindowStateApi } from "@effect-desktop/core"
 
 ## Wiring it up
 
-There is no built-in `restoreState` flag on `WindowSpec` today. Runtime code that already has native access can use `WindowPersistence` from `@effect-desktop/native`; lower-level core code can wire `WindowState.window(...)` into the third argument of `Desktop.window(...)` and provide its own capture/apply policy.
+There is no built-in `restoreState` flag on `WindowSpec` today. Runtime code that already has native access can use `WindowPersistence` from `@orika/native`; lower-level core code can wire `WindowState.window(...)` into the third argument of `Desktop.window(...)` and provide its own capture/apply policy.
 
 ## Related
 

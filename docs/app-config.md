@@ -15,7 +15,7 @@ effect_version: 4
 ## Define config
 
 ```ts
-import { defineDesktopConfig } from "@effect-desktop/config"
+import { defineDesktopConfig } from "@orika/config"
 
 export default defineDesktopConfig({
   app: {

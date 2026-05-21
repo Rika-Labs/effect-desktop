@@ -15,7 +15,7 @@ import {
 } from "effect"
 import { Rpc, RpcGroup, RpcTest } from "effect/unstable/rpc"
 
-import { rpcCapability } from "@effect-desktop/bridge"
+import { rpcCapability } from "@orika/bridge"
 
 import { AuditEvent, emitAuditEvent, type AuditEventsApi } from "./audit-events.js"
 import {
@@ -252,7 +252,7 @@ export const makeCommandRegistry = (
   })
 
 export class CommandRegistry extends Context.Service<CommandRegistry, CommandRegistryApi>()(
-  "@effect-desktop/core/runtime/commands/CommandRegistry",
+  "@orika/core/runtime/commands/CommandRegistry",
   {
     make: Effect.gen(function* () {
       const resources = yield* ResourceRegistry

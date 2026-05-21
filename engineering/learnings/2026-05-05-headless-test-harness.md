@@ -1,12 +1,12 @@
 ---
 date: 2026-05-05
 type: in-flight-feature
-topic: Headless harness in @effect-desktop/test: drive the runtime in CI without a window or WebView
+topic: Headless harness in @orika/test: drive the runtime in CI without a window or WebView
 issue: https://github.com/Rika-Labs/effect-desktop/issues/84
 pr: https://github.com/Rika-Labs/effect-desktop/pull/167
 ---
 
-# Headless harness in @effect-desktop/test: drive the runtime in CI without a window or WebView
+# Headless harness in @orika/test: drive the runtime in CI without a window or WebView
 
 ## What we set out to do
 
@@ -14,7 +14,7 @@ The issue asked for a no-WebView test harness so Phase 4 bridge tests can drive 
 
 ## What actually ended up working
 
-The shipped `runHeadless` is a test harness boundary rather than a full runtime bootstrap, because the repo does not yet have a public `Desktop.run` or runtime layer API to compose. It creates a mock host exchange, exposes handshake and window clients, records every protocol request, supports per-method fixtures, and registers fake windows in the ResourceRegistry. The harness runs the body, always runs the leak check, and returns or fails with the original Effect cause shape. `@effect-desktop/test` now depends on `@effect-desktop/bridge` because the harness intentionally reuses the real bridge clients and protocol envelopes.
+The shipped `runHeadless` is a test harness boundary rather than a full runtime bootstrap, because the repo does not yet have a public `Desktop.run` or runtime layer API to compose. It creates a mock host exchange, exposes handshake and window clients, records every protocol request, supports per-method fixtures, and registers fake windows in the ResourceRegistry. The harness runs the body, always runs the leak check, and returns or fails with the original Effect cause shape. `@orika/test` now depends on `@orika/bridge` because the harness intentionally reuses the real bridge clients and protocol envelopes.
 
 ```mermaid
 flowchart TD

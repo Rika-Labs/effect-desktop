@@ -23,7 +23,7 @@ import {
   type PendingApproval,
   type ApprovalResolver,
   type ApprovalResolution
-} from "@effect-desktop/react"
+} from "@orika/react"
 ```
 
 ## `usePermission(capability)`

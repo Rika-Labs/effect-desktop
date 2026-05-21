@@ -9,8 +9,8 @@ import {
   makeHostProtocolInvalidOutputError,
   HostProtocolRequestEnvelope,
   type HostProtocolError
-} from "@effect-desktop/bridge"
-import { type PermissionRegistry, type DesktopRpcClient } from "@effect-desktop/core"
+} from "@orika/bridge"
+import { type PermissionRegistry, type DesktopRpcClient } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
@@ -105,7 +105,7 @@ export interface ScreenClientApi {
 }
 
 export class ScreenClient extends Context.Service<ScreenClient, ScreenClientApi>()(
-  "@effect-desktop/native/ScreenClient"
+  "@orika/native/ScreenClient"
 ) {}
 
 export interface ScreenServiceApi {
@@ -116,9 +116,7 @@ export interface ScreenServiceApi {
   readonly isSupported: (method: ScreenMethod) => Effect.Effect<boolean, ScreenError, never>
 }
 
-export class Screen extends Context.Service<Screen, ScreenServiceApi>()(
-  "@effect-desktop/native/Screen"
-) {
+export class Screen extends Context.Service<Screen, ScreenServiceApi>()("@orika/native/Screen") {
   static readonly layer = Layer.effect(Screen)(
     Effect.gen(function* () {
       const client = yield* ScreenClient

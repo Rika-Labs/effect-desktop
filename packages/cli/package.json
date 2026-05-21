@@ -1,8 +1,8 @@
 {
-  "name": "@effect-desktop/cli",
+  "name": "@orika/cli",
   "version": "2.0.0",
   "private": true,
-  "description": "Developer CLI for Effect Desktop build, validation, packaging, signing, publishing, and diagnostics.",
+  "description": "Developer CLI for ORIKA build, validation, packaging, signing, publishing, and diagnostics.",
   "license": "MIT OR Apache-2.0",
   "author": "Rika Labs, LLC",
   "repository": {
@@ -33,9 +33,9 @@
     "lint": "oxlint ."
   },
   "dependencies": {
-    "@effect-desktop/bridge": "workspace:*",
-    "@effect-desktop/config": "workspace:*",
-    "@effect-desktop/core": "workspace:*",
+    "@orika/bridge": "workspace:*",
+    "@orika/config": "workspace:*",
+    "@orika/core": "workspace:*",
     "@effect/platform-bun": "4.0.0-beta.60",
     "effect": "4.0.0-beta.60",
     "typescript": "6.0.3"

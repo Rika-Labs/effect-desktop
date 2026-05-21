@@ -6,7 +6,7 @@ The key constraint was not to create a second transport error system. Rust host-
 
 What changed:
 
-- Added `NativeBoundaryError`, `NativeBoundaryErrors`, and `normalizeNativeBoundaryEffect` in `@effect-desktop/native`.
+- Added `NativeBoundaryError`, `NativeBoundaryErrors`, and `normalizeNativeBoundaryEffect` in `@orika/native`.
 - Added tests proving success, permission denial, unsupported platform, missing host method, host failure, and Schema decode/encode failure.
 - Added a native surface invariant that every native RPC surface advertises the shared `HostProtocolError` Schema at the Effect boundary.
 - Reused the existing Screen native host permission test to prove protected host calls deny before handlers run.

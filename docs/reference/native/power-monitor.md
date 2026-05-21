@@ -59,7 +59,7 @@ runtime connection and are removed when the runtime disconnects.
 
 ## React hook
 
-`usePower()` from `@effect-desktop/react` consumes the TypeScript streams. It
+`usePower()` from `@orika/react` consumes the TypeScript streams. It
 receives native OS events on macOS and typed unsupported failures on Windows and
 Linux.
 

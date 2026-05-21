@@ -1,5 +1,5 @@
-import { makeHostProtocolInvalidStateError } from "@effect-desktop/bridge"
-import { DesktopSchedules } from "@effect-desktop/core"
+import { makeHostProtocolInvalidStateError } from "@orika/bridge"
+import { DesktopSchedules } from "@orika/core"
 import { Clock, Effect, Layer, Random, Schema } from "effect"
 import { EventGroup, EventJournal, EventLog } from "effect/unstable/eventlog"
 import {

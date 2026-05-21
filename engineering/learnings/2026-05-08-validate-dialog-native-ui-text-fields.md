@@ -26,7 +26,7 @@ flowchart LR
 
 ## What surfaced in review
 
-No review threads were opened. CI caught the missing public API snapshot update after the first PR head: the exported `Schema.Class` signatures changed from `Schema.String` / `Schema.NonEmptyString` to `DialogDisplayText`. The fix was a separate `chore(api)` commit that regenerated `api/snapshots/@effect-desktop__native.snapshot.json`.
+No review threads were opened. CI caught the missing public API snapshot update after the first PR head: the exported `Schema.Class` signatures changed from `Schema.String` / `Schema.NonEmptyString` to `DialogDisplayText`. The fix was a separate `chore(api)` commit that regenerated `api/snapshots/@orika__native.snapshot.json`.
 
 ## First-principles postmortem
 

@@ -53,7 +53,7 @@ others.
 ## Game-theory postmortem
 
 The tempting local move is to write one broad "storage works" closeout because
-all five services live in `@effect-desktop/core`. That creates a future review
+all five services live in `@orika/core`. That creates a future review
 problem: a contributor cannot tell which invariant was proven by which test. The
 milestone changes the incentive by grouping evidence by service, making missing
 coverage visible at the same granularity as the shipped APIs.

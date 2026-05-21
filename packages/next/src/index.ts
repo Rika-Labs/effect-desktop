@@ -1,11 +1,11 @@
 "use client"
 
-import type { DesktopAppManifest } from "@effect-desktop/core/renderer"
+import type { DesktopAppManifest } from "@orika/core/renderer"
 import {
   ReactDesktop,
   type ReactDesktopAdapter,
   type ReactDesktopRootProps
-} from "@effect-desktop/react/desktop"
+} from "@orika/react/desktop"
 import type { ReactNode } from "react"
 
 export interface NextDesktopAdapter<

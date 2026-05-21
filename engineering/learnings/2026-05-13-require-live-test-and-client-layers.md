@@ -9,7 +9,7 @@ Clipboard and Dialog now follow the same Layer-first shape as Screen. Their hand
 `ClipboardSurface` and `DialogSurface`, and their bridge client layers route through the generated
 `DesktopRpc.surface(...)` client path instead of local `RpcClient.make(...)` loops.
 
-The shared capability test in `@effect-desktop/test` now runs the same user-level Screen,
+The shared capability test in `@orika/test` now runs the same user-level Screen,
 Clipboard, and Dialog programs through direct Live layers, bridge Client layers, and deterministic
 Test layers. The test package also dropped the old `Test*.layer` wrapper objects in favor of
 top-level `ScreenTest(...)`, `ClipboardTest()`, and `DialogTest(...)` layer constructors.

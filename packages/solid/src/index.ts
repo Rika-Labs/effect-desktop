@@ -1,4 +1,4 @@
-import type { WithRpcEndpointKind } from "@effect-desktop/bridge"
+import type { WithRpcEndpointKind } from "@orika/bridge"
 import {
   bindRendererEndpoints,
   describeRpcs,
@@ -22,7 +22,7 @@ import {
   type FrameworkRuntime,
   type MissingDesktopRpcClientError,
   type DesktopRpcRegistrationGroup as RpcGroupWithRequests
-} from "@effect-desktop/core/renderer"
+} from "@orika/core/renderer"
 import { Cause, Effect, Exit, ManagedRuntime, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import {
@@ -145,10 +145,7 @@ export interface SolidDesktopAdapter<App extends DesktopAppManifest> {
   readonly useDesktop: <Group extends RpcGroupWithRequests>(group: Group) => SolidDesktopRpcs<Group>
 }
 
-export {
-  MissingDesktopContextError,
-  MissingDesktopRpcClientError
-} from "@effect-desktop/core/renderer"
+export { MissingDesktopContextError, MissingDesktopRpcClientError } from "@orika/core/renderer"
 
 interface SolidDesktopContextValue {
   readonly clients: DesktopRendererRpcClientMap

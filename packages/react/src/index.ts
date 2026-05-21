@@ -1,6 +1,6 @@
-export type { HostProtocolError } from "@effect-desktop/bridge"
-export type { WindowError } from "@effect-desktop/native"
-export type { WindowCreateOptions, WindowHandle } from "@effect-desktop/native/contracts"
+export type { HostProtocolError } from "@orika/bridge"
+export type { WindowError } from "@orika/native"
+export type { WindowCreateOptions, WindowHandle } from "@orika/native/contracts"
 
 export { AsyncResult, Atom } from "effect/unstable/reactivity"
 

@@ -8,8 +8,8 @@ import {
   makeHostProtocolInvalidOutputError,
   RpcGroup,
   type HostProtocolError
-} from "@effect-desktop/bridge"
-import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
+} from "@orika/bridge"
+import { type PermissionRegistry, P, type DesktopRpcClient } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
@@ -165,7 +165,7 @@ export interface AppClientApi {
 }
 
 export class AppClient extends Context.Service<AppClient, AppClientApi>()(
-  "@effect-desktop/native/AppClient"
+  "@orika/native/AppClient"
 ) {}
 
 export interface AppServiceApi extends Omit<
@@ -178,7 +178,7 @@ export interface AppServiceApi extends Omit<
   readonly relaunch: (input?: AppRestartOptions) => Effect.Effect<void, AppError, never>
 }
 
-export class App extends Context.Service<App, AppServiceApi>()("@effect-desktop/native/App") {
+export class App extends Context.Service<App, AppServiceApi>()("@orika/native/App") {
   static readonly layer = Layer.effect(App)(
     Effect.gen(function* () {
       const client = yield* AppClient

@@ -31,7 +31,7 @@ flowchart TD
 
 ## What surfaced in review
 
-No review threads were opened. The local review pass checked that routing policy stayed in `@effect-desktop/native`, that bridge event fanout was not reused as App routing policy, and that the tests covered first-responder focus, max-one buffering, broadcast refusal short-circuiting, targeted closed-window audit, and per-window scope disposal.
+No review threads were opened. The local review pass checked that routing policy stayed in `@orika/native`, that bridge event fanout was not reused as App routing policy, and that the tests covered first-responder focus, max-one buffering, broadcast refusal short-circuiting, targeted closed-window audit, and per-window scope disposal.
 
 ## First-principles postmortem
 

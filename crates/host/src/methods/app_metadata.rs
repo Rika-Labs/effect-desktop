@@ -16,7 +16,7 @@ use std::{
 };
 
 const DEFAULT_APP_ID: &str = "dev.effect-desktop.host";
-const DEFAULT_APP_NAME: &str = "Effect Desktop Host";
+const DEFAULT_APP_NAME: &str = "ORIKA Host";
 const DEFAULT_APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub(crate) fn get_info(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {

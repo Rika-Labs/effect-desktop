@@ -4,7 +4,7 @@ import {
   type HostProtocolError,
   type HostProtocolRequestEnvelope,
   makeHostProtocolInvalidArgumentError
-} from "@effect-desktop/bridge"
+} from "@orika/bridge"
 import {
   type AuditEvent,
   type AuditEventsApi,
@@ -12,7 +12,7 @@ import {
   makeResourceId,
   makeResourceRegistry,
   P
-} from "@effect-desktop/core"
+} from "@orika/core"
 import { Cause, Deferred, Effect, Exit, Fiber, type Layer, ManagedRuntime, Stream } from "effect"
 import { EventJournal } from "effect/unstable/eventlog"
 

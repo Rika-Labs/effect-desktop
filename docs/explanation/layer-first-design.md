@@ -8,7 +8,7 @@ effect_version: 4
 
 # Layer-first design
 
-Effect Desktop's public capabilities follow a single shape. Once you have seen it twice, every other capability becomes predictable.
+ORIKA's public capabilities follow a single shape. Once you have seen it twice, every other capability becomes predictable.
 
 ## The shape
 
@@ -51,9 +51,7 @@ export const WindowRpcs: RpcGroup.RpcGroup<WindowRpcUnion> = WindowRpcGroup
 export const WindowSupportedRpcs = WindowRpcs // explicitly the supported subset
 
 // 2. Service tag
-export class Window extends Context.Service<Window, WindowServiceApi>()(
-  "@effect-desktop/native/Window"
-) {}
+export class Window extends Context.Service<Window, WindowServiceApi>()("@orika/native/Window") {}
 
 // 3. Live layer (against the bridge / host)
 export const WindowLive = Layer.effect(Window)(
@@ -67,7 +65,7 @@ export const WindowLive = Layer.effect(Window)(
 export const window = Native.surface(WindowSurface)
 
 // 5. Test layer
-//    Provided by @effect-desktop/test as TestWindow.layer()
+//    Provided by @orika/test as TestWindow.layer()
 
 // + handler layer for the runtime side
 export const WindowHandlersLive = WindowRpcGroup.toLayer({
@@ -92,13 +90,8 @@ import {
   AuditEventsLive,
   SettingsLive,
   TelemetryLive
-} from "@effect-desktop/core"
-import {
-  WindowLive,
-  WindowHandlersLive,
-  ClipboardLive,
-  ClipboardHandlersLive
-} from "@effect-desktop/native"
+} from "@orika/core"
+import { WindowLive, WindowHandlersLive, ClipboardLive, ClipboardHandlersLive } from "@orika/native"
 
 const RuntimeLive = Layer.mergeAll(
   PermissionRegistryLive,

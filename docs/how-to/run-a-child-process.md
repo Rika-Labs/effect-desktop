@@ -13,7 +13,7 @@ effect_version: 4
 ## 1. Declare what's allowed to run
 
 ```ts
-import { PermissionRegistry } from "@effect-desktop/core"
+import { PermissionRegistry } from "@orika/core"
 
 const permissions = yield * PermissionRegistry
 yield *
@@ -29,7 +29,7 @@ yield *
 
 ```ts
 import { Effect, Stream } from "effect"
-import { Process } from "@effect-desktop/core"
+import { Process } from "@orika/core"
 
 const program = Effect.gen(function* () {
   const proc = yield* Process

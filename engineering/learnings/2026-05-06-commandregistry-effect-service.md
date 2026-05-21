@@ -14,7 +14,7 @@ Issue #67 set out to create one typed command registration and invocation path s
 
 ## What actually ended up working
 
-The shipped shape is a `CommandRegistry` Effect service in `@effect-desktop/core`, backed by a Ref-owned command table, `ResourceRegistry` cleanup, and `PermissionRegistry` checks. The architecture changed in one important way: `invoke` takes an explicit `PermissionContext`, because the existing permission model requires an actor and trace context to decide and audit authority. Registration returns a scope-owned `ResourceHandle<"command", "registered">`, and scope close unregisters the command through the resource disposer.
+The shipped shape is a `CommandRegistry` Effect service in `@orika/core`, backed by a Ref-owned command table, `ResourceRegistry` cleanup, and `PermissionRegistry` checks. The architecture changed in one important way: `invoke` takes an explicit `PermissionContext`, because the existing permission model requires an actor and trace context to decide and audit authority. Registration returns a scope-owned `ResourceHandle<"command", "registered">`, and scope close unregisters the command through the resource disposer.
 
 ```mermaid
 flowchart LR

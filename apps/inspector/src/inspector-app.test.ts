@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
-import { makeInspectorTransport } from "@effect-desktop/core/inspector-transport"
-import { makeReplayTransport } from "@effect-desktop/devtools/testing"
+import { makeInspectorTransport } from "@orika/core/inspector-transport"
+import { makeReplayTransport } from "@orika/devtools/testing"
 import { Effect } from "effect"
 
 import {

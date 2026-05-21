@@ -8,7 +8,7 @@ effect_version: 4
 
 # Architecture overview
 
-Effect Desktop is built on a single conviction: **a desktop app is three programs, not one**. A native shell, an application runtime, and a UI. Most desktop frameworks blur those into one process. This one keeps them strictly separate, gives each an owner language, and makes the contract between them visible.
+ORIKA is built on a single conviction: **a desktop app is three programs, not one**. A native shell, an application runtime, and a UI. Most desktop frameworks blur those into one process. This one keeps them strictly separate, gives each an owner language, and makes the contract between them visible.
 
 ## The three roles
 
@@ -45,7 +45,7 @@ The renderer **never** receives native authority. It never opens a file, spawns 
 
 ## Why this split
 
-Desktop frameworks face a forcing question: where does the JavaScript run? Electron answers "in a Node.js process you embed in your app" and pays the cost in size, attack surface, and a single failure domain. Tauri answers "compile a Rust shell that talks to a system WebView" and pushes app logic toward Rust. Effect Desktop takes a third path:
+Desktop frameworks face a forcing question: where does the JavaScript run? Electron answers "in a Node.js process you embed in your app" and pays the cost in size, attack surface, and a single failure domain. Tauri answers "compile a Rust shell that talks to a system WebView" and pushes app logic toward Rust. ORIKA takes a third path:
 
 - **Rust for the shell.** Tauri-style — a small native process, the only thing that holds raw OS authority. Compiled, sandboxed, hard to misuse.
 - **TypeScript for the runtime.** Bun is the default runtime provider; Node is selectable when deployment policy or existing infrastructure needs it. App logic stays in TypeScript so the team that ships features doesn't have to context-switch to Rust.
@@ -119,7 +119,7 @@ The framework's job is to give you _useful starting layers_ (`PermissionRegistry
 
 ## What this means for you
 
-If you build an app on Effect Desktop, the framework asks you to do four things:
+If you build an app on ORIKA, the framework asks you to do four things:
 
 1. **Declare contracts.** Every renderer-callable surface is an `RpcGroup`.
 2. **Compose layers.** Pick the runtime services you need, declare their permissions, and provide them to your handlers.

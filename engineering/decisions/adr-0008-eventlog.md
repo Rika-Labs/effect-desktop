@@ -53,7 +53,7 @@ Cross-links: [ADR-0003](adr-0003-sql-effect-unstable-sql.md) (SQL journal backen
 
 ## Validation
 
-Journal entries persist across restart via the SQL adapter; a renderer-side live query subscribed via Reactivity invalidates within one tick of a publish in another window; compaction reduces journal size under a synthetic workload; no public `@effect-desktop/core` wrapper re-export remains for upstream EventLog primitives. `bun run typecheck` and `bun test` pass.
+Journal entries persist across restart via the SQL adapter; a renderer-side live query subscribed via Reactivity invalidates within one tick of a publish in another window; compaction reduces journal size under a synthetic workload; no public `@orika/core` wrapper re-export remains for upstream EventLog primitives. `bun run typecheck` and `bun test` pass.
 
 ## Migration notes
 

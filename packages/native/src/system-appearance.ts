@@ -8,8 +8,8 @@ import {
   type RpcSupportMetadata,
   RpcGroup,
   type HostProtocolError
-} from "@effect-desktop/bridge"
-import { type PermissionRegistry, P, type DesktopRpcClient } from "@effect-desktop/core"
+} from "@orika/bridge"
+import { type PermissionRegistry, P, type DesktopRpcClient } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
@@ -164,7 +164,7 @@ export interface SystemAppearanceClientApi {
 export class SystemAppearanceClient extends Context.Service<
   SystemAppearanceClient,
   SystemAppearanceClientApi
->()("@effect-desktop/native/SystemAppearanceClient") {}
+>()("@orika/native/SystemAppearanceClient") {}
 
 export interface SystemAppearanceServiceApi {
   readonly getAppearance: () => Effect.Effect<SystemAppearanceMode, SystemAppearanceError, never>
@@ -188,7 +188,7 @@ export interface SystemAppearanceServiceApi {
 export class SystemAppearance extends Context.Service<
   SystemAppearance,
   SystemAppearanceServiceApi
->()("@effect-desktop/native/SystemAppearance") {
+>()("@orika/native/SystemAppearance") {
   static readonly layer = Layer.effect(SystemAppearance)(
     Effect.gen(function* () {
       const client = yield* SystemAppearanceClient

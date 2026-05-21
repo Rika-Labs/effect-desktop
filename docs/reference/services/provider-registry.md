@@ -19,7 +19,7 @@ import {
   ProviderCapability,
   ProviderRegistryError,
   makeProviderRegistry
-} from "@effect-desktop/core/runtime/provider-registry"
+} from "@orika/core/runtime/provider-registry"
 ```
 
 ## API

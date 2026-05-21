@@ -1,7 +1,7 @@
 export default {
   app: {
     id: "dev.effect-desktop.inspector",
-    name: "Effect Desktop Inspector",
+    name: "ORIKA Inspector",
     version: "0.0.0"
   },
   runtime: {

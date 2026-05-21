@@ -1,7 +1,4 @@
-import {
-  HostProtocolError as HostProtocolErrorSchema,
-  type HostProtocolError
-} from "@effect-desktop/bridge"
+import { HostProtocolError as HostProtocolErrorSchema, type HostProtocolError } from "@orika/bridge"
 import { Context, Effect, Layer, Schema } from "effect"
 
 export const NativeBoundaryErrorReason = Schema.Literals([
@@ -45,7 +42,7 @@ export interface NativeBoundaryErrorsApi {
 export class NativeBoundaryErrors extends Context.Service<
   NativeBoundaryErrors,
   NativeBoundaryErrorsApi
->()("@effect-desktop/native/native-boundary-error/NativeBoundaryErrors") {}
+>()("@orika/native/native-boundary-error/NativeBoundaryErrors") {}
 
 export const classifyNativeBoundaryError = (error: HostProtocolError): NativeBoundaryError =>
   new NativeBoundaryError({

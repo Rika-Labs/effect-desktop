@@ -11,7 +11,7 @@ export interface AutoSavePort {
 }
 
 export class AutoSaveService extends Context.Service<AutoSaveService, AutoSavePort>()(
-  "@effect-desktop/core/runtime/auto-save/AutoSaveService"
+  "@orika/core/runtime/auto-save/AutoSaveService"
 ) {}
 
 export interface AutoSaveOptions {

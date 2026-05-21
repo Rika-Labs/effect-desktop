@@ -1,6 +1,6 @@
 import { Context, Effect, Layer, Option, Ref, Schema, Stream } from "effect"
 
-import { HostProtocolNotFoundError } from "@effect-desktop/bridge"
+import { HostProtocolNotFoundError } from "@orika/bridge"
 import {
   makePermissionRegistry,
   NormalizedCapability,
@@ -11,7 +11,7 @@ import {
   type DesktopRpcSchemaDoc,
   type PermissionRegistryApi,
   type ResourceRegistryApi
-} from "@effect-desktop/core"
+} from "@orika/core"
 import {
   Clipboard,
   ClipboardSurface,
@@ -32,7 +32,7 @@ import {
   type ScreenServiceApi,
   type WindowError,
   type WindowServiceApi
-} from "@effect-desktop/native"
+} from "@orika/native"
 import {
   ClipboardImage,
   ScreenDisplay,
@@ -50,7 +50,7 @@ import {
   type ScreenMethod,
   type WindowCreateOptions,
   type WindowHandle
-} from "@effect-desktop/native/contracts"
+} from "@orika/native/contracts"
 // oxlint-disable-next-line import/no-cycle -- test native harness extends the package barrel it is re-exported from.
 import { assertNoOpenResources } from "./index.js"
 
@@ -97,7 +97,7 @@ export interface TestWindowStateApi {
 }
 
 export class TestWindowState extends Context.Service<TestWindowState, TestWindowStateApi>()(
-  "@effect-desktop/test/native/TestWindowState"
+  "@orika/test/native/TestWindowState"
 ) {}
 
 export interface TestNativeSurface {
