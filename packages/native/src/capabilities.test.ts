@@ -32,6 +32,9 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const displayCaptureCaptureRegion = yield* capabilities.support(
         "DisplayCapture.captureRegion"
       )
+      const displayCaptureCaptureWindow = yield* capabilities.support(
+        "DisplayCapture.captureWindow"
+      )
       const crashReporterStart = yield* capabilities.support("CrashReporter.start")
       const crashReporterRecordBreadcrumb = yield* capabilities.support(
         "CrashReporter.recordBreadcrumb"
@@ -150,6 +153,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
         ]
       })
       expect(displayCaptureCaptureRegion).toEqual(displayCaptureCaptureDisplay)
+      expect(displayCaptureCaptureWindow).toEqual(displayCaptureCaptureDisplay)
       expect(crashReporterStart).toEqual({
         status: "partial",
         reason: "native-crash-capture-unavailable",
