@@ -60,7 +60,7 @@ The machine-readable matrix lives in [`parity-matrix.json`](parity-matrix.json).
 | `CookieStore`               | `isSupported`               | `supported`   | `CookieStore.isSupported`                 | `routed`          |
 | `CookieStore`               | `remove`                    | `partial`     | `CookieStore.remove`                      | `routed`          |
 | `CookieStore`               | `set`                       | `partial`     | `CookieStore.set`                         | `routed`          |
-| `CrashReporter`             | `flush`                     | `partial`     | `CrashReporter.flush`                     | `routed`          |
+| `CrashReporter`             | `flush`                     | `supported`   | `CrashReporter.flush`                     | `routed`          |
 | `CrashReporter`             | `getReports`                | `partial`     | `CrashReporter.getReports`                | `routed`          |
 | `CrashReporter`             | `recordBreadcrumb`          | `partial`     | `CrashReporter.recordBreadcrumb`          | `routed`          |
 | `CrashReporter`             | `start`                     | `partial`     | `CrashReporter.start`                     | `routed`          |

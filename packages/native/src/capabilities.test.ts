@@ -25,6 +25,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const updaterDownload = yield* capabilities.support("Updater.download")
       const updaterInstall = yield* capabilities.support("Updater.install")
       const crashReporterStart = yield* capabilities.support("CrashReporter.start")
+      const crashReporterFlush = yield* capabilities.support("CrashReporter.flush")
       const powerMonitorIsSupported = yield* capabilities.support("PowerMonitor.isSupported")
       const systemAppearance = yield* capabilities.support("SystemAppearance.getAppearance")
       const appQuit = yield* capabilities.support("App.quit")
@@ -83,15 +84,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
           { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
         ]
       })
-      expect(contextMenuShow).toEqual({
-        status: "unsupported",
-        reason: "host-adapter-unimplemented",
-        platforms: [
-          { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
-          { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
-          { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
-        ]
-      })
+      expect(contextMenuShow).toEqual({ status: "supported" })
       expect(safeStorageSet).toEqual({ status: "supported" })
       expect(safeStorageIsAvailable).toEqual({ status: "supported" })
       expect(updaterCheck).toEqual({
@@ -130,6 +123,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
           { platform: "linux", status: "partial", reason: "native-crash-capture-unavailable" }
         ]
       })
+      expect(crashReporterFlush).toEqual({ status: "supported" })
       expect(powerMonitorIsSupported).toEqual({
         status: "partial",
         reason: "platform-power-monitor-unavailable",

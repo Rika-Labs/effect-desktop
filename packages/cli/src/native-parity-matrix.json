@@ -549,25 +549,7 @@
       "method": "flush",
       "capability": "native",
       "support": {
-        "status": "partial",
-        "reason": "native-crash-capture-unavailable",
-        "platforms": [
-          {
-            "platform": "macos",
-            "status": "partial",
-            "reason": "native-crash-capture-unavailable"
-          },
-          {
-            "platform": "windows",
-            "status": "partial",
-            "reason": "native-crash-capture-unavailable"
-          },
-          {
-            "platform": "linux",
-            "status": "partial",
-            "reason": "native-crash-capture-unavailable"
-          }
-        ]
+        "status": "supported"
       },
       "hostStatus": "routed"
     },
@@ -5095,8 +5077,8 @@
     "total": 289,
     "routed": 238,
     "missing": 0,
-    "supported": 164,
-    "partial": 74,
+    "supported": 165,
+    "partial": 73,
     "unsupported": 51
   }
 }

@@ -55,6 +55,7 @@ const CrashReporterSupport = NativeSurface.support.partial(PartialSupportReason,
     { platform: "linux", status: "partial", reason: PartialSupportReason }
   ]
 })
+const CrashReporterFlushSupport = NativeSurface.support.supported
 
 export const CrashReporterStart = NativeSurface.rpc(Surface, "start", {
   payload: CrashReporterStartInput,
@@ -81,7 +82,7 @@ export const CrashReporterFlush = NativeSurface.rpc(Surface, "flush", {
     P.nativeInvoke({ primitive: "CrashReporter", methods: ["flush"] })
   ),
   endpoint: "mutation",
-  support: CrashReporterSupport
+  support: CrashReporterFlushSupport
 })
 export const CrashReporterGetReports = NativeSurface.rpc(Surface, "getReports", {
   payload: Schema.Void,
