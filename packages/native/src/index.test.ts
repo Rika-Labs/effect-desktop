@@ -6958,6 +6958,18 @@ test("UpdaterRpcs declares the Phase 8 Updater method surface", () => {
   expect(Object.keys(UpdaterRpcEvents)).toEqual(["PreparingRestart"])
 })
 
+test("Updater.download support metadata keeps network artifact download unavailable", () => {
+  expect(UpdaterRpcs.requests.get("Updater.download")!.pipe(rpcSupport)).toEqual({
+    status: "partial",
+    reason: "signed-manifest-file-artifact-only",
+    platforms: [
+      { platform: "macos", status: "partial", reason: "signed-manifest-file-artifact-only" },
+      { platform: "windows", status: "partial", reason: "signed-manifest-file-artifact-only" },
+      { platform: "linux", status: "partial", reason: "signed-manifest-file-artifact-only" }
+    ]
+  })
+})
+
 test("Updater service delegates through a substitutable UpdaterClient port", () =>
   Effect.runPromise(
     Effect.gen(function* () {

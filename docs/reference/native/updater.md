@@ -14,6 +14,8 @@ The host does not fetch feeds, download network artifacts, enforce update policy
 
 `Updater.download` is update-specific status reporting, not a general app download manager. There is no `Download` service yet for arbitrary file downloads, destination selection, pause/resume/cancel controls, session-owned resource handles, or ordered progress/completion events.
 
+`Updater.download` remains partial because it stages only `file://` artifacts selected from the previously verified signed manifest. Network artifact download still needs a host-owned transport policy, TLS/proxy behavior, progress and cancellation state, and durable terminal failure reporting before it can be marked supported.
+
 ## Methods
 
 | Method              | Payload                                           | Success                                                    | Current support |
