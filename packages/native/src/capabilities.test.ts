@@ -129,6 +129,9 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const appQuit = yield* capabilities.support("App.quit")
       const globalShortcutRegister = yield* capabilities.support("GlobalShortcut.register")
       const globalShortcutUnregister = yield* capabilities.support("GlobalShortcut.unregister")
+      const globalShortcutUnregisterAll = yield* capabilities.support(
+        "GlobalShortcut.unregisterAll"
+      )
       const webViewCreate = yield* capabilities.support("WebView.create")
       const menuClear = yield* capabilities.support("Menu.clear")
       const contextMenuShow = yield* capabilities.support("ContextMenu.show")
@@ -177,6 +180,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(dockProgress).toEqual({ status: "supported" })
       expect(globalShortcutRegister).toEqual(HostAdapterUnimplementedSupport)
       expect(globalShortcutUnregister).toEqual(HostAdapterUnimplementedSupport)
+      expect(globalShortcutUnregisterAll).toEqual(HostAdapterUnimplementedSupport)
       expect(webViewCreate).toEqual({
         status: "partial",
         reason: "host-navigation-state-tracked",
