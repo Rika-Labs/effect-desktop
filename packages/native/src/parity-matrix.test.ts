@@ -248,6 +248,18 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
           ]
         }
       })
+      expect(result.rows.find((row) => row.tag === "WebRequest.onHeadersReceived")).toMatchObject({
+        hostStatus: "capability-fact",
+        support: {
+          status: "unsupported",
+          reason: "host-web-request-unavailable",
+          platforms: [
+            { platform: "macos", status: "unsupported", reason: "host-web-request-unavailable" },
+            { platform: "windows", status: "unsupported", reason: "host-web-request-unavailable" },
+            { platform: "linux", status: "unsupported", reason: "host-web-request-unavailable" }
+          ]
+        }
+      })
       expect(result.rows.find((row) => row.tag === "NetworkAuth.handleAuth")).toMatchObject({
         hostStatus: "capability-fact",
         support: {

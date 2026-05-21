@@ -220,6 +220,9 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       )
       const networkAuthSetProxy = yield* capabilities.support("NetworkAuth.setProxy")
       const webRequestOnBeforeRequest = yield* capabilities.support("WebRequest.onBeforeRequest")
+      const webRequestOnHeadersReceived = yield* capabilities.support(
+        "WebRequest.onHeadersReceived"
+      )
       const notificationClose = yield* capabilities.support("Notification.close")
       const notificationGetPermissionStatus = yield* capabilities.support(
         "Notification.getPermissionStatus"
@@ -297,6 +300,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(networkAuthHandleCertificate).toEqual(NetworkAuthUnavailableSupport)
       expect(networkAuthSetProxy).toEqual(NetworkAuthProxySupport)
       expect(webRequestOnBeforeRequest).toEqual(WebRequestUnavailableSupport)
+      expect(webRequestOnHeadersReceived).toEqual(WebRequestUnavailableSupport)
       expect(notificationClose).toEqual(NotificationUnavailableSupport)
       expect(notificationGetPermissionStatus).toEqual(NotificationUnavailableSupport)
       expect(notificationRequestPermission).toEqual(NotificationUnavailableSupport)
