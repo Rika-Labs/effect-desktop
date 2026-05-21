@@ -15,6 +15,8 @@ The only callable RPC on this surface is the support query:
 
 `open`, `reposition`, and `dismiss` are not callable RPCs. They are advertised in the native capability manifest as capability facts with `support.status: "unsupported"` and reason `host-adapter-unimplemented`, but no host adapter can be invoked. They describe the intended role-mutation contract; they cannot be called until a native role adapter exists.
 
+`dismiss` cannot be supported independently from `open`. A correct implementation must dismiss a host-owned transient role by generation-checked handle, dispose it exactly once, restore focus according to the role policy, and publish a lifecycle event. Without a role registry created by `open`, a standalone `dismiss` would either be unreachable or would risk treating arbitrary window IDs as transient-role handles.
+
 | Capability fact | Intended role                                                 |
 | --------------- | ------------------------------------------------------------- |
 | `open`          | Show a transient role and return a generation-stamped handle. |
