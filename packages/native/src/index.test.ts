@@ -2280,6 +2280,7 @@ test("WebView declares unsupported methods as non-callable capability facts", ()
   expect(byTag.get("WebView.captureScreenshot")?.support).toEqual(webViewDocumentUnsupportedSupport)
   expect(byTag.get("WebView.findInPage")?.support).toEqual(webViewFindInPageUnsupportedSupport)
   expect(byTag.get("WebView.listFrames")?.support).toEqual(webViewFrameRoutingUnsupportedSupport)
+  expect(byTag.get("WebView.postToFrame")?.support).toEqual(webViewFrameRoutingUnsupportedSupport)
   expect(byTag.has("WebView.capability")).toBe(false)
   for (const fact of WebViewCapabilityFacts) {
     expect(fact.support.status).toBe("unsupported")
@@ -2310,6 +2311,9 @@ test("WebView capability facts surface in the manifest and stay non-callable", (
       )
       expect(byTag.get("WebView.findInPage")?.support).toEqual(webViewFindInPageUnsupportedSupport)
       expect(byTag.get("WebView.listFrames")?.support).toEqual(
+        webViewFrameRoutingUnsupportedSupport
+      )
+      expect(byTag.get("WebView.postToFrame")?.support).toEqual(
         webViewFrameRoutingUnsupportedSupport
       )
       expect(byTag.has("WebView.capability")).toBe(false)
