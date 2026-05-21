@@ -22,6 +22,10 @@ silently fail on Linux desktops without that stack.
 until `Tray.create` can allocate one through the host tray registry, so destroy remains unsupported there
 instead of accepting synthetic handles.
 
+`Tray.setIcon` is also tied to the Linux tray backend. Updating a Linux tray icon requires an owned
+AppIndicator-backed handle and the backend's temporary PNG icon path management, so the host keeps the
+method partial until that backend is shipped and probed.
+
 ## Methods
 
 | Method        | Payload                             | Success                  |
