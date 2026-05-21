@@ -128,6 +128,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const systemAppearance = yield* capabilities.support("SystemAppearance.getAppearance")
       const appQuit = yield* capabilities.support("App.quit")
       const globalShortcutRegister = yield* capabilities.support("GlobalShortcut.register")
+      const globalShortcutUnregister = yield* capabilities.support("GlobalShortcut.unregister")
       const webViewCreate = yield* capabilities.support("WebView.create")
       const menuClear = yield* capabilities.support("Menu.clear")
       const contextMenuShow = yield* capabilities.support("ContextMenu.show")
@@ -174,15 +175,8 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(dockJumpList).toEqual(UnsupportedDockCapabilitySupport)
       expect(dockMenu).toEqual(UnsupportedDockCapabilitySupport)
       expect(dockProgress).toEqual({ status: "supported" })
-      expect(globalShortcutRegister).toEqual({
-        status: "unsupported",
-        reason: "host-adapter-unimplemented",
-        platforms: [
-          { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
-          { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
-          { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
-        ]
-      })
+      expect(globalShortcutRegister).toEqual(HostAdapterUnimplementedSupport)
+      expect(globalShortcutUnregister).toEqual(HostAdapterUnimplementedSupport)
       expect(webViewCreate).toEqual({
         status: "partial",
         reason: "host-navigation-state-tracked",

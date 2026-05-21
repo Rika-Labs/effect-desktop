@@ -355,6 +355,18 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
           ]
         }
       })
+      expect(result.rows.find((row) => row.tag === "GlobalShortcut.unregister")).toMatchObject({
+        hostStatus: "capability-fact",
+        support: {
+          status: "unsupported",
+          reason: "host-adapter-unimplemented",
+          platforms: [
+            { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
+            { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
+            { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
+          ]
+        }
+      })
     })
   ))
 
