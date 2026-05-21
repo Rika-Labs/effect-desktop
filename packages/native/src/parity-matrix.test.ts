@@ -125,6 +125,18 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
           ]
         }
       })
+      expect(result.rows.find((row) => row.tag === "WebView.goForward")).toMatchObject({
+        hostStatus: "routed",
+        support: {
+          status: "partial",
+          reason: "host-navigation-state-tracked",
+          platforms: [
+            { platform: "macos", status: "partial", reason: "host-navigation-state-tracked" },
+            { platform: "windows", status: "partial", reason: "host-navigation-state-tracked" },
+            { platform: "linux", status: "partial", reason: "host-navigation-state-tracked" }
+          ]
+        }
+      })
       expect(result.rows.find((row) => row.tag === "WebView.attachDebugger")).toMatchObject({
         hostStatus: "capability-fact",
         support: {

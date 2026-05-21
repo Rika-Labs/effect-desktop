@@ -2252,6 +2252,7 @@ test("WebView support metadata reflects resource lifecycle and devtools platform
   expect(byTag.get("WebView.create")?.support).toEqual({ status: "supported" })
   expect(byTag.get("WebView.destroy")?.support).toEqual({ status: "supported" })
   expect(byTag.get("WebView.goBack")?.support).toEqual(webViewNavigationTrackedSupport)
+  expect(byTag.get("WebView.goForward")?.support).toEqual(webViewNavigationTrackedSupport)
   expect(byTag.get("WebView.getNavigationState")?.support).toEqual(webViewNavigationTrackedSupport)
   expect(byTag.get("WebView.openDevTools")?.support).toEqual(webViewOpenDevToolsSupport)
   expect(byTag.get("WebView.closeDevTools")?.support).toEqual(webViewCloseDevToolsSupport)

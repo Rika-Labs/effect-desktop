@@ -307,6 +307,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const webViewCreate = yield* capabilities.support("WebView.create")
       const webViewDestroy = yield* capabilities.support("WebView.destroy")
       const webViewGoBack = yield* capabilities.support("WebView.goBack")
+      const webViewGoForward = yield* capabilities.support("WebView.goForward")
       const webViewGetNavigationState = yield* capabilities.support("WebView.getNavigationState")
       const webViewOpenDevTools = yield* capabilities.support("WebView.openDevTools")
       const webViewCloseDevTools = yield* capabilities.support("WebView.closeDevTools")
@@ -394,6 +395,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(webViewCreate).toEqual({ status: "supported" })
       expect(webViewDestroy).toEqual({ status: "supported" })
       expect(webViewGoBack).toEqual(WebViewNavigationTrackedSupport)
+      expect(webViewGoForward).toEqual(WebViewNavigationTrackedSupport)
       expect(webViewGetNavigationState).toEqual(WebViewNavigationTrackedSupport)
       expect(menuClear).toEqual({
         status: "partial",
