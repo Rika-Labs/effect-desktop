@@ -260,6 +260,9 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const hasMenuBindCommand = capabilities.manifest.some(
         (fact) => fact.tag === "Menu.bindCommand"
       )
+      const hasWebViewCapability = capabilities.manifest.some(
+        (fact) => fact.tag === "WebView.capability"
+      )
 
       expect(create).toEqual({ status: "supported" })
       expect(appQuit).toEqual({ status: "supported" })
@@ -343,6 +346,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       })
       expect(contextMenuShow).toEqual({ status: "supported" })
       expect(hasMenuBindCommand).toBe(false)
+      expect(hasWebViewCapability).toBe(false)
       expect(safeStorageSet).toEqual({ status: "supported" })
       expect(safeStorageIsAvailable).toEqual({ status: "supported" })
       expect(updaterCheck).toEqual({ status: "supported" })

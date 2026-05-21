@@ -189,7 +189,6 @@ The following are not callable RPCs. They are advertised in the native capabilit
 | `listFrames`          | `{ webview }`                      | `host-frame-routing-unavailable`              |
 | `postToFrame`         | `{ webview, frame, payload }`      | `host-frame-routing-unavailable`              |
 | `attachDebugger`      | `{ webview }`                      | `host-debugger-protocol-unavailable`          |
-| `capability`          | `{ name, platform?, mode? }`       | `host-adapter-unimplemented`                  |
 
 ## App composition
 
@@ -249,17 +248,18 @@ callbacks and report through `WebView.RuntimeEvent`.
 
 `captureScreenshot`, `printToPdf`, `findInPage`, `setUserAgent`,
 `setAudioMuted`, `respondToPermission`, `listFrames`, `postToFrame`,
-`attachDebugger`, and `capability` are non-callable capability facts. They are
+and `attachDebugger` are non-callable capability facts. They are
 advertised in the native capability manifest with `support.status:
 "unsupported"` — `host-document-output-unavailable` for the document-output
 methods, `host-user-agent-runtime-unavailable` for `setUserAgent`,
 `host-runtime-media-control-unavailable` for `setAudioMuted`,
 `host-permission-request-routing-unavailable` for `respondToPermission`,
 `host-frame-routing-unavailable` for the frame methods,
-`host-debugger-protocol-unavailable` for `attachDebugger`, and
-`host-adapter-unimplemented` for `capability` — but none can be invoked.
+and `host-debugger-protocol-unavailable` for `attachDebugger` — but none can be
+invoked.
 `webViewCapability(...)` remains a local platform and runtime-mode feature
-helper; it does not grant permission.
+helper, not a native host method or parity-matrix row; it does not grant
+permission.
 Request/response interception is also not part of this surface yet; it requires
 a separate native host adapter with provider request and response callbacks.
 Proxy/auth/certificate hooks are likewise absent from the `WebView` surface;

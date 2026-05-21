@@ -3650,34 +3650,6 @@
       "hostStatus": "capability-fact"
     },
     {
-      "tag": "WebView.capability",
-      "surface": "WebView",
-      "method": "capability",
-      "capability": "none",
-      "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
-        "platforms": [
-          {
-            "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          },
-          {
-            "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          },
-          {
-            "platform": "linux",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          }
-        ]
-      },
-      "hostStatus": "capability-fact"
-    },
-    {
       "tag": "WebView.captureScreenshot",
       "surface": "WebView",
       "method": "captureScreenshot",
@@ -4869,11 +4841,11 @@
     }
   ],
   "summary": {
-    "total": 288,
+    "total": 287,
     "routed": 239,
     "missing": 0,
     "supported": 175,
     "partial": 64,
-    "unsupported": 49
+    "unsupported": 48
   }
 }

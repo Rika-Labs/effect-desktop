@@ -877,8 +877,7 @@ const expectedWebViewCapabilityFactMethods = [
   "respondToPermission",
   "listFrames",
   "postToFrame",
-  "attachDebugger",
-  "capability"
+  "attachDebugger"
 ] as const
 
 const webViewDebuggerUnsupportedSupport = {
@@ -2194,13 +2193,14 @@ test("WebViewRpcs declares the Phase 7 WebView method and event surface", () => 
   ])
 })
 
-test("WebView declares the 10 unsupported methods as non-callable capability facts", () => {
+test("WebView declares unsupported methods as non-callable capability facts", () => {
   const factTags = WebViewCapabilityFacts.map((fact) => fact.tag).toSorted()
   expect(factTags).toEqual(
     expectedWebViewCapabilityFactMethods.map((method) => `WebView.${method}`).toSorted()
   )
   const byTag = new Map(WebViewCapabilityFacts.map((fact) => [fact.tag, fact] as const))
   expect(byTag.get("WebView.attachDebugger")?.support).toEqual(webViewDebuggerUnsupportedSupport)
+  expect(byTag.has("WebView.capability")).toBe(false)
   for (const fact of WebViewCapabilityFacts) {
     expect(fact.support.status).toBe("unsupported")
   }
@@ -2225,6 +2225,7 @@ test("WebView capability facts surface in the manifest and stay non-callable", (
       expect(byTag.get("WebView.attachDebugger")?.support).toEqual(
         webViewDebuggerUnsupportedSupport
       )
+      expect(byTag.has("WebView.capability")).toBe(false)
       const nonCallableTags = WebViewSurface.schemaDocs
         .filter((doc) => !doc.callable)
         .map((doc) => doc.tag)

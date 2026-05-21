@@ -121,6 +121,7 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
           ]
         }
       })
+      expect(result.rows.find((row) => row.tag === "WebView.capability")).toBeUndefined()
       expect(result.rows.find((row) => row.tag === "Menu.setApplicationMenu")).toMatchObject({
         hostStatus: "routed",
         support: { status: "supported" }

@@ -40,15 +40,7 @@ import {
 import type { WindowHandle } from "./contracts/window.js"
 const StrictParseOptions = { onExcessProperty: "error" } as const
 type WebViewError = HostProtocolError
-const WebViewUnsupportedReason = "host-adapter-unimplemented"
 const WebViewNavigationPartialReason = "host-navigation-state-tracked"
-const WebViewRpcSupport = NativeSurface.support.unsupported(WebViewUnsupportedReason, {
-  platforms: [
-    { platform: "macos", status: "unsupported", reason: WebViewUnsupportedReason },
-    { platform: "windows", status: "unsupported", reason: WebViewUnsupportedReason },
-    { platform: "linux", status: "unsupported", reason: WebViewUnsupportedReason }
-  ]
-})
 const WebViewNavigationSupport = NativeSurface.support.partial(WebViewNavigationPartialReason, {
   platforms: [
     { platform: "macos", status: "partial", reason: WebViewNavigationPartialReason },
@@ -324,11 +316,7 @@ export const WebViewCapabilityFacts = Object.freeze([
   webViewCapabilityFact("respondToPermission", WebViewRuntimePermissionSupport),
   webViewCapabilityFact("listFrames", WebViewFrameRoutingSupport),
   webViewCapabilityFact("postToFrame", WebViewFrameRoutingSupport),
-  webViewCapabilityFact("attachDebugger", WebViewDebuggerSupport),
-  NativeSurface.capabilityFact("WebView", "capability", {
-    authority: NativeSurface.authority.custom({ kind: "none" }),
-    support: WebViewRpcSupport
-  })
+  webViewCapabilityFact("attachDebugger", WebViewDebuggerSupport)
 ])
 
 export const WebViewRpcEvents = Object.freeze({
