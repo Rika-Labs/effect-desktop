@@ -55,7 +55,7 @@ const RuntimeProbedEgressPolicySupport = {
   ]
 } as const
 
-const UnsupportedExecutionSandboxSupport = {
+const HostAdapterUnimplementedSupport = {
   status: "unsupported",
   reason: "host-adapter-unimplemented",
   platforms: [
@@ -113,6 +113,9 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const executionSandboxRun = yield* capabilities.support("ExecutionSandbox.run")
       const focusedApplicationSnapshot = yield* capabilities.support(
         "FocusedApplicationContext.snapshot"
+      )
+      const focusedApplicationStopWatching = yield* capabilities.support(
+        "FocusedApplicationContext.stopWatching"
       )
       const crashReporterStart = yield* capabilities.support("CrashReporter.start")
       const crashReporterRecordBreadcrumb = yield* capabilities.support(
@@ -249,10 +252,11 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(egressPolicyDecide).toEqual(RuntimeProbedEgressPolicySupport)
       expect(egressPolicyIsSupported).toEqual(RuntimeProbedEgressPolicySupport)
       expect(egressPolicyRecord).toEqual(RuntimeProbedEgressPolicySupport)
-      expect(executionSandboxCreate).toEqual(UnsupportedExecutionSandboxSupport)
-      expect(executionSandboxDestroy).toEqual(UnsupportedExecutionSandboxSupport)
-      expect(executionSandboxRun).toEqual(UnsupportedExecutionSandboxSupport)
+      expect(executionSandboxCreate).toEqual(HostAdapterUnimplementedSupport)
+      expect(executionSandboxDestroy).toEqual(HostAdapterUnimplementedSupport)
+      expect(executionSandboxRun).toEqual(HostAdapterUnimplementedSupport)
       expect(focusedApplicationSnapshot).toEqual(MacOsFocusedApplicationSnapshotSupport)
+      expect(focusedApplicationStopWatching).toEqual(HostAdapterUnimplementedSupport)
       expect(displayCaptureCaptureDisplay).toEqual({
         status: "partial",
         reason: "macos-screencapture-adapter",
