@@ -1751,34 +1751,6 @@
       "hostStatus": "routed"
     },
     {
-      "tag": "Menu.bindCommand",
-      "surface": "Menu",
-      "method": "bindCommand",
-      "capability": "native",
-      "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
-        "platforms": [
-          {
-            "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          },
-          {
-            "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          },
-          {
-            "platform": "linux",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          }
-        ]
-      },
-      "hostStatus": "capability-fact"
-    },
-    {
       "tag": "Menu.capability",
       "surface": "Menu",
       "method": "capability",
@@ -5038,11 +5010,11 @@
     }
   ],
   "summary": {
-    "total": 289,
+    "total": 288,
     "routed": 238,
     "missing": 0,
     "supported": 167,
     "partial": 71,
-    "unsupported": 51
+    "unsupported": 50
   }
 }

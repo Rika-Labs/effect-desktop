@@ -13,7 +13,7 @@ use host_protocol::{
     ContextMenuActivatedEventPayload, CookieStoreCookiePayload, CookieStoreGetPayload,
     CookieStoreGetResultPayload, CookieStoreRemovePayload, CookieStoreSameSitePayload,
     CookieStoreSetPayload, DockProgressState, DockSetProgressPayload, HostProtocolEnvelope,
-    HostProtocolError, ScreenBoundsPayload, ScreenDisplayPayload,
+    HostProtocolError, MenuActivatedEventPayload, ScreenBoundsPayload, ScreenDisplayPayload,
     ScreenDisplaysChangedEventPayload, ScreenDisplaysResultPayload, ScreenMethodPayload,
     ScreenPointPayload, ScreenSupportedPayload, SessionProfileResourcePayload, TrayResourcePayload,
     WindowAttentionType, WindowBoundsEventPayload, WindowBoundsPayload, WindowCreatePayload,
@@ -1305,6 +1305,23 @@ struct NativeTrayResources {
 }
 
 #[derive(Clone, Debug)]
+pub(crate) struct MenuCommandBinding {
+    item_id: String,
+    command_id: String,
+    window_id: Option<String>,
+}
+
+impl MenuCommandBinding {
+    pub(crate) fn new(item_id: String, command_id: String, window_id: Option<String>) -> Self {
+        Self {
+            item_id,
+            command_id,
+            window_id,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 struct ContextMenuCommandBinding {
     item_id: String,
     command_id: String,
@@ -1328,6 +1345,11 @@ static TRAY_EVENT_SENDER: LazyLock<Mutex<Option<Sender<HostProtocolEnvelope>>>> 
     LazyLock::new(|| Mutex::new(None));
 static TRAY_EVENT_HANDLES: LazyLock<Mutex<HashMap<String, TrayResourcePayload>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+static MENU_EVENT_SENDER: LazyLock<Mutex<Option<Sender<HostProtocolEnvelope>>>> =
+    LazyLock::new(|| Mutex::new(None));
+static MENU_COMMANDS: LazyLock<Mutex<HashMap<String, MenuCommandBinding>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+static MENU_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 static CONTEXT_MENU_EVENT_SENDER: LazyLock<Mutex<Option<Sender<HostProtocolEnvelope>>>> =
     LazyLock::new(|| Mutex::new(None));
 static CONTEXT_MENU_COMMANDS: LazyLock<Mutex<HashMap<String, ContextMenuCommandBinding>>> =
@@ -4175,7 +4197,7 @@ impl WindowRegistry {
             ));
         }
 
-        macos::set_application_menu(template)
+        macos::set_window_menu(window_id, template)
     }
 
     fn show_context_menu(
@@ -7319,6 +7341,24 @@ pub(crate) fn clear_tray_runtime_event_state() -> std::result::Result<(), HostPr
     Ok(())
 }
 
+pub(crate) fn clear_menu_runtime_event_state() -> std::result::Result<(), HostProtocolError> {
+    let mut sender = MENU_EVENT_SENDER.lock().map_err(|_| {
+        HostProtocolError::internal(
+            "menu event sender mutex poisoned",
+            "host.runtime.menu.disconnect",
+        )
+    })?;
+    *sender = None;
+    let mut commands = MENU_COMMANDS.lock().map_err(|_| {
+        HostProtocolError::internal(
+            "menu command mutex poisoned",
+            "host.runtime.menu.disconnect",
+        )
+    })?;
+    commands.clear();
+    Ok(())
+}
+
 pub(crate) fn clear_context_menu_runtime_event_state() -> std::result::Result<(), HostProtocolError>
 {
     let mut sender = CONTEXT_MENU_EVENT_SENDER.lock().map_err(|_| {
@@ -7338,6 +7378,20 @@ pub(crate) fn clear_context_menu_runtime_event_state() -> std::result::Result<()
     Ok(())
 }
 
+pub(crate) fn install_menu_event_sender(
+    sender: Sender<HostProtocolEnvelope>,
+) -> std::result::Result<(), HostProtocolError> {
+    let mut current = MENU_EVENT_SENDER.lock().map_err(|_| {
+        HostProtocolError::internal(
+            "menu event sender mutex poisoned",
+            host_protocol::MENU_SET_APPLICATION_MENU_METHOD,
+        )
+    })?;
+    *current = Some(sender);
+    install_muda_menu_event_handler();
+    Ok(())
+}
+
 pub(crate) fn install_context_menu_event_sender(
     sender: Sender<HostProtocolEnvelope>,
 ) -> std::result::Result<(), HostProtocolError> {
@@ -7348,7 +7402,28 @@ pub(crate) fn install_context_menu_event_sender(
         )
     })?;
     *current = Some(sender);
-    muda::MenuEvent::set_event_handler(Some(forward_context_menu_event));
+    install_muda_menu_event_handler();
+    Ok(())
+}
+
+fn install_muda_menu_event_handler() {
+    muda::MenuEvent::set_event_handler(Some(forward_muda_menu_event));
+}
+
+pub(crate) fn next_menu_native_item_id(prefix: &str) -> String {
+    let next = MENU_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    format!("menu:{prefix}:{next}")
+}
+
+pub(crate) fn replace_menu_command_bindings(
+    bindings: Vec<(String, MenuCommandBinding)>,
+    operation: &'static str,
+) -> std::result::Result<(), HostProtocolError> {
+    let mut commands = MENU_COMMANDS
+        .lock()
+        .map_err(|_| HostProtocolError::internal("menu command mutex poisoned", operation))?;
+    commands.clear();
+    commands.extend(bindings);
     Ok(())
 }
 
@@ -7377,15 +7452,65 @@ fn clear_context_menu_command_bindings(native_ids: &[String]) {
     }
 }
 
-fn forward_context_menu_event(event: muda::MenuEvent) {
+fn forward_muda_menu_event(event: muda::MenuEvent) {
     let native_id = event.id().as_ref().to_string();
+    if forward_menu_event_for_native_id(&native_id) {
+        return;
+    }
+    let _ = forward_context_menu_event_for_native_id(&native_id);
+}
+
+fn forward_menu_event_for_native_id(native_id: &str) -> bool {
+    let binding = match MENU_COMMANDS
+        .lock()
+        .ok()
+        .and_then(|commands| commands.get(native_id).cloned())
+    {
+        Some(binding) => binding,
+        None => return false,
+    };
+    let sender = match MENU_EVENT_SENDER
+        .lock()
+        .ok()
+        .and_then(|sender| sender.clone())
+    {
+        Some(sender) => sender,
+        None => return true,
+    };
+    let payload = match serde_json::to_value(MenuActivatedEventPayload::new(
+        binding.item_id.clone(),
+        binding.command_id.clone(),
+        binding.window_id.clone(),
+    )) {
+        Ok(payload) => payload,
+        Err(error) => {
+            warn!(
+                event = "host.menu.event_encode_failed",
+                error = %error,
+                "failed to encode menu event"
+            );
+            return true;
+        }
+    };
+    let timestamp = timestamp_millis();
+    let _ = sender.send(HostProtocolEnvelope::Event {
+        method: host_protocol::MENU_ACTIVATED_EVENT.to_string(),
+        timestamp,
+        trace_id: format!("menu-activated-{native_id}-{timestamp}"),
+        window_id: binding.window_id,
+        payload: Some(payload),
+    });
+    true
+}
+
+fn forward_context_menu_event_for_native_id(native_id: &str) -> bool {
     let binding = match CONTEXT_MENU_COMMANDS
         .lock()
         .ok()
-        .and_then(|commands| commands.get(&native_id).cloned())
+        .and_then(|commands| commands.get(native_id).cloned())
     {
         Some(binding) => binding,
-        None => return,
+        None => return false,
     };
     let sender = match CONTEXT_MENU_EVENT_SENDER
         .lock()
@@ -7393,7 +7518,7 @@ fn forward_context_menu_event(event: muda::MenuEvent) {
         .and_then(|sender| sender.clone())
     {
         Some(sender) => sender,
-        None => return,
+        None => return true,
     };
     let payload = match serde_json::to_value(ContextMenuActivatedEventPayload::new(
         binding.item_id.clone(),
@@ -7407,7 +7532,7 @@ fn forward_context_menu_event(event: muda::MenuEvent) {
                 error = %error,
                 "failed to encode context menu event"
             );
-            return;
+            return true;
         }
     };
     let timestamp = timestamp_millis();
@@ -7418,6 +7543,7 @@ fn forward_context_menu_event(event: muda::MenuEvent) {
         window_id: Some(binding.window_id),
         payload: Some(payload),
     });
+    true
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -8292,21 +8418,23 @@ mod tests {
     #[cfg(target_os = "linux")]
     use super::linux_wayland_pointer_unsupported_from_env;
     use super::{
-        centered_physical_axis, clear_webview_runtime_event_state,
+        centered_physical_axis, clear_menu_runtime_event_state, clear_webview_runtime_event_state,
         clear_window_runtime_event_state, clip_window_bounds_to_logical_area,
         control_flow_for_lifecycle_event, control_flow_for_window_state, cookie_domain_matches_url,
         cookie_path_matches_url, display_relative_physical_axis, emit_webview_api_call_event,
         emit_webview_navigation_blocked_event, emit_webview_runtime_event,
-        emit_window_registry_event, handle_native_window_close_requested,
-        handle_webview_isolation_ipc, install_webview_event_sender, install_window_event_sender,
+        emit_window_registry_event, forward_menu_event_for_native_id,
+        handle_native_window_close_requested, handle_webview_isolation_ipc,
+        install_menu_event_sender, install_webview_event_sender, install_window_event_sender,
         is_screen_displays_changed_window_event, lifecycle_event_with_smoke_timeout,
-        lifecycle_for_create_result, resident_lifecycle, rounded_i32, rounded_u32,
-        screen_bounds_payload, smoke_deadline_for_mode, to_tao_dock_progress, unsupported_screen,
-        validate_positive_finite, LogicalScreenArea, PhysicalScreenArea, RunMode,
-        WebViewExposedApi, WebViewIsolationPolicy, WebViewNavigationDecision,
-        WebViewNavigationPolicy, WebViewNavigationState, WindowCommand, WindowCommandResponse,
-        WindowCreateRequest, WindowId, WindowLifecycleEvent, WindowMethodPort, WindowRegistry,
-        WINDOW_COMMAND_IDLE_POLL_INTERVAL, WINDOW_SMOKE_TEST_TIMEOUT,
+        lifecycle_for_create_result, replace_menu_command_bindings, resident_lifecycle,
+        rounded_i32, rounded_u32, screen_bounds_payload, smoke_deadline_for_mode,
+        to_tao_dock_progress, unsupported_screen, validate_positive_finite, LogicalScreenArea,
+        MenuCommandBinding, PhysicalScreenArea, RunMode, WebViewExposedApi, WebViewIsolationPolicy,
+        WebViewNavigationDecision, WebViewNavigationPolicy, WebViewNavigationState, WindowCommand,
+        WindowCommandResponse, WindowCreateRequest, WindowId, WindowLifecycleEvent,
+        WindowMethodPort, WindowRegistry, WINDOW_COMMAND_IDLE_POLL_INTERVAL,
+        WINDOW_SMOKE_TEST_TIMEOUT,
     };
     use host_protocol::{
         DockProgressState, DockSetProgressOptionsPayload, DockSetProgressPayload,
@@ -8330,6 +8458,62 @@ mod tests {
     impl Drop for WindowEventSenderGuard {
         fn drop(&mut self) {
             let _ = clear_window_runtime_event_state();
+        }
+    }
+
+    struct MenuEventSenderGuard;
+
+    impl Drop for MenuEventSenderGuard {
+        fn drop(&mut self) {
+            let _ = clear_menu_runtime_event_state();
+        }
+    }
+
+    #[test]
+    fn menu_command_binding_emits_menu_activation_event() {
+        let _guard = WINDOW_EVENT_TEST_LOCK
+            .lock()
+            .expect("window event test lock should not be poisoned");
+        let (sender, receiver) = mpsc::channel();
+        install_menu_event_sender(sender).expect("menu event sender should install");
+        let _event_sender_guard = MenuEventSenderGuard;
+        replace_menu_command_bindings(
+            vec![(
+                "menu:item:1".to_string(),
+                MenuCommandBinding::new(
+                    "file.open".to_string(),
+                    "app.file.open".to_string(),
+                    Some("window-1".to_string()),
+                ),
+            )],
+            host_protocol::MENU_SET_WINDOW_MENU_METHOD,
+        )
+        .expect("menu command binding should install");
+
+        assert!(forward_menu_event_for_native_id("menu:item:1"));
+
+        let event = receiver
+            .recv()
+            .expect("menu activation event should be emitted");
+        match event {
+            HostProtocolEnvelope::Event {
+                method,
+                window_id,
+                payload,
+                ..
+            } => {
+                assert_eq!(method, host_protocol::MENU_ACTIVATED_EVENT);
+                assert_eq!(window_id.as_deref(), Some("window-1"));
+                assert_eq!(
+                    payload,
+                    Some(serde_json::json!({
+                        "itemId": "file.open",
+                        "commandId": "app.file.open",
+                        "windowId": "window-1"
+                    }))
+                );
+            }
+            _ => panic!("expected menu activation event"),
         }
     }
 

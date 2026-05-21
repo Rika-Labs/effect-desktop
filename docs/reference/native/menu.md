@@ -8,7 +8,7 @@ effect_version: 4
 
 # `Menu`
 
-App and window menus. The Rust host routes application/window menu installation, menu clearing, and the capability query. Menu items can bind to command ids registered with `CommandRegistry` through the TypeScript `Menu` service when a substitutable client provides activation events, but `bindCommand` is not a callable native RPC and real native menu activation events are not wired yet.
+App and window menus. The Rust host routes application/window menu installation, menu clearing, the capability query, and macOS menu activation events for items with `commandId`. Menu items bind to command ids registered with `CommandRegistry` through the TypeScript `Menu` service, but `bindCommand` is not a callable native RPC.
 
 ## Import
 
@@ -32,9 +32,11 @@ The callable RPCs on this surface are:
 
 `setApplicationMenu`, `setWindowMenu`, and `capability` are routed by the Rust host and report supported capability metadata; `clear` is supported on macOS and reports `partial` (`macos-menu-clear-only`).
 
-## Capability facts (non-callable)
+## Command Binding
 
-`bindCommand` is not a callable native RPC. It is advertised in the native capability manifest as a capability fact with `support.status: "unsupported"` and reason `host-adapter-unimplemented`. The `Menu` service still exposes `bindCommand`, but it is orchestrated entirely in TypeScript through `CommandRegistry` and substitutable client activation events — it does not invoke a host route. `Menu.Activated` likewise has no native host adapter yet.
+`bindCommand` is a TypeScript service helper, not a host method. It validates the binding, listens for `Menu.Activated`, and invokes the matching `CommandRegistry` command in a scoped resource. The native capability manifest does not include `Menu.bindCommand`; use `Menu.capability("command binding")` to ask whether the current host can emit activation events for command-bound menu items.
+
+Native command binding is currently supported by the macOS menu adapter. Windows and Linux report the capability as unsupported until their menu adapters emit equivalent activation events.
 
 ## Errors
 

@@ -138,6 +138,9 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const safeStorageSet = yield* capabilities.support("SafeStorage.set")
       const safeStorageIsAvailable = yield* capabilities.support("SafeStorage.isAvailable")
       const hasWindowShow = capabilities.manifest.some((fact) => fact.tag === "Window.show")
+      const hasMenuBindCommand = capabilities.manifest.some(
+        (fact) => fact.tag === "Menu.bindCommand"
+      )
 
       expect(create).toEqual({ status: "supported" })
       expect(appQuit).toEqual({ status: "supported" })
@@ -200,6 +203,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
         ]
       })
       expect(contextMenuShow).toEqual({ status: "supported" })
+      expect(hasMenuBindCommand).toBe(false)
       expect(safeStorageSet).toEqual({ status: "supported" })
       expect(safeStorageIsAvailable).toEqual({ status: "supported" })
       expect(updaterCheck).toEqual({

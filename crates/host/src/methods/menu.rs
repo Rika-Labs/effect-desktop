@@ -111,7 +111,8 @@ const CURRENT_PLATFORM: &str = "unknown";
 fn capability_supported(name: &str, platform: &str) -> bool {
     match (name, platform) {
         ("application menu" | "window menu", "macos" | "windows" | "linux") => true,
-        ("command binding", _) => false,
+        ("command binding", "macos") => true,
+        ("command binding", "windows" | "linux") => false,
         _ => false,
     }
 }
@@ -313,13 +314,20 @@ mod tests {
     }
 
     #[test]
-    fn menu_capability_reports_command_binding_unsupported() {
+    fn menu_capability_reports_command_binding_platform_support() {
         let binding = capability(Some(json!({
             "name": "command binding",
             "platform": "macos"
         })))
-        .expect("command binding capability should report unsupported");
-        assert_eq!(binding, Some(json!({ "supported": false })));
+        .expect("command binding capability should report macOS support");
+        assert_eq!(binding, Some(json!({ "supported": true })));
+
+        let linux_binding = capability(Some(json!({
+            "name": "command binding",
+            "platform": "linux"
+        })))
+        .expect("command binding capability should report Linux unsupported");
+        assert_eq!(linux_binding, Some(json!({ "supported": false })));
     }
 
     #[test]

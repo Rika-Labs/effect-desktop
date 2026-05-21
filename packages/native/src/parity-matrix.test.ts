@@ -105,6 +105,7 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
         hostStatus: "routed",
         support: { status: "partial", reason: "macos-menu-clear-only" }
       })
+      expect(result.rows.find((row) => row.tag === "Menu.bindCommand")).toBeUndefined()
       expect(result.rows.find((row) => row.tag === "ContextMenu.show")).toMatchObject({
         hostStatus: "routed",
         support: { status: "supported" }

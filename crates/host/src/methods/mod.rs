@@ -62,10 +62,11 @@ pub(crate) use job::JOB_ENV_LOCK;
 use crate::{
     linux,
     window::{
-        clear_context_menu_runtime_event_state, clear_screen_runtime_event_state,
-        clear_webview_runtime_event_state, clear_window_runtime_event_state,
-        install_context_menu_event_sender, install_screen_event_sender,
-        install_webview_event_sender, install_window_event_sender, WindowMethodHandler,
+        clear_context_menu_runtime_event_state, clear_menu_runtime_event_state,
+        clear_screen_runtime_event_state, clear_webview_runtime_event_state,
+        clear_window_runtime_event_state, install_context_menu_event_sender,
+        install_menu_event_sender, install_screen_event_sender, install_webview_event_sender,
+        install_window_event_sender, WindowMethodHandler,
     },
 };
 use host_protocol::{HostProtocolEnvelope, HostProtocolError};
@@ -1493,6 +1494,7 @@ impl HostMethodRouter {
         clear_screen_runtime_event_state().map_err(|error| format!("{error:?}"))?;
         clear_window_runtime_event_state().map_err(|error| format!("{error:?}"))?;
         clear_webview_runtime_event_state().map_err(|error| format!("{error:?}"))?;
+        clear_menu_runtime_event_state().map_err(|error| format!("{error:?}"))?;
         clear_context_menu_runtime_event_state().map_err(|error| format!("{error:?}"))?;
         if self.take_runtime_created_trays()? {
             self.window
@@ -1523,6 +1525,7 @@ impl HostMethodRouter {
         install_screen_event_sender(sender.clone()).map_err(|error| format!("{error:?}"))?;
         install_window_event_sender(sender.clone()).map_err(|error| format!("{error:?}"))?;
         install_webview_event_sender(sender.clone()).map_err(|error| format!("{error:?}"))?;
+        install_menu_event_sender(sender.clone()).map_err(|error| format!("{error:?}"))?;
         install_context_menu_event_sender(sender.clone()).map_err(|error| format!("{error:?}"))?;
         *self
             .runtime_event_sender
@@ -1537,6 +1540,7 @@ impl HostMethodRouter {
         clear_screen_runtime_event_state().map_err(|error| format!("{error:?}"))?;
         clear_window_runtime_event_state().map_err(|error| format!("{error:?}"))?;
         clear_webview_runtime_event_state().map_err(|error| format!("{error:?}"))?;
+        clear_menu_runtime_event_state().map_err(|error| format!("{error:?}"))?;
         clear_context_menu_runtime_event_state().map_err(|error| format!("{error:?}"))?;
         *self
             .runtime_event_sender

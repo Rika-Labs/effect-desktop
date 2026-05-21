@@ -205,6 +205,13 @@ pub(crate) fn set_application_menu(template: Value) -> std::result::Result<(), H
     platform::set_application_menu(template)
 }
 
+pub(crate) fn set_window_menu(
+    window_id: &str,
+    template: Value,
+) -> std::result::Result<(), HostProtocolError> {
+    platform::set_window_menu(window_id, template)
+}
+
 #[cfg(all(target_os = "macos", not(test)))]
 pub(crate) fn clear_application_menu() -> std::result::Result<(), HostProtocolError> {
     platform::clear_application_menu()
@@ -505,8 +512,27 @@ mod platform {
     pub(super) fn set_application_menu(
         template: serde_json::Value,
     ) -> std::result::Result<(), HostProtocolError> {
-        let menu = build_menu(&template)?;
+        let mut bindings = Vec::new();
+        let menu = build_menu(&template, None, &mut bindings)?;
         menu.init_for_nsapp();
+        crate::window::replace_menu_command_bindings(
+            bindings,
+            host_protocol::MENU_SET_APPLICATION_MENU_METHOD,
+        )?;
+        Ok(())
+    }
+
+    pub(super) fn set_window_menu(
+        window_id: &str,
+        template: serde_json::Value,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let mut bindings = Vec::new();
+        let menu = build_menu(&template, Some(window_id), &mut bindings)?;
+        menu.init_for_nsapp();
+        crate::window::replace_menu_command_bindings(
+            bindings,
+            host_protocol::MENU_SET_WINDOW_MENU_METHOD,
+        )?;
         Ok(())
     }
 
@@ -514,6 +540,7 @@ mod platform {
     pub(super) fn clear_application_menu() -> std::result::Result<(), HostProtocolError> {
         let menu = muda::Menu::new();
         menu.init_for_nsapp();
+        crate::window::replace_menu_command_bindings(Vec::new(), host_protocol::MENU_CLEAR_METHOD)?;
         Ok(())
     }
 
@@ -571,6 +598,8 @@ mod platform {
 
     fn build_menu(
         template: &serde_json::Value,
+        window_id: Option<&str>,
+        bindings: &mut Vec<(String, crate::window::MenuCommandBinding)>,
     ) -> std::result::Result<muda::Menu, HostProtocolError> {
         let menu = muda::Menu::new();
         let items = template
@@ -578,7 +607,7 @@ mod platform {
             .and_then(serde_json::Value::as_array)
             .ok_or_else(|| super::invalid_argument("template.items", "must be an array"))?;
         for item in items {
-            let submenu = build_submenu(item)?;
+            let submenu = build_submenu(item, window_id, bindings)?;
             menu.append(&submenu).map_err(menu_error)?;
         }
         Ok(menu)
@@ -586,6 +615,8 @@ mod platform {
 
     fn build_submenu(
         value: &serde_json::Value,
+        window_id: Option<&str>,
+        bindings: &mut Vec<(String, crate::window::MenuCommandBinding)>,
     ) -> std::result::Result<muda::Submenu, HostProtocolError> {
         let label = field_string(value, "label")?;
         let enabled = value
@@ -600,24 +631,44 @@ mod platform {
         for item in items {
             match field_string(item, "type")?.as_str() {
                 "item" => {
+                    let item_id = field_string(item, "id")?;
+                    let command_id = item
+                        .get("commandId")
+                        .map(|_| field_string(item, "commandId"))
+                        .transpose()?;
+                    let native_id = if command_id.is_some() {
+                        crate::window::next_menu_native_item_id("item")
+                    } else {
+                        item_id.clone()
+                    };
                     let enabled = item
                         .get("enabled")
                         .and_then(serde_json::Value::as_bool)
                         .unwrap_or(true);
                     let menu_item = muda::MenuItem::with_id(
-                        field_string(item, "id")?,
+                        native_id.clone(),
                         field_string(item, "label")?,
                         enabled,
                         None,
                     );
                     submenu.append(&menu_item).map_err(menu_error)?;
+                    if let Some(command_id) = command_id {
+                        bindings.push((
+                            native_id,
+                            crate::window::MenuCommandBinding::new(
+                                item_id,
+                                command_id,
+                                window_id.map(ToOwned::to_owned),
+                            ),
+                        ));
+                    }
                 }
                 "separator" => {
                     let separator = muda::PredefinedMenuItem::separator();
                     submenu.append(&separator).map_err(menu_error)?;
                 }
                 "submenu" => {
-                    let nested = build_submenu(item)?;
+                    let nested = build_submenu(item, window_id, bindings)?;
                     submenu.append(&nested).map_err(menu_error)?;
                 }
                 _ => {
@@ -752,6 +803,16 @@ mod platform {
         Err(HostProtocolError::unsupported(
             "application menus are macOS-only in the host adapter",
             host_protocol::MENU_SET_APPLICATION_MENU_METHOD,
+        ))
+    }
+
+    pub(super) fn set_window_menu(
+        _window_id: &str,
+        _template: serde_json::Value,
+    ) -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            "window menus are macOS-only in the host adapter",
+            host_protocol::MENU_SET_WINDOW_MENU_METHOD,
         ))
     }
 

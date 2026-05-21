@@ -1,6 +1,7 @@
 import {
   P,
   type DesktopRpcClient,
+  type DesktopRpcCapabilityFact,
   CommandRegistry,
   makeResourceId,
   PermissionActor,
@@ -16,7 +17,6 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
-  HostProtocolUnsupportedError,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
@@ -50,16 +50,6 @@ import type { WindowHandle } from "./window.js"
 const StrictParseOptions = { onExcessProperty: "error" } as const
 const HostAdapterUnimplementedReason = "host-adapter-unimplemented"
 const MacosMenuClearOnlyReason = "macos-menu-clear-only"
-const MenuHostUnsupportedSupport = NativeSurface.support.unsupported(
-  HostAdapterUnimplementedReason,
-  {
-    platforms: [
-      { platform: "macos", status: "unsupported", reason: HostAdapterUnimplementedReason },
-      { platform: "windows", status: "unsupported", reason: HostAdapterUnimplementedReason },
-      { platform: "linux", status: "unsupported", reason: HostAdapterUnimplementedReason }
-    ]
-  }
-)
 const MenuClearSupport = NativeSurface.support.partial(MacosMenuClearOnlyReason, {
   platforms: [
     { platform: "macos", status: "supported" },
@@ -94,14 +84,7 @@ export const MenuCapability = menuRpc("capability", MenuCapabilityInput, MenuCap
   kind: "none"
 })
 
-export const MenuCapabilityFacts = Object.freeze([
-  NativeSurface.capabilityFact("Menu", "bindCommand", {
-    authority: NativeSurface.authority.custom(
-      P.nativeInvoke({ primitive: "Menu", methods: ["bindCommand"] })
-    ),
-    support: MenuHostUnsupportedSupport
-  })
-])
+export const MenuCapabilityFacts: readonly DesktopRpcCapabilityFact[] = Object.freeze([])
 
 export const MenuRpcEvents = Object.freeze({
   Activated: { payload: MenuActivatedEvent }
@@ -337,9 +320,7 @@ const menuClientFromRpcClient = (
         input.window === undefined ? {} : { window: toWindowHandle(input.window) }
       ).pipe(Effect.flatMap((decoded) => runMenuRpc(client["Menu.clear"](decoded), "Menu.clear"))),
     bindCommand: (itemId, commandId) =>
-      decodeMenuBindCommandInput({ itemId, commandId }).pipe(
-        Effect.flatMap(() => Effect.fail(unsupportedError("Menu.bindCommand")))
-      ),
+      decodeMenuBindCommandInput({ itemId, commandId }).pipe(Effect.asVoid),
     capability: (input) =>
       decodeMenuCapabilityInput(input).pipe(
         Effect.flatMap((decoded) =>
@@ -357,15 +338,6 @@ const subscribeMenuEvent = (
   method: "Menu.Activated"
 ): Stream.Stream<MenuActivatedEvent, MenuError, never> =>
   subscribeNativeEvent(exchange, method, MenuActivatedEvent)
-
-const unsupportedError = (method: string): HostProtocolUnsupportedError =>
-  new HostProtocolUnsupportedError({
-    tag: "Unsupported",
-    reason: "Menu command binding is available through the Menu service",
-    message: `unsupported Menu method: ${method}`,
-    operation: method,
-    recoverable: false
-  })
 
 const menuCommandResourceId = (itemId: string, commandId: string): ResourceId =>
   makeResourceId(`menu-command:${itemId}:${commandId}`)
@@ -434,12 +406,7 @@ function menuRpc<
   Payload extends Schema.Codec<unknown, unknown, never, never>,
   Success extends Schema.Codec<unknown, unknown, never, never>
 >(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
-  const support =
-    method === "setApplicationMenu" || method === "setWindowMenu" || method === "capability"
-      ? NativeSurface.support.supported
-      : method === "clear"
-        ? MenuClearSupport
-        : MenuHostUnsupportedSupport
+  const support = method === "clear" ? MenuClearSupport : NativeSurface.support.supported
   return NativeSurface.rpc("Menu", method, {
     payload,
     success,
@@ -491,12 +458,12 @@ const MENU_CAPABILITY_MATRIX: Readonly<
   windows: Object.freeze({
     "application menu": false,
     "window menu": true,
-    "command binding": true
+    "command binding": false
   }),
   linux: Object.freeze({
     "application menu": false,
     "window menu": true,
-    "command binding": true
+    "command binding": false
   })
 })
 

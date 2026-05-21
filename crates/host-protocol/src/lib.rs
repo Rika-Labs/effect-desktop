@@ -1802,6 +1802,41 @@ impl TrayActivatedEventPayload {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MenuActivatedEventPayload {
+    item_id: String,
+    command_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    window_id: Option<String>,
+}
+
+impl MenuActivatedEventPayload {
+    pub fn new(
+        item_id: impl Into<String>,
+        command_id: impl Into<String>,
+        window_id: Option<String>,
+    ) -> Self {
+        Self {
+            item_id: item_id.into(),
+            command_id: command_id.into(),
+            window_id,
+        }
+    }
+
+    pub fn item_id(&self) -> &str {
+        &self.item_id
+    }
+
+    pub fn command_id(&self) -> &str {
+        &self.command_id
+    }
+
+    pub fn window_id(&self) -> Option<&str> {
+        self.window_id.as_deref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ContextMenuActivatedEventPayload {
     item_id: String,
     command_id: String,
@@ -14008,7 +14043,7 @@ mod tests {
         LocalToolRuntimeRunPayload, LocalToolRuntimeRunResultPayload, LocalToolRuntimeRunStatus,
         LocalToolRuntimeStdioMode, LocalToolRuntimeStdioPolicyPayload,
         LocalToolRuntimeStopResultPayload, LocalToolRuntimeSupportedPayload,
-        NativeFileSystemEntryKindPayload, NativeFileSystemEventPayload,
+        MenuActivatedEventPayload, NativeFileSystemEntryKindPayload, NativeFileSystemEventPayload,
         NativeFileSystemEventPhasePayload, NativeFileSystemMetadataPayload,
         NativeFileSystemOpenModePayload, NativeFileSystemOpenPayload,
         NativeFileSystemOpenResultPayload, NativeFileSystemResourcePayload,
@@ -17702,6 +17737,26 @@ mod tests {
 
     #[test]
     fn context_menu_payloads_serialize_canonically() {
+        let app_event = MenuActivatedEventPayload::new("file.open", "app.file.open", None);
+        assert_eq!(app_event.item_id(), "file.open");
+        assert_eq!(app_event.command_id(), "app.file.open");
+        assert_eq!(app_event.window_id(), None);
+        assert_eq!(
+            serde_json::to_string(&app_event).expect("menu app event should encode"),
+            r#"{"itemId":"file.open","commandId":"app.file.open"}"#
+        );
+
+        let window_event = MenuActivatedEventPayload::new(
+            "file.open",
+            "app.file.open",
+            Some("window-1".to_string()),
+        );
+        assert_eq!(window_event.window_id(), Some("window-1"));
+        assert_eq!(
+            serde_json::to_string(&window_event).expect("menu window event should encode"),
+            r#"{"itemId":"file.open","commandId":"app.file.open","windowId":"window-1"}"#
+        );
+
         let event = ContextMenuActivatedEventPayload::new("file.open", "app.file.open", "window-1");
         assert_eq!(event.item_id(), "file.open");
         assert_eq!(event.command_id(), "app.file.open");

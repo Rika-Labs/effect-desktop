@@ -888,7 +888,7 @@ const expectedMenuMethods: Array<(typeof MenuMethodNames)[number]> = [
   "capability"
 ]
 
-const expectedMenuCapabilityFactMethods = ["bindCommand"]
+const expectedMenuCapabilityFactMethods: string[] = []
 
 const expectedContextMenuMethods: Array<(typeof ContextMenuMethodNames)[number]> = ["show"]
 
@@ -2949,7 +2949,7 @@ test("MenuRpcs declares the Phase 7 Menu method and event surface", () => {
   expect(Object.keys(MenuRpcEvents)).toEqual(["Activated"])
 })
 
-test("Menu declares bindCommand as a non-callable capability fact", () => {
+test("Menu declares only callable native RPCs and no TypeScript helper capability facts", () => {
   const factTags = MenuCapabilityFacts.map((fact) => fact.tag).toSorted()
   expect(factTags).toEqual(
     expectedMenuCapabilityFactMethods.map((method) => `Menu.${method}`).toSorted()
@@ -3193,7 +3193,7 @@ test("Menu bridge client validates templates, sends host envelopes, and decodes 
         Layer.mergeAll(Layer.provide(MenuLive, makeMenuBridgeClientLayer(exchange)), commandLayer)
       )
 
-      expectExitFailure(result.bindExit, (error) => hasErrorTag(error, "Unsupported"))
+      expect(Exit.isSuccess(result.bindExit)).toBe(true)
       expect(Array.from(result.activated)).toEqual([
         new MenuActivatedEvent({
           itemId: "file.open",
