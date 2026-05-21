@@ -20,6 +20,7 @@ cpal = "0.17.3"
 host-protocol = { path = "../host-protocol" }
 image.workspace = true
 lol_html = "2.9"
+muda = { version = "0.19.1", features = ["common-controls-v6"] }
 native-updater = { path = "../native-updater" }
 notify = "8.2.0"
 rfd = { version = "0.17.2", features = ["common-controls-v6"] }
@@ -47,7 +48,6 @@ notify-rust = "4.17.0"
 block2.workspace = true
 core-foundation = "0.10.1"
 keyring = { version = "3.6.3", default-features = false, features = ["apple-native"] }
-muda = "0.19.1"
 objc2.workspace = true
 objc2-app-kit.workspace = true
 objc2-foundation.workspace = true

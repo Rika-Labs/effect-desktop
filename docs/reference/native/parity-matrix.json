@@ -445,27 +445,9 @@
       "method": "show",
       "capability": "native",
       "support": {
-        "status": "unsupported",
-        "reason": "host-adapter-unimplemented",
-        "platforms": [
-          {
-            "platform": "macos",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          },
-          {
-            "platform": "windows",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          },
-          {
-            "platform": "linux",
-            "status": "unsupported",
-            "reason": "host-adapter-unimplemented"
-          }
-        ]
+        "status": "supported"
       },
-      "hostStatus": "capability-fact"
+      "hostStatus": "routed"
     },
     {
       "tag": "CookieStore.get",
@@ -5111,10 +5093,10 @@
   ],
   "summary": {
     "total": 289,
-    "routed": 234,
+    "routed": 235,
     "missing": 0,
-    "supported": 163,
+    "supported": 164,
     "partial": 71,
-    "unsupported": 55
+    "unsupported": 54
   }
 }

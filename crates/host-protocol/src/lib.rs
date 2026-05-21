@@ -282,6 +282,7 @@ pub const MENU_SET_WINDOW_MENU_METHOD: &str = "Menu.setWindowMenu";
 pub const MENU_CLEAR_METHOD: &str = "Menu.clear";
 pub const MENU_CAPABILITY_METHOD: &str = "Menu.capability";
 pub const MENU_ACTIVATED_EVENT: &str = "Menu.Activated";
+pub const CONTEXT_MENU_SHOW_METHOD: &str = "ContextMenu.show";
 pub const CONTEXT_MENU_ACTIVATED_EVENT: &str = "ContextMenu.Activated";
 pub const MENU_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const WEBVIEW_CREATE_METHOD: &str = "WebView.create";
@@ -1793,6 +1794,40 @@ impl TrayActivatedEventPayload {
             tray,
             owner_window_id: None,
         }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ContextMenuActivatedEventPayload {
+    item_id: String,
+    command_id: String,
+    window_id: String,
+}
+
+impl ContextMenuActivatedEventPayload {
+    pub fn new(
+        item_id: impl Into<String>,
+        command_id: impl Into<String>,
+        window_id: impl Into<String>,
+    ) -> Self {
+        Self {
+            item_id: item_id.into(),
+            command_id: command_id.into(),
+            window_id: window_id.into(),
+        }
+    }
+
+    pub fn item_id(&self) -> &str {
+        &self.item_id
+    }
+
+    pub fn command_id(&self) -> &str {
+        &self.command_id
+    }
+
+    pub fn window_id(&self) -> &str {
+        &self.window_id
     }
 }
 
@@ -13816,24 +13851,24 @@ mod tests {
         BrowsingDataTypeEstimatePayload, BrowsingDataTypePayload, CanonicalPathPayload,
         ClipboardCapabilityPayload, ClipboardHtmlPayload, ClipboardImagePayload,
         ClipboardIsSupportedPayload, ClipboardSupportedPayload, ClipboardTextPayload,
-        CookieStoreCookiePayload, CookieStoreGetPayload, CookieStoreGetResultPayload,
-        CookieStoreRemovePayload, CookieStoreSetPayload, CookieStoreSupportedPayload,
-        CrashReporterBreadcrumbPayload, CrashReporterFlushPayload, CrashReporterGetReportsPayload,
-        CrashReporterReportPayload, CrashReporterStartPayload, DiagnosticsBundleCollectPayload,
-        DiagnosticsBundleCollectResultPayload, DiagnosticsBundleRedactPayload,
-        DiagnosticsBundleRedactResultPayload, DiagnosticsBundleRedactionEvidencePayload,
-        DiagnosticsBundleRedactionPolicyPayload, DiagnosticsBundleSourceKind,
-        DiagnosticsBundleSourceSummaryPayload, DiagnosticsBundleSupportedPayload,
-        DiagnosticsBundleWritePayload, DiagnosticsBundleWriteResultPayload, DialogConfirmPayload,
-        DialogConfirmResultPayload, DialogFileFilterPayload, DialogLevelPayload,
-        DialogMessagePayload, DialogOpenDirectoryPayload, DialogOpenFilePayload,
-        DialogOpenResultPayload, DialogSaveFilePayload, DialogSaveResultPayload,
-        DisplayCaptureActorKind, DisplayCaptureActorPayload, DisplayCaptureEventPayload,
-        DisplayCaptureEventPhase, DisplayCaptureGrantKind, DisplayCaptureGrantPayload,
-        DisplayCaptureImagePayload, DisplayCaptureMetadataPayload, DisplayCaptureRegionPayload,
-        DisplayCaptureRequestPayload, DisplayCaptureResultPayload, DisplayCaptureSource,
-        DisplayCaptureSupportedPayload, DisplayCaptureTargetPayload,
-        DistributionParityEventPayload, DistributionParityEventPhase,
+        ContextMenuActivatedEventPayload, CookieStoreCookiePayload, CookieStoreGetPayload,
+        CookieStoreGetResultPayload, CookieStoreRemovePayload, CookieStoreSetPayload,
+        CookieStoreSupportedPayload, CrashReporterBreadcrumbPayload, CrashReporterFlushPayload,
+        CrashReporterGetReportsPayload, CrashReporterReportPayload, CrashReporterStartPayload,
+        DiagnosticsBundleCollectPayload, DiagnosticsBundleCollectResultPayload,
+        DiagnosticsBundleRedactPayload, DiagnosticsBundleRedactResultPayload,
+        DiagnosticsBundleRedactionEvidencePayload, DiagnosticsBundleRedactionPolicyPayload,
+        DiagnosticsBundleSourceKind, DiagnosticsBundleSourceSummaryPayload,
+        DiagnosticsBundleSupportedPayload, DiagnosticsBundleWritePayload,
+        DiagnosticsBundleWriteResultPayload, DialogConfirmPayload, DialogConfirmResultPayload,
+        DialogFileFilterPayload, DialogLevelPayload, DialogMessagePayload,
+        DialogOpenDirectoryPayload, DialogOpenFilePayload, DialogOpenResultPayload,
+        DialogSaveFilePayload, DialogSaveResultPayload, DisplayCaptureActorKind,
+        DisplayCaptureActorPayload, DisplayCaptureEventPayload, DisplayCaptureEventPhase,
+        DisplayCaptureGrantKind, DisplayCaptureGrantPayload, DisplayCaptureImagePayload,
+        DisplayCaptureMetadataPayload, DisplayCaptureRegionPayload, DisplayCaptureRequestPayload,
+        DisplayCaptureResultPayload, DisplayCaptureSource, DisplayCaptureSupportedPayload,
+        DisplayCaptureTargetPayload, DistributionParityEventPayload, DistributionParityEventPhase,
         DistributionParityEvidenceKind, DistributionParityEvidencePayload,
         DistributionParitySupportedPayload, DistributionParityVerifyPayload,
         DistributionParityVerifyResultPayload, DockJumpListItemPayload, DockProgressState,
@@ -17572,6 +17607,18 @@ mod tests {
         let error = serde_json::from_value::<TrayCreatePayload>(value)
             .expect_err("excess field should be rejected");
         assert!(error.to_string().contains("unknown field `badge`"));
+    }
+
+    #[test]
+    fn context_menu_payloads_serialize_canonically() {
+        let event = ContextMenuActivatedEventPayload::new("file.open", "app.file.open", "window-1");
+        assert_eq!(event.item_id(), "file.open");
+        assert_eq!(event.command_id(), "app.file.open");
+        assert_eq!(event.window_id(), "window-1");
+        assert_eq!(
+            serde_json::to_string(&event).expect("context menu event should encode"),
+            r#"{"itemId":"file.open","commandId":"app.file.open","windowId":"window-1"}"#
+        );
     }
 
     #[test]

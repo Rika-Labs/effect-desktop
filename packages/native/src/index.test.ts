@@ -890,9 +890,9 @@ const expectedMenuMethods: Array<(typeof MenuMethodNames)[number]> = [
 
 const expectedMenuCapabilityFactMethods = ["bindCommand"]
 
-const expectedContextMenuMethods: Array<(typeof ContextMenuMethodNames)[number]> = []
+const expectedContextMenuMethods: Array<(typeof ContextMenuMethodNames)[number]> = ["show"]
 
-const expectedContextMenuCapabilityFactMethods = ["show"]
+const expectedContextMenuCapabilityFactMethods: string[] = []
 
 const expectedDialogMethods: Array<(typeof DialogMethodNames)[number]> = [
   "openFile",
@@ -3664,7 +3664,7 @@ test("ContextMenu bindCommand closes the command listener with its resource scop
     })
   ))
 
-test("ContextMenu bridge client fails show and keeps local helpers off transport", () =>
+test("ContextMenu bridge client routes show and keeps local helpers off transport", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const requests: HostProtocolRequestEnvelope[] = []
@@ -3677,28 +3677,32 @@ test("ContextMenu bridge client fails show and keeps local helpers off transport
       const result = yield* runScoped(
         Effect.gen(function* () {
           const contextMenu = yield* ContextMenu
-          const showExit = yield* Effect.exit(
-            contextMenu.show({
-              window: windowHandle,
-              template: menuTemplate,
-              position: { x: 12.5, y: 34.25 }
-            })
-          )
+          yield* contextMenu.show({
+            window: windowHandle,
+            template: menuTemplate,
+            position: { x: 12.5, y: 34.25 }
+          })
           const buildExit = yield* Effect.exit(
             contextMenu.buildFromTemplate({ template: menuTemplate })
           )
           const bindExit = yield* Effect.exit(contextMenu.bindCommand("file.open", "app.file.open"))
           const activated = yield* contextMenu.onActivated().pipe(Stream.take(1), Stream.runCollect)
 
-          return { activated, bindExit, buildExit, showExit }
+          return { activated, bindExit, buildExit }
         }),
         Layer.mergeAll(
-          Layer.provide(ContextMenuLive, makeContextMenuBridgeClientLayer(exchange)),
+          Layer.provide(
+            ContextMenuLive,
+            makeContextMenuBridgeClientLayer(exchange, {
+              nextRequestId: nextId(["context-menu-show"]),
+              nextTraceId: nextId(["trace-context-menu-show"]),
+              now: nextNumber([1710000000000, 1710000000001])
+            })
+          ),
           commandLayer
         )
       )
 
-      expectExitFailure(result.showExit, (error) => hasErrorTag(error, "Unsupported"))
       expect(Exit.isSuccess(result.buildExit)).toBe(true)
       expect(Exit.isSuccess(result.bindExit)).toBe(true)
       expect(Array.from(result.activated)).toEqual([
@@ -3708,7 +3712,18 @@ test("ContextMenu bridge client fails show and keeps local helpers off transport
           windowId: "window-1"
         })
       ])
-      expect(requests).toEqual([])
+      expect(requests).toHaveLength(1)
+      expect(requests[0]).toMatchObject({
+        kind: "request",
+        id: "context-menu-show",
+        timestamp: 1710000000000,
+        method: "ContextMenu.show",
+        payload: {
+          window: windowHandle,
+          template: { items: menuTemplate.items },
+          position: { x: 12.5, y: 34.25 }
+        }
+      })
     })
   ))
 

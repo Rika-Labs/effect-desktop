@@ -10,14 +10,18 @@ use crate::{linux, macos, webview, windows};
 use anyhow::Result;
 use host_protocol::{
     AppBeforeQuitEventPayload, BrowsingDataClearPayload, BrowsingDataClearResultPayload,
-    DockProgressState, DockSetProgressPayload, HostProtocolEnvelope, HostProtocolError,
-    ScreenBoundsPayload, ScreenDisplayPayload, ScreenDisplaysChangedEventPayload,
-    ScreenDisplaysResultPayload, ScreenMethodPayload, ScreenPointPayload, ScreenSupportedPayload,
-    SessionProfileResourcePayload, TrayResourcePayload, WindowAttentionType,
-    WindowBoundsEventPayload, WindowBoundsPayload, WindowCreatePayload, WindowCreateResponse,
-    WindowListResponse, WindowLookupResponse, WindowParentResponse, WindowProgressState,
-    WindowRegistryEventPayload, WindowRegistryEventPhase, WindowSetProgressPayload,
-    WindowStateEventPayload, WindowStatePayload, WindowTitleBarStyle, WindowTrafficLights,
+    ContextMenuActivatedEventPayload, DockProgressState, DockSetProgressPayload,
+    HostProtocolEnvelope, HostProtocolError, ScreenBoundsPayload, ScreenDisplayPayload,
+    ScreenDisplaysChangedEventPayload, ScreenDisplaysResultPayload, ScreenMethodPayload,
+    ScreenPointPayload, ScreenSupportedPayload, SessionProfileResourcePayload, TrayResourcePayload,
+    WindowAttentionType, WindowBoundsEventPayload, WindowBoundsPayload, WindowCreatePayload,
+    WindowCreateResponse, WindowListResponse, WindowLookupResponse, WindowParentResponse,
+    WindowProgressState, WindowRegistryEventPayload, WindowRegistryEventPhase,
+    WindowSetProgressPayload, WindowStateEventPayload, WindowStatePayload, WindowTitleBarStyle,
+    WindowTrafficLights,
+};
+use muda::{
+    CheckMenuItem, ContextMenu as MudaContextMenu, Menu, MenuItem, PredefinedMenuItem, Submenu,
 };
 use std::{
     cell::RefCell,
@@ -26,11 +30,18 @@ use std::{
     process::{Command, Stdio},
     rc::Rc,
     sync::{
+        atomic::{AtomicU64, Ordering},
         mpsc::{self, Receiver, RecvTimeoutError, Sender},
         Arc, LazyLock, Mutex,
     },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+#[cfg(target_os = "macos")]
+use tao::platform::macos::WindowExtMacOS;
+#[cfg(target_os = "linux")]
+use tao::platform::unix::WindowExtUnix;
+#[cfg(target_os = "windows")]
+use tao::platform::windows::WindowExtWindows;
 use tao::{
     dpi::{LogicalPosition, LogicalSize, PhysicalPosition},
     event::{Event, WindowEvent},
@@ -292,6 +303,11 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
         &self,
         window_id: &str,
         template: serde_json::Value,
+    ) -> std::result::Result<(), HostProtocolError>;
+
+    fn show_context_menu(
+        &self,
+        request: ContextMenuShowRequest,
     ) -> std::result::Result<(), HostProtocolError>;
 
     fn create_tray(
@@ -712,6 +728,73 @@ pub(crate) struct TrayCreateRequest {
     event_sender: Option<Sender<HostProtocolEnvelope>>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct ContextMenuPosition {
+    x: f64,
+    y: f64,
+}
+
+impl ContextMenuPosition {
+    pub(crate) fn new(x: f64, y: f64) -> std::result::Result<Self, HostProtocolError> {
+        if !x.is_finite() || x < 0.0 {
+            return Err(HostProtocolError::invalid_argument(
+                "position.x",
+                "must be a finite non-negative number",
+                host_protocol::CONTEXT_MENU_SHOW_METHOD,
+            ));
+        }
+        if !y.is_finite() || y < 0.0 {
+            return Err(HostProtocolError::invalid_argument(
+                "position.y",
+                "must be a finite non-negative number",
+                host_protocol::CONTEXT_MENU_SHOW_METHOD,
+            ));
+        }
+        Ok(Self { x, y })
+    }
+
+    fn to_muda_position(self) -> muda::dpi::Position {
+        muda::dpi::LogicalPosition {
+            x: self.x,
+            y: self.y,
+        }
+        .into()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct ContextMenuShowRequest {
+    window_id: String,
+    template: serde_json::Value,
+    position: ContextMenuPosition,
+}
+
+impl ContextMenuShowRequest {
+    pub(crate) fn new(
+        window_id: impl Into<String>,
+        template: serde_json::Value,
+        position: ContextMenuPosition,
+    ) -> Self {
+        Self {
+            window_id: window_id.into(),
+            template,
+            position,
+        }
+    }
+
+    pub(crate) fn window_id(&self) -> &str {
+        &self.window_id
+    }
+
+    fn template(&self) -> &serde_json::Value {
+        &self.template
+    }
+
+    fn position(&self) -> ContextMenuPosition {
+        self.position
+    }
+}
+
 enum HostEvent {}
 
 enum WindowCommand {
@@ -904,6 +987,10 @@ enum WindowCommand {
     SetWindowMenu {
         window_id: String,
         template: serde_json::Value,
+        reply: Sender<WindowCommandReply>,
+    },
+    ShowContextMenu {
+        request: ContextMenuShowRequest,
         reply: Sender<WindowCommandReply>,
     },
     CreateTray {
@@ -1171,6 +1258,13 @@ struct NativeTrayResources {
     owner_scope: String,
 }
 
+#[derive(Clone, Debug)]
+struct ContextMenuCommandBinding {
+    item_id: String,
+    command_id: String,
+    window_id: String,
+}
+
 struct WindowRegistry {
     windows: HashMap<String, NativeWindowResources>,
     webviews: HashMap<String, NativeWebViewResources>,
@@ -1188,6 +1282,11 @@ static TRAY_EVENT_SENDER: LazyLock<Mutex<Option<Sender<HostProtocolEnvelope>>>> 
     LazyLock::new(|| Mutex::new(None));
 static TRAY_EVENT_HANDLES: LazyLock<Mutex<HashMap<String, TrayResourcePayload>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+static CONTEXT_MENU_EVENT_SENDER: LazyLock<Mutex<Option<Sender<HostProtocolEnvelope>>>> =
+    LazyLock::new(|| Mutex::new(None));
+static CONTEXT_MENU_COMMANDS: LazyLock<Mutex<HashMap<String, ContextMenuCommandBinding>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+static CONTEXT_MENU_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 static SCREEN_EVENT_SENDER: LazyLock<Mutex<Option<Sender<HostProtocolEnvelope>>>> =
     LazyLock::new(|| Mutex::new(None));
 static WINDOW_EVENT_SENDER: LazyLock<Mutex<Option<Sender<HostProtocolEnvelope>>>> =
@@ -2258,6 +2357,45 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::BrowsingDataCleared(_) => Err(HostProtocolError::internal(
                 "window menu command received window response",
                 host_protocol::MENU_SET_WINDOW_MENU_METHOD,
+            )),
+        }
+    }
+
+    fn show_context_menu(
+        &self,
+        request: ContextMenuShowRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::ShowContextMenu {
+            request,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::MenuSet => Ok(()),
+            WindowCommandResponse::Created(_)
+            | WindowCommandResponse::Destroyed
+            | WindowCommandResponse::WindowUpdated
+            | WindowCommandResponse::WindowLookup(_)
+            | WindowCommandResponse::WindowList(_)
+            | WindowCommandResponse::WindowParent(_)
+            | WindowCommandResponse::WindowBounds(_)
+            | WindowCommandResponse::WindowState(_)
+            | WindowCommandResponse::DockBadgeLabelSet
+            | WindowCommandResponse::DockProgressSet
+            | WindowCommandResponse::DockAttentionRequested
+            | WindowCommandResponse::TrayCreated(_)
+            | WindowCommandResponse::TrayUpdated
+            | WindowCommandResponse::TrayDestroyed
+            | WindowCommandResponse::ScreenDisplays(_)
+            | WindowCommandResponse::ScreenDisplay(_)
+            | WindowCommandResponse::ScreenPoint(_)
+            | WindowCommandResponse::ScreenSupported(_)
+            | WindowCommandResponse::WebViewCreated(_)
+            | WindowCommandResponse::WebViewNavigationState(_)
+            | WindowCommandResponse::BrowsingDataCleared(_) => Err(HostProtocolError::internal(
+                "context menu command received window response",
+                host_protocol::CONTEXT_MENU_SHOW_METHOD,
             )),
         }
     }
@@ -3924,6 +4062,37 @@ impl WindowRegistry {
         macos::set_application_menu(template)
     }
 
+    fn show_context_menu(
+        &self,
+        request: &ContextMenuShowRequest,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let Some(resources) = self.windows.get(request.window_id()) else {
+            return Err(HostProtocolError::not_found(
+                format!("Window:{}", request.window_id()),
+                host_protocol::CONTEXT_MENU_SHOW_METHOD,
+            ));
+        };
+
+        let mut native_ids = Vec::new();
+        let menu = match build_context_menu(
+            request.template(),
+            request.window_id(),
+            &mut native_ids,
+            host_protocol::CONTEXT_MENU_SHOW_METHOD,
+        ) {
+            Ok(menu) => menu,
+            Err(error) => {
+                clear_context_menu_command_bindings(&native_ids);
+                return Err(error);
+            }
+        };
+
+        let position = Some(request.position().to_muda_position());
+        let _shown = show_platform_context_menu(&resources._window, &menu, position);
+        clear_context_menu_command_bindings(&native_ids);
+        Ok(())
+    }
+
     fn create_tray(
         &mut self,
         request: TrayCreateRequest,
@@ -5082,6 +5251,13 @@ impl WindowRegistry {
             } => {
                 let result = self
                     .set_window_menu(&window_id, template)
+                    .map(|()| WindowCommandResponse::MenuSet);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::ShowContextMenu { request, reply } => {
+                let result = self
+                    .show_context_menu(&request)
                     .map(|()| WindowCommandResponse::MenuSet);
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
@@ -6753,6 +6929,107 @@ pub(crate) fn clear_tray_runtime_event_state() -> std::result::Result<(), HostPr
     Ok(())
 }
 
+pub(crate) fn clear_context_menu_runtime_event_state() -> std::result::Result<(), HostProtocolError>
+{
+    let mut sender = CONTEXT_MENU_EVENT_SENDER.lock().map_err(|_| {
+        HostProtocolError::internal(
+            "context menu event sender mutex poisoned",
+            "host.runtime.contextMenu.disconnect",
+        )
+    })?;
+    *sender = None;
+    let mut commands = CONTEXT_MENU_COMMANDS.lock().map_err(|_| {
+        HostProtocolError::internal(
+            "context menu command mutex poisoned",
+            "host.runtime.contextMenu.disconnect",
+        )
+    })?;
+    commands.clear();
+    Ok(())
+}
+
+pub(crate) fn install_context_menu_event_sender(
+    sender: Sender<HostProtocolEnvelope>,
+) -> std::result::Result<(), HostProtocolError> {
+    let mut current = CONTEXT_MENU_EVENT_SENDER.lock().map_err(|_| {
+        HostProtocolError::internal(
+            "context menu event sender mutex poisoned",
+            host_protocol::CONTEXT_MENU_SHOW_METHOD,
+        )
+    })?;
+    *current = Some(sender);
+    muda::MenuEvent::set_event_handler(Some(forward_context_menu_event));
+    Ok(())
+}
+
+fn track_context_menu_command_binding(
+    native_id: &str,
+    binding: ContextMenuCommandBinding,
+    operation: &'static str,
+) -> std::result::Result<(), HostProtocolError> {
+    let mut commands = CONTEXT_MENU_COMMANDS.lock().map_err(|_| {
+        HostProtocolError::internal("context menu command mutex poisoned", operation)
+    })?;
+    commands.insert(native_id.to_string(), binding);
+    Ok(())
+}
+
+fn clear_context_menu_command_bindings(native_ids: &[String]) {
+    let Ok(mut commands) = CONTEXT_MENU_COMMANDS.lock() else {
+        warn!(
+            event = "host.context_menu.command_mutex_poisoned",
+            "failed to clear context menu command bindings"
+        );
+        return;
+    };
+    for native_id in native_ids {
+        commands.remove(native_id);
+    }
+}
+
+fn forward_context_menu_event(event: muda::MenuEvent) {
+    let native_id = event.id().as_ref().to_string();
+    let binding = match CONTEXT_MENU_COMMANDS
+        .lock()
+        .ok()
+        .and_then(|commands| commands.get(&native_id).cloned())
+    {
+        Some(binding) => binding,
+        None => return,
+    };
+    let sender = match CONTEXT_MENU_EVENT_SENDER
+        .lock()
+        .ok()
+        .and_then(|sender| sender.clone())
+    {
+        Some(sender) => sender,
+        None => return,
+    };
+    let payload = match serde_json::to_value(ContextMenuActivatedEventPayload::new(
+        binding.item_id.clone(),
+        binding.command_id.clone(),
+        binding.window_id.clone(),
+    )) {
+        Ok(payload) => payload,
+        Err(error) => {
+            warn!(
+                event = "host.context_menu.event_encode_failed",
+                error = %error,
+                "failed to encode context menu event"
+            );
+            return;
+        }
+    };
+    let timestamp = timestamp_millis();
+    let _ = sender.send(HostProtocolEnvelope::Event {
+        method: host_protocol::CONTEXT_MENU_ACTIVATED_EVENT.to_string(),
+        timestamp,
+        trace_id: format!("context-menu-activated-{native_id}-{timestamp}"),
+        window_id: Some(binding.window_id),
+        payload: Some(payload),
+    });
+}
+
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn install_tray_event_sender(
     sender: Sender<HostProtocolEnvelope>,
@@ -7118,6 +7395,281 @@ fn required_string(
         ));
     }
     Ok(text.to_string())
+}
+
+fn build_context_menu(
+    value: &serde_json::Value,
+    window_id: &str,
+    native_ids: &mut Vec<String>,
+    operation: &'static str,
+) -> std::result::Result<Menu, HostProtocolError> {
+    let menu = Menu::new();
+    for item in context_menu_items(value, "template.items", operation)? {
+        append_context_menu_item(&menu, item, window_id, native_ids, operation)?;
+    }
+    Ok(menu)
+}
+
+fn append_context_menu_item(
+    menu: &Menu,
+    value: &serde_json::Value,
+    window_id: &str,
+    native_ids: &mut Vec<String>,
+    operation: &'static str,
+) -> std::result::Result<(), HostProtocolError> {
+    match context_menu_item_type(value, operation)? {
+        "item" => {
+            let native_id = context_menu_native_item_id(value, window_id, native_ids, operation)?;
+            let label = context_menu_required_string(value, "label", operation)?;
+            let enabled = context_menu_optional_bool(value, "enabled", operation)?.unwrap_or(true);
+            let result =
+                if let Some(checked) = context_menu_optional_bool(value, "checked", operation)? {
+                    let item = CheckMenuItem::with_id(native_id, label, enabled, checked, None);
+                    menu.append(&item)
+                } else {
+                    let item = MenuItem::with_id(native_id, label, enabled, None);
+                    menu.append(&item)
+                };
+            result
+        }
+        "separator" => {
+            if value.get("id").is_some() {
+                let _ = context_menu_required_string(value, "id", operation)?;
+            }
+            let item = PredefinedMenuItem::separator();
+            menu.append(&item)
+        }
+        "submenu" => {
+            let submenu = build_context_submenu(value, window_id, native_ids, operation)?;
+            menu.append(&submenu)
+        }
+        _ => {
+            return Err(HostProtocolError::invalid_argument(
+                "template.items.type",
+                "must be item, separator, or submenu",
+                operation,
+            ));
+        }
+    }
+    .map_err(|error| HostProtocolError::invalid_argument("template", error.to_string(), operation))
+}
+
+fn append_context_submenu_item(
+    submenu: &Submenu,
+    value: &serde_json::Value,
+    window_id: &str,
+    native_ids: &mut Vec<String>,
+    operation: &'static str,
+) -> std::result::Result<(), HostProtocolError> {
+    match context_menu_item_type(value, operation)? {
+        "item" => {
+            let native_id = context_menu_native_item_id(value, window_id, native_ids, operation)?;
+            let label = context_menu_required_string(value, "label", operation)?;
+            let enabled = context_menu_optional_bool(value, "enabled", operation)?.unwrap_or(true);
+            let result =
+                if let Some(checked) = context_menu_optional_bool(value, "checked", operation)? {
+                    let item = CheckMenuItem::with_id(native_id, label, enabled, checked, None);
+                    submenu.append(&item)
+                } else {
+                    let item = MenuItem::with_id(native_id, label, enabled, None);
+                    submenu.append(&item)
+                };
+            result
+        }
+        "separator" => {
+            if value.get("id").is_some() {
+                let _ = context_menu_required_string(value, "id", operation)?;
+            }
+            let item = PredefinedMenuItem::separator();
+            submenu.append(&item)
+        }
+        "submenu" => {
+            let child = build_context_submenu(value, window_id, native_ids, operation)?;
+            submenu.append(&child)
+        }
+        _ => {
+            return Err(HostProtocolError::invalid_argument(
+                "template.items.type",
+                "must be item, separator, or submenu",
+                operation,
+            ));
+        }
+    }
+    .map_err(|error| HostProtocolError::invalid_argument("template", error.to_string(), operation))
+}
+
+fn build_context_submenu(
+    value: &serde_json::Value,
+    window_id: &str,
+    native_ids: &mut Vec<String>,
+    operation: &'static str,
+) -> std::result::Result<Submenu, HostProtocolError> {
+    let native_id = context_menu_generated_id("submenu");
+    let submenu = Submenu::with_id(
+        native_id,
+        context_menu_required_string(value, "label", operation)?,
+        context_menu_optional_bool(value, "enabled", operation)?.unwrap_or(true),
+    );
+    let _ = context_menu_required_string(value, "id", operation)?;
+    for item in context_menu_items(value, "items", operation)? {
+        append_context_submenu_item(&submenu, item, window_id, native_ids, operation)?;
+    }
+    Ok(submenu)
+}
+
+fn context_menu_native_item_id(
+    value: &serde_json::Value,
+    window_id: &str,
+    native_ids: &mut Vec<String>,
+    operation: &'static str,
+) -> std::result::Result<String, HostProtocolError> {
+    let item_id = context_menu_required_string(value, "id", operation)?;
+    let native_id = context_menu_generated_id("item");
+    native_ids.push(native_id.clone());
+    if let Some(command_id) = value.get("commandId") {
+        let command_id = command_id.as_str().ok_or_else(|| {
+            HostProtocolError::invalid_argument(
+                "template.items.commandId",
+                "must be a string",
+                operation,
+            )
+        })?;
+        validate_context_menu_printable("template.items.commandId", command_id, operation)?;
+        track_context_menu_command_binding(
+            native_id.as_str(),
+            ContextMenuCommandBinding {
+                item_id,
+                command_id: command_id.to_string(),
+                window_id: window_id.to_string(),
+            },
+            operation,
+        )?;
+    }
+    Ok(native_id)
+}
+
+fn context_menu_generated_id(prefix: &str) -> String {
+    let next = CONTEXT_MENU_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    format!("context-menu:{prefix}:{next}")
+}
+
+fn context_menu_items<'a>(
+    value: &'a serde_json::Value,
+    field: &str,
+    operation: &'static str,
+) -> std::result::Result<&'a Vec<serde_json::Value>, HostProtocolError> {
+    value
+        .get("items")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| HostProtocolError::invalid_argument(field, "must be an array", operation))
+}
+
+fn context_menu_item_type<'a>(
+    value: &'a serde_json::Value,
+    operation: &'static str,
+) -> std::result::Result<&'a str, HostProtocolError> {
+    value
+        .get("type")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| {
+            HostProtocolError::invalid_argument(
+                "template.items.type",
+                "must be a string",
+                operation,
+            )
+        })
+}
+
+fn context_menu_optional_bool(
+    value: &serde_json::Value,
+    field: &'static str,
+    operation: &'static str,
+) -> std::result::Result<Option<bool>, HostProtocolError> {
+    match value.get(field) {
+        None => Ok(None),
+        Some(serde_json::Value::Bool(value)) => Ok(Some(*value)),
+        Some(_) => Err(HostProtocolError::invalid_argument(
+            format!("template.items.{field}"),
+            "must be a boolean",
+            operation,
+        )),
+    }
+}
+
+fn context_menu_required_string(
+    value: &serde_json::Value,
+    field: &'static str,
+    operation: &'static str,
+) -> std::result::Result<String, HostProtocolError> {
+    let text = value
+        .get(field)
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| {
+            HostProtocolError::invalid_argument(
+                format!("template.items.{field}"),
+                "must be a string",
+                operation,
+            )
+        })?;
+    validate_context_menu_printable(format!("template.items.{field}"), text, operation)?;
+    Ok(text.to_string())
+}
+
+fn validate_context_menu_printable(
+    field: impl Into<String>,
+    value: &str,
+    operation: &'static str,
+) -> std::result::Result<(), HostProtocolError> {
+    let field = field.into();
+    if value.is_empty() {
+        return Err(HostProtocolError::invalid_argument(
+            field,
+            "must not be empty",
+            operation,
+        ));
+    }
+    if value.bytes().any(|byte| matches!(byte, 0x00..=0x1f | 0x7f)) {
+        return Err(HostProtocolError::invalid_argument(
+            field,
+            "must not include control characters",
+            operation,
+        ));
+    }
+    Ok(())
+}
+
+fn show_platform_context_menu(
+    window: &Window,
+    menu: &Menu,
+    position: Option<muda::dpi::Position>,
+) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        // SAFETY: Tao owns the NSView for this live Window while the registry
+        // holds the Window resource.
+        unsafe {
+            menu.show_context_menu_for_nsview(window.ns_view() as *const std::ffi::c_void, position)
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        // SAFETY: Tao owns the HWND for this live Window while the registry
+        // holds the Window resource.
+        unsafe { menu.show_context_menu_for_hwnd(window.hwnd(), position) }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        use gtk::prelude::Cast;
+        menu.show_context_menu_for_gtk_window(window.gtk_window().upcast_ref(), position)
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+    {
+        let _ = (window, menu, position);
+        false
+    }
 }
 
 pub(crate) fn run_main_window(mode: RunMode, window_methods: WindowMethodPort) -> Result<()> {

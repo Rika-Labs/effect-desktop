@@ -6,6 +6,7 @@ mod attachment_intake;
 mod autostart;
 mod browsing_data;
 mod clipboard;
+mod context_menu;
 mod cookie_store;
 mod crash_reporter;
 mod diagnostics_bundle;
@@ -61,8 +62,9 @@ pub(crate) use job::JOB_ENV_LOCK;
 use crate::{
     linux,
     window::{
-        clear_screen_runtime_event_state, clear_webview_runtime_event_state,
-        clear_window_runtime_event_state, install_screen_event_sender,
+        clear_context_menu_runtime_event_state, clear_screen_runtime_event_state,
+        clear_webview_runtime_event_state, clear_window_runtime_event_state,
+        install_context_menu_event_sender, install_screen_event_sender,
         install_webview_event_sender, install_window_event_sender, WindowMethodHandler,
     },
 };
@@ -1040,6 +1042,10 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Payload(menu::capability),
     ),
     route(
+        host_protocol::CONTEXT_MENU_SHOW_METHOD,
+        HostMethodDispatcher::Window(context_menu::show),
+    ),
+    route(
         host_protocol::WEBVIEW_CREATE_METHOD,
         HostMethodDispatcher::Window(webview::create),
     ),
@@ -1475,6 +1481,7 @@ impl HostMethodRouter {
         clear_screen_runtime_event_state().map_err(|error| format!("{error:?}"))?;
         clear_window_runtime_event_state().map_err(|error| format!("{error:?}"))?;
         clear_webview_runtime_event_state().map_err(|error| format!("{error:?}"))?;
+        clear_context_menu_runtime_event_state().map_err(|error| format!("{error:?}"))?;
         if self.take_runtime_created_trays()? {
             self.window
                 .clear_runtime_trays()
@@ -1504,6 +1511,7 @@ impl HostMethodRouter {
         install_screen_event_sender(sender.clone()).map_err(|error| format!("{error:?}"))?;
         install_window_event_sender(sender.clone()).map_err(|error| format!("{error:?}"))?;
         install_webview_event_sender(sender.clone()).map_err(|error| format!("{error:?}"))?;
+        install_context_menu_event_sender(sender.clone()).map_err(|error| format!("{error:?}"))?;
         *self
             .runtime_event_sender
             .lock()
@@ -1517,6 +1525,7 @@ impl HostMethodRouter {
         clear_screen_runtime_event_state().map_err(|error| format!("{error:?}"))?;
         clear_window_runtime_event_state().map_err(|error| format!("{error:?}"))?;
         clear_webview_runtime_event_state().map_err(|error| format!("{error:?}"))?;
+        clear_context_menu_runtime_event_state().map_err(|error| format!("{error:?}"))?;
         *self
             .runtime_event_sender
             .lock()
@@ -2006,7 +2015,9 @@ fn local_tool_runtime_payload_id(payload: Option<&serde_json::Value>) -> Option<
 #[cfg(test)]
 mod tests {
     use super::{autostart, resident_lifecycle, HostMethodRouter};
-    use crate::window::{TrayCreateRequest, WindowCreateRequest, WindowMethodHandler};
+    use crate::window::{
+        ContextMenuShowRequest, TrayCreateRequest, WindowCreateRequest, WindowMethodHandler,
+    };
     use host_protocol::{
         ClipboardSupportedPayload, HostProtocolEnvelope, HostProtocolError, WindowBoundsPayload,
         WindowCreateResponse, PROTOCOL_VERSION,
@@ -3561,6 +3572,55 @@ mod tests {
         let created = fake.created();
         assert_eq!(created.len(), 1);
         assert_eq!(created[0].parent_window_id(), Some("window-parent"));
+    }
+
+    #[test]
+    fn context_menu_show_routes_to_window_handler() {
+        let fake = Arc::new(FakeWindowHandler::default());
+        let router = HostMethodRouter::new(fake.clone());
+        let response = router
+            .dispatch_at(
+                request_with_payload(
+                    "request-context-menu-show",
+                    host_protocol::CONTEXT_MENU_SHOW_METHOD,
+                    serde_json::json!({
+                        "window": {
+                            "kind": "window",
+                            "id": "window-1",
+                            "generation": 0,
+                            "ownerScope": "scope-1",
+                            "state": "open"
+                        },
+                        "template": {
+                            "items": [
+                                {
+                                    "type": "item",
+                                    "id": "file.open",
+                                    "label": "Open",
+                                    "commandId": "app.file.open"
+                                }
+                            ]
+                        },
+                        "position": { "x": 12.5, "y": 34.25 }
+                    }),
+                ),
+                1710000000107,
+            )
+            .expect("context menu show should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-context-menu-show".to_string(),
+                timestamp: 1710000000107,
+                trace_id: "trace-request-context-menu-show".to_string(),
+                payload: None,
+                error: None,
+            }
+        );
+        let requests = fake.context_menus();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].window_id(), "window-1");
     }
 
     #[test]
@@ -7235,6 +7295,7 @@ mod tests {
         fullscreen: Mutex<Vec<(String, bool)>>,
         simple_fullscreen: Mutex<Vec<(String, bool)>>,
         dock_badge_labels: Mutex<Vec<Option<String>>>,
+        context_menus: Mutex<Vec<ContextMenuShowRequest>>,
     }
 
     impl FakeWindowHandler {
@@ -7268,6 +7329,7 @@ mod tests {
                 fullscreen: Mutex::new(Vec::new()),
                 simple_fullscreen: Mutex::new(Vec::new()),
                 dock_badge_labels: Mutex::new(Vec::new()),
+                context_menus: Mutex::new(Vec::new()),
             }
         }
 
@@ -7429,6 +7491,13 @@ mod tests {
             self.simple_fullscreen
                 .lock()
                 .expect("fake simple fullscreen requests should lock")
+                .clone()
+        }
+
+        fn context_menus(&self) -> Vec<ContextMenuShowRequest> {
+            self.context_menus
+                .lock()
+                .expect("fake context menu requests should lock")
                 .clone()
         }
     }
@@ -7816,6 +7885,17 @@ mod tests {
             _window_id: &str,
             _template: serde_json::Value,
         ) -> Result<(), HostProtocolError> {
+            Ok(())
+        }
+
+        fn show_context_menu(
+            &self,
+            request: ContextMenuShowRequest,
+        ) -> Result<(), HostProtocolError> {
+            self.context_menus
+                .lock()
+                .expect("fake context menu requests should lock")
+                .push(request);
             Ok(())
         }
 
