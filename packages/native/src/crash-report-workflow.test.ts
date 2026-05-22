@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import { HostProtocolInvalidArgumentError } from "@orika/bridge"
 import { Cause, Effect, Exit, Fiber, Layer, ManagedRuntime, Option, Schedule, Schema } from "effect"
 import { TestClock } from "effect/testing"
 import { EventJournal, EventLog as EL, EventLogEncryption } from "effect/unstable/eventlog"
@@ -165,6 +166,39 @@ test("CrashReport queue upload handler rejects invalid capture timestamps before
         .pipe(Effect.timeoutOption("5 millis"))
 
       expect(Exit.isFailure(exit)).toBe(true)
+      expect(Option.isNone(queuedReport)).toBe(true)
+    })
+  )
+})
+
+test("CrashReport queue upload handler reports malformed reports separately from capture timestamps", () => {
+  const runtime = ManagedRuntime.make(queueLayer)
+  return runtime.runPromise(
+    Effect.gen(function* () {
+      const handler = yield* makeCrashReportQueueUploadHandler({
+        now: () => 12345,
+        id: () => "invalid-report-payload"
+      })
+      const malformedBreadcrumbs = [
+        {
+          category: "error\nforged",
+          message: "boom"
+        }
+      ] as ReadonlyArray<CrashReporterBreadcrumbInput>
+      const exit = yield* Effect.exit(handler(malformedBreadcrumbs))
+      const queue = yield* makeCrashReportQueue
+      const queuedReport = yield* queue
+        .take((report) => Effect.succeed(report))
+        .pipe(Effect.timeoutOption("5 millis"))
+
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const failure = exit.cause.reasons.find(Cause.isFailReason)
+        expect(Schema.is(HostProtocolInvalidArgumentError)(failure?.error)).toBe(true)
+        if (Schema.is(HostProtocolInvalidArgumentError)(failure?.error)) {
+          expect(failure.error.field).toBe("report")
+        }
+      }
       expect(Option.isNone(queuedReport)).toBe(true)
     })
   )

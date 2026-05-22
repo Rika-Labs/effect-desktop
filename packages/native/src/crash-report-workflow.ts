@@ -128,6 +128,50 @@ export type CrashReportQueueUploadHandler = (
   breadcrumbs: ReadonlyArray<CrashReporterBreadcrumbInput>
 ) => Effect.Effect<void, CrashReporterError, never>
 
+interface QueuedCrashReportInput {
+  readonly breadcrumbs: ReadonlyArray<CrashReporterBreadcrumbInput>
+  readonly capturedAt: number
+  readonly id?: () => string
+  readonly appVersion?: string | undefined
+  readonly platform?: string | undefined
+}
+
+const invalidCrashReporterArgument = (field: string, message: string): CrashReporterError =>
+  makeHostProtocolInvalidArgumentError(field, message, "CrashReporter.flush")
+
+const validateCapturedAt = (capturedAt: number): Effect.Effect<number, CrashReporterError> =>
+  Schema.decodeUnknownEffect(CrashReporterTimestamp)(capturedAt).pipe(
+    Effect.mapError(() =>
+      invalidCrashReporterArgument("capturedAt", "must be a finite non-negative integer")
+    )
+  )
+
+const makeQueuedCrashReport = (
+  input: QueuedCrashReportInput
+): Effect.Effect<
+  { readonly id: string; readonly report: CrashReport },
+  CrashReporterError,
+  never
+> =>
+  Effect.gen(function* () {
+    const capturedAt = yield* validateCapturedAt(input.capturedAt)
+    const id =
+      input.id === undefined
+        ? `crash-${String(capturedAt)}-${yield* Random.nextUUIDv4}`
+        : input.id()
+    const report = yield* Schema.decodeUnknownEffect(CrashReport)({
+      id,
+      breadcrumbs: input.breadcrumbs,
+      capturedAt,
+      ...(input.appVersion === undefined ? {} : { appVersion: input.appVersion }),
+      ...(input.platform === undefined ? {} : { platform: input.platform })
+    }).pipe(
+      Effect.mapError(() => invalidCrashReporterArgument("report", "must be a valid crash report"))
+    )
+
+    return { id, report }
+  })
+
 export const makeCrashReportQueueUploadHandler = (
   options: CrashReportQueueUploadHandlerOptions = {}
 ): Effect.Effect<CrashReportQueueUploadHandler, never, PersistedQueue.PersistedQueueFactory> =>
@@ -138,25 +182,13 @@ export const makeCrashReportQueueUploadHandler = (
     return (breadcrumbs) =>
       Effect.gen(function* () {
         const capturedAt = yield* now
-        const id =
-          options.id === undefined
-            ? `crash-${String(capturedAt)}-${yield* Random.nextUUIDv4}`
-            : options.id()
-        const report = yield* Schema.decodeUnknownEffect(CrashReport)({
-          id,
+        const { id, report } = yield* makeQueuedCrashReport({
           breadcrumbs,
           capturedAt,
+          ...(options.id === undefined ? {} : { id: options.id }),
           ...(options.appVersion === undefined ? {} : { appVersion: options.appVersion }),
           ...(options.platform === undefined ? {} : { platform: options.platform })
-        }).pipe(
-          Effect.mapError(() =>
-            makeHostProtocolInvalidArgumentError(
-              "capturedAt",
-              "must be a finite non-negative integer",
-              "CrashReporter.flush"
-            )
-          )
-        )
+        })
         yield* queue.offer(report, { id }).pipe(
           Effect.asVoid,
           Effect.mapError((error) =>
