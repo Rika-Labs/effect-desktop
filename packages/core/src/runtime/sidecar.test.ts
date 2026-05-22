@@ -81,6 +81,7 @@ test("Sidecar readiness failure updates status and fails ready effect", () =>
 
 const makeFakeProcessHandle = (): ProcessHandle =>
   Object.freeze({
+    all: Stream.empty,
     exit: Effect.succeed(new ProcessExitStatus({ code: 0 })),
     kill: () => Effect.void,
     pid: 42,

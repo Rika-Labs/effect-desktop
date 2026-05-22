@@ -1217,7 +1217,7 @@ const makeMockProcessChild = (
   }
 
   return ChildProcessSpawner.makeHandle({
-    all: streamBytes(fixture.stdout ?? []),
+    all: streamBytes(mockProcessAllOutput(fixture)),
     exitCode: Deferred.await(exitState).pipe(
       Effect.flatMap((status) =>
         status.signal === undefined
@@ -1271,6 +1271,11 @@ const makeMockProcessChild = (
     unref: Effect.succeed(Effect.void)
   })
 }
+
+const mockProcessAllOutput = (fixture: MockProcessFixture): readonly Uint8Array[] => [
+  ...(fixture.stdout ?? []),
+  ...(fixture.stderr ?? [])
+]
 
 const processSpawnInputFromCommand = (command: ChildProcess.Command): ProcessSpawnInput => {
   if (!ChildProcess.isStandardCommand(command)) {

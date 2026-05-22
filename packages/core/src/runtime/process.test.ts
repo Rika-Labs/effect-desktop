@@ -72,6 +72,23 @@ processTest("Process spawn exposes stdout and exit status", () =>
   )
 )
 
+processTest("Process spawn exposes combined stdout and stderr output", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const fixture = yield* makeFixture(
+        makeFakeSpawner(() =>
+          makeFakeChild({ exit: { code: 0 }, stdout: ["out\n"], stderr: ["err\n"] })
+        )
+      )
+
+      const handle = yield* fixture.service.spawn("echo", ["hi"])
+      const output = yield* handle.all.pipe(Stream.runCollect)
+
+      expect(decodeChunks([...output])).toBe("out\nerr\n")
+    })
+  )
+)
+
 processTest("Process spawn registers a scoped running resource", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -1234,7 +1251,7 @@ const makeFakeChild = (options: {
   )
 
   const child = ChildProcessSpawner.makeHandle({
-    all: streamBytes(options.stdout, options.stdoutChunkDelayMs),
+    all: streamBytes(fakeChildAllOutput(options), options.stdoutChunkDelayMs),
     exitCode: Deferred.await(exitState).pipe(
       Effect.onInterrupt(() =>
         Effect.sync(() => {
@@ -1321,6 +1338,11 @@ const makeFakeChild = (options: {
 
   return child
 }
+
+const fakeChildAllOutput = (options: {
+  readonly stdout: readonly string[]
+  readonly stderr?: readonly string[]
+}): readonly string[] => [...options.stdout, ...(options.stderr ?? [])]
 
 const streamBytes = (chunks: readonly string[], chunkDelayMs?: number): Stream.Stream<Uint8Array> =>
   Stream.fromIterable(chunks).pipe(

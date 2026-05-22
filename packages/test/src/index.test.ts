@@ -1331,12 +1331,14 @@ test("MockProcess layer emits stdout, stderr, exit, and records stdin", () => {
       yield* Stream.make(bytes("input")).pipe(Stream.run(handle.stdin))
       const stdout = yield* Stream.runCollect(handle.stdout)
       const stderr = yield* Stream.runCollect(handle.stderr)
+      const all = yield* Stream.runCollect(handle.all)
       const exit = yield* handle.exit
       const list = yield* process.list()
 
       expect(handle.pid).toBe(1234)
       expect(Array.from(stdout).map(text)).toEqual(["ok\n"])
       expect(Array.from(stderr).map(text)).toEqual(["warn\n"])
+      expect(Array.from(all).map(text)).toEqual(["ok\n", "warn\n"])
       expect(exit.code).toBe(7)
       expect(list).toMatchObject([
         {

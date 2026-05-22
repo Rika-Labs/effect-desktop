@@ -124,11 +124,14 @@ export interface ProcessHandle {
   readonly resource: ManagedResourceHandle<"process", "running">
   readonly pid: number
   readonly stdin: Sink.Sink<void, unknown, never, ProcessError, never>
+  readonly all: Stream.Stream<Uint8Array, ProcessError, never>
   readonly stdout: Stream.Stream<Uint8Array, ProcessError, never>
   readonly stderr: Stream.Stream<Uint8Array, ProcessError, never>
   readonly exit: Effect.Effect<ProcessExitStatus, ProcessError, never>
   readonly kill: (signal?: unknown) => Effect.Effect<void, ProcessError, never>
 }
+
+type ProcessOutputStreamName = "all" | "stdout" | "stderr"
 
 export interface ProcessSnapshot {
   readonly resourceId: string
@@ -410,6 +413,13 @@ const makeHandle = (
   inspector: ExecutionInspectorCollectorApi
 ): Effect.Effect<ProcessHandle, never, never> =>
   Effect.gen(function* makeHandle() {
+    const allBufferBytes = combinedOutputBufferBytes(budgets)
+    const all = boundedOutputStream(
+      child.all.pipe(Stream.mapError((error) => mapPlatformError(error, command, "Process.all"))),
+      "all",
+      command,
+      allBufferBytes
+    )
     const stdout = boundedOutputStream(
       child.stdout.pipe(
         Stream.mapError((error) => mapPlatformError(error, command, "Process.stdout"))
@@ -478,6 +488,7 @@ const makeHandle = (
     const exit = Deferred.await(exitState)
 
     return Object.freeze({
+      all,
       exit,
       kill: Effect.fn("Process.kill", {
         attributes: { command, pid: Number(child.pid) }
@@ -513,7 +524,7 @@ const makeHandle = (
 
 const boundedOutputStream = (
   stream: Stream.Stream<Uint8Array, ProcessError, never>,
-  streamName: "stdout" | "stderr",
+  streamName: ProcessOutputStreamName,
   command: string,
   limitBytes: number
 ): Stream.Stream<Uint8Array, ProcessError, never> =>
@@ -552,7 +563,7 @@ const runOutputProducer = (
   stream: Stream.Stream<Uint8Array, ProcessError, never>,
   queue: Queue.Queue<Uint8Array, ProcessError | Cause.Done>,
   queuedBytes: Ref.Ref<number>,
-  streamName: "stdout" | "stderr",
+  streamName: ProcessOutputStreamName,
   command: string,
   limitBytes: number
 ): Effect.Effect<void, never, never> =>
@@ -581,7 +592,7 @@ const runOutputProducer = (
 const offerOutputChunk = (
   queue: Queue.Queue<Uint8Array, ProcessError | Cause.Done>,
   queuedBytes: Ref.Ref<number>,
-  streamName: "stdout" | "stderr",
+  streamName: ProcessOutputStreamName,
   command: string,
   limitBytes: number,
   chunk: Uint8Array
@@ -606,7 +617,7 @@ const offerOutputChunk = (
   })
 
 const makeBackpressureOverflow = (
-  streamName: "stdout" | "stderr",
+  streamName: ProcessOutputStreamName,
   command: string,
   limitBytes: number,
   lostFrames: number
@@ -621,6 +632,9 @@ const makeBackpressureOverflow = (
       `Process.${streamName}`
     )
   })
+
+const combinedOutputBufferBytes = (budgets: Required<ProcessBudgetPolicy>): number =>
+  budgets.stdoutBufferBytes + budgets.stderrBufferBytes
 
 const safeInspectorTimestamp = (now: () => number): Effect.Effect<number, never, never> => {
   const timestamp = now()
