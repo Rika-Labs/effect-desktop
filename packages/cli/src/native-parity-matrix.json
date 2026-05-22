@@ -4961,22 +4961,22 @@
       "capability": "native",
       "support": {
         "status": "partial",
-        "reason": "host-navigation-state-tracked",
+        "reason": "host-navigation-policy-open-external-unavailable",
         "platforms": [
           {
             "platform": "macos",
             "status": "partial",
-            "reason": "host-navigation-state-tracked"
+            "reason": "host-navigation-policy-open-external-unavailable"
           },
           {
             "platform": "windows",
             "status": "partial",
-            "reason": "host-navigation-state-tracked"
+            "reason": "host-navigation-policy-open-external-unavailable"
           },
           {
             "platform": "linux",
             "status": "partial",
-            "reason": "host-navigation-state-tracked"
+            "reason": "host-navigation-policy-open-external-unavailable"
           }
         ]
       },

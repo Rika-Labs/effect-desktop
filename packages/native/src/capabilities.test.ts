@@ -179,6 +179,28 @@ const WebViewNavigationTrackedSupport = {
   ]
 } as const
 
+const WebViewNavigationPolicySupport = {
+  status: "partial",
+  reason: "host-navigation-policy-open-external-unavailable",
+  platforms: [
+    {
+      platform: "macos",
+      status: "partial",
+      reason: "host-navigation-policy-open-external-unavailable"
+    },
+    {
+      platform: "windows",
+      status: "partial",
+      reason: "host-navigation-policy-open-external-unavailable"
+    },
+    {
+      platform: "linux",
+      status: "partial",
+      reason: "host-navigation-policy-open-external-unavailable"
+    }
+  ]
+} as const
+
 const WebViewOpenDevToolsSupport = {
   status: "partial",
   reason: "host-devtools-build-gated",
@@ -359,6 +381,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const webViewGoBack = yield* capabilities.support("WebView.goBack")
       const webViewGoForward = yield* capabilities.support("WebView.goForward")
       const webViewGetNavigationState = yield* capabilities.support("WebView.getNavigationState")
+      const webViewSetNavigationPolicy = yield* capabilities.support("WebView.setNavigationPolicy")
       const webViewOpenDevTools = yield* capabilities.support("WebView.openDevTools")
       const webViewCloseDevTools = yield* capabilities.support("WebView.closeDevTools")
       const webViewAttachDebugger = yield* capabilities.support("WebView.attachDebugger")
@@ -461,6 +484,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(webViewGoBack).toEqual(WebViewNavigationTrackedSupport)
       expect(webViewGoForward).toEqual(WebViewNavigationTrackedSupport)
       expect(webViewGetNavigationState).toEqual(WebViewNavigationTrackedSupport)
+      expect(webViewSetNavigationPolicy).toEqual(WebViewNavigationPolicySupport)
       expect(menuClear).toEqual({
         status: "partial",
         reason: "macos-menu-clear-only",

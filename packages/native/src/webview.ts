@@ -41,6 +41,7 @@ import type { WindowHandle } from "./contracts/window.js"
 const StrictParseOptions = { onExcessProperty: "error" } as const
 type WebViewError = HostProtocolError
 const WebViewNavigationPartialReason = "host-navigation-state-tracked"
+const WebViewNavigationPolicyPartialReason = "host-navigation-policy-open-external-unavailable"
 const WebViewNavigationSupport = NativeSurface.support.partial(WebViewNavigationPartialReason, {
   platforms: [
     { platform: "macos", status: "partial", reason: WebViewNavigationPartialReason },
@@ -48,6 +49,16 @@ const WebViewNavigationSupport = NativeSurface.support.partial(WebViewNavigation
     { platform: "linux", status: "partial", reason: WebViewNavigationPartialReason }
   ]
 })
+const WebViewNavigationPolicySupport = NativeSurface.support.partial(
+  WebViewNavigationPolicyPartialReason,
+  {
+    platforms: [
+      { platform: "macos", status: "partial", reason: WebViewNavigationPolicyPartialReason },
+      { platform: "windows", status: "partial", reason: WebViewNavigationPolicyPartialReason },
+      { platform: "linux", status: "partial", reason: WebViewNavigationPolicyPartialReason }
+    ]
+  }
+)
 const WebViewDevToolsBuildGatedReason = "host-devtools-build-gated"
 const WebViewCloseDevToolsWindowsUnsupportedReason = "windows-devtools-close-unavailable"
 const WebViewDebuggerUnsupportedReason = "host-debugger-protocol-unavailable"
@@ -298,7 +309,7 @@ export const WebViewSetNavigationPolicy = NativeSurface.rpc("WebView", "setNavig
     P.nativeInvoke({ primitive: "WebView", methods: ["setNavigationPolicy"] })
   ),
   endpoint: "mutation",
-  support: WebViewNavigationSupport
+  support: WebViewNavigationPolicySupport
 })
 export const WebViewDestroy = NativeSurface.rpc("WebView", "destroy", {
   payload: WebViewHandleInput,

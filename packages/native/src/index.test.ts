@@ -966,6 +966,28 @@ const webViewNavigationTrackedSupport = {
   ]
 } as const
 
+const webViewNavigationPolicySupport = {
+  status: "partial",
+  reason: "host-navigation-policy-open-external-unavailable",
+  platforms: [
+    {
+      platform: "macos",
+      status: "partial",
+      reason: "host-navigation-policy-open-external-unavailable"
+    },
+    {
+      platform: "windows",
+      status: "partial",
+      reason: "host-navigation-policy-open-external-unavailable"
+    },
+    {
+      platform: "linux",
+      status: "partial",
+      reason: "host-navigation-policy-open-external-unavailable"
+    }
+  ]
+} as const
+
 const webViewOpenDevToolsSupport = {
   status: "partial",
   reason: "host-devtools-build-gated",
@@ -2304,6 +2326,7 @@ test("WebView support metadata reflects resource lifecycle, print, and devtools 
   expect(byTag.get("WebView.goBack")?.support).toEqual(webViewNavigationTrackedSupport)
   expect(byTag.get("WebView.goForward")?.support).toEqual(webViewNavigationTrackedSupport)
   expect(byTag.get("WebView.getNavigationState")?.support).toEqual(webViewNavigationTrackedSupport)
+  expect(byTag.get("WebView.setNavigationPolicy")?.support).toEqual(webViewNavigationPolicySupport)
   expect(byTag.get("WebView.openDevTools")?.support).toEqual(webViewOpenDevToolsSupport)
   expect(byTag.get("WebView.closeDevTools")?.support).toEqual(webViewCloseDevToolsSupport)
 })

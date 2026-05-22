@@ -249,9 +249,10 @@ is owned by `Window.create`. `WebView.create`, `WebView.destroy`,
 `WebView.loadRoute`, `WebView.loadUrl`, and `WebView.reload` are host-backed
 and report `supported`. Other direct child WebView navigation methods are
 routed through host-backed resources and report `partial` support with
-`host-navigation-state-tracked`. `setNavigationPolicy` is also host-backed for
-those resources and shares the same partial support reason because popup
-approval and external-open delegation are still intentionally conservative.
+`host-navigation-state-tracked`. `setNavigationPolicy` is host-backed and
+reports `partial` support with
+`host-navigation-policy-open-external-unavailable` because popup approval and
+external-open delegation are still intentionally conservative.
 Create-time preload isolation is host-backed through Wry initialization-script
 and IPC hooks, and reports through the typed `WebView.ApiCall` stream.
 Runtime events are partially host-backed through Wry page-load and drag/drop

@@ -157,6 +157,30 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
           ]
         }
       })
+      expect(result.rows.find((row) => row.tag === "WebView.setNavigationPolicy")).toMatchObject({
+        hostStatus: "routed",
+        support: {
+          status: "partial",
+          reason: "host-navigation-policy-open-external-unavailable",
+          platforms: [
+            {
+              platform: "macos",
+              status: "partial",
+              reason: "host-navigation-policy-open-external-unavailable"
+            },
+            {
+              platform: "windows",
+              status: "partial",
+              reason: "host-navigation-policy-open-external-unavailable"
+            },
+            {
+              platform: "linux",
+              status: "partial",
+              reason: "host-navigation-policy-open-external-unavailable"
+            }
+          ]
+        }
+      })
       expect(result.rows.find((row) => row.tag === "WebView.attachDebugger")).toMatchObject({
         hostStatus: "capability-fact",
         support: {
