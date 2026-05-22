@@ -1511,7 +1511,7 @@ test("desktop doctor reports config import failures with the import cause", () =
         expect(exitCode).toBe(1)
         expect(output).toContain("MISSING  config")
         expect(output).toContain("desktop config import failed")
-        expect(output).toContain("Cannot access")
+        expect(output).toContain("config exploded")
         expect(output).not.toContain("desktop config must export a default object")
       } finally {
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
