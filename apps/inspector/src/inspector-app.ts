@@ -127,7 +127,7 @@ export const makeInspectorAppForTransports = (
 
 export const recordedInspectorSession = recordedDiagnosticsSession
 
-export const transportEventsToTimeline = (
+const transportEventsToTimeline = (
   events: readonly InspectorTransportEvent[]
 ): readonly InspectorTimelineEvent[] =>
   events.map((event) => ({
@@ -139,7 +139,7 @@ export const transportEventsToTimeline = (
     category: categoryForSource(event.source)
   }))
 
-export const framesToTimeline = (
+const framesToTimeline = (
   frames: readonly RecordedInspectorFrame[]
 ): readonly InspectorTimelineEvent[] =>
   frames.map((frame, index) => ({
@@ -241,7 +241,8 @@ const describePayload = (payload: unknown): string => {
     return `${payload.length} item${payload.length === 1 ? "" : "s"}`
   }
   if (typeof payload === "object") {
-    return Object.keys(payload).slice(0, 4).join(", ")
+    const keys = Object.keys(payload).slice(0, 4)
+    return keys.length === 0 ? "No payload" : keys.join(", ")
   }
   return "Unknown payload"
 }

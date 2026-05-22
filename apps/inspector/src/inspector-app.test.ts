@@ -68,6 +68,23 @@ test("InspectorApp normalizes unknown selected sessions to the live session", ()
     expect(snapshot.events.map((event) => event.category)).toEqual(["rpc"])
   }))
 
+test("InspectorApp describes empty object payloads explicitly", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const live = yield* makeInspectorTransport({
+        sessionId: "live-one",
+        sessionLabel: "Observed app",
+        now: () => 10
+      })
+      yield* live.publish({ source: "rpc.notes.empty", payload: {} })
+      const replay = makeReplayTransport(recordedInspectorSession)
+      const app = makeInspectorAppForTransports(live, replay)
+      return yield* app.snapshot()
+    })
+  ).then((snapshot) => {
+    expect(snapshot.events[0]?.detail).toBe("No payload")
+  }))
+
 test("summarizeCategories returns stable empty categories", () => {
   expect(summarizeCategories([])).toEqual([
     { id: "timeline", label: "Timeline", events: 0 },
