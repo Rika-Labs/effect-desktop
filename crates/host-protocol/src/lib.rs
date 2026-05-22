@@ -11857,19 +11857,15 @@ impl DownloadListPayload {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct DownloadSnapshotPayload {
     download: DownloadResourcePayload,
     profile: SessionProfileResourcePayload,
     url: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     destination: Option<String>,
     state: DownloadStatePayload,
     received_bytes: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
     total_bytes: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     message: Option<String>,
 }
 
@@ -11896,6 +11892,96 @@ impl DownloadSnapshotPayload {
     pub fn with_total_bytes(mut self, total_bytes: u64) -> Self {
         self.total_bytes = Some(total_bytes);
         self
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SerializableDownloadSnapshotPayload<'a> {
+    download: &'a DownloadResourcePayload,
+    profile: &'a SessionProfileResourcePayload,
+    url: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    destination: Option<&'a str>,
+    state: DownloadStatePayload,
+    received_bytes: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    total_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<&'a str>,
+}
+
+impl<'a> TryFrom<&'a DownloadSnapshotPayload> for SerializableDownloadSnapshotPayload<'a> {
+    type Error = &'static str;
+
+    fn try_from(payload: &'a DownloadSnapshotPayload) -> Result<Self, Self::Error> {
+        validate_download_byte_progress(payload.received_bytes, payload.total_bytes)?;
+        Ok(Self {
+            download: &payload.download,
+            profile: &payload.profile,
+            url: &payload.url,
+            destination: payload.destination.as_deref(),
+            state: payload.state,
+            received_bytes: payload.received_bytes,
+            total_bytes: payload.total_bytes,
+            message: payload.message.as_deref(),
+        })
+    }
+}
+
+impl Serialize for DownloadSnapshotPayload {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        SerializableDownloadSnapshotPayload::try_from(self)
+            .map_err(ser::Error::custom)?
+            .serialize(serializer)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawDownloadSnapshotPayload {
+    download: DownloadResourcePayload,
+    profile: SessionProfileResourcePayload,
+    url: String,
+    #[serde(default)]
+    destination: Option<String>,
+    state: DownloadStatePayload,
+    received_bytes: u64,
+    #[serde(default)]
+    total_bytes: Option<u64>,
+    #[serde(default)]
+    message: Option<String>,
+}
+
+impl TryFrom<RawDownloadSnapshotPayload> for DownloadSnapshotPayload {
+    type Error = &'static str;
+
+    fn try_from(raw: RawDownloadSnapshotPayload) -> Result<Self, Self::Error> {
+        validate_download_byte_progress(raw.received_bytes, raw.total_bytes)?;
+        Ok(Self {
+            download: raw.download,
+            profile: raw.profile,
+            url: raw.url,
+            destination: raw.destination,
+            state: raw.state,
+            received_bytes: raw.received_bytes,
+            total_bytes: raw.total_bytes,
+            message: raw.message,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for DownloadSnapshotPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        RawDownloadSnapshotPayload::deserialize(deserializer)?
+            .try_into()
+            .map_err(de::Error::custom)
     }
 }
 
@@ -11928,8 +12014,7 @@ impl DownloadSupportedPayload {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct DownloadEventPayload {
     r#type: String,
     timestamp: u64,
@@ -11937,12 +12022,9 @@ pub struct DownloadEventPayload {
     download: DownloadResourcePayload,
     profile: SessionProfileResourcePayload,
     url: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     destination: Option<String>,
     received_bytes: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
     total_bytes: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     message: Option<String>,
 }
 
@@ -11967,6 +12049,119 @@ impl DownloadEventPayload {
             total_bytes: None,
             message: None,
         }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SerializableDownloadEventPayload<'a> {
+    r#type: &'a str,
+    timestamp: u64,
+    phase: DownloadEventPhasePayload,
+    download: &'a DownloadResourcePayload,
+    profile: &'a SessionProfileResourcePayload,
+    url: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    destination: Option<&'a str>,
+    received_bytes: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    total_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<&'a str>,
+}
+
+impl<'a> TryFrom<&'a DownloadEventPayload> for SerializableDownloadEventPayload<'a> {
+    type Error = &'static str;
+
+    fn try_from(payload: &'a DownloadEventPayload) -> Result<Self, Self::Error> {
+        validate_download_byte_progress(payload.received_bytes, payload.total_bytes)?;
+        Ok(Self {
+            r#type: &payload.r#type,
+            timestamp: payload.timestamp,
+            phase: payload.phase,
+            download: &payload.download,
+            profile: &payload.profile,
+            url: &payload.url,
+            destination: payload.destination.as_deref(),
+            received_bytes: payload.received_bytes,
+            total_bytes: payload.total_bytes,
+            message: payload.message.as_deref(),
+        })
+    }
+}
+
+impl Serialize for DownloadEventPayload {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        SerializableDownloadEventPayload::try_from(self)
+            .map_err(ser::Error::custom)?
+            .serialize(serializer)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawDownloadEventPayload {
+    r#type: String,
+    timestamp: u64,
+    phase: DownloadEventPhasePayload,
+    download: DownloadResourcePayload,
+    profile: SessionProfileResourcePayload,
+    url: String,
+    #[serde(default)]
+    destination: Option<String>,
+    received_bytes: u64,
+    #[serde(default)]
+    total_bytes: Option<u64>,
+    #[serde(default)]
+    message: Option<String>,
+}
+
+impl TryFrom<RawDownloadEventPayload> for DownloadEventPayload {
+    type Error = &'static str;
+
+    fn try_from(raw: RawDownloadEventPayload) -> Result<Self, Self::Error> {
+        if raw.r#type != "download-event" {
+            return Err("download event type must be download-event");
+        }
+        validate_download_byte_progress(raw.received_bytes, raw.total_bytes)?;
+        Ok(Self {
+            r#type: raw.r#type,
+            timestamp: raw.timestamp,
+            phase: raw.phase,
+            download: raw.download,
+            profile: raw.profile,
+            url: raw.url,
+            destination: raw.destination,
+            received_bytes: raw.received_bytes,
+            total_bytes: raw.total_bytes,
+            message: raw.message,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for DownloadEventPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        RawDownloadEventPayload::deserialize(deserializer)?
+            .try_into()
+            .map_err(de::Error::custom)
+    }
+}
+
+fn validate_download_byte_progress(
+    received_bytes: u64,
+    total_bytes: Option<u64>,
+) -> Result<(), &'static str> {
+    match total_bytes {
+        Some(total_bytes) if received_bytes > total_bytes => {
+            Err("receivedBytes must not exceed totalBytes")
+        }
+        _ => Ok(()),
     }
 }
 
@@ -20200,6 +20395,71 @@ mod tests {
             .expect("support payload should encode"),
             r#"{"supported":false,"reason":"host-download-unavailable"}"#
         );
+    }
+
+    #[test]
+    fn download_payloads_reject_impossible_byte_progress() {
+        let snapshot_error = serde_json::from_str::<DownloadSnapshotPayload>(
+            r#"{"download":{"kind":"download","id":"download:1","generation":0,"ownerScope":"workspace:1","state":"open"},"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/file.zip","state":"running","receivedBytes":20,"totalBytes":10}"#,
+        )
+        .expect_err("impossible download byte progress should be rejected as snapshot");
+        assert!(
+            snapshot_error.to_string().contains("receivedBytes")
+                || snapshot_error.to_string().contains("totalBytes")
+                || snapshot_error.to_string().contains("byte"),
+            "unexpected error: {snapshot_error}"
+        );
+
+        let event_error = serde_json::from_str::<DownloadEventPayload>(
+            r#"{"type":"download-event","timestamp":1710000000000,"phase":"progressed","download":{"kind":"download","id":"download:1","generation":0,"ownerScope":"workspace:1","state":"open"},"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/file.zip","receivedBytes":20,"totalBytes":10}"#,
+        )
+        .expect_err("impossible download byte progress should be rejected as event");
+        assert!(
+            event_error.to_string().contains("receivedBytes")
+                || event_error.to_string().contains("totalBytes")
+                || event_error.to_string().contains("byte"),
+            "unexpected error: {event_error}"
+        );
+    }
+
+    #[test]
+    fn download_payloads_reject_impossible_byte_progress_before_serializing() {
+        let profile =
+            SessionProfileResourcePayload::new("session-profile:workspace-1", 0, "workspace:1");
+        let download = DownloadResourcePayload::new("download:1", 0, "workspace:1");
+        let snapshot = DownloadSnapshotPayload::new(
+            download.clone(),
+            profile.clone(),
+            "https://example.test/file.zip",
+            DownloadStatePayload::Running,
+            20,
+        )
+        .with_total_bytes(10);
+        let event = DownloadEventPayload {
+            r#type: "download-event".to_string(),
+            timestamp: 1_710_000_000_000,
+            phase: DownloadEventPhasePayload::Progressed,
+            download,
+            profile,
+            url: "https://example.test/file.zip".to_string(),
+            destination: None,
+            received_bytes: 20,
+            total_bytes: Some(10),
+            message: None,
+        };
+
+        for source in [
+            serde_json::to_string(&snapshot),
+            serde_json::to_string(&event),
+        ] {
+            let error = source.expect_err("impossible download byte progress should not encode");
+            assert!(
+                error.to_string().contains("receivedBytes")
+                    || error.to_string().contains("totalBytes")
+                    || error.to_string().contains("byte"),
+                "unexpected error: {error}"
+            );
+        }
     }
 
     #[test]
