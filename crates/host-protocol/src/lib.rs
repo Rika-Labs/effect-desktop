@@ -8302,8 +8302,7 @@ pub enum ActivationRegistryEventPhase {
     Failed,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ActivationRegistryEventPayload {
     r#type: String,
     timestamp: u64,
@@ -8314,12 +8313,100 @@ pub struct ActivationRegistryEventPayload {
     actor: ActivationRegistryActorPayload,
     trace_id: String,
     permission_context: ActivationRegistryPermissionContextPayload,
-    #[serde(skip_serializing_if = "Option::is_none")]
     reason: Option<String>,
 }
 
 impl ActivationRegistryEventPayload {
-    pub fn new(
+    pub fn registered(
+        timestamp: u64,
+        surface_id: impl Into<String>,
+        source: ActivationRegistrySource,
+        actor: ActivationRegistryActorPayload,
+        permission_context: ActivationRegistryPermissionContextPayload,
+    ) -> Self {
+        Self::success(
+            timestamp,
+            ActivationRegistryEventPhase::Registered,
+            surface_id,
+            source,
+            actor,
+            permission_context,
+        )
+    }
+
+    pub fn routed(
+        timestamp: u64,
+        surface_id: impl Into<String>,
+        source: ActivationRegistrySource,
+        actor: ActivationRegistryActorPayload,
+        permission_context: ActivationRegistryPermissionContextPayload,
+    ) -> Self {
+        Self::success(
+            timestamp,
+            ActivationRegistryEventPhase::Routed,
+            surface_id,
+            source,
+            actor,
+            permission_context,
+        )
+    }
+
+    pub fn unregistered(
+        timestamp: u64,
+        surface_id: impl Into<String>,
+        source: ActivationRegistrySource,
+        actor: ActivationRegistryActorPayload,
+        permission_context: ActivationRegistryPermissionContextPayload,
+    ) -> Self {
+        Self::success(
+            timestamp,
+            ActivationRegistryEventPhase::Unregistered,
+            surface_id,
+            source,
+            actor,
+            permission_context,
+        )
+    }
+
+    pub fn failed(
+        timestamp: u64,
+        surface_id: impl Into<String>,
+        source: ActivationRegistrySource,
+        actor: ActivationRegistryActorPayload,
+        permission_context: ActivationRegistryPermissionContextPayload,
+        reason: impl Into<String>,
+    ) -> Self {
+        let mut event = Self::make(
+            timestamp,
+            ActivationRegistryEventPhase::Failed,
+            surface_id,
+            source,
+            actor,
+            permission_context,
+        );
+        event.reason = Some(reason.into());
+        event
+    }
+
+    fn success(
+        timestamp: u64,
+        phase: ActivationRegistryEventPhase,
+        surface_id: impl Into<String>,
+        source: ActivationRegistrySource,
+        actor: ActivationRegistryActorPayload,
+        permission_context: ActivationRegistryPermissionContextPayload,
+    ) -> Self {
+        Self::make(
+            timestamp,
+            phase,
+            surface_id,
+            source,
+            actor,
+            permission_context,
+        )
+    }
+
+    fn make(
         timestamp: u64,
         phase: ActivationRegistryEventPhase,
         surface_id: impl Into<String>,
@@ -8340,6 +8427,154 @@ impl ActivationRegistryEventPayload {
             trace_id,
             permission_context,
             reason: None,
+        }
+    }
+
+    #[cfg(test)]
+    fn new_for_test(
+        timestamp: u64,
+        phase: ActivationRegistryEventPhase,
+        surface_id: impl Into<String>,
+        source: ActivationRegistrySource,
+        actor: ActivationRegistryActorPayload,
+        permission_context: ActivationRegistryPermissionContextPayload,
+    ) -> Self {
+        Self::make(
+            timestamp,
+            phase,
+            surface_id,
+            source,
+            actor,
+            permission_context,
+        )
+    }
+
+    #[cfg(test)]
+    fn with_reason_for_test(mut self, reason: impl Into<String>) -> Self {
+        self.reason = Some(reason.into());
+        self
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SerializableActivationRegistryEventPayload<'a> {
+    r#type: &'a str,
+    timestamp: u64,
+    phase: ActivationRegistryEventPhase,
+    surface_id: &'a str,
+    source: ActivationRegistrySource,
+    payload: &'a Value,
+    actor: &'a ActivationRegistryActorPayload,
+    trace_id: &'a str,
+    permission_context: &'a ActivationRegistryPermissionContextPayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<&'a str>,
+}
+
+impl<'a> TryFrom<&'a ActivationRegistryEventPayload>
+    for SerializableActivationRegistryEventPayload<'a>
+{
+    type Error = &'static str;
+
+    fn try_from(payload: &'a ActivationRegistryEventPayload) -> Result<Self, Self::Error> {
+        validate_activation_registry_event_reason(
+            payload.phase.clone(),
+            payload.reason.as_deref(),
+        )?;
+        Ok(Self {
+            r#type: &payload.r#type,
+            timestamp: payload.timestamp,
+            phase: payload.phase.clone(),
+            surface_id: &payload.surface_id,
+            source: payload.source.clone(),
+            payload: &payload.payload,
+            actor: &payload.actor,
+            trace_id: &payload.trace_id,
+            permission_context: &payload.permission_context,
+            reason: payload.reason.as_deref(),
+        })
+    }
+}
+
+impl Serialize for ActivationRegistryEventPayload {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        SerializableActivationRegistryEventPayload::try_from(self)
+            .map_err(ser::Error::custom)?
+            .serialize(serializer)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawActivationRegistryEventPayload {
+    r#type: String,
+    timestamp: u64,
+    phase: ActivationRegistryEventPhase,
+    surface_id: String,
+    source: ActivationRegistrySource,
+    payload: Value,
+    actor: ActivationRegistryActorPayload,
+    trace_id: String,
+    permission_context: ActivationRegistryPermissionContextPayload,
+    #[serde(default)]
+    reason: Option<String>,
+}
+
+impl TryFrom<RawActivationRegistryEventPayload> for ActivationRegistryEventPayload {
+    type Error = &'static str;
+
+    fn try_from(raw: RawActivationRegistryEventPayload) -> Result<Self, Self::Error> {
+        validate_activation_registry_event_reason(raw.phase.clone(), raw.reason.as_deref())?;
+        Ok(Self {
+            r#type: raw.r#type,
+            timestamp: raw.timestamp,
+            phase: raw.phase,
+            surface_id: raw.surface_id,
+            source: raw.source,
+            payload: raw.payload,
+            actor: raw.actor,
+            trace_id: raw.trace_id,
+            permission_context: raw.permission_context,
+            reason: raw.reason,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for ActivationRegistryEventPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        RawActivationRegistryEventPayload::deserialize(deserializer)?
+            .try_into()
+            .map_err(de::Error::custom)
+    }
+}
+
+fn validate_activation_registry_event_reason(
+    phase: ActivationRegistryEventPhase,
+    reason: Option<&str>,
+) -> Result<(), &'static str> {
+    match phase {
+        ActivationRegistryEventPhase::Registered
+        | ActivationRegistryEventPhase::Routed
+        | ActivationRegistryEventPhase::Unregistered
+            if reason.is_none() =>
+        {
+            Ok(())
+        }
+        ActivationRegistryEventPhase::Registered
+        | ActivationRegistryEventPhase::Routed
+        | ActivationRegistryEventPhase::Unregistered => {
+            Err("successful activation registry events must not carry reason")
+        }
+        ActivationRegistryEventPhase::Failed if reason.is_some() => Ok(()),
+        ActivationRegistryEventPhase::Failed => {
+            Err("failed activation registry events require reason")
         }
     }
 }
@@ -20700,9 +20935,8 @@ mod tests {
         );
         let permission_context =
             ActivationRegistryPermissionContextPayload::new(actor.clone(), "trace-1");
-        let event = ActivationRegistryEventPayload::new(
+        let event = ActivationRegistryEventPayload::routed(
             1710000000000,
-            ActivationRegistryEventPhase::Routed,
             "palette",
             ActivationRegistrySource::GlobalShortcut,
             actor,
@@ -20724,6 +20958,62 @@ mod tests {
             serde_json::to_string(&supported).expect("activation support should encode"),
             r#"{"supported":true}"#
         );
+    }
+
+    #[test]
+    fn activation_registry_events_reject_inconsistent_reasons() {
+        for source in [
+            r#"{"type":"activation-registry-event","timestamp":1710000000000,"phase":"registered","surfaceId":"palette","source":"global-shortcut","payload":{"surfaceId":"palette"},"actor":{"kind":"workspace","id":"workspace-1"},"traceId":"trace-1","permissionContext":{"actor":{"kind":"workspace","id":"workspace-1"},"traceId":"trace-1"},"reason":"host failed"}"#,
+            r#"{"type":"activation-registry-event","timestamp":1710000000000,"phase":"routed","surfaceId":"palette","source":"global-shortcut","payload":{"surfaceId":"palette"},"actor":{"kind":"workspace","id":"workspace-1"},"traceId":"trace-1","permissionContext":{"actor":{"kind":"workspace","id":"workspace-1"},"traceId":"trace-1"},"reason":"host failed"}"#,
+            r#"{"type":"activation-registry-event","timestamp":1710000000000,"phase":"unregistered","surfaceId":"palette","source":"global-shortcut","payload":{"surfaceId":"palette"},"actor":{"kind":"workspace","id":"workspace-1"},"traceId":"trace-1","permissionContext":{"actor":{"kind":"workspace","id":"workspace-1"},"traceId":"trace-1"},"reason":"host failed"}"#,
+            r#"{"type":"activation-registry-event","timestamp":1710000000000,"phase":"failed","surfaceId":"palette","source":"global-shortcut","payload":{"surfaceId":"palette"},"actor":{"kind":"workspace","id":"workspace-1"},"traceId":"trace-1","permissionContext":{"actor":{"kind":"workspace","id":"workspace-1"},"traceId":"trace-1"}}"#,
+        ] {
+            serde_json::from_str::<ActivationRegistryEventPayload>(source)
+                .expect_err("inconsistent activation registry event should be rejected");
+        }
+
+        for source in [
+            r#"{"type":"activation-registry-event","timestamp":1710000000000,"phase":"registered","surfaceId":"palette","source":"global-shortcut","payload":{"surfaceId":"palette"},"actor":{"kind":"workspace","id":"workspace-1"},"traceId":"trace-1","permissionContext":{"actor":{"kind":"workspace","id":"workspace-1"},"traceId":"trace-1"}}"#,
+            r#"{"type":"activation-registry-event","timestamp":1710000000000,"phase":"routed","surfaceId":"palette","source":"global-shortcut","payload":{"surfaceId":"palette"},"actor":{"kind":"workspace","id":"workspace-1"},"traceId":"trace-1","permissionContext":{"actor":{"kind":"workspace","id":"workspace-1"},"traceId":"trace-1"}}"#,
+            r#"{"type":"activation-registry-event","timestamp":1710000000000,"phase":"unregistered","surfaceId":"palette","source":"global-shortcut","payload":{"surfaceId":"palette"},"actor":{"kind":"workspace","id":"workspace-1"},"traceId":"trace-1","permissionContext":{"actor":{"kind":"workspace","id":"workspace-1"},"traceId":"trace-1"}}"#,
+            r#"{"type":"activation-registry-event","timestamp":1710000000000,"phase":"failed","surfaceId":"palette","source":"global-shortcut","payload":{"surfaceId":"palette"},"actor":{"kind":"workspace","id":"workspace-1"},"traceId":"trace-1","permissionContext":{"actor":{"kind":"workspace","id":"workspace-1"},"traceId":"trace-1"},"reason":"host failed"}"#,
+        ] {
+            serde_json::from_str::<ActivationRegistryEventPayload>(source)
+                .expect("consistent activation registry event should decode");
+        }
+    }
+
+    #[test]
+    fn activation_registry_events_reject_inconsistent_reasons_before_serializing() {
+        let actor = ActivationRegistryActorPayload::new(
+            ActivationRegistryActorKind::Workspace,
+            "workspace-1",
+        );
+        let permission_context =
+            ActivationRegistryPermissionContextPayload::new(actor.clone(), "trace-1");
+
+        for event in [
+            ActivationRegistryEventPayload::new_for_test(
+                1_710_000_000_000,
+                ActivationRegistryEventPhase::Registered,
+                "palette",
+                ActivationRegistrySource::GlobalShortcut,
+                actor.clone(),
+                permission_context.clone(),
+            )
+            .with_reason_for_test("host failed"),
+            ActivationRegistryEventPayload::new_for_test(
+                1_710_000_000_000,
+                ActivationRegistryEventPhase::Failed,
+                "palette",
+                ActivationRegistrySource::GlobalShortcut,
+                actor,
+                permission_context,
+            ),
+        ] {
+            serde_json::to_string(&event)
+                .expect_err("inconsistent activation registry event should not encode");
+        }
     }
 
     #[test]

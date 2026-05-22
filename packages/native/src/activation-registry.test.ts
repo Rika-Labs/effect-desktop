@@ -21,6 +21,7 @@ import {
   makeActivationRegistryUnsupportedClient
 } from "./activation-registry.js"
 import {
+  ActivationEvent,
   ActivationActor,
   ActivationPermissionContext,
   ActivationRouteRequest,
@@ -145,6 +146,56 @@ test("ActivationRegistry routes activation through CommandRegistry with permissi
       expect(rows.some((row) => row.kind === "command-invoked")).toBe(true)
     })
   ))
+
+test("ActivationRegistry events reject inconsistent failure reasons", () => {
+  for (const payload of [
+    {
+      ...eventBase(),
+      phase: "registered",
+      reason: "host failed"
+    },
+    {
+      ...eventBase(),
+      phase: "routed",
+      reason: "host failed"
+    },
+    {
+      ...eventBase(),
+      phase: "unregistered",
+      reason: "host failed"
+    },
+    {
+      ...eventBase(),
+      phase: "failed"
+    }
+  ] as const) {
+    const exit = Effect.runSyncExit(Schema.decodeUnknownEffect(ActivationEvent)(payload))
+    expect(Exit.isFailure(exit)).toBe(true)
+  }
+
+  for (const payload of [
+    {
+      ...eventBase(),
+      phase: "registered"
+    },
+    {
+      ...eventBase(),
+      phase: "routed"
+    },
+    {
+      ...eventBase(),
+      phase: "unregistered"
+    },
+    {
+      ...eventBase(),
+      phase: "failed",
+      reason: "host failed"
+    }
+  ] as const) {
+    const exit = Effect.runSyncExit(Schema.decodeUnknownEffect(ActivationEvent)(payload))
+    expect(Exit.isSuccess(exit)).toBe(true)
+  }
+})
 
 test("ActivationRegistry rejects malformed registration before client side effects", () =>
   Effect.runPromise(
@@ -517,6 +568,20 @@ const commandRegistration = (
 })
 
 const actor = () => new ActivationActor({ kind: "workspace", id: "workspace-1" })
+
+const eventBase = () => ({
+  type: "activation-registry-event",
+  timestamp: 1_710_000_000_000,
+  surfaceId: "palette",
+  source: "global-shortcut",
+  payload: { surfaceId: "palette" },
+  actor: { kind: "workspace", id: "workspace-1" },
+  traceId: "trace-1",
+  permissionContext: {
+    actor: { kind: "workspace", id: "workspace-1" },
+    traceId: "trace-1"
+  }
+})
 
 const surfaceRegistration = () =>
   new ActivationSurfaceRegistration({

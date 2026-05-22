@@ -337,9 +337,7 @@ const registerSurface = (
         ownerScope,
         state: "registered",
         reusableId: true,
-        dispose: Effect.suspend(() =>
-          cleanupSurface(client, surfaces, events, registration, "resource-dispose")
-        )
+        dispose: Effect.suspend(() => cleanupSurface(client, surfaces, events, registration))
       })
       .pipe(Effect.mapError((error) => invalidArgument(error.field, error.message, operation)))
     const publicHandle = toActivationSurfaceHandle(handle)
@@ -444,8 +442,7 @@ const cleanupSurface = (
   client: ActivationRegistryClientApi,
   surfaces: Ref.Ref<ReadonlyMap<string, ActivationSurfaceState>>,
   events: PubSub.PubSub<ActivationEvent>,
-  registration: ActivationSurfaceRegistration,
-  reason: string
+  registration: ActivationSurfaceRegistration
 ): Effect.Effect<void, never, never> =>
   Effect.gen(function* () {
     const removed = yield* Ref.modify(surfaces, (current) => {
@@ -462,7 +459,7 @@ const cleanupSurface = (
     yield* client
       .unregisterSurface(new ActivationSurfaceRequest({ surfaceId: registration.surfaceId }))
       .pipe(Effect.ignore)
-    yield* publishActivationEvent(events, registration, "unregistered", undefined, reason)
+    yield* publishActivationEvent(events, registration, "unregistered", undefined)
   })
 
 const routeActivation = (

@@ -104,15 +104,31 @@ export class ActivationSupportedResult extends Schema.Class<ActivationSupportedR
   reason: Schema.optionalKey(BridgeSafeString)
 }) {}
 
-export class ActivationEvent extends Schema.Class<ActivationEvent>("ActivationEvent")({
-  type: ActivationEventType,
-  timestamp: ActivationTimestamp,
-  phase: ActivationEventPhase,
-  surfaceId: BridgeSafeNonEmptyString,
-  source: ActivationSource,
-  payload: Schema.Json,
-  actor: ActivationActor,
-  traceId: BridgeSafeNonEmptyString,
-  permissionContext: ActivationPermissionContext,
-  reason: Schema.optionalKey(BridgeSafeString)
-}) {}
+const ActivationEventPhaseReason = Schema.makeFilter<{
+  readonly phase: ActivationEventPhase
+  readonly reason?: string | undefined
+}>((value) => {
+  switch (value.phase) {
+    case "registered":
+    case "routed":
+    case "unregistered":
+      return value.reason === undefined || `${value.phase} activation events must not carry reason`
+    case "failed":
+      return value.reason !== undefined || "failed activation events require reason"
+  }
+})
+
+export class ActivationEvent extends Schema.Class<ActivationEvent>("ActivationEvent")(
+  Schema.Struct({
+    type: ActivationEventType,
+    timestamp: ActivationTimestamp,
+    phase: ActivationEventPhase,
+    surfaceId: BridgeSafeNonEmptyString,
+    source: ActivationSource,
+    payload: Schema.Json,
+    actor: ActivationActor,
+    traceId: BridgeSafeNonEmptyString,
+    permissionContext: ActivationPermissionContext,
+    reason: Schema.optionalKey(BridgeSafeString)
+  }).check(ActivationEventPhaseReason)
+) {}
