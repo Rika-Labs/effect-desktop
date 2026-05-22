@@ -7836,22 +7836,73 @@ impl TransientWindowRoleSupportedPayload {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TransientWindowRoleEventPayload {
     r#type: String,
     timestamp: u64,
     phase: TransientWindowRoleEventPhase,
-    #[serde(skip_serializing_if = "Option::is_none")]
     role_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     reason: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     message: Option<String>,
 }
 
 impl TransientWindowRoleEventPayload {
-    pub fn new(timestamp: u64, phase: TransientWindowRoleEventPhase) -> Self {
+    pub fn opened(timestamp: u64, role_id: impl Into<String>) -> Self {
+        Self {
+            r#type: "transient-window-role-event".to_string(),
+            timestamp,
+            phase: TransientWindowRoleEventPhase::Opened,
+            role_id: Some(role_id.into()),
+            reason: None,
+            message: None,
+        }
+    }
+
+    pub fn repositioned(timestamp: u64, role_id: impl Into<String>) -> Self {
+        Self {
+            r#type: "transient-window-role-event".to_string(),
+            timestamp,
+            phase: TransientWindowRoleEventPhase::Repositioned,
+            role_id: Some(role_id.into()),
+            reason: None,
+            message: None,
+        }
+    }
+
+    pub fn dismissed(timestamp: u64, role_id: impl Into<String>) -> Self {
+        Self {
+            r#type: "transient-window-role-event".to_string(),
+            timestamp,
+            phase: TransientWindowRoleEventPhase::Dismissed,
+            role_id: Some(role_id.into()),
+            reason: None,
+            message: None,
+        }
+    }
+
+    pub fn failed(timestamp: u64, reason: impl Into<String>) -> Self {
+        Self {
+            r#type: "transient-window-role-event".to_string(),
+            timestamp,
+            phase: TransientWindowRoleEventPhase::Failed,
+            role_id: None,
+            reason: Some(reason.into()),
+            message: None,
+        }
+    }
+
+    pub fn with_role_id(mut self, role_id: impl Into<String>) -> Self {
+        self.role_id = Some(role_id.into());
+        self
+    }
+
+    pub fn with_message(mut self, message: impl Into<String>) -> Self {
+        self.message = Some(message.into());
+        self
+    }
+
+    #[cfg(test)]
+    fn new_for_test(timestamp: u64, phase: TransientWindowRoleEventPhase) -> Self {
         Self {
             r#type: "transient-window-role-event".to_string(),
             timestamp,
@@ -7859,6 +7910,139 @@ impl TransientWindowRoleEventPayload {
             role_id: None,
             reason: None,
             message: None,
+        }
+    }
+
+    #[cfg(test)]
+    fn with_reason_for_test(mut self, reason: impl Into<String>) -> Self {
+        self.reason = Some(reason.into());
+        self
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SerializableTransientWindowRoleEventPayload<'a> {
+    r#type: &'a str,
+    timestamp: u64,
+    phase: TransientWindowRoleEventPhase,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    role_id: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<&'a str>,
+}
+
+impl<'a> TryFrom<&'a TransientWindowRoleEventPayload>
+    for SerializableTransientWindowRoleEventPayload<'a>
+{
+    type Error = &'static str;
+
+    fn try_from(payload: &'a TransientWindowRoleEventPayload) -> Result<Self, Self::Error> {
+        validate_transient_window_role_event_payload(
+            &payload.r#type,
+            payload.phase,
+            payload.role_id.as_deref(),
+            payload.reason.as_deref(),
+            payload.message.as_deref(),
+        )?;
+        Ok(Self {
+            r#type: &payload.r#type,
+            timestamp: payload.timestamp,
+            phase: payload.phase,
+            role_id: payload.role_id.as_deref(),
+            reason: payload.reason.as_deref(),
+            message: payload.message.as_deref(),
+        })
+    }
+}
+
+impl Serialize for TransientWindowRoleEventPayload {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        SerializableTransientWindowRoleEventPayload::try_from(self)
+            .map_err(ser::Error::custom)?
+            .serialize(serializer)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawTransientWindowRoleEventPayload {
+    r#type: String,
+    timestamp: u64,
+    phase: TransientWindowRoleEventPhase,
+    #[serde(default)]
+    role_id: Option<String>,
+    #[serde(default)]
+    reason: Option<String>,
+    #[serde(default)]
+    message: Option<String>,
+}
+
+impl TryFrom<RawTransientWindowRoleEventPayload> for TransientWindowRoleEventPayload {
+    type Error = &'static str;
+
+    fn try_from(raw: RawTransientWindowRoleEventPayload) -> Result<Self, Self::Error> {
+        validate_transient_window_role_event_payload(
+            &raw.r#type,
+            raw.phase,
+            raw.role_id.as_deref(),
+            raw.reason.as_deref(),
+            raw.message.as_deref(),
+        )?;
+        Ok(Self {
+            r#type: raw.r#type,
+            timestamp: raw.timestamp,
+            phase: raw.phase,
+            role_id: raw.role_id,
+            reason: raw.reason,
+            message: raw.message,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for TransientWindowRoleEventPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        RawTransientWindowRoleEventPayload::deserialize(deserializer)?
+            .try_into()
+            .map_err(de::Error::custom)
+    }
+}
+
+fn validate_transient_window_role_event_payload(
+    event_type: &str,
+    phase: TransientWindowRoleEventPhase,
+    role_id: Option<&str>,
+    reason: Option<&str>,
+    message: Option<&str>,
+) -> Result<(), &'static str> {
+    if event_type != "transient-window-role-event" {
+        return Err("transient window role event type must match the protocol event name");
+    }
+
+    match phase {
+        TransientWindowRoleEventPhase::Opened
+        | TransientWindowRoleEventPhase::Repositioned
+        | TransientWindowRoleEventPhase::Dismissed
+            if role_id.is_some() && reason.is_none() && message.is_none() =>
+        {
+            Ok(())
+        }
+        TransientWindowRoleEventPhase::Opened
+        | TransientWindowRoleEventPhase::Repositioned
+        | TransientWindowRoleEventPhase::Dismissed => {
+            Err("successful transient window role events require role id and no failure metadata")
+        }
+        TransientWindowRoleEventPhase::Failed if reason.is_some() => Ok(()),
+        TransientWindowRoleEventPhase::Failed => {
+            Err("failed transient window role events require reason")
         }
     }
 }
@@ -20435,10 +20619,7 @@ mod tests {
             policy,
             Some("trace-transient-window-role".to_string()),
         );
-        let event = TransientWindowRoleEventPayload::new(
-            1710000000001,
-            TransientWindowRoleEventPhase::Opened,
-        );
+        let event = TransientWindowRoleEventPayload::opened(1710000000001, "role-1");
         let supported = TransientWindowRoleSupportedPayload::unsupported(
             TRANSIENT_WINDOW_ROLE_UNSUPPORTED_REASON,
         );
@@ -20449,12 +20630,60 @@ mod tests {
         );
         assert_eq!(
             serde_json::to_string(&event).expect("event payload should encode"),
-            r#"{"type":"transient-window-role-event","timestamp":1710000000001,"phase":"opened"}"#
+            r#"{"type":"transient-window-role-event","timestamp":1710000000001,"phase":"opened","roleId":"role-1"}"#
         );
         assert_eq!(
             serde_json::to_string(&supported).expect("support payload should encode"),
             r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#
         );
+    }
+
+    #[test]
+    fn transient_window_role_events_reject_inconsistent_phase_payloads() {
+        for source in [
+            r#"{"type":"transient-window-role-event","timestamp":1710000000001,"phase":"opened"}"#,
+            r#"{"type":"transient-window-role-event","timestamp":1710000000001,"phase":"opened","roleId":"role-1","reason":"host failed"}"#,
+            r#"{"type":"transient-window-role-event","timestamp":1710000000001,"phase":"repositioned"}"#,
+            r#"{"type":"transient-window-role-event","timestamp":1710000000001,"phase":"dismissed","roleId":"role-1","message":"dismissed"}"#,
+            r#"{"type":"transient-window-role-event","timestamp":1710000000001,"phase":"failed"}"#,
+        ] {
+            serde_json::from_str::<TransientWindowRoleEventPayload>(source)
+                .expect_err("inconsistent transient window role event should be rejected");
+        }
+
+        for source in [
+            r#"{"type":"transient-window-role-event","timestamp":1710000000001,"phase":"opened","roleId":"role-1"}"#,
+            r#"{"type":"transient-window-role-event","timestamp":1710000000001,"phase":"repositioned","roleId":"role-1"}"#,
+            r#"{"type":"transient-window-role-event","timestamp":1710000000001,"phase":"dismissed","roleId":"role-1"}"#,
+            r#"{"type":"transient-window-role-event","timestamp":1710000000001,"phase":"failed","reason":"host failed"}"#,
+            r#"{"type":"transient-window-role-event","timestamp":1710000000001,"phase":"failed","roleId":"role-1","reason":"host failed","message":"host failed"}"#,
+        ] {
+            serde_json::from_str::<TransientWindowRoleEventPayload>(source)
+                .expect("consistent transient window role event should decode");
+        }
+    }
+
+    #[test]
+    fn transient_window_role_events_reject_inconsistent_phase_payloads_before_serializing() {
+        for event in [
+            TransientWindowRoleEventPayload::new_for_test(
+                1_710_000_000_001,
+                TransientWindowRoleEventPhase::Opened,
+            ),
+            TransientWindowRoleEventPayload::new_for_test(
+                1_710_000_000_001,
+                TransientWindowRoleEventPhase::Opened,
+            )
+            .with_role_id("role-1")
+            .with_reason_for_test("host failed"),
+            TransientWindowRoleEventPayload::new_for_test(
+                1_710_000_000_001,
+                TransientWindowRoleEventPhase::Failed,
+            ),
+        ] {
+            serde_json::to_string(&event)
+                .expect_err("inconsistent transient window role event should not encode");
+        }
     }
 
     #[test]

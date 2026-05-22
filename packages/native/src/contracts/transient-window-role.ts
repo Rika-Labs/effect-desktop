@@ -136,13 +136,34 @@ export class TransientWindowRoleSupportedResult extends Schema.Class<TransientWi
   reason: Schema.optionalKey(BridgeSafeString)
 }) {}
 
+const TransientWindowRoleEventPhasePayload = Schema.makeFilter<{
+  readonly phase: TransientWindowRoleEventPhase
+  readonly roleId?: string | undefined
+  readonly reason?: string | undefined
+  readonly message?: string | undefined
+}>((value) => {
+  switch (value.phase) {
+    case "opened":
+    case "repositioned":
+    case "dismissed":
+      return (
+        (value.roleId !== undefined && value.reason === undefined && value.message === undefined) ||
+        `${value.phase} transient window role events require roleId and no failure metadata`
+      )
+    case "failed":
+      return value.reason !== undefined || "failed transient window role events require reason"
+  }
+})
+
 export class TransientWindowRoleEvent extends Schema.Class<TransientWindowRoleEvent>(
   "TransientWindowRoleEvent"
-)({
-  type: TransientWindowRoleEventType,
-  timestamp: NonNegativeTimestamp,
-  phase: TransientWindowRoleEventPhase,
-  roleId: Schema.optionalKey(BridgeSafeNonEmptyString),
-  reason: Schema.optionalKey(BridgeSafeString),
-  message: Schema.optionalKey(BridgeSafeString)
-}) {}
+)(
+  Schema.Struct({
+    type: TransientWindowRoleEventType,
+    timestamp: NonNegativeTimestamp,
+    phase: TransientWindowRoleEventPhase,
+    roleId: Schema.optionalKey(BridgeSafeNonEmptyString),
+    reason: Schema.optionalKey(BridgeSafeString),
+    message: Schema.optionalKey(BridgeSafeString)
+  }).check(TransientWindowRoleEventPhasePayload)
+) {}

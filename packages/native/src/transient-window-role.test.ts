@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test"
 import { type BridgeClientExchange } from "@orika/bridge"
-import { Cause, Effect, Exit, type Layer, ManagedRuntime, Stream } from "effect"
+import { Cause, Effect, Exit, type Layer, ManagedRuntime, Schema, Stream } from "effect"
 
 import { makeNativeCapabilityManifest } from "./capabilities.js"
+import { TransientWindowRoleEvent } from "./contracts/transient-window-role.js"
 import {
   makeTransientWindowRoleBridgeClientLayer,
   makeTransientWindowRoleMemoryClient,
@@ -146,6 +147,71 @@ test("TransientWindowRole unsupported client reports the host-adapter-unimplemen
     })
   ))
 
+test("TransientWindowRole events reject inconsistent phase payloads", () => {
+  for (const payload of [
+    {
+      ...eventBase(),
+      phase: "opened"
+    },
+    {
+      ...eventBase(),
+      phase: "opened",
+      roleId: "role-1",
+      reason: "host failed"
+    },
+    {
+      ...eventBase(),
+      phase: "repositioned"
+    },
+    {
+      ...eventBase(),
+      phase: "dismissed",
+      roleId: "role-1",
+      message: "dismissed"
+    },
+    {
+      ...eventBase(),
+      phase: "failed"
+    }
+  ] as const) {
+    const exit = Effect.runSyncExit(Schema.decodeUnknownEffect(TransientWindowRoleEvent)(payload))
+    expect(Exit.isFailure(exit)).toBe(true)
+  }
+
+  for (const payload of [
+    {
+      ...eventBase(),
+      phase: "opened",
+      roleId: "role-1"
+    },
+    {
+      ...eventBase(),
+      phase: "repositioned",
+      roleId: "role-1"
+    },
+    {
+      ...eventBase(),
+      phase: "dismissed",
+      roleId: "role-1"
+    },
+    {
+      ...eventBase(),
+      phase: "failed",
+      reason: "host failed"
+    },
+    {
+      ...eventBase(),
+      phase: "failed",
+      roleId: "role-1",
+      reason: "host failed",
+      message: "host failed"
+    }
+  ] as const) {
+    const exit = Effect.runSyncExit(Schema.decodeUnknownEffect(TransientWindowRoleEvent)(payload))
+    expect(Exit.isSuccess(exit)).toBe(true)
+  }
+})
+
 test("TransientWindowRole unsupported client fails the event stream as unsupported", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -198,6 +264,11 @@ test("TransientWindowRole bridge client fails event stream as unsupported before
       expect(subscriptions).toEqual([])
     })
   ))
+
+const eventBase = () => ({
+  type: "transient-window-role-event",
+  timestamp: 1_710_000_000_001
+})
 
 const runScoped = <A, E, R>(
   effect: Effect.Effect<A, E, R>,
