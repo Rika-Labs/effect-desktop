@@ -103,7 +103,6 @@ const UInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 const UInt32 = UInt.check(Schema.isLessThanOrEqualTo(4_294_967_295))
 const HostProtocolNonEmptyString = Schema.NonEmptyString
 const OptionalString = Schema.optionalKey(Schema.String)
-const OptionalNonEmptyString = Schema.optionalKey(HostProtocolNonEmptyString)
 const OptionalUnknown = Schema.optionalKey(Schema.Unknown)
 const StringRecord = Schema.Record(Schema.String, Schema.String)
 const NulByte = String.fromCharCode(0)
@@ -786,27 +785,14 @@ export const validateHostProtocolNonEmptyString = (
   value: string,
   operation: string
 ): Effect.Effect<string, HostProtocolInvalidArgumentError, never> =>
-  value.length === 0
-    ? Effect.fail(makeHostProtocolInvalidArgumentError(field, "must be non-empty", operation))
-    : hasAsciiControl(value)
-      ? Effect.fail(
-          makeHostProtocolInvalidArgumentError(
-            field,
-            "must not contain ASCII control characters",
-            operation
-          )
-        )
-      : Effect.succeed(value)
+  Schema.decodeUnknownEffect(HostIdentityString)(value).pipe(
+    Effect.mapError(() =>
+      makeHostProtocolInvalidArgumentError(field, hostIdentityFailureReason(value), operation)
+    )
+  )
 
-const hasAsciiControl = (value: string): boolean => {
-  for (const char of value) {
-    const code = char.charCodeAt(0)
-    if (code <= 0x1f || code === 0x7f) {
-      return true
-    }
-  }
-  return false
-}
+const hostIdentityFailureReason = (value: string): string =>
+  value.length === 0 ? "must be non-empty" : "must not contain ASCII control characters"
 
 export const validateOptionalHostProtocolNonEmptyString = (
   field: string,
@@ -992,7 +978,7 @@ export class HostProtocolStreamByRequestEnvelope extends Schema.Class<HostProtoc
 )({
   kind: Schema.Literal("stream"),
   id: HostIdentityString,
-  resourceId: OptionalNonEmptyString,
+  resourceId: OptionalHostIdentityString,
   timestamp: UInt,
   traceId: HostIdentityString,
   payload: OptionalUnknown,
@@ -1004,7 +990,7 @@ export class HostProtocolStreamByResourceEnvelope extends Schema.Class<HostProto
 )({
   kind: Schema.Literal("stream"),
   id: OptionalHostIdentityString,
-  resourceId: HostProtocolNonEmptyString,
+  resourceId: HostIdentityString,
   timestamp: UInt,
   traceId: HostIdentityString,
   payload: OptionalUnknown,
@@ -1016,7 +1002,7 @@ export class HostProtocolCancelByRequestEnvelope extends Schema.Class<HostProtoc
 )({
   kind: Schema.Literal("cancel"),
   id: HostIdentityString,
-  resourceId: OptionalNonEmptyString,
+  resourceId: OptionalHostIdentityString,
   timestamp: UInt,
   traceId: HostIdentityString
 }) {}
@@ -1026,7 +1012,7 @@ export class HostProtocolCancelByResourceEnvelope extends Schema.Class<HostProto
 )({
   kind: Schema.Literal("cancel"),
   id: OptionalHostIdentityString,
-  resourceId: HostProtocolNonEmptyString,
+  resourceId: HostIdentityString,
   timestamp: UInt,
   traceId: HostIdentityString
 }) {}
