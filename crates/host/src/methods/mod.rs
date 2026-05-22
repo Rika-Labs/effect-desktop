@@ -5326,6 +5326,37 @@ mod tests {
                 }),
             ),
             (
+                "request-webview-create-hostless-url",
+                host_protocol::WEBVIEW_CREATE_METHOD,
+                serde_json::json!({
+                    "window": window,
+                    "url": "https:///settings",
+                    "originPolicy": {
+                        "allowedOrigins": ["app://localhost"],
+                        "onDisallowed": "block"
+                    }
+                }),
+            ),
+            (
+                "request-webview-load-hostless-url",
+                host_protocol::WEBVIEW_LOAD_URL_METHOD,
+                serde_json::json!({
+                    "webview": webview,
+                    "url": "https:///settings"
+                }),
+            ),
+            (
+                "request-webview-policy-hostless-origin",
+                host_protocol::WEBVIEW_SET_NAVIGATION_POLICY_METHOD,
+                serde_json::json!({
+                    "webview": webview,
+                    "policy": {
+                        "allowedOrigins": ["https://:443"],
+                        "onDisallowed": "block"
+                    }
+                }),
+            ),
+            (
                 "request-webview-create-invalid-isolation",
                 host_protocol::WEBVIEW_CREATE_METHOD,
                 serde_json::json!({

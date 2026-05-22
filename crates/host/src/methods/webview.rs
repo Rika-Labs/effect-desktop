@@ -772,13 +772,20 @@ fn validate_url(
             operation,
         ));
     }
-    if !scheme
-        .bytes()
-        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'-' | b'.'))
-    {
+    if !is_valid_url_scheme(scheme) {
         return Err(HostProtocolError::invalid_argument(
             field,
             "must use a valid URL scheme",
+            operation,
+        ));
+    }
+    let authority = authority_from_absolute_url_rest(rest).ok_or_else(|| {
+        HostProtocolError::invalid_argument(field, "must include a URL authority", operation)
+    })?;
+    if !authority_has_host(authority) {
+        return Err(HostProtocolError::invalid_argument(
+            field,
+            "must include a URL host",
             operation,
         ));
     }
@@ -796,6 +803,31 @@ fn validate_url(
     }
 
     Ok(())
+}
+
+fn is_valid_url_scheme(scheme: &str) -> bool {
+    let mut bytes = scheme.bytes();
+    bytes.next().is_some_and(|byte| byte.is_ascii_alphabetic())
+        && bytes.all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'-' | b'.'))
+}
+
+fn authority_from_absolute_url_rest(rest: &str) -> Option<&str> {
+    rest.split(['/', '?', '#'])
+        .next()
+        .filter(|authority| !authority.is_empty())
+}
+
+fn authority_has_host(authority: &str) -> bool {
+    let host_port = authority
+        .rsplit_once('@')
+        .map_or(authority, |(_, host)| host);
+    if host_port.starts_with('[') {
+        return host_port.contains(']');
+    }
+
+    host_port
+        .split_once(':')
+        .map_or(!host_port.is_empty(), |(host, _)| !host.is_empty())
 }
 
 fn validate_route_field(
@@ -849,6 +881,13 @@ fn validate_origin(
         return Err(HostProtocolError::invalid_argument(
             field,
             "must use app, http, or https origin",
+            operation,
+        ));
+    }
+    if !authority_has_host(rest) {
+        return Err(HostProtocolError::invalid_argument(
+            field,
+            "must include a host",
             operation,
         ));
     }
