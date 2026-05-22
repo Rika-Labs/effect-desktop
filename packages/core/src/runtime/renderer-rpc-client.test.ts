@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { fileURLToPath } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 import { BunServices } from "@effect/platform-bun"
 import { HostProtocolResponseEnvelope, type HostProtocolEnvelope } from "@orika/bridge"
 import {
@@ -33,6 +33,7 @@ import { makeRendererInspectorCollector } from "./inspector-events.js"
 
 const Ping = Rpc.make("Notes.Ping", { success: Schema.String })
 const workspaceRootUrl = new URL("../../../../", import.meta.url)
+const bundleScratchRootUrl = new URL("build/orika-bundle-tests/", workspaceRootUrl)
 const rendererEntrypointUrl = new URL("renderer.ts", import.meta.url)
 const PlatformRuntime = ManagedRuntime.make(BunServices.layer)
 
@@ -64,7 +65,7 @@ test("framework adapters browser-bundle against @orika/core/renderer", () =>
       yield* expectBrowserBundle(
         "solid-renderer",
         [
-          'import { SolidDesktop } from "./packages/solid/src/index.ts"',
+          'import { SolidDesktop } from "../../../packages/solid/src/index.ts"',
           "globalThis.__orikaSolidDesktopSmoke = SolidDesktop"
         ].join("\n"),
         adapterBundleExternals
@@ -72,7 +73,7 @@ test("framework adapters browser-bundle against @orika/core/renderer", () =>
       yield* expectBrowserBundle(
         "vue-renderer",
         [
-          'import { VueDesktop } from "./packages/vue/src/index.ts"',
+          'import { VueDesktop } from "../../../packages/vue/src/index.ts"',
           "globalThis.__orikaVueDesktopSmoke = VueDesktop"
         ].join("\n"),
         adapterBundleExternals
@@ -80,7 +81,7 @@ test("framework adapters browser-bundle against @orika/core/renderer", () =>
       yield* expectBrowserBundle(
         "next-renderer",
         [
-          'import { NextDesktop } from "./packages/next/src/index.ts"',
+          'import { NextDesktop } from "../../../packages/next/src/index.ts"',
           "globalThis.__orikaNextDesktopSmoke = NextDesktop"
         ].join("\n"),
         adapterBundleExternals
@@ -326,39 +327,77 @@ const expectBrowserBundle = (
 ): Effect.Effect<void, PlatformError, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
-    const entryPath = fileURLToPath(new URL(`.tmp-${name}-bundle-entry.ts`, workspaceRootUrl))
-    const outdir = yield* fs.makeTempDirectory({ prefix: `orika-${name}-bundle-` })
+    yield* fs.makeDirectory(fileURLToPath(bundleScratchRootUrl), { recursive: true })
+    const directory = yield* fs.makeTempDirectory({
+      directory: fileURLToPath(bundleScratchRootUrl),
+      prefix: `${name}-`
+    })
+    const directoryUrl = pathToFileURL(`${directory}/`)
+    const entryPath = fileURLToPath(new URL("entry.ts", directoryUrl))
+    const outdir = fileURLToPath(new URL("out/", directoryUrl))
 
     try {
       yield* fs.writeFileString(entryPath, `${source}\n`)
 
       const result = yield* Effect.promise(() =>
-        Bun.build({
-          entrypoints: [entryPath],
-          external: [
+        runBunBuild({
+          entryPath,
+          externals: [
             ...extraExternal,
             "@effect/atom-react",
             "@effect/atom-solid",
             "@effect/atom-vue",
             "@effect/platform-browser",
+            "@orika/platform-browser",
             "react",
             "solid-js",
             "solid-js/web",
             "vue"
           ],
-          format: "esm",
-          outdir,
-          target: "browser"
+          outdir
         })
       )
 
-      expect(result.logs.map((log) => log.message)).toEqual([])
-      expect(result.success).toBe(true)
+      expect(result.exitCode).toBe(0)
+      expect(result.stderr).toBe("")
     } finally {
-      yield* fs.remove(entryPath, { force: true })
-      yield* fs.remove(outdir, { force: true, recursive: true })
+      yield* fs.remove(directory, { force: true, recursive: true })
     }
   })
+
+const runBunBuild = ({
+  entryPath,
+  externals,
+  outdir
+}: {
+  readonly entryPath: string
+  readonly externals: readonly string[]
+  readonly outdir: string
+}): Promise<{ readonly exitCode: number; readonly stderr: string; readonly stdout: string }> => {
+  const process = Bun.spawn(
+    [
+      "bun",
+      "build",
+      entryPath,
+      "--target=browser",
+      "--format=esm",
+      "--outdir",
+      outdir,
+      ...externals.map((external) => `--external=${external}`)
+    ],
+    {
+      cwd: fileURLToPath(workspaceRootUrl),
+      stderr: "pipe",
+      stdout: "pipe"
+    }
+  )
+
+  return Promise.all([
+    new Response(process.stdout).text(),
+    new Response(process.stderr).text(),
+    process.exited
+  ]).then(([stdout, stderr, exitCode]) => ({ exitCode, stderr, stdout }))
+}
 
 const adapterBundleExternals = Object.freeze(["@orika/bridge", "effect", "effect/unstable/rpc"])
 

@@ -147,7 +147,7 @@ test("runtime normal launch keeps declared startup windows alive", () =>
               renderer: "/"
             }
           },
-          killAfterMs: 250,
+          terminateAfterMethod: WINDOW_CREATE_METHOD,
           windowSmokeTest: false
         })
       )
@@ -270,7 +270,7 @@ interface RuntimeHostOptions {
   readonly windowSmokeTest?: boolean
   readonly runtimeCommand?: string
   readonly runtimeArgs?: readonly string[]
-  readonly killAfterMs?: number
+  readonly terminateAfterMethod?: string
 }
 
 const runtimeEnv = (options: RuntimeHostOptions): Record<string, string | undefined> => {
@@ -317,13 +317,6 @@ const runRuntimeWithFakeHost = (options: RuntimeHostOptions = {}): Promise<Runti
       return yield* Effect.scoped(
         Effect.gen(function* () {
           const handle = yield* command
-          if (options.killAfterMs !== undefined) {
-            yield* Effect.sleep(`${options.killAfterMs} millis`).pipe(
-              Effect.andThen(handle.kill({ killSignal: "SIGTERM" })),
-              Effect.ignore,
-              Effect.forkChild
-            )
-          }
           const stderrFiber = yield* handle.stderr.pipe(
             Stream.runFold(
               () => Buffer.alloc(0),
@@ -370,6 +363,9 @@ const runRuntimeWithFakeHost = (options: RuntimeHostOptions = {}): Promise<Runti
                 }
                 methods.push(requestValue.method)
                 yield* Queue.offer(stdinQueue, encodeFrame(responseFor(requestValue)))
+                if (requestValue.method === options.terminateAfterMethod) {
+                  yield* handle.kill({ killSignal: "SIGTERM" }).pipe(Effect.ignore)
+                }
               }
             })
 
@@ -384,7 +380,7 @@ const runRuntimeWithFakeHost = (options: RuntimeHostOptions = {}): Promise<Runti
           )
 
           const exitCode =
-            options.killAfterMs === undefined
+            options.terminateAfterMethod === undefined
               ? yield* handle.exitCode.pipe(
                   Effect.mapError(
                     (cause) =>
