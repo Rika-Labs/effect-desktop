@@ -212,10 +212,21 @@ export class NativeNetworkLocalhostUrlResult extends Schema.Class<NativeNetworkL
 
 export class NativeNetworkSupportedResult extends Schema.Class<NativeNetworkSupportedResult>(
   "NativeNetworkSupportedResult"
-)({
-  supported: Schema.Boolean,
-  reason: Schema.optionalKey(BridgeSafeString)
-}) {}
+)(
+  Schema.Struct({
+    supported: Schema.Boolean,
+    reason: Schema.optionalKey(BridgeSafeString)
+  }).check(
+    Schema.makeFilter<{
+      readonly supported: boolean
+      readonly reason?: string | undefined
+    }>((value) =>
+      value.supported
+        ? value.reason === undefined || "supported native network result must not include reason"
+        : value.reason !== undefined || "unsupported native network result requires reason"
+    )
+  )
+) {}
 
 export class NativeNetworkEvent extends Schema.Class<NativeNetworkEvent>("NativeNetworkEvent")(
   Schema.Struct({

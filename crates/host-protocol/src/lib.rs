@@ -15181,11 +15181,9 @@ impl NativeNetworkLocalhostUrlResultPayload {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NativeNetworkSupportedPayload {
     supported: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
     reason: Option<String>,
 }
 
@@ -15196,6 +15194,85 @@ impl NativeNetworkSupportedPayload {
             reason: Some(reason.into()),
         }
     }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SerializableNativeNetworkSupportedPayload<'a> {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<&'a str>,
+}
+
+impl<'a> TryFrom<&'a NativeNetworkSupportedPayload>
+    for SerializableNativeNetworkSupportedPayload<'a>
+{
+    type Error = &'static str;
+
+    fn try_from(payload: &'a NativeNetworkSupportedPayload) -> Result<Self, Self::Error> {
+        validate_native_network_support(payload.supported, payload.reason.as_deref())?;
+        Ok(Self {
+            supported: payload.supported,
+            reason: payload.reason.as_deref(),
+        })
+    }
+}
+
+impl Serialize for NativeNetworkSupportedPayload {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        SerializableNativeNetworkSupportedPayload::try_from(self)
+            .map_err(ser::Error::custom)?
+            .serialize(serializer)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawNativeNetworkSupportedPayload {
+    supported: bool,
+    #[serde(default)]
+    reason: Option<String>,
+}
+
+impl TryFrom<RawNativeNetworkSupportedPayload> for NativeNetworkSupportedPayload {
+    type Error = &'static str;
+
+    fn try_from(raw: RawNativeNetworkSupportedPayload) -> Result<Self, Self::Error> {
+        validate_native_network_support(raw.supported, raw.reason.as_deref())?;
+        Ok(Self {
+            supported: raw.supported,
+            reason: raw.reason,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for NativeNetworkSupportedPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        RawNativeNetworkSupportedPayload::deserialize(deserializer)?
+            .try_into()
+            .map_err(de::Error::custom)
+    }
+}
+
+fn validate_native_network_support(
+    supported: bool,
+    reason: Option<&str>,
+) -> Result<(), &'static str> {
+    if supported && reason.is_some() {
+        return Err("supported native network result must not include reason");
+    }
+
+    if !supported && reason.is_none() {
+        return Err("unsupported native network result requires reason");
+    }
+
+    Ok(())
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -23719,6 +23796,40 @@ mod tests {
                 .expect("header should encode"),
             r#"{"name":"x-audit","value":"1"}"#
         );
+    }
+
+    #[test]
+    fn native_network_support_rejects_inconsistent_reasons() {
+        for source in [
+            r#"{"supported":true,"reason":"unexpected"}"#,
+            r#"{"supported":false}"#,
+        ] {
+            serde_json::from_str::<NativeNetworkSupportedPayload>(source)
+                .expect_err("inconsistent native network support should be rejected");
+        }
+
+        for source in [
+            r#"{"supported":true}"#,
+            r#"{"supported":false,"reason":"host-native-network-unavailable"}"#,
+        ] {
+            serde_json::from_str::<NativeNetworkSupportedPayload>(source)
+                .expect("consistent native network support should decode");
+        }
+    }
+
+    #[test]
+    fn native_network_support_rejects_inconsistent_reasons_before_serializing() {
+        let mut supported = NativeNetworkSupportedPayload::unsupported("unexpected");
+        supported.supported = true;
+        let unsupported = NativeNetworkSupportedPayload {
+            supported: false,
+            reason: None,
+        };
+
+        for payload in [supported, unsupported] {
+            serde_json::to_string(&payload)
+                .expect_err("inconsistent native network support should not encode");
+        }
     }
 
     #[test]

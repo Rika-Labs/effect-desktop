@@ -7,7 +7,7 @@ import {
 import { Cause, Effect, Exit, type Layer, ManagedRuntime, Option, Schema, Stream } from "effect"
 
 import { makeNativeCapabilityManifest } from "./capabilities.js"
-import { NativeNetworkEvent } from "./contracts/native-network.js"
+import { NativeNetworkEvent, NativeNetworkSupportedResult } from "./contracts/native-network.js"
 import {
   makeNativeNetworkMemoryClient,
   makeNativeNetworkBridgeClientLayer,
@@ -74,6 +74,52 @@ test("NativeNetwork unsupported client reports the host-unavailable reason", () 
       )
       expect(result.supported).toBe(false)
       expect(result.reason).toBe("host-native-network-unavailable")
+    })
+  ))
+
+test("NativeNetwork support results reject inconsistent reasons", () => {
+  for (const payload of [
+    { supported: true, reason: "unexpected" },
+    { supported: false }
+  ] as const) {
+    const exit = Effect.runSyncExit(
+      Schema.decodeUnknownEffect(NativeNetworkSupportedResult)(payload)
+    )
+    expect(Exit.isFailure(exit)).toBe(true)
+  }
+
+  for (const payload of [
+    { supported: true },
+    { supported: false, reason: "host-native-network-unavailable" }
+  ] as const) {
+    const exit = Effect.runSyncExit(
+      Schema.decodeUnknownEffect(NativeNetworkSupportedResult)(payload)
+    )
+    expect(Exit.isSuccess(exit)).toBe(true)
+  }
+})
+
+test("NativeNetwork bridge client rejects inconsistent isSupported output as InvalidOutput", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      for (const payload of [
+        { supported: true, reason: "unexpected" },
+        { supported: false }
+      ] as const) {
+        const exchange: BridgeClientExchange = {
+          request: () => Effect.succeed({ kind: "success", payload }),
+          subscribe: () => Stream.empty
+        }
+        const exit = yield* runScoped(
+          Effect.gen(function* () {
+            const client = yield* NativeNetworkClient
+            return yield* Effect.exit(client.isSupported())
+          }),
+          makeNativeNetworkBridgeClientLayer(exchange)
+        )
+
+        expectInvalidOutput(exit)
+      }
     })
   ))
 
