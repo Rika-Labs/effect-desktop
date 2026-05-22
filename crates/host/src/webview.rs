@@ -137,9 +137,12 @@ fn chrome_provider_missing_error_for_operation(
     ))
 }
 
-pub(crate) fn attach_app_webview(window: &Window) -> WebViewResult<HostWebView> {
+pub(crate) fn attach_app_webview(
+    window: &Window,
+    renderer_route: Option<&str>,
+) -> WebViewResult<HostWebView> {
     let selection = selected_web_engine()?;
-    let url = renderer_url(std::env::var(DEV_URL_ENV).ok());
+    let url = renderer_url(std::env::var(DEV_URL_ENV).ok(), renderer_route);
     let url_for_log = url.to_string();
     let request = WebViewRequest {
         url,
@@ -481,10 +484,35 @@ fn provider_for(engine: WebEngineKind) -> &'static dyn WebEngineProvider {
     }
 }
 
-fn renderer_url(dev_url: Option<String>) -> Cow<'static, str> {
+fn renderer_url(dev_url: Option<String>, renderer_route: Option<&str>) -> Cow<'static, str> {
+    let route = renderer_route.and_then(normalize_renderer_route);
     match dev_url {
-        Some(url) if !url.trim().is_empty() => Cow::Owned(url),
-        _ => Cow::Borrowed(scheme::APP_URL),
+        Some(url) if !url.trim().is_empty() => Cow::Owned(append_renderer_route(
+            url.trim_end_matches('/'),
+            route.as_deref(),
+        )),
+        _ => route
+            .map(|route| Cow::Owned(format!("app://localhost{route}")))
+            .unwrap_or(Cow::Borrowed(scheme::APP_URL)),
+    }
+}
+
+fn normalize_renderer_route(route: &str) -> Option<String> {
+    let trimmed = route.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(if trimmed.starts_with('/') {
+        trimmed.to_string()
+    } else {
+        format!("/{trimmed}")
+    })
+}
+
+fn append_renderer_route(base: &str, route: Option<&str>) -> String {
+    match route {
+        Some(route) => format!("{base}{route}"),
+        None => base.to_string(),
     }
 }
 
@@ -528,11 +556,18 @@ mod tests {
     #[test]
     fn renderer_url_uses_dev_url_when_present() {
         assert_eq!(
-            renderer_url(Some("http://127.0.0.1:5173/".to_string())).as_ref(),
-            "http://127.0.0.1:5173/"
+            renderer_url(Some("http://127.0.0.1:5173/".to_string()), Some("/compose")).as_ref(),
+            "http://127.0.0.1:5173/compose"
         );
-        assert_eq!(renderer_url(Some("".to_string())).as_ref(), APP_URL);
-        assert_eq!(renderer_url(None).as_ref(), APP_URL);
+        assert_eq!(
+            renderer_url(Some("".to_string()), Some("/compose")).as_ref(),
+            "app://localhost/compose"
+        );
+        assert_eq!(
+            renderer_url(None, Some("compose")).as_ref(),
+            "app://localhost/compose"
+        );
+        assert_eq!(renderer_url(None, None).as_ref(), APP_URL);
     }
 
     #[test]

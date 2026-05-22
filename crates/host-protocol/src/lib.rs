@@ -3920,7 +3920,7 @@ impl SystemAppearanceSupportedPayload {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WindowCreatePayload {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -3929,6 +3929,8 @@ pub struct WindowCreatePayload {
     width: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     height: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    renderer: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     parent_window_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -3939,12 +3941,57 @@ pub struct WindowCreatePayload {
     traffic_lights: Option<WindowTrafficLights>,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawWindowCreatePayload {
+    title: Option<String>,
+    width: Option<f64>,
+    height: Option<f64>,
+    renderer: Option<String>,
+    parent_window_id: Option<String>,
+    title_bar_style: Option<WindowTitleBarStyle>,
+    vibrancy: Option<String>,
+    traffic_lights: Option<WindowTrafficLights>,
+}
+
+impl TryFrom<RawWindowCreatePayload> for WindowCreatePayload {
+    type Error = &'static str;
+
+    fn try_from(raw: RawWindowCreatePayload) -> Result<Self, Self::Error> {
+        if let Some(renderer) = raw.renderer.as_deref() {
+            validate_app_renderer_route(renderer)?;
+        }
+        Ok(Self {
+            title: raw.title,
+            width: raw.width,
+            height: raw.height,
+            renderer: raw.renderer,
+            parent_window_id: raw.parent_window_id,
+            title_bar_style: raw.title_bar_style,
+            vibrancy: raw.vibrancy,
+            traffic_lights: raw.traffic_lights,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for WindowCreatePayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        RawWindowCreatePayload::deserialize(deserializer)?
+            .try_into()
+            .map_err(de::Error::custom)
+    }
+}
+
 impl WindowCreatePayload {
     pub fn new(title: Option<String>, width: Option<f64>, height: Option<f64>) -> Self {
         Self {
             title,
             width,
             height,
+            renderer: None,
             parent_window_id: None,
             title_bar_style: None,
             vibrancy: None,
@@ -3964,6 +4011,10 @@ impl WindowCreatePayload {
         self.height
     }
 
+    pub fn renderer(&self) -> Option<&str> {
+        self.renderer.as_deref()
+    }
+
     pub fn parent_window_id(&self) -> Option<&str> {
         self.parent_window_id.as_deref()
     }
@@ -3979,6 +4030,32 @@ impl WindowCreatePayload {
     pub fn traffic_lights(&self) -> Option<&WindowTrafficLights> {
         self.traffic_lights.as_ref()
     }
+}
+
+fn validate_app_renderer_route(route: &str) -> Result<(), &'static str> {
+    let trimmed = route.trim();
+    if trimmed.is_empty() {
+        return Err("renderer must be a non-empty app route");
+    }
+    if trimmed != route
+        || trimmed.starts_with("//")
+        || trimmed.contains('\\')
+        || trimmed.chars().any(char::is_whitespace)
+        || looks_like_url_scheme(trimmed)
+    {
+        return Err("renderer must be an app route, not an absolute URL");
+    }
+    Ok(())
+}
+
+fn looks_like_url_scheme(value: &str) -> bool {
+    let Some((scheme, _)) = value.split_once(':') else {
+        return false;
+    };
+    !scheme.is_empty()
+        && scheme
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '+' | '-' | '.'))
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -20202,11 +20279,12 @@ mod tests {
     #[test]
     fn window_create_payload_accepts_macos_polish_fields() {
         let payload = serde_json::from_str::<WindowCreatePayload>(
-            r#"{"title":"Polished","width":320,"height":240,"parentWindowId":"window-parent","titleBarStyle":"hiddenInset","vibrancy":"windowBackground","trafficLights":{"x":12,"y":13}}"#,
+            r#"{"title":"Polished","width":320,"height":240,"renderer":"/compose","parentWindowId":"window-parent","titleBarStyle":"hiddenInset","vibrancy":"windowBackground","trafficLights":{"x":12,"y":13}}"#,
         )
         .expect("macOS window polish payload should decode");
 
         assert_eq!(payload.title(), Some("Polished"));
+        assert_eq!(payload.renderer(), Some("/compose"));
         assert_eq!(payload.parent_window_id(), Some("window-parent"));
         assert_eq!(
             payload.title_bar_style(),
@@ -20228,6 +20306,19 @@ mod tests {
 
         assert!(
             error.to_string().contains("unknown field `unknown`"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn window_create_payload_rejects_absolute_renderer_urls() {
+        let error = serde_json::from_str::<WindowCreatePayload>(
+            r#"{"title":"External","renderer":"https://example.com/compose"}"#,
+        )
+        .expect_err("absolute renderer URLs must fail");
+
+        assert!(
+            error.to_string().contains("renderer must be an app route"),
             "unexpected error: {error}"
         );
     }

@@ -91,7 +91,8 @@ test("openDeclaredWindows opens declared windows and smoke-test destroys them", 
         {
           title: "Notes",
           width: 960,
-          height: 640
+          height: 640,
+          renderer: "/"
         },
         {
           title: "Preferences"

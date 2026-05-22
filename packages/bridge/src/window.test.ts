@@ -63,7 +63,8 @@ test("host window client requests Window.create and decodes the WindowId", () =>
       const response = yield* client.create({
         title: "Test",
         width: 320,
-        height: 240
+        height: 240,
+        renderer: "/compose"
       })
 
       expect(response.windowId).toBe("window-1")
@@ -77,7 +78,8 @@ test("host window client requests Window.create and decodes the WindowId", () =>
           payload: {
             title: "Test",
             width: 320,
-            height: 240
+            height: 240,
+            renderer: "/compose"
           }
         }
       ])
@@ -105,6 +107,24 @@ test("host window client preserves macOS polish fields in Window.create", () =>
         vibrancy: "windowBackground",
         trafficLights: { x: 12, y: 13 }
       })
+    })
+  ))
+
+test("host window client rejects absolute renderer routes in Window.create", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const requests: HostProtocolRequestEnvelope[] = []
+      const client = makeHostWindowClient(windowExchange(requests))
+
+      yield* expectEffectFailure(
+        client.create({
+          title: "External",
+          renderer: "https://example.com/compose"
+        }),
+        (error) =>
+          Schema.is(HostProtocolInvalidArgumentError)(error) && error.message.includes("renderer")
+      )
+      expect(requests).toEqual([])
     })
   ))
 

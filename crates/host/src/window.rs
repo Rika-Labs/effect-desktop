@@ -569,6 +569,7 @@ pub(crate) struct WindowCreateRequest {
     title: String,
     width: f64,
     height: f64,
+    renderer: Option<String>,
     parent_window_id: Option<String>,
     macos_polish: Option<macos::MacosWindowPolish>,
 }
@@ -3152,9 +3153,15 @@ impl WindowCreateRequest {
             title,
             width,
             height,
+            renderer: None,
             parent_window_id: None,
             macos_polish: None,
         })
+    }
+
+    fn with_renderer(mut self, renderer: Option<String>) -> Self {
+        self.renderer = renderer;
+        self
     }
 
     fn with_parent_window_id(mut self, parent_window_id: Option<String>) -> Self {
@@ -3177,6 +3184,10 @@ impl WindowCreateRequest {
 
     fn height(&self) -> f64 {
         self.height
+    }
+
+    fn renderer(&self) -> Option<&str> {
+        self.renderer.as_deref()
     }
 
     pub(crate) fn parent_window_id(&self) -> Option<&str> {
@@ -3211,6 +3222,7 @@ impl TryFrom<WindowCreatePayload> for WindowCreateRequest {
         )?;
 
         Ok(request
+            .with_renderer(payload.renderer().map(str::to_string))
             .with_parent_window_id(payload.parent_window_id().map(str::to_string))
             .with_macos_polish(macos_polish))
     }
@@ -3325,7 +3337,8 @@ impl WindowRegistry {
             "host window opened"
         );
 
-        let webview = webview::attach_app_webview(&window).map_err(|error| *error)?;
+        let webview =
+            webview::attach_app_webview(&window, request.renderer()).map_err(|error| *error)?;
         let native_window_id = window.id();
         self.windows.insert(
             window_id.clone(),

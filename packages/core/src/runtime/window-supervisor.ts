@@ -244,6 +244,7 @@ export const toWindowCreateInput = (spec: WindowSpec): WindowCreateInput => {
     title?: string
     width?: number
     height?: number
+    renderer?: string
   } = {
     title: spec.title
   }
@@ -253,6 +254,9 @@ export const toWindowCreateInput = (spec: WindowSpec): WindowCreateInput => {
   }
   if (spec.height !== undefined) {
     input.height = spec.height
+  }
+  if (spec.renderer !== undefined) {
+    input.renderer = spec.renderer
   }
 
   return input

@@ -206,7 +206,13 @@ fn app_scheme_response_with_policy(
         return app_method_not_allowed_response(&policy, &nonce, &trace_id);
     }
 
-    let Some(asset) = resolve_asset(&path) else {
+    let Some(asset) = resolve_asset(&path).or_else(|| {
+        if is_renderer_route_path(&path) {
+            resolve_asset("/")
+        } else {
+            None
+        }
+    }) else {
         return app_not_found_response(&policy, &nonce, &trace_id);
     };
 
@@ -275,6 +281,12 @@ fn app_scheme_response_with_policy(
 #[cfg(not(test))]
 fn resolve_asset(path: &str) -> Option<assets::Asset> {
     assets::resolve(path)
+}
+
+fn is_renderer_route_path(path: &str) -> bool {
+    path.rsplit('/')
+        .next()
+        .is_some_and(|segment| !segment.contains('.'))
 }
 
 #[cfg(test)]
@@ -556,6 +568,25 @@ mod tests {
             Some(&HeaderValue::from_static(TEXT_CONTENT_TYPE))
         );
         assert_eq!(response.body().as_ref(), b"app asset not found");
+    }
+
+    #[test]
+    fn app_scheme_response_falls_back_to_index_for_renderer_routes() {
+        let request = Request::builder()
+            .uri("app://localhost/compose")
+            .body(Vec::new())
+            .expect("test request should build");
+        let response = app_scheme_response(&request);
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get(CONTENT_TYPE),
+            Some(&HeaderValue::from_static("text/html; charset=utf-8"))
+        );
+        assert!(response
+            .body()
+            .to_ascii_lowercase()
+            .starts_with(b"<!doctype html>"));
     }
 
     #[test]
