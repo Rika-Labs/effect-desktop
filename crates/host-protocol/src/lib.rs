@@ -13765,41 +13765,58 @@ impl<'a> TryFrom<&'a HostProtocolEnvelope> for SerializableHostProtocolEnvelope<
                 window_id,
                 origin_token,
                 payload,
-            } => Ok(Self::Request {
-                id,
-                method,
-                timestamp: *timestamp,
-                trace_id,
-                window_id: window_id.as_deref(),
-                origin_token: origin_token.as_deref(),
-                payload: payload.as_ref(),
-            }),
+            } => {
+                validate_host_identity_ref(id)?;
+                validate_host_identity_ref(trace_id)?;
+                validate_optional_host_identity_ref(window_id.as_deref())?;
+                validate_optional_host_identity_ref(origin_token.as_deref())?;
+
+                Ok(Self::Request {
+                    id,
+                    method,
+                    timestamp: *timestamp,
+                    trace_id,
+                    window_id: window_id.as_deref(),
+                    origin_token: origin_token.as_deref(),
+                    payload: payload.as_ref(),
+                })
+            }
             HostProtocolEnvelope::Response {
                 id,
                 timestamp,
                 trace_id,
                 payload,
                 error,
-            } => Ok(Self::Response {
-                id,
-                timestamp: *timestamp,
-                trace_id,
-                payload: payload.as_ref(),
-                error: error.as_ref(),
-            }),
+            } => {
+                validate_host_identity_ref(id)?;
+                validate_host_identity_ref(trace_id)?;
+
+                Ok(Self::Response {
+                    id,
+                    timestamp: *timestamp,
+                    trace_id,
+                    payload: payload.as_ref(),
+                    error: error.as_ref(),
+                })
+            }
             HostProtocolEnvelope::Event {
                 method,
                 timestamp,
                 trace_id,
                 window_id,
                 payload,
-            } => Ok(Self::Event {
-                method,
-                timestamp: *timestamp,
-                trace_id,
-                window_id: window_id.as_deref(),
-                payload: payload.as_ref(),
-            }),
+            } => {
+                validate_host_identity_ref(trace_id)?;
+                validate_optional_host_identity_ref(window_id.as_deref())?;
+
+                Ok(Self::Event {
+                    method,
+                    timestamp: *timestamp,
+                    trace_id,
+                    window_id: window_id.as_deref(),
+                    payload: payload.as_ref(),
+                })
+            }
             HostProtocolEnvelope::Stream {
                 id,
                 resource_id,
@@ -13808,9 +13825,11 @@ impl<'a> TryFrom<&'a HostProtocolEnvelope> for SerializableHostProtocolEnvelope<
                 payload,
                 error,
             } => {
-                if id.is_none() && resource_id.is_none() {
-                    return Err("stream envelope requires id or resourceId");
-                }
+                validate_host_protocol_target("stream", id.as_deref(), resource_id.as_deref())?;
+
+                validate_optional_host_identity_ref(id.as_deref())?;
+                validate_optional_host_identity_ref(resource_id.as_deref())?;
+                validate_host_identity_ref(trace_id)?;
 
                 Ok(Self::Stream {
                     id: id.as_deref(),
@@ -13827,9 +13846,11 @@ impl<'a> TryFrom<&'a HostProtocolEnvelope> for SerializableHostProtocolEnvelope<
                 timestamp,
                 trace_id,
             } => {
-                if id.is_none() && resource_id.is_none() {
-                    return Err("cancel envelope requires id or resourceId");
-                }
+                validate_host_protocol_target("cancel", id.as_deref(), resource_id.as_deref())?;
+
+                validate_optional_host_identity_ref(id.as_deref())?;
+                validate_optional_host_identity_ref(resource_id.as_deref())?;
+                validate_host_identity_ref(trace_id)?;
 
                 Ok(Self::Cancel {
                     id: id.as_deref(),
@@ -13903,7 +13924,7 @@ impl TryFrom<RawHostProtocolEnvelope> for HostProtocolEnvelope {
                 origin_token,
                 payload,
             } => Ok(Self::Request {
-                id,
+                id: validate_host_identity(id)?,
                 method,
                 timestamp,
                 trace_id: validate_host_identity(trace_id)?,
@@ -13918,7 +13939,7 @@ impl TryFrom<RawHostProtocolEnvelope> for HostProtocolEnvelope {
                 payload,
                 error,
             } => Ok(Self::Response {
-                id,
+                id: validate_host_identity(id)?,
                 timestamp,
                 trace_id: validate_host_identity(trace_id)?,
                 payload,
@@ -13945,13 +13966,11 @@ impl TryFrom<RawHostProtocolEnvelope> for HostProtocolEnvelope {
                 payload,
                 error,
             } => {
-                if id.is_none() && resource_id.is_none() {
-                    return Err("stream envelope requires id or resourceId");
-                }
+                validate_host_protocol_target("stream", id.as_deref(), resource_id.as_deref())?;
 
                 Ok(Self::Stream {
-                    id,
-                    resource_id,
+                    id: validate_optional_host_identity(id)?,
+                    resource_id: validate_optional_host_identity(resource_id)?,
                     timestamp,
                     trace_id: validate_host_identity(trace_id)?,
                     payload,
@@ -13964,13 +13983,11 @@ impl TryFrom<RawHostProtocolEnvelope> for HostProtocolEnvelope {
                 timestamp,
                 trace_id,
             } => {
-                if id.is_none() && resource_id.is_none() {
-                    return Err("cancel envelope requires id or resourceId");
-                }
+                validate_host_protocol_target("cancel", id.as_deref(), resource_id.as_deref())?;
 
                 Ok(Self::Cancel {
-                    id,
-                    resource_id,
+                    id: validate_optional_host_identity(id)?,
+                    resource_id: validate_optional_host_identity(resource_id)?,
                     timestamp,
                     trace_id: validate_host_identity(trace_id)?,
                 })
@@ -13980,6 +13997,11 @@ impl TryFrom<RawHostProtocolEnvelope> for HostProtocolEnvelope {
 }
 
 fn validate_host_identity(value: String) -> Result<String, &'static str> {
+    validate_host_identity_ref(&value)?;
+    Ok(value)
+}
+
+fn validate_host_identity_ref(value: &str) -> Result<(), &'static str> {
     if value.is_empty() {
         return Err("host protocol identity must be non-empty");
     }
@@ -13989,11 +14011,38 @@ fn validate_host_identity(value: String) -> Result<String, &'static str> {
     {
         return Err("host protocol identity must not contain ASCII control characters");
     }
-    Ok(value)
+    Ok(())
 }
 
 fn validate_optional_host_identity(value: Option<String>) -> Result<Option<String>, &'static str> {
     value.map(validate_host_identity).transpose()
+}
+
+fn validate_optional_host_identity_ref(value: Option<&str>) -> Result<(), &'static str> {
+    value
+        .map(validate_host_identity_ref)
+        .transpose()
+        .map(|_| ())
+}
+
+fn validate_host_protocol_target(
+    kind: &'static str,
+    id: Option<&str>,
+    resource_id: Option<&str>,
+) -> Result<(), &'static str> {
+    match (id, resource_id) {
+        (None, None) => match kind {
+            "stream" => Err("stream envelope requires id or resourceId"),
+            "cancel" => Err("cancel envelope requires id or resourceId"),
+            _ => Err("host protocol envelope requires id or resourceId"),
+        },
+        (Some(_), Some(_)) => match kind {
+            "stream" => Err("stream envelope must not contain both id and resourceId"),
+            "cancel" => Err("cancel envelope must not contain both id and resourceId"),
+            _ => Err("host protocol envelope must not contain both id and resourceId"),
+        },
+        (Some(_), None) | (None, Some(_)) => Ok(()),
+    }
 }
 
 #[cfg(test)]
@@ -14255,6 +14304,32 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "cancel envelope requires id or resourceId"
+        );
+    }
+
+    #[test]
+    fn stream_rejects_ambiguous_request_and_resource_targets() {
+        let error = serde_json::from_str::<HostProtocolEnvelope>(
+            r#"{"kind":"stream","id":"request-1","resourceId":"resource-1","timestamp":1710000000000,"traceId":"trace-1"}"#,
+        )
+        .expect_err("stream target must not be ambiguous");
+
+        assert_eq!(
+            error.to_string(),
+            "stream envelope must not contain both id and resourceId"
+        );
+    }
+
+    #[test]
+    fn cancel_rejects_ambiguous_request_and_resource_targets() {
+        let error = serde_json::from_str::<HostProtocolEnvelope>(
+            r#"{"kind":"cancel","id":"request-1","resourceId":"resource-1","timestamp":1710000000000,"traceId":"trace-1"}"#,
+        )
+        .expect_err("cancel target must not be ambiguous");
+
+        assert_eq!(
+            error.to_string(),
+            "cancel envelope must not contain both id and resourceId"
         );
     }
 
@@ -14754,18 +14829,116 @@ mod tests {
     }
 
     #[test]
+    fn stream_rejects_ambiguous_request_and_resource_targets_before_serializing() {
+        let envelope = HostProtocolEnvelope::Stream {
+            id: Some("request-1".to_string()),
+            resource_id: Some("resource-1".to_string()),
+            timestamp: 1710000000000,
+            trace_id: "trace-1".to_string(),
+            payload: None,
+            error: None,
+        };
+
+        let error = serde_json::to_string(&envelope).expect_err("stream target is ambiguous");
+
+        assert_eq!(
+            error.to_string(),
+            "stream envelope must not contain both id and resourceId"
+        );
+    }
+
+    #[test]
+    fn cancel_rejects_ambiguous_request_and_resource_targets_before_serializing() {
+        let envelope = HostProtocolEnvelope::Cancel {
+            id: Some("request-1".to_string()),
+            resource_id: Some("resource-1".to_string()),
+            timestamp: 1710000000000,
+            trace_id: "trace-1".to_string(),
+        };
+
+        let error = serde_json::to_string(&envelope).expect_err("cancel target is ambiguous");
+
+        assert_eq!(
+            error.to_string(),
+            "cancel envelope must not contain both id and resourceId"
+        );
+    }
+
+    #[test]
+    fn host_protocol_envelopes_reject_invalid_identity_fields_before_serializing() {
+        for envelope in [
+            HostProtocolEnvelope::Response {
+                id: String::new(),
+                timestamp: 1710000000000,
+                trace_id: "trace-1".to_string(),
+                payload: None,
+                error: None,
+            },
+            HostProtocolEnvelope::Stream {
+                id: None,
+                resource_id: Some("resource\nforged".to_string()),
+                timestamp: 1710000000000,
+                trace_id: "trace-1".to_string(),
+                payload: None,
+                error: None,
+            },
+            HostProtocolEnvelope::Cancel {
+                id: Some("request\nforged".to_string()),
+                resource_id: None,
+                timestamp: 1710000000000,
+                trace_id: "trace-1".to_string(),
+            },
+        ] {
+            let error =
+                serde_json::to_string(&envelope).expect_err("invalid identity should not encode");
+            assert!(
+                error.to_string().contains("host protocol identity must"),
+                "unexpected error: {error}"
+            );
+        }
+    }
+
+    #[test]
     fn host_protocol_envelopes_reject_control_identity_fields() {
         for source in [
+            r#"{"kind":"request","id":"request\nforged","method":"host.ping","timestamp":1710000000000,"traceId":"trace-1"}"#,
             r#"{"kind":"request","id":"request-1","method":"host.ping","timestamp":1710000000000,"traceId":"trace\nforged"}"#,
             r#"{"kind":"request","id":"request-1","method":"host.ping","timestamp":1710000000000,"traceId":"trace-1","windowId":"main\nforged"}"#,
             r#"{"kind":"request","id":"request-1","method":"host.ping","timestamp":1710000000000,"traceId":"trace-1","originToken":"origin\nforged"}"#,
+            r#"{"kind":"response","id":"request\u0000forged","timestamp":1710000000000,"traceId":"trace-1"}"#,
             r#"{"kind":"response","id":"request-1","timestamp":1710000000000,"traceId":"trace\u0000forged"}"#,
+            r#"{"kind":"stream","id":"request\nforged","timestamp":1710000000000,"traceId":"trace-1"}"#,
+            r#"{"kind":"stream","resourceId":"resource\u0000forged","timestamp":1710000000000,"traceId":"trace-1"}"#,
+            r#"{"kind":"cancel","id":"request\nforged","timestamp":1710000000000,"traceId":"trace-1"}"#,
+            r#"{"kind":"cancel","resourceId":"resource\u0000forged","timestamp":1710000000000,"traceId":"trace-1"}"#,
         ] {
             let error = serde_json::from_str::<HostProtocolEnvelope>(source)
                 .expect_err("identity controls should be rejected");
             assert!(error
                 .to_string()
                 .contains("must not contain ASCII control characters"));
+        }
+    }
+
+    #[test]
+    fn host_protocol_envelopes_reject_empty_identity_fields() {
+        for source in [
+            r#"{"kind":"request","id":"","method":"host.ping","timestamp":1710000000000,"traceId":"trace-1"}"#,
+            r#"{"kind":"request","id":"request-1","method":"host.ping","timestamp":1710000000000,"traceId":""}"#,
+            r#"{"kind":"response","id":"","timestamp":1710000000000,"traceId":"trace-1"}"#,
+            r#"{"kind":"stream","id":"","timestamp":1710000000000,"traceId":"trace-1"}"#,
+            r#"{"kind":"stream","resourceId":"","timestamp":1710000000000,"traceId":"trace-1"}"#,
+            r#"{"kind":"cancel","id":"","timestamp":1710000000000,"traceId":"trace-1"}"#,
+            r#"{"kind":"cancel","resourceId":"","timestamp":1710000000000,"traceId":"trace-1"}"#,
+        ] {
+            let error = serde_json::from_str::<HostProtocolEnvelope>(source)
+                .expect_err("empty identities should be rejected");
+            assert!(
+                error
+                    .to_string()
+                    .contains("host protocol identity must be non-empty"),
+                "unexpected error: {error}"
+            );
         }
     }
 
