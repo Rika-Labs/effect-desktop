@@ -74,13 +74,40 @@ export class CookieStoreSupportedResult extends Schema.Class<CookieStoreSupporte
   reason: Schema.optionalKey(BridgeSafeString)
 }) {}
 
-export class CookieStoreEvent extends Schema.Class<CookieStoreEvent>("CookieStoreEvent")({
-  type: Schema.Literal("cookie-store-event"),
-  timestamp: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0)),
-  phase: CookieEventPhase,
-  profile: SessionProfileResource,
-  url: CookieUrl,
-  cookie: Schema.optionalKey(CookieStoreCookie),
-  name: Schema.optionalKey(CookieName),
-  message: Schema.optionalKey(BridgeSafeString)
-}) {}
+const CookieStoreEventPhasePayload = Schema.makeFilter<{
+  readonly phase: CookieEventPhase
+  readonly cookie?: typeof CookieStoreCookie.Type | undefined
+  readonly name?: string | undefined
+  readonly message?: string | undefined
+}>((value) => {
+  switch (value.phase) {
+    case "set":
+      return (
+        (value.cookie !== undefined && value.name === undefined && value.message === undefined) ||
+        "set cookie store events require cookie only"
+      )
+    case "removed":
+      return (
+        (value.cookie === undefined && value.name !== undefined && value.message === undefined) ||
+        "removed cookie store events require name only"
+      )
+    case "failed":
+      return (
+        (value.cookie === undefined && value.name === undefined && value.message !== undefined) ||
+        "failed cookie store events require message only"
+      )
+  }
+})
+
+export class CookieStoreEvent extends Schema.Class<CookieStoreEvent>("CookieStoreEvent")(
+  Schema.Struct({
+    type: Schema.Literal("cookie-store-event"),
+    timestamp: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0)),
+    phase: CookieEventPhase,
+    profile: SessionProfileResource,
+    url: CookieUrl,
+    cookie: Schema.optionalKey(CookieStoreCookie),
+    name: Schema.optionalKey(CookieName),
+    message: Schema.optionalKey(BridgeSafeString)
+  }).check(CookieStoreEventPhasePayload)
+) {}

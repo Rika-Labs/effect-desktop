@@ -11002,6 +11002,249 @@ impl CookieStoreSupportedPayload {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum CookieStoreEventPhasePayload {
+    Set,
+    Removed,
+    Failed,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct CookieStoreEventPayload {
+    r#type: String,
+    timestamp: u64,
+    phase: CookieStoreEventPhasePayload,
+    profile: SessionProfileResourcePayload,
+    url: String,
+    cookie: Option<CookieStoreCookiePayload>,
+    name: Option<String>,
+    message: Option<String>,
+}
+
+impl CookieStoreEventPayload {
+    pub fn set(
+        timestamp: u64,
+        profile: SessionProfileResourcePayload,
+        url: impl Into<String>,
+        cookie: CookieStoreCookiePayload,
+    ) -> Self {
+        Self {
+            r#type: "cookie-store-event".to_string(),
+            timestamp,
+            phase: CookieStoreEventPhasePayload::Set,
+            profile,
+            url: url.into(),
+            cookie: Some(cookie),
+            name: None,
+            message: None,
+        }
+    }
+
+    pub fn removed(
+        timestamp: u64,
+        profile: SessionProfileResourcePayload,
+        url: impl Into<String>,
+        name: impl Into<String>,
+    ) -> Self {
+        Self {
+            r#type: "cookie-store-event".to_string(),
+            timestamp,
+            phase: CookieStoreEventPhasePayload::Removed,
+            profile,
+            url: url.into(),
+            cookie: None,
+            name: Some(name.into()),
+            message: None,
+        }
+    }
+
+    pub fn failed(
+        timestamp: u64,
+        profile: SessionProfileResourcePayload,
+        url: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            r#type: "cookie-store-event".to_string(),
+            timestamp,
+            phase: CookieStoreEventPhasePayload::Failed,
+            profile,
+            url: url.into(),
+            cookie: None,
+            name: None,
+            message: Some(message.into()),
+        }
+    }
+
+    #[cfg(test)]
+    fn new_for_test(
+        timestamp: u64,
+        phase: CookieStoreEventPhasePayload,
+        profile: SessionProfileResourcePayload,
+        url: impl Into<String>,
+    ) -> Self {
+        Self {
+            r#type: "cookie-store-event".to_string(),
+            timestamp,
+            phase,
+            profile,
+            url: url.into(),
+            cookie: None,
+            name: None,
+            message: None,
+        }
+    }
+
+    #[cfg(test)]
+    fn with_cookie_for_test(mut self, cookie: CookieStoreCookiePayload) -> Self {
+        self.cookie = Some(cookie);
+        self
+    }
+
+    #[cfg(test)]
+    fn with_name_for_test(mut self, name: impl Into<String>) -> Self {
+        self.name = Some(name.into());
+        self
+    }
+
+    #[cfg(test)]
+    fn with_message_for_test(mut self, message: impl Into<String>) -> Self {
+        self.message = Some(message.into());
+        self
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SerializableCookieStoreEventPayload<'a> {
+    r#type: &'a str,
+    timestamp: u64,
+    phase: CookieStoreEventPhasePayload,
+    profile: &'a SessionProfileResourcePayload,
+    url: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cookie: Option<&'a CookieStoreCookiePayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<&'a str>,
+}
+
+impl<'a> TryFrom<&'a CookieStoreEventPayload> for SerializableCookieStoreEventPayload<'a> {
+    type Error = &'static str;
+
+    fn try_from(payload: &'a CookieStoreEventPayload) -> Result<Self, Self::Error> {
+        validate_cookie_store_event_payload(
+            payload.phase,
+            &payload.cookie,
+            &payload.name,
+            &payload.message,
+        )?;
+        Ok(Self {
+            r#type: &payload.r#type,
+            timestamp: payload.timestamp,
+            phase: payload.phase,
+            profile: &payload.profile,
+            url: &payload.url,
+            cookie: payload.cookie.as_ref(),
+            name: payload.name.as_deref(),
+            message: payload.message.as_deref(),
+        })
+    }
+}
+
+impl Serialize for CookieStoreEventPayload {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        SerializableCookieStoreEventPayload::try_from(self)
+            .map_err(ser::Error::custom)?
+            .serialize(serializer)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawCookieStoreEventPayload {
+    r#type: String,
+    timestamp: u64,
+    phase: CookieStoreEventPhasePayload,
+    profile: SessionProfileResourcePayload,
+    url: String,
+    #[serde(default)]
+    cookie: Option<CookieStoreCookiePayload>,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    message: Option<String>,
+}
+
+impl TryFrom<RawCookieStoreEventPayload> for CookieStoreEventPayload {
+    type Error = &'static str;
+
+    fn try_from(raw: RawCookieStoreEventPayload) -> Result<Self, Self::Error> {
+        if raw.r#type != "cookie-store-event" {
+            return Err("cookie store event type must be cookie-store-event");
+        }
+        validate_cookie_store_event_payload(raw.phase, &raw.cookie, &raw.name, &raw.message)?;
+        Ok(Self {
+            r#type: raw.r#type,
+            timestamp: raw.timestamp,
+            phase: raw.phase,
+            profile: raw.profile,
+            url: raw.url,
+            cookie: raw.cookie,
+            name: raw.name,
+            message: raw.message,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for CookieStoreEventPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        RawCookieStoreEventPayload::deserialize(deserializer)?
+            .try_into()
+            .map_err(de::Error::custom)
+    }
+}
+
+fn validate_cookie_store_event_payload(
+    phase: CookieStoreEventPhasePayload,
+    cookie: &Option<CookieStoreCookiePayload>,
+    name: &Option<String>,
+    message: &Option<String>,
+) -> Result<(), &'static str> {
+    match phase {
+        CookieStoreEventPhasePayload::Set
+            if cookie.is_some() && name.is_none() && message.is_none() =>
+        {
+            Ok(())
+        }
+        CookieStoreEventPhasePayload::Set => Err("set cookie store events require cookie only"),
+        CookieStoreEventPhasePayload::Removed
+            if cookie.is_none() && name.is_some() && message.is_none() =>
+        {
+            Ok(())
+        }
+        CookieStoreEventPhasePayload::Removed => {
+            Err("removed cookie store events require name only")
+        }
+        CookieStoreEventPhasePayload::Failed
+            if cookie.is_none() && name.is_none() && message.is_some() =>
+        {
+            Ok(())
+        }
+        CookieStoreEventPhasePayload::Failed => {
+            Err("failed cookie store events require message only")
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum BrowsingDataTypePayload {
@@ -15740,24 +15983,25 @@ mod tests {
         BrowsingDataTypeEstimatePayload, BrowsingDataTypePayload, CanonicalPathPayload,
         ClipboardCapabilityPayload, ClipboardHtmlPayload, ClipboardImagePayload,
         ClipboardIsSupportedPayload, ClipboardSupportedPayload, ClipboardTextPayload,
-        ContextMenuActivatedEventPayload, CookieStoreCookiePayload, CookieStoreGetPayload,
-        CookieStoreGetResultPayload, CookieStoreRemovePayload, CookieStoreSetPayload,
-        CookieStoreSupportedPayload, CrashReporterBreadcrumbPayload, CrashReporterFlushPayload,
-        CrashReporterGetReportsPayload, CrashReporterReportPayload, CrashReporterStartPayload,
-        DiagnosticsBundleCollectPayload, DiagnosticsBundleCollectResultPayload,
-        DiagnosticsBundleRedactPayload, DiagnosticsBundleRedactResultPayload,
-        DiagnosticsBundleRedactionEvidencePayload, DiagnosticsBundleRedactionPolicyPayload,
-        DiagnosticsBundleSourceKind, DiagnosticsBundleSourceSummaryPayload,
-        DiagnosticsBundleSupportedPayload, DiagnosticsBundleWritePayload,
-        DiagnosticsBundleWriteResultPayload, DialogConfirmPayload, DialogConfirmResultPayload,
-        DialogFileFilterPayload, DialogLevelPayload, DialogMessagePayload,
-        DialogOpenDirectoryPayload, DialogOpenFilePayload, DialogOpenResultPayload,
-        DialogSaveFilePayload, DialogSaveResultPayload, DisplayCaptureActorKind,
-        DisplayCaptureActorPayload, DisplayCaptureEventPayload, DisplayCaptureEventPhase,
-        DisplayCaptureGrantKind, DisplayCaptureGrantPayload, DisplayCaptureImagePayload,
-        DisplayCaptureMetadataPayload, DisplayCaptureRegionPayload, DisplayCaptureRequestPayload,
-        DisplayCaptureResultPayload, DisplayCaptureSource, DisplayCaptureSupportedPayload,
-        DisplayCaptureTargetPayload, DistributionParityEventPayload, DistributionParityEventPhase,
+        ContextMenuActivatedEventPayload, CookieStoreCookiePayload, CookieStoreEventPayload,
+        CookieStoreEventPhasePayload, CookieStoreGetPayload, CookieStoreGetResultPayload,
+        CookieStoreRemovePayload, CookieStoreSetPayload, CookieStoreSupportedPayload,
+        CrashReporterBreadcrumbPayload, CrashReporterFlushPayload, CrashReporterGetReportsPayload,
+        CrashReporterReportPayload, CrashReporterStartPayload, DiagnosticsBundleCollectPayload,
+        DiagnosticsBundleCollectResultPayload, DiagnosticsBundleRedactPayload,
+        DiagnosticsBundleRedactResultPayload, DiagnosticsBundleRedactionEvidencePayload,
+        DiagnosticsBundleRedactionPolicyPayload, DiagnosticsBundleSourceKind,
+        DiagnosticsBundleSourceSummaryPayload, DiagnosticsBundleSupportedPayload,
+        DiagnosticsBundleWritePayload, DiagnosticsBundleWriteResultPayload, DialogConfirmPayload,
+        DialogConfirmResultPayload, DialogFileFilterPayload, DialogLevelPayload,
+        DialogMessagePayload, DialogOpenDirectoryPayload, DialogOpenFilePayload,
+        DialogOpenResultPayload, DialogSaveFilePayload, DialogSaveResultPayload,
+        DisplayCaptureActorKind, DisplayCaptureActorPayload, DisplayCaptureEventPayload,
+        DisplayCaptureEventPhase, DisplayCaptureGrantKind, DisplayCaptureGrantPayload,
+        DisplayCaptureImagePayload, DisplayCaptureMetadataPayload, DisplayCaptureRegionPayload,
+        DisplayCaptureRequestPayload, DisplayCaptureResultPayload, DisplayCaptureSource,
+        DisplayCaptureSupportedPayload, DisplayCaptureTargetPayload,
+        DistributionParityEventPayload, DistributionParityEventPhase,
         DistributionParityEvidenceKind, DistributionParityEvidencePayload,
         DistributionParitySupportedPayload, DistributionParityVerifyPayload,
         DistributionParityVerifyResultPayload, DockJumpListItemPayload, DockProgressState,
@@ -19589,7 +19833,7 @@ mod tests {
         );
         assert_eq!(
             serde_json::to_string(&CookieStoreRemovePayload::new(
-                profile,
+                profile.clone(),
                 "https://example.test/account",
                 "token"
             ))
@@ -19597,7 +19841,7 @@ mod tests {
             r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/account","name":"token"}"#
         );
         assert_eq!(
-            serde_json::to_string(&CookieStoreGetResultPayload::new(vec![cookie]))
+            serde_json::to_string(&CookieStoreGetResultPayload::new(vec![cookie.clone()]))
                 .expect("get result should encode"),
             r#"{"cookies":[{"name":"token","value":"secret","domain":"example.test","path":"/","secure":true}]}"#
         );
@@ -19606,6 +19850,96 @@ mod tests {
                 .expect("support payload should encode"),
             r#"{"supported":true}"#
         );
+        assert_eq!(
+            serde_json::to_string(&CookieStoreEventPayload::set(
+                1_710_000_000_000,
+                profile.clone(),
+                "https://example.test/account",
+                cookie.clone()
+            ))
+            .expect("set event should encode"),
+            r#"{"type":"cookie-store-event","timestamp":1710000000000,"phase":"set","profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/account","cookie":{"name":"token","value":"secret","domain":"example.test","path":"/","secure":true}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&CookieStoreEventPayload::removed(
+                1_710_000_000_001,
+                profile.clone(),
+                "https://example.test/account",
+                "token"
+            ))
+            .expect("removed event should encode"),
+            r#"{"type":"cookie-store-event","timestamp":1710000000001,"phase":"removed","profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/account","name":"token"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&CookieStoreEventPayload::failed(
+                1_710_000_000_002,
+                profile,
+                "https://example.test/account",
+                "host failed"
+            ))
+            .expect("failed event should encode"),
+            r#"{"type":"cookie-store-event","timestamp":1710000000002,"phase":"failed","profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/account","message":"host failed"}"#
+        );
+    }
+
+    #[test]
+    fn cookie_store_events_reject_inconsistent_phase_payloads() {
+        for source in [
+            r#"{"type":"cookie-store-event","timestamp":1710000000000,"phase":"set","profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/account","name":"token","message":"bad shape"}"#,
+            r#"{"type":"cookie-store-event","timestamp":1710000000000,"phase":"removed","profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/account","cookie":{"name":"token","value":"secret","domain":"example.test","path":"/"}}"#,
+            r#"{"type":"cookie-store-event","timestamp":1710000000000,"phase":"failed","profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/account","cookie":{"name":"token","value":"secret","domain":"example.test","path":"/"},"message":"host failed"}"#,
+        ] {
+            let error = serde_json::from_str::<CookieStoreEventPayload>(source)
+                .expect_err("inconsistent cookie store event should be rejected");
+            assert!(
+                error.to_string().contains("cookie")
+                    || error.to_string().contains("message")
+                    || error.to_string().contains("phase"),
+                "unexpected error: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn cookie_store_events_reject_inconsistent_phase_payloads_before_serializing() {
+        let profile =
+            SessionProfileResourcePayload::new("session-profile:workspace-1", 0, "workspace:1");
+        let cookie = CookieStoreCookiePayload::new("token", "secret", "example.test", "/");
+
+        for event in [
+            CookieStoreEventPayload::new_for_test(
+                1_710_000_000_000,
+                CookieStoreEventPhasePayload::Set,
+                profile.clone(),
+                "https://example.test/account",
+            )
+            .with_name_for_test("token")
+            .with_message_for_test("bad shape"),
+            CookieStoreEventPayload::new_for_test(
+                1_710_000_000_000,
+                CookieStoreEventPhasePayload::Removed,
+                profile.clone(),
+                "https://example.test/account",
+            )
+            .with_cookie_for_test(cookie.clone()),
+            CookieStoreEventPayload::new_for_test(
+                1_710_000_000_000,
+                CookieStoreEventPhasePayload::Failed,
+                profile,
+                "https://example.test/account",
+            )
+            .with_cookie_for_test(cookie)
+            .with_message_for_test("host failed"),
+        ] {
+            let error = serde_json::to_string(&event)
+                .expect_err("inconsistent cookie store event should not encode");
+            assert!(
+                error.to_string().contains("cookie")
+                    || error.to_string().contains("message")
+                    || error.to_string().contains("phase"),
+                "unexpected error: {error}"
+            );
+        }
     }
 
     #[test]

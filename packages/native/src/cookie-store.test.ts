@@ -1,14 +1,22 @@
 import { expect, test } from "bun:test"
+import {
+  type BridgeClientExchange,
+  HostProtocolEventEnvelope,
+  HostProtocolInvalidOutputError
+} from "@orika/bridge"
 import { makeResourceId } from "@orika/core"
-import { Effect, type Layer, ManagedRuntime } from "effect"
+import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Schema, Stream } from "effect"
 
 import { makeNativeCapabilityManifest } from "./capabilities.js"
+import { CookieStoreEvent } from "./contracts/cookie-store.js"
 import type { SessionProfileHandle } from "./contracts/session-profile.js"
 import {
   CookieStore,
   CookieStoreCapabilityFacts,
+  CookieStoreLive,
   CookieStoreRpcs,
   CookieStoreSurface,
+  makeCookieStoreBridgeClientLayer,
   makeCookieStoreMemoryClient,
   makeCookieStoreServiceLayer,
   makeCookieStoreUnsupportedClient
@@ -180,6 +188,116 @@ test("CookieStore unsupported client reports the host-unavailable reason", () =>
     })
   ))
 
+test("CookieStore contracts reject inconsistent event phase payloads", () => {
+  const cookie = {
+    name: "token",
+    value: "secret",
+    domain: "example.test",
+    path: "/"
+  } as const
+  const invalidPayloads = [
+    {
+      type: "cookie-store-event",
+      timestamp: 1_710_000_000_000,
+      phase: "set",
+      profile: Profile,
+      url: "https://example.test/account",
+      name: "token",
+      message: "bad shape"
+    },
+    {
+      type: "cookie-store-event",
+      timestamp: 1_710_000_000_000,
+      phase: "removed",
+      profile: Profile,
+      url: "https://example.test/account",
+      cookie
+    },
+    {
+      type: "cookie-store-event",
+      timestamp: 1_710_000_000_000,
+      phase: "failed",
+      profile: Profile,
+      url: "https://example.test/account",
+      cookie,
+      message: "host failed"
+    }
+  ] as const
+
+  for (const payload of invalidPayloads) {
+    const exit = Effect.runSyncExit(Schema.decodeUnknownEffect(CookieStoreEvent)(payload))
+    expect(exit._tag).toBe("Failure")
+  }
+
+  for (const payload of [
+    {
+      type: "cookie-store-event",
+      timestamp: 1_710_000_000_000,
+      phase: "set",
+      profile: Profile,
+      url: "https://example.test/account",
+      cookie
+    },
+    {
+      type: "cookie-store-event",
+      timestamp: 1_710_000_000_000,
+      phase: "removed",
+      profile: Profile,
+      url: "https://example.test/account",
+      name: "token"
+    },
+    {
+      type: "cookie-store-event",
+      timestamp: 1_710_000_000_000,
+      phase: "failed",
+      profile: Profile,
+      url: "https://example.test/account",
+      message: "host failed"
+    }
+  ] as const) {
+    const exit = Effect.runSyncExit(Schema.decodeUnknownEffect(CookieStoreEvent)(payload))
+    expect(exit._tag).toBe("Success")
+  }
+})
+
+test("CookieStore bridge client rejects inconsistent event phase payloads as InvalidOutput", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const exchange: BridgeClientExchange = {
+        request: () => Effect.die("CookieStore event test does not issue bridge requests"),
+        subscribe: (method) =>
+          Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              method,
+              timestamp: 1_710_000_000_000,
+              traceId: "cookie-store-event-trace",
+              payload: {
+                type: "cookie-store-event",
+                timestamp: 1_710_000_000_000,
+                phase: "set",
+                profile: Profile,
+                url: "https://example.test/account",
+                name: "token",
+                message: "bad shape"
+              }
+            })
+          )
+      }
+      const exit = yield* runScoped(
+        Effect.gen(function* () {
+          const store = yield* CookieStore
+          return yield* Effect.exit(
+            store.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+          )
+        }),
+        Layer.provide(CookieStoreLive, makeCookieStoreBridgeClientLayer(exchange))
+      )
+
+      expectInvalidOutput(exit)
+    })
+  ))
+
 test("CookieStore declares no unsupported methods as non-callable capability facts", () => {
   const factTags = CookieStoreCapabilityFacts.map((fact) => fact.tag).toSorted()
   expect(factTags).toEqual([])
@@ -247,3 +365,12 @@ const runScoped = <A, E, R>(
     yield* Effect.promise(() => runtime.dispose())
     return result
   })
+
+const expectInvalidOutput = <A, E>(exit: Exit.Exit<A, E>): void => {
+  expect(exit._tag).toBe("Failure")
+  if (exit._tag !== "Failure") {
+    return
+  }
+
+  expect(Cause.squash(exit.cause)).toBeInstanceOf(HostProtocolInvalidOutputError)
+}
