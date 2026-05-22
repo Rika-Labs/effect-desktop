@@ -988,6 +988,24 @@ test("ProductionChecker ignores source native capability usage inside strings", 
     })
   ))
 
+test("ProductionChecker ignores source native capability text inside array strings", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {},
+        rendererFiles: [
+          {
+            path: "src/renderer/dock.ts",
+            content: 'const snippets = ["Dock.setJumpList([])"]'
+          }
+        ]
+      })
+
+      expect(report.passed).toBe(true)
+      expect(report.failures).toEqual([])
+    })
+  ))
+
 test("ProductionChecker flags source native capability usage inside template expressions", () =>
   Effect.runPromise(
     Effect.gen(function* () {

@@ -1394,8 +1394,15 @@ const maskSourceCapabilityNonCode = (source: string): string => {
 }
 
 const shouldPreserveSourceStringContent = (source: string, quoteOffset: number): boolean =>
-  previousNonWhitespace(source, quoteOffset) === "[" ||
+  isComputedCapabilityMemberString(source, quoteOffset) ||
   isSupportedArgumentString(source, quoteOffset)
+
+const isComputedCapabilityMemberString = (source: string, quoteOffset: number): boolean => {
+  const prefix = source.slice(0, quoteOffset)
+  return APPENDIX_K_SOURCE_CAPABILITY_COMPUTED_MEMBER_PATTERNS.some((pattern) =>
+    pattern.test(prefix)
+  )
+}
 
 const isSupportedArgumentString = (source: string, quoteOffset: number): boolean => {
   const prefix = source.slice(0, quoteOffset)
@@ -1665,6 +1672,15 @@ const APPENDIX_K_SOURCE_CAPABILITIES: readonly SourceCapability[] = [
   { primitive: "RealtimeMediaSession", method: "selectDevice", support: "partial" },
   { primitive: "RealtimeMediaSession", method: "interrupt", support: "partial" }
 ]
+
+const APPENDIX_K_SOURCE_CAPABILITY_PRIMITIVES = [
+  ...new Set(APPENDIX_K_SOURCE_CAPABILITIES.map((capability) => capability.primitive))
+]
+
+const APPENDIX_K_SOURCE_CAPABILITY_COMPUTED_MEMBER_PATTERNS =
+  APPENDIX_K_SOURCE_CAPABILITY_PRIMITIVES.map(
+    (primitive) => new RegExp(`\\b${escapeRegExp(primitive)}\\s*(?:\\?\\.)?\\[\\s*$`, "u")
+  )
 
 const formatLocation = (location: ProductionCheckLocation): string => {
   const line = location.line === undefined ? "" : `:${location.line}`
