@@ -1,11 +1,12 @@
 import { expect, test } from "bun:test"
 import { fileURLToPath } from "node:url"
 import { BunServices } from "@effect/platform-bun"
-import { Effect, FileSystem, ManagedRuntime, Path, Schema } from "effect"
+import { Context, Effect, FileSystem, Layer, ManagedRuntime, Path, Schema } from "effect"
 
 import {
   BrowserHttpClient,
   BrowserKeyValueStore,
+  BrowserContext,
   IndexedDb,
   IndexedDbDatabase,
   IndexedDbQueryBuilder,
@@ -138,6 +139,62 @@ test("BrowserHttpClient exports browser HTTP layers", () => {
 test("IndexedDb exports layerWindow", () => {
   expect(typeof IndexedDb.layerWindow).toBe("object")
 })
+
+test("BrowserContext.layer reads IndexedDB globals when the layer builds", () =>
+  PlatformRuntime.runPromise(
+    Effect.gen(function* () {
+      const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window")
+      const indexedDB = {} as IDBFactory
+      class FakeIDBKeyRange implements IDBKeyRange {
+        readonly lower = undefined
+        readonly lowerOpen = false
+        readonly upper = undefined
+        readonly upperOpen = false
+
+        includes(_key: IDBValidKey): boolean {
+          return true
+        }
+
+        static bound(): IDBKeyRange {
+          return new FakeIDBKeyRange()
+        }
+
+        static lowerBound(): IDBKeyRange {
+          return new FakeIDBKeyRange()
+        }
+
+        static only(): IDBKeyRange {
+          return new FakeIDBKeyRange()
+        }
+
+        static upperBound(): IDBKeyRange {
+          return new FakeIDBKeyRange()
+        }
+      }
+
+      Object.defineProperty(globalThis, "window", {
+        configurable: true,
+        value: {
+          indexedDB,
+          IDBKeyRange: FakeIDBKeyRange
+        }
+      })
+
+      try {
+        const context = yield* Effect.scoped(Layer.build(BrowserContext.layer))
+        const service = Context.get(context, IndexedDb.IndexedDb)
+
+        expect(service.indexedDB).toBe(indexedDB)
+        expect(service.IDBKeyRange).toBe(FakeIDBKeyRange)
+      } finally {
+        if (originalWindow === undefined) {
+          Reflect.deleteProperty(globalThis, "window")
+        } else {
+          Object.defineProperty(globalThis, "window", originalWindow)
+        }
+      }
+    })
+  ))
 
 test("IndexedDbQueryBuilder exports make", () => {
   expect(typeof IndexedDbQueryBuilder.make).toBe("function")
