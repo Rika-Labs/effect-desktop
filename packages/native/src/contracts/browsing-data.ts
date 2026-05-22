@@ -67,12 +67,38 @@ export class BrowsingDataSupportedResult extends Schema.Class<BrowsingDataSuppor
   reason: Schema.optionalKey(BridgeSafeString)
 }) {}
 
-export class BrowsingDataEvent extends Schema.Class<BrowsingDataEvent>("BrowsingDataEvent")({
-  type: Schema.Literal("browsing-data-event"),
-  timestamp: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0)),
-  phase: BrowsingDataEventPhase,
-  profile: SessionProfileResource,
-  cleared: Schema.Array(BrowsingDataType),
-  unsupported: Schema.Array(BrowsingDataType),
-  message: Schema.optionalKey(BridgeSafeString)
-}) {}
+const BrowsingDataEventPhasePayload = Schema.makeFilter<{
+  readonly phase: BrowsingDataEventPhase
+  readonly cleared?: readonly BrowsingDataType[] | undefined
+  readonly unsupported?: readonly BrowsingDataType[] | undefined
+  readonly message?: string | undefined
+}>((value) => {
+  switch (value.phase) {
+    case "cleared":
+      return (
+        (value.cleared !== undefined &&
+          value.unsupported !== undefined &&
+          value.message === undefined) ||
+        "cleared browsing data events require cleared and unsupported arrays only"
+      )
+    case "failed":
+      return (
+        (value.cleared === undefined &&
+          value.unsupported === undefined &&
+          value.message !== undefined) ||
+        "failed browsing data events require message and no cleared result arrays"
+      )
+  }
+})
+
+export class BrowsingDataEvent extends Schema.Class<BrowsingDataEvent>("BrowsingDataEvent")(
+  Schema.Struct({
+    type: Schema.Literal("browsing-data-event"),
+    timestamp: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0)),
+    phase: BrowsingDataEventPhase,
+    profile: SessionProfileResource,
+    cleared: Schema.optionalKey(Schema.Array(BrowsingDataType)),
+    unsupported: Schema.optionalKey(Schema.Array(BrowsingDataType)),
+    message: Schema.optionalKey(BridgeSafeString)
+  }).check(BrowsingDataEventPhasePayload)
+) {}

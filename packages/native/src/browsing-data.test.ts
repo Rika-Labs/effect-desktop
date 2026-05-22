@@ -1,17 +1,25 @@
 import { expect, test } from "bun:test"
+import {
+  type BridgeClientExchange,
+  type HostProtocolEventEnvelope,
+  makeHostProtocolInternalError
+} from "@orika/bridge"
 import { makeResourceId } from "@orika/core"
-import { Effect, type Layer, ManagedRuntime } from "effect"
+import { Effect, Exit, type Layer, ManagedRuntime, Schema, Stream } from "effect"
 
 import {
   BrowsingData,
   BrowsingDataCapabilityFacts,
+  BrowsingDataClient,
   BrowsingDataRpcs,
   BrowsingDataSurface,
   makeBrowsingDataMemoryClient,
   makeBrowsingDataServiceLayer,
+  makeBrowsingDataBridgeClientLayer,
   makeBrowsingDataUnsupportedClient
 } from "./browsing-data.js"
 import { makeNativeCapabilityManifest } from "./capabilities.js"
+import { BrowsingDataEvent } from "./contracts/browsing-data.js"
 import type { SessionProfileHandle } from "./contracts/session-profile.js"
 
 const UnsupportedMethods = ["estimate"] as const
@@ -145,6 +153,94 @@ test("BrowsingData manifest exposes supported callable methods and keeps estimat
       expect(nonCallableTags).toEqual(
         UnsupportedMethods.map((method) => `BrowsingData.${method}`).toSorted()
       )
+    })
+  ))
+
+test("BrowsingData rejects inconsistent event phase payloads before exposing native events", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const invalidPayloads = [
+        {
+          type: "browsing-data-event",
+          timestamp: 1_710_000_000_000,
+          phase: "failed",
+          profile: TestProfile,
+          cleared: ["cache"],
+          unsupported: [],
+          message: "host failed"
+        },
+        {
+          type: "browsing-data-event",
+          timestamp: 1_710_000_000_000,
+          phase: "failed",
+          profile: TestProfile,
+          cleared: [],
+          unsupported: []
+        },
+        {
+          type: "browsing-data-event",
+          timestamp: 1_710_000_000_000,
+          phase: "cleared",
+          profile: TestProfile,
+          cleared: ["cache"],
+          unsupported: [],
+          message: "host failed"
+        }
+      ]
+
+      for (const payload of invalidPayloads) {
+        const directDecode = yield* Effect.exit(
+          Schema.decodeUnknownEffect(BrowsingDataEvent)(payload)
+        )
+        expect(Exit.isFailure(directDecode)).toBe(true)
+      }
+
+      for (const payload of [
+        {
+          type: "browsing-data-event",
+          timestamp: 1_710_000_000_000,
+          phase: "cleared",
+          profile: TestProfile,
+          cleared: ["cache"],
+          unsupported: []
+        },
+        {
+          type: "browsing-data-event",
+          timestamp: 1_710_000_000_000,
+          phase: "failed",
+          profile: TestProfile,
+          message: "host failed"
+        }
+      ] as const) {
+        const directDecode = yield* Effect.exit(
+          Schema.decodeUnknownEffect(BrowsingDataEvent)(payload)
+        )
+        expect(Exit.isSuccess(directDecode)).toBe(true)
+      }
+
+      const nativeEvent: HostProtocolEventEnvelope = {
+        kind: "event",
+        method: "BrowsingData.Event",
+        timestamp: 1_710_000_000_000,
+        traceId: "trace-browsing-data-event",
+        payload: invalidPayloads[0]
+      }
+      const exchange: BridgeClientExchange = {
+        request: () => Effect.fail(makeHostProtocolInternalError("unexpected request", "test")),
+        subscribe: (method) => {
+          expect(method).toBe("BrowsingData.Event")
+          return Stream.make(nativeEvent)
+        }
+      }
+      const bridgeDecode = yield* runScoped(
+        Effect.gen(function* () {
+          const client = yield* BrowsingDataClient
+          return yield* Effect.exit(client.events().pipe(Stream.runHead))
+        }),
+        makeBrowsingDataBridgeClientLayer(exchange)
+      )
+
+      expect(Exit.isFailure(bridgeDecode)).toBe(true)
     })
   ))
 
