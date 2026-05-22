@@ -145,21 +145,12 @@ export interface PackageArtifactReport {
   readonly appVersion: string
   readonly sizeBytes: number
   readonly sha256: string
-  readonly providerBudgetChecks: readonly PackageProviderBudgetCheckReport[]
   readonly linuxIntegration?: {
     readonly desktopFile: string
     readonly appStreamId: string
     readonly flatpakAppId: string
     readonly snapName: string
   }
-}
-
-export interface PackageProviderBudgetCheckReport {
-  readonly provider: DesktopProviderBudget
-  readonly metric: "artifact-bytes"
-  readonly budget: number
-  readonly actual: number
-  readonly status: "pass" | "fail"
 }
 
 export interface PackageStepReport {
@@ -916,7 +907,6 @@ const writeArtifactMetadata = (
       fileName: basename(artifactPath),
       sizeBytes: digest.sizeBytes,
       sha256: digest.sha256,
-      providerBudgetChecks: packageProviderBudgetChecks(plan, digest.sizeBytes),
       ...(plan.platform === "linux"
         ? {
             linuxIntegration: {
@@ -940,23 +930,7 @@ const writeArtifactMetadata = (
       appName: plan.appName,
       appVersion: plan.appVersion,
       sizeBytes: digest.sizeBytes,
-      sha256: digest.sha256,
-      providerBudgetChecks: packageProviderBudgetChecks(plan, digest.sizeBytes)
-    }
-  })
-
-const packageProviderBudgetChecks = (
-  plan: PackagePlan,
-  artifactBytes: number
-): readonly PackageProviderBudgetCheckReport[] =>
-  (plan.providers?.providerBudgets ?? []).map((provider) => {
-    const budget = provider.bundleBudgetKb * 1024
-    return {
-      provider,
-      metric: "artifact-bytes",
-      budget,
-      actual: artifactBytes,
-      status: artifactBytes <= budget ? "pass" : "fail"
+      sha256: digest.sha256
     }
   })
 

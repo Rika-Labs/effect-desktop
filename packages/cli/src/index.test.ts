@@ -250,16 +250,8 @@ const decodeHostWindowsManifestJson = Schema.decodeUnknownSync(HostWindowsManife
 const PackageAppMetadataJson = Schema.fromJsonString(
   Schema.Struct({
     kind: Schema.String,
-    sha256: Schema.String,
-    providerBudgetChecks: Schema.optionalKey(
-      Schema.Array(
-        Schema.Struct({
-          metric: Schema.String,
-          budget: Schema.Number,
-          status: Schema.String
-        })
-      )
-    )
+    sizeBytes: Schema.Number,
+    sha256: Schema.String
   })
 )
 const decodePackageAppMetadataJson = Schema.decodeUnknownSync(PackageAppMetadataJson)
@@ -8904,13 +8896,14 @@ test("desktop package emits macOS app dmg zip artifacts with metadata", () =>
         ).toContain("dev.effect-desktop.inspector")
         expect(appMetadata.kind).toBe("app")
         expect(appMetadata.sha256).toHaveLength(64)
-        expect(appMetadata.providerBudgetChecks).toEqual([
-          expect.objectContaining({
-            metric: "artifact-bytes",
-            budget: 65_536,
-            status: "pass"
-          })
-        ])
+        expect(
+          Object.hasOwn(
+            decodeJsonObject(
+              yield* Effect.promise(() => readFile(join(appRoot, "artifact.json"), "utf8"))
+            ),
+            "providerBudgetChecks"
+          )
+        ).toBe(false)
         expect(packageReport).toMatchObject({
           providers: {
             runtime: "bun",
@@ -9011,6 +9004,57 @@ test("desktop package removes stale fake macOS app wrapper artifacts", () =>
             readFile(join(artifactRoot, "ORIKA-Playground.app", "Contents", "Info.plist"), "utf8")
           )
         ).toContain("dev.effect-desktop.inspector")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop package does not apply runtime provider budgets to final artifact bytes", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-package-budget-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        yield* writeBuildLayoutFixture(directory, "macos-arm64")
+        const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "macos")
+        const appRoot = join(outputRoot, "ORIKA-Playground-0.0.0-macos-arm64")
+        const rendererPayload = join(
+          directory,
+          "apps",
+          "inspector",
+          "build",
+          "effect-desktop",
+          "macos-arm64",
+          "renderer",
+          "large-payload.js"
+        )
+        yield* Effect.promise(() => writeFile(rendererPayload, "x".repeat(70_000)))
+
+        const exitCode = yield* runCli({
+          argv: ["package", "--config", "apps/inspector/desktop.config.ts", "--artifact", "app"],
+          cwd: directory,
+          hostTarget: "macos-arm64",
+          now: fixedClock([100, 120, 200]),
+          writeStdout: () => {},
+          writeStderr: () => {}
+        })
+        const appMetadata = decodePackageAppMetadataJson(
+          yield* Effect.promise(() => readFile(join(appRoot, "artifact.json"), "utf8"))
+        )
+
+        expect(exitCode).toBe(0)
+        expect(appMetadata.sizeBytes).toBeGreaterThan(65_536)
+        expect(
+          Object.hasOwn(
+            decodeJsonObject(
+              yield* Effect.promise(() => readFile(join(appRoot, "artifact.json"), "utf8"))
+            ),
+            "providerBudgetChecks"
+          )
+        ).toBe(false)
       } finally {
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
@@ -9868,8 +9912,7 @@ const fakeReleaseServices = (calls: string[], target: DesktopTargetId): ReleaseW
             appName: "ORIKA Test",
             appVersion: "1.2.3",
             sizeBytes: 12,
-            sha256: "abc",
-            providerBudgetChecks: []
+            sha256: "abc"
           }
         ],
         steps: []
