@@ -31,9 +31,30 @@ export class AutostartStatus extends Schema.Class<AutostartStatus>("AutostartSta
 }) {}
 
 export const AutostartEventPhase = Schema.Literals(["checked", "enabled", "disabled", "failed"])
+export type AutostartEventPhase = typeof AutostartEventPhase.Type
 
-export class AutostartEvent extends Schema.Class<AutostartEvent>("AutostartEvent")({
-  phase: AutostartEventPhase,
-  mechanism: Schema.optionalKey(AutostartMechanism),
-  reason: Schema.optionalKey(BridgeSafeNonEmptyString)
-}) {}
+const AutostartEventPhasePayload = Schema.makeFilter<{
+  readonly phase: AutostartEventPhase
+  readonly mechanism?: typeof AutostartMechanism.Type | undefined
+  readonly reason?: string | undefined
+}>((value) => {
+  switch (value.phase) {
+    case "checked":
+    case "enabled":
+    case "disabled":
+      return (
+        (value.mechanism !== undefined && value.reason === undefined) ||
+        `${value.phase} autostart events require mechanism only`
+      )
+    case "failed":
+      return value.reason !== undefined || "failed autostart events require reason"
+  }
+})
+
+export class AutostartEvent extends Schema.Class<AutostartEvent>("AutostartEvent")(
+  Schema.Struct({
+    phase: AutostartEventPhase,
+    mechanism: Schema.optionalKey(AutostartMechanism),
+    reason: Schema.optionalKey(BridgeSafeNonEmptyString)
+  }).check(AutostartEventPhasePayload)
+) {}

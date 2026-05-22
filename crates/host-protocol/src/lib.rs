@@ -1285,13 +1285,10 @@ pub enum AutostartEventPhasePayload {
     Failed,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AutostartEventPayload {
     phase: AutostartEventPhasePayload,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     mechanism: Option<AutostartMechanismPayload>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     reason: Option<String>,
 }
 
@@ -1306,6 +1303,95 @@ impl AutostartEventPayload {
             mechanism,
             reason,
         }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SerializableAutostartEventPayload<'a> {
+    phase: AutostartEventPhasePayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mechanism: Option<AutostartMechanismPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<&'a str>,
+}
+
+impl<'a> TryFrom<&'a AutostartEventPayload> for SerializableAutostartEventPayload<'a> {
+    type Error = &'static str;
+
+    fn try_from(payload: &'a AutostartEventPayload) -> Result<Self, Self::Error> {
+        validate_autostart_event_payload(payload.phase, &payload.mechanism, &payload.reason)?;
+        Ok(Self {
+            phase: payload.phase,
+            mechanism: payload.mechanism,
+            reason: payload.reason.as_deref(),
+        })
+    }
+}
+
+impl Serialize for AutostartEventPayload {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        SerializableAutostartEventPayload::try_from(self)
+            .map_err(ser::Error::custom)?
+            .serialize(serializer)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawAutostartEventPayload {
+    phase: AutostartEventPhasePayload,
+    mechanism: Option<AutostartMechanismPayload>,
+    reason: Option<String>,
+}
+
+impl TryFrom<RawAutostartEventPayload> for AutostartEventPayload {
+    type Error = &'static str;
+
+    fn try_from(raw: RawAutostartEventPayload) -> Result<Self, Self::Error> {
+        validate_autostart_event_payload(raw.phase, &raw.mechanism, &raw.reason)?;
+        Ok(Self {
+            phase: raw.phase,
+            mechanism: raw.mechanism,
+            reason: raw.reason,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for AutostartEventPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        RawAutostartEventPayload::deserialize(deserializer)?
+            .try_into()
+            .map_err(de::Error::custom)
+    }
+}
+
+fn validate_autostart_event_payload(
+    phase: AutostartEventPhasePayload,
+    mechanism: &Option<AutostartMechanismPayload>,
+    reason: &Option<String>,
+) -> Result<(), &'static str> {
+    match phase {
+        AutostartEventPhasePayload::Checked
+        | AutostartEventPhasePayload::Enabled
+        | AutostartEventPhasePayload::Disabled
+            if mechanism.is_some() && reason.is_none() =>
+        {
+            Ok(())
+        }
+        AutostartEventPhasePayload::Checked
+        | AutostartEventPhasePayload::Enabled
+        | AutostartEventPhasePayload::Disabled => {
+            Err("successful autostart events require mechanism only")
+        }
+        AutostartEventPhasePayload::Failed if reason.is_some() => Ok(()),
+        AutostartEventPhasePayload::Failed => Err("failed autostart events require reason"),
     }
 }
 
@@ -17129,6 +17215,54 @@ mod tests {
         )
         .expect_err("unknown autostart event phase should be rejected");
         assert!(error.to_string().contains("unknown variant `changed`"));
+    }
+
+    #[test]
+    fn autostart_events_reject_inconsistent_phase_payloads() {
+        for payload in [
+            r#"{"phase":"checked"}"#,
+            r#"{"phase":"enabled"}"#,
+            r#"{"phase":"disabled","mechanism":"linux-xdg-autostart","reason":"host failed"}"#,
+            r#"{"phase":"failed"}"#,
+        ] {
+            serde_json::from_str::<AutostartEventPayload>(payload)
+                .expect_err("inconsistent autostart event payload should be rejected");
+        }
+
+        for payload in [
+            r#"{"phase":"checked","mechanism":"linux-xdg-autostart"}"#,
+            r#"{"phase":"enabled","mechanism":"linux-xdg-autostart"}"#,
+            r#"{"phase":"disabled","mechanism":"linux-xdg-autostart"}"#,
+            r#"{"phase":"failed","mechanism":"unsupported","reason":"host-adapter-unavailable"}"#,
+            r#"{"phase":"failed","reason":"host-adapter-unavailable"}"#,
+        ] {
+            serde_json::from_str::<AutostartEventPayload>(payload)
+                .expect("consistent autostart event payload should decode");
+        }
+    }
+
+    #[test]
+    fn autostart_events_reject_inconsistent_phase_payloads_before_serializing() {
+        for payload in [
+            AutostartEventPayload {
+                phase: AutostartEventPhasePayload::Checked,
+                mechanism: None,
+                reason: None,
+            },
+            AutostartEventPayload {
+                phase: AutostartEventPhasePayload::Enabled,
+                mechanism: Some(AutostartMechanismPayload::LinuxXdgAutostart),
+                reason: Some("host failed".to_string()),
+            },
+            AutostartEventPayload {
+                phase: AutostartEventPhasePayload::Failed,
+                mechanism: None,
+                reason: None,
+            },
+        ] {
+            serde_json::to_string(&payload)
+                .expect_err("inconsistent autostart event payload should not encode");
+        }
     }
 
     #[test]
