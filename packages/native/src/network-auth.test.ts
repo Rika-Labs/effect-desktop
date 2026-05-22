@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { makeResourceId, P } from "@effect-desktop/core"
+import { makeResourceId, P } from "@orika/core"
 import { Effect, type Layer, ManagedRuntime } from "effect"
 
 import { makeNativeCapabilityManifest } from "./capabilities.js"

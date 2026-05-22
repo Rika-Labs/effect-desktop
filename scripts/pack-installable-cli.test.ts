@@ -9,6 +9,11 @@ const repoRoot = join(import.meta.dir, "..")
 test("pack-installable-cli emits a workspace-free CLI package installable by a temp app", async () => {
   const directory = await mkdtemp(join(tmpdir(), "effect-desktop-cli-artifact-"))
   try {
+    const sourceMatrix = await readFile(
+      join(repoRoot, "packages", "cli", "src", "native-parity-matrix.json"),
+      "utf8"
+    )
+    const sourceSummary = nativeParitySummary(sourceMatrix)
     const artifactRoot = join(directory, "artifact")
     const pack = Bun.spawn(
       ["bun", join(repoRoot, "scripts", "pack-installable-cli.ts"), artifactRoot],
@@ -84,7 +89,7 @@ test("pack-installable-cli emits a workspace-free CLI package installable by a t
       join(appRoot, "node_modules", "@orika", "cli", "src", "native-parity-matrix.json"),
       "utf8"
     )
-    expect(installedMatrix).toContain('"total": 291')
+    expect(nativeParitySummary(installedMatrix)).toEqual(sourceSummary)
 
     const doctor = Bun.spawn(["bunx", "desktop", "doctor", "--json"], {
       cwd: appRoot,
@@ -100,9 +105,30 @@ test("pack-installable-cli emits a workspace-free CLI package installable by a t
     expect([0, 1]).toContain(doctorExitCode)
     expect(doctorText).toContain('"name": "native-capabilities"')
     expect(doctorText).toContain(
-      "native capability matrix reports 291 methods, 229 host-routed, 0 missing host routes"
+      `native capability matrix reports ${sourceSummary.total} methods, ${sourceSummary.routed} host-routed, ${sourceSummary.missing} missing host routes`
     )
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
 }, 180_000)
+
+interface NativeParitySummary {
+  readonly total: number
+  readonly routed: number
+  readonly missing: number
+}
+
+const nativeParitySummary = (content: string): NativeParitySummary => {
+  const parsed: unknown = JSON.parse(content)
+  if (!isRecord(parsed) || !isRecord(parsed.summary)) {
+    throw new Error("native parity matrix must include a summary object")
+  }
+  const { missing, routed, total } = parsed.summary
+  if (typeof total !== "number" || typeof routed !== "number" || typeof missing !== "number") {
+    throw new Error("native parity matrix summary must include numeric total, routed, and missing")
+  }
+  return { missing, routed, total }
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null

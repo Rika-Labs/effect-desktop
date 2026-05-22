@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { makeResourceId } from "@effect-desktop/core"
+import { makeResourceId } from "@orika/core"
 import { Effect, type Layer, ManagedRuntime } from "effect"
 
 import {
