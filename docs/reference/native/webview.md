@@ -246,9 +246,9 @@ For the example above, renderer code can call
 
 The contract is declared through `WebViewRpcs`. App runtime WebView attachment
 is owned by `Window.create`. `WebView.create`, `WebView.destroy`,
-`WebView.loadRoute`, and `WebView.loadUrl` are host-backed and report
-`supported`. Other direct child WebView navigation methods are routed through
-host-backed resources and report `partial` support with
+`WebView.loadRoute`, `WebView.loadUrl`, and `WebView.reload` are host-backed
+and report `supported`. Other direct child WebView navigation methods are
+routed through host-backed resources and report `partial` support with
 `host-navigation-state-tracked`. `setNavigationPolicy` is also host-backed for
 those resources and shares the same partial support reason because popup
 approval and external-open delegation are still intentionally conservative.

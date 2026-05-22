@@ -217,7 +217,7 @@ export const WebViewReload = NativeSurface.rpc("WebView", "reload", {
     P.nativeInvoke({ primitive: "WebView", methods: ["reload"] })
   ),
   endpoint: "mutation",
-  support: WebViewNavigationSupport
+  support: NativeSurface.support.supported
 })
 export const WebViewStop = NativeSurface.rpc("WebView", "stop", {
   payload: WebViewHandleInput,

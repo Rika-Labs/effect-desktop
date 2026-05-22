@@ -4881,31 +4881,11 @@
       "method": "reload",
       "capability": "native",
       "support": {
-        "status": "partial",
-        "reason": "host-navigation-state-tracked",
-        "platforms": [
-          {
-            "platform": "macos",
-            "status": "partial",
-            "reason": "host-navigation-state-tracked"
-          },
-          {
-            "platform": "windows",
-            "status": "partial",
-            "reason": "host-navigation-state-tracked"
-          },
-          {
-            "platform": "linux",
-            "status": "partial",
-            "reason": "host-navigation-state-tracked"
-          }
-        ]
+        "status": "supported"
       },
       "hostStatus": "routed",
       "release": {
-        "status": "tracked",
-        "issue": 1439,
-        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1439"
+        "status": "complete"
       }
     },
     {
@@ -5829,11 +5809,11 @@
     "total": 287,
     "routed": 239,
     "missing": 0,
-    "supported": 180,
-    "partial": 59,
+    "supported": 181,
+    "partial": 58,
     "unsupported": 48,
-    "releaseComplete": 180,
-    "releaseTracked": 107,
+    "releaseComplete": 181,
+    "releaseTracked": 106,
     "releaseUntracked": 0
   }
 }
