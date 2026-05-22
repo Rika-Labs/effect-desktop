@@ -920,6 +920,28 @@ const webViewFrameRoutingUnsupportedSupport = {
   ]
 } as const
 
+const webViewRuntimePermissionUnsupportedSupport = {
+  status: "unsupported",
+  reason: "host-permission-request-routing-unavailable",
+  platforms: [
+    {
+      platform: "macos",
+      status: "unsupported",
+      reason: "host-permission-request-routing-unavailable"
+    },
+    {
+      platform: "windows",
+      status: "unsupported",
+      reason: "host-permission-request-routing-unavailable"
+    },
+    {
+      platform: "linux",
+      status: "unsupported",
+      reason: "host-permission-request-routing-unavailable"
+    }
+  ]
+} as const
+
 const webViewNavigationTrackedSupport = {
   status: "partial",
   reason: "host-navigation-state-tracked",
@@ -2282,6 +2304,9 @@ test("WebView declares unsupported methods as non-callable capability facts", ()
   expect(byTag.get("WebView.captureScreenshot")?.support).toEqual(webViewDocumentUnsupportedSupport)
   expect(byTag.get("WebView.printToPdf")?.support).toEqual(webViewDocumentUnsupportedSupport)
   expect(byTag.get("WebView.findInPage")?.support).toEqual(webViewFindInPageUnsupportedSupport)
+  expect(byTag.get("WebView.respondToPermission")?.support).toEqual(
+    webViewRuntimePermissionUnsupportedSupport
+  )
   expect(byTag.get("WebView.listFrames")?.support).toEqual(webViewFrameRoutingUnsupportedSupport)
   expect(byTag.get("WebView.postToFrame")?.support).toEqual(webViewFrameRoutingUnsupportedSupport)
   expect(byTag.has("WebView.capability")).toBe(false)
@@ -2314,6 +2339,9 @@ test("WebView capability facts surface in the manifest and stay non-callable", (
       )
       expect(byTag.get("WebView.printToPdf")?.support).toEqual(webViewDocumentUnsupportedSupport)
       expect(byTag.get("WebView.findInPage")?.support).toEqual(webViewFindInPageUnsupportedSupport)
+      expect(byTag.get("WebView.respondToPermission")?.support).toEqual(
+        webViewRuntimePermissionUnsupportedSupport
+      )
       expect(byTag.get("WebView.listFrames")?.support).toEqual(
         webViewFrameRoutingUnsupportedSupport
       )

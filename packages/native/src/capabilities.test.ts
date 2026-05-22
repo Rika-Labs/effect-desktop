@@ -133,6 +133,28 @@ const WebViewFrameRoutingUnavailableSupport = {
   ]
 } as const
 
+const WebViewRuntimePermissionUnavailableSupport = {
+  status: "unsupported",
+  reason: "host-permission-request-routing-unavailable",
+  platforms: [
+    {
+      platform: "macos",
+      status: "unsupported",
+      reason: "host-permission-request-routing-unavailable"
+    },
+    {
+      platform: "windows",
+      status: "unsupported",
+      reason: "host-permission-request-routing-unavailable"
+    },
+    {
+      platform: "linux",
+      status: "unsupported",
+      reason: "host-permission-request-routing-unavailable"
+    }
+  ]
+} as const
+
 const WebViewNavigationTrackedSupport = {
   status: "partial",
   reason: "host-navigation-state-tracked",
@@ -329,6 +351,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const webViewCaptureScreenshot = yield* capabilities.support("WebView.captureScreenshot")
       const webViewPrintToPdf = yield* capabilities.support("WebView.printToPdf")
       const webViewFindInPage = yield* capabilities.support("WebView.findInPage")
+      const webViewRespondToPermission = yield* capabilities.support("WebView.respondToPermission")
       const webViewListFrames = yield* capabilities.support("WebView.listFrames")
       const webViewPostToFrame = yield* capabilities.support("WebView.postToFrame")
       const menuClear = yield* capabilities.support("Menu.clear")
@@ -410,6 +433,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(webViewCaptureScreenshot).toEqual(WebViewDocumentOutputUnavailableSupport)
       expect(webViewPrintToPdf).toEqual(WebViewDocumentOutputUnavailableSupport)
       expect(webViewFindInPage).toEqual(WebViewFindInPageUnavailableSupport)
+      expect(webViewRespondToPermission).toEqual(WebViewRuntimePermissionUnavailableSupport)
       expect(webViewListFrames).toEqual(WebViewFrameRoutingUnavailableSupport)
       expect(webViewPostToFrame).toEqual(WebViewFrameRoutingUnavailableSupport)
       expect(webViewCreate).toEqual({ status: "supported" })
