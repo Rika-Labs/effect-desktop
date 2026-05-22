@@ -658,6 +658,7 @@ test("native contracts subpath exposes schema-coded payload contracts", () =>
       expect(contracts.WindowCreateInput).toBeFunction()
       expect(contracts.ClipboardText).toBeFunction()
       expect(contracts.DialogOpenResult).toBeFunction()
+      expect("NativeParityMatrixResult" in contracts).toBe(false)
     })
   ))
 

@@ -1,18 +1,17 @@
-import { type DesktopNativeLayer } from "@orika/core"
-import { Context, Effect, Layer } from "effect"
-
 import {
+  type DesktopNativeLayer,
   NativeHostMethodInventorySnapshot,
   type NativeHostMethodInventorySnapshotType,
   NativeParityMatrixError,
   NativeParityMatrixResult,
   NativeParityMatrixRow,
   NativeParityMatrixSummary,
-  type NativeParityReleaseDispositionType,
   type NativeParityCapabilityKind,
   type NativeParityMatrixResultType,
-  type NativeParityMatrixRowType
-} from "./contracts/parity-matrix.js"
+  type NativeParityMatrixRowType,
+  type NativeParityReleaseDispositionType
+} from "@orika/core"
+import { Context, Effect, Layer } from "effect"
 import {
   makeNativeCapabilityManifest,
   NativeCapabilityManifestError,
@@ -33,13 +32,13 @@ export {
   NativeParityPlatformSupport,
   NativeParitySupport,
   NativeParitySupportStatus
-} from "./contracts/parity-matrix.js"
+} from "@orika/core"
 export type {
   NativeHostMethodInventorySnapshotType,
   NativeParityMatrixResultType,
   NativeParityMatrixRowType,
   NativeParityMatrixSummaryType
-} from "./contracts/parity-matrix.js"
+} from "@orika/core"
 
 export interface NativeHostMethodInventoryApi {
   readonly snapshot: Effect.Effect<
