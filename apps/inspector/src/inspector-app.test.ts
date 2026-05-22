@@ -49,6 +49,25 @@ test("InspectorApp replays recorded fixtures without a live observed app", () =>
     expect(snapshot.categories.find((category) => category.id === "timeline")?.events).toBe(1)
   }))
 
+test("InspectorApp normalizes unknown selected sessions to the live session", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const live = yield* makeInspectorTransport({
+        sessionId: "live-one",
+        sessionLabel: "Observed app",
+        now: () => 10
+      })
+      yield* live.publish({ source: "rpc.notes.load", payload: { method: "Notes.load" } })
+      const replay = makeReplayTransport(recordedInspectorSession)
+      const app = makeInspectorAppForTransports(live, replay)
+      return yield* app.snapshot("missing-session")
+    })
+  ).then((snapshot) => {
+    expect(snapshot.selectedSessionId).toBe("live-one")
+    expect(snapshot.sessions.map((session) => session.id)).toContain(snapshot.selectedSessionId)
+    expect(snapshot.events.map((event) => event.category)).toEqual(["rpc"])
+  }))
+
 test("summarizeCategories returns stable empty categories", () => {
   expect(summarizeCategories([])).toEqual([
     { id: "timeline", label: "Timeline", events: 0 },

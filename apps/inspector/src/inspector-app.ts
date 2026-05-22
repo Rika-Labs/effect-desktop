@@ -88,17 +88,17 @@ export const makeInspectorAppForTransports = (
     Effect.gen(function* () {
       const [liveState, recordedSession] = yield* Effect.all([live.snapshot(), replay.session()])
       const liveEvents = yield* live.replay()
-      const selectedId = selectedSessionId ?? liveState.session.sessionId
       const recordedEvents = framesToTimeline(recordedSession.frames)
       const liveTimeline = transportEventsToTimeline(liveEvents)
+      const liveSession: InspectorSessionRow = {
+        id: liveState.session.sessionId,
+        label: options.liveLabel ?? liveState.session.label ?? "Live app",
+        kind: "live",
+        startedAt: liveState.session.startedAt,
+        events: liveState.retainedEvents
+      }
       const sessions: readonly InspectorSessionRow[] = [
-        {
-          id: liveState.session.sessionId,
-          label: options.liveLabel ?? liveState.session.label ?? "Live app",
-          kind: "live",
-          startedAt: liveState.session.startedAt,
-          events: liveState.retainedEvents
-        },
+        liveSession,
         {
           id: recordedSession.id,
           label: "Recorded fixture",
@@ -107,9 +107,11 @@ export const makeInspectorAppForTransports = (
           events: recordedSession.frames.length
         }
       ]
-      const events = selectedId === recordedSession.id ? recordedEvents : liveTimeline
+      const selectedSession =
+        sessions.find((session) => session.id === selectedSessionId) ?? liveSession
+      const events = selectedSession.kind === "recorded" ? recordedEvents : liveTimeline
       return {
-        selectedSessionId: selectedId,
+        selectedSessionId: selectedSession.id,
         sessions,
         events,
         categories: summarizeCategories(events)
