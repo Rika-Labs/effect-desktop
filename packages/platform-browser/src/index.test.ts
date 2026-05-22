@@ -1,7 +1,18 @@
 import { expect, test } from "bun:test"
 import { fileURLToPath } from "node:url"
 import { BunServices } from "@effect/platform-bun"
-import { Context, Effect, FileSystem, Layer, ManagedRuntime, Path, Schema } from "effect"
+import {
+  Cause,
+  Config,
+  Context,
+  Effect,
+  Exit,
+  FileSystem,
+  Layer,
+  ManagedRuntime,
+  Path,
+  Schema
+} from "effect"
 
 import {
   BrowserHttpClient,
@@ -186,6 +197,29 @@ test("BrowserContext.layer reads IndexedDB globals when the layer builds", () =>
 
         expect(service.indexedDB).toBe(indexedDB)
         expect(service.IDBKeyRange).toBe(FakeIDBKeyRange)
+      } finally {
+        if (originalWindow === undefined) {
+          Reflect.deleteProperty(globalThis, "window")
+        } else {
+          Object.defineProperty(globalThis, "window", originalWindow)
+        }
+      }
+    })
+  ))
+
+test("BrowserContext.layer fails explicitly when IndexedDB globals are absent", () =>
+  PlatformRuntime.runPromise(
+    Effect.gen(function* () {
+      const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window")
+
+      Reflect.deleteProperty(globalThis, "window")
+
+      try {
+        const exit = yield* Effect.scoped(Layer.build(BrowserContext.layer)).pipe(Effect.exit)
+
+        expect(Exit.isFailure(exit)).toBe(true)
+        const failure = Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined
+        expect(failure).toBeInstanceOf(Config.ConfigError)
       } finally {
         if (originalWindow === undefined) {
           Reflect.deleteProperty(globalThis, "window")

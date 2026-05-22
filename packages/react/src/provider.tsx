@@ -3,7 +3,7 @@ import type { WindowError } from "@orika/native"
 import type { WindowCreateOptions, WindowHandle } from "@orika/native/contracts"
 import { BrowserContext, type IndexedDb } from "@orika/platform-browser"
 import { RegistryContext as DesktopAtomRegistryContext } from "@effect/atom-react"
-import { Cause, Effect, Exit, Layer, ManagedRuntime, Option } from "effect"
+import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, type Config } from "effect"
 import { AtomRegistry, Reactivity } from "effect/unstable/reactivity"
 import { createContext, createElement, useContext, useEffect, useMemo, type ReactNode } from "react"
 
@@ -23,7 +23,7 @@ export interface DesktopRuntimeContext {
   readonly registry: AtomRegistry.AtomRegistry
   readonly runtime: ManagedRuntime.ManagedRuntime<
     Reactivity.Reactivity | IndexedDb.IndexedDb,
-    never
+    Config.ConfigError
   >
 }
 
@@ -31,7 +31,7 @@ export type CleanupErrorHandler = (error: unknown, context: string) => void
 
 export const disposeRuntime = (
   runtime: Pick<
-    ManagedRuntime.ManagedRuntime<Reactivity.Reactivity | IndexedDb.IndexedDb, never>,
+    ManagedRuntime.ManagedRuntime<Reactivity.Reactivity | IndexedDb.IndexedDb, Config.ConfigError>,
     "disposeEffect"
   >,
   onCleanupError?: CleanupErrorHandler
