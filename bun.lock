@@ -6,6 +6,8 @@
       "name": "orika-repo",
       "devDependencies": {
         "@effect/tsgo": "0.7.2",
+        "@orika/core": "workspace:*",
+        "@orika/react": "workspace:*",
         "@types/bun": "latest",
         "@typescript/native-preview": "7.0.0-dev.20260515.1",
         "effect": "4.0.0-beta.60",
@@ -51,10 +53,10 @@
         "desktop": "src/bin.ts",
       },
       "dependencies": {
+        "@effect/platform-bun": "4.0.0-beta.60",
         "@orika/bridge": "workspace:*",
         "@orika/config": "workspace:*",
         "@orika/core": "workspace:*",
-        "@effect/platform-bun": "4.0.0-beta.60",
         "effect": "4.0.0-beta.60",
         "typescript": "6.0.3",
       },
@@ -70,7 +72,6 @@
       "name": "@orika/core",
       "version": "2.0.0",
       "dependencies": {
-        "@orika/bridge": "workspace:*",
         "@effect/opentelemetry": "4.0.0-beta.60",
         "@effect/platform-bun": "4.0.0-beta.60",
         "@effect/platform-node": "4.0.0-beta.60",
@@ -82,6 +83,7 @@
         "@opentelemetry/sdk-trace-base": "^2.0.0",
         "@opentelemetry/sdk-trace-node": "^2.0.0",
         "@opentelemetry/sdk-trace-web": "^2.0.0",
+        "@orika/bridge": "workspace:*",
         "effect": "4.0.0-beta.60",
       },
     },
@@ -142,11 +144,11 @@
       "name": "@orika/react",
       "version": "2.0.0",
       "dependencies": {
+        "@effect/atom-react": "4.0.0-beta.60",
         "@orika/bridge": "workspace:*",
         "@orika/core": "workspace:*",
         "@orika/native": "workspace:*",
         "@orika/platform-browser": "workspace:*",
-        "@effect/atom-react": "4.0.0-beta.60",
         "effect": "4.0.0-beta.60",
       },
       "devDependencies": {
@@ -164,9 +166,9 @@
       "name": "@orika/solid",
       "version": "2.0.0",
       "dependencies": {
+        "@effect/atom-solid": "4.0.0-beta.60",
         "@orika/bridge": "workspace:*",
         "@orika/core": "workspace:*",
-        "@effect/atom-solid": "4.0.0-beta.60",
         "effect": "4.0.0-beta.60",
       },
       "devDependencies": {
@@ -190,8 +192,8 @@
       "name": "@orika/vite",
       "version": "2.0.0",
       "dependencies": {
-        "@orika/core": "workspace:*",
         "@effect/platform-node": "4.0.0-beta.60",
+        "@orika/core": "workspace:*",
         "effect": "4.0.0-beta.60",
       },
       "devDependencies": {
@@ -206,9 +208,9 @@
       "name": "@orika/vue",
       "version": "2.0.0",
       "dependencies": {
+        "@effect/atom-vue": "4.0.0-beta.60",
         "@orika/bridge": "workspace:*",
         "@orika/core": "workspace:*",
-        "@effect/atom-vue": "4.0.0-beta.60",
         "effect": "4.0.0-beta.60",
       },
       "devDependencies": {
@@ -262,34 +264,6 @@
     "@clack/core": ["@clack/core@1.3.1", "", { "dependencies": { "fast-wrap-ansi": "^0.2.0", "sisteransi": "^1.0.5" } }, "sha512-fT1qHVGAag4IEkrupZ6lRRbNCs1vS9P01KB/sG8zKgvUztbYtFBtQpjSITNwooDZ83tpsPzP0mRNs1/KVszCRA=="],
 
     "@clack/prompts": ["@clack/prompts@1.4.0", "", { "dependencies": { "@clack/core": "1.3.1", "fast-string-width": "^3.0.2", "fast-wrap-ansi": "^0.2.0", "sisteransi": "^1.0.5" } }, "sha512-S0My7XPGIgpRWMDG8uRqalbgT+a6FmCUdOW+HaIOVVpUPHOb7RrpvjTjiODadKp06fsrVDJZlIzc6yCTp4AnxA=="],
-
-    "@orika/bridge": ["@orika/bridge@workspace:packages/bridge"],
-
-    "@orika/cli": ["@orika/cli@workspace:packages/cli"],
-
-    "@orika/config": ["@orika/config@workspace:packages/config"],
-
-    "@orika/core": ["@orika/core@workspace:packages/core"],
-
-    "@orika/devtools": ["@orika/devtools@workspace:packages/devtools"],
-
-    "@orika/inspector": ["@orika/inspector@workspace:apps/inspector"],
-
-    "@orika/native": ["@orika/native@workspace:packages/native"],
-
-    "@orika/next": ["@orika/next@workspace:packages/next"],
-
-    "@orika/platform-browser": ["@orika/platform-browser@workspace:packages/platform-browser"],
-
-    "@orika/react": ["@orika/react@workspace:packages/react"],
-
-    "@orika/solid": ["@orika/solid@workspace:packages/solid"],
-
-    "@orika/test": ["@orika/test@workspace:packages/test"],
-
-    "@orika/vite": ["@orika/vite@workspace:packages/vite"],
-
-    "@orika/vue": ["@orika/vue@workspace:packages/vue"],
 
     "@effect/atom-react": ["@effect/atom-react@4.0.0-beta.60", "", { "peerDependencies": { "effect": "^4.0.0-beta.60", "react": "^19.2.4", "scheduler": "*" } }, "sha512-AxP9Wotmu2pW4XNQhMskOwC+Fjo117I5OQlTamJwrqlG1ISM+IZPbm7etWgEb5V4rVHafcd2jJXJHuK0ZKCivQ=="],
 
@@ -438,6 +412,34 @@
     "@opentelemetry/sdk-trace-web": ["@opentelemetry/sdk-trace-web@2.7.1", "", { "dependencies": { "@opentelemetry/core": "2.7.1", "@opentelemetry/sdk-trace-base": "2.7.1" }, "peerDependencies": { "@opentelemetry/api": ">=1.0.0 <1.10.0" } }, "sha512-K806OouCSOjMd8Nr7+ZCq3QT22tdAzzS/7h8vprfiKjkgFQ99/dvwU8d12WJANA6D5Qtme65hyBAqAu9CkQuxQ=="],
 
     "@opentelemetry/semantic-conventions": ["@opentelemetry/semantic-conventions@1.40.0", "", {}, "sha512-cifvXDhcqMwwTlTK04GBNeIe7yyo28Mfby85QXFe1Yk8nmi36Ab/5UQwptOx84SsoGNRg+EVSjwzfSZMy6pmlw=="],
+
+    "@orika/bridge": ["@orika/bridge@workspace:packages/bridge"],
+
+    "@orika/cli": ["@orika/cli@workspace:packages/cli"],
+
+    "@orika/config": ["@orika/config@workspace:packages/config"],
+
+    "@orika/core": ["@orika/core@workspace:packages/core"],
+
+    "@orika/devtools": ["@orika/devtools@workspace:packages/devtools"],
+
+    "@orika/inspector": ["@orika/inspector@workspace:apps/inspector"],
+
+    "@orika/native": ["@orika/native@workspace:packages/native"],
+
+    "@orika/next": ["@orika/next@workspace:packages/next"],
+
+    "@orika/platform-browser": ["@orika/platform-browser@workspace:packages/platform-browser"],
+
+    "@orika/react": ["@orika/react@workspace:packages/react"],
+
+    "@orika/solid": ["@orika/solid@workspace:packages/solid"],
+
+    "@orika/test": ["@orika/test@workspace:packages/test"],
+
+    "@orika/vite": ["@orika/vite@workspace:packages/vite"],
+
+    "@orika/vue": ["@orika/vue@workspace:packages/vue"],
 
     "@oxc-project/types": ["@oxc-project/types@0.128.0", "", {}, "sha512-huv1Y/LzBJkBVHt3OlC7u0zHBW9qXf1FdD7sGmc1rXc2P1mTwHssYv7jyGx5KAACSCH+9B3Bhn6Z9luHRvf7pQ=="],
 

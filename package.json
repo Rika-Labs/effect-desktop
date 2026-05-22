@@ -37,6 +37,8 @@
     "cargo:fmt": "cargo fmt --check"
   },
   "devDependencies": {
+    "@orika/core": "workspace:*",
+    "@orika/react": "workspace:*",
     "@effect/tsgo": "0.7.2",
     "@types/bun": "latest",
     "@typescript/native-preview": "7.0.0-dev.20260515.1",
