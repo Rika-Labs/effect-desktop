@@ -956,7 +956,7 @@ export class HostProtocolRequestEnvelope extends Schema.Class<HostProtocolReques
   "HostProtocolRequestEnvelope"
 )({
   kind: Schema.Literal("request"),
-  id: Schema.String,
+  id: HostIdentityString,
   method: HostProtocolNonEmptyString,
   timestamp: UInt,
   traceId: HostIdentityString,
@@ -969,7 +969,7 @@ export class HostProtocolResponseEnvelope extends Schema.Class<HostProtocolRespo
   "HostProtocolResponseEnvelope"
 )({
   kind: Schema.Literal("response"),
-  id: Schema.String,
+  id: HostIdentityString,
   timestamp: UInt,
   traceId: HostIdentityString,
   payload: OptionalUnknown,
@@ -991,7 +991,7 @@ export class HostProtocolStreamByRequestEnvelope extends Schema.Class<HostProtoc
   "HostProtocolStreamByRequestEnvelope"
 )({
   kind: Schema.Literal("stream"),
-  id: Schema.String,
+  id: HostIdentityString,
   resourceId: OptionalNonEmptyString,
   timestamp: UInt,
   traceId: HostIdentityString,
@@ -1003,7 +1003,7 @@ export class HostProtocolStreamByResourceEnvelope extends Schema.Class<HostProto
   "HostProtocolStreamByResourceEnvelope"
 )({
   kind: Schema.Literal("stream"),
-  id: OptionalString,
+  id: OptionalHostIdentityString,
   resourceId: HostProtocolNonEmptyString,
   timestamp: UInt,
   traceId: HostIdentityString,
@@ -1015,7 +1015,7 @@ export class HostProtocolCancelByRequestEnvelope extends Schema.Class<HostProtoc
   "HostProtocolCancelByRequestEnvelope"
 )({
   kind: Schema.Literal("cancel"),
-  id: Schema.String,
+  id: HostIdentityString,
   resourceId: OptionalNonEmptyString,
   timestamp: UInt,
   traceId: HostIdentityString
@@ -1025,7 +1025,7 @@ export class HostProtocolCancelByResourceEnvelope extends Schema.Class<HostProto
   "HostProtocolCancelByResourceEnvelope"
 )({
   kind: Schema.Literal("cancel"),
-  id: OptionalString,
+  id: OptionalHostIdentityString,
   resourceId: HostProtocolNonEmptyString,
   timestamp: UInt,
   traceId: HostIdentityString

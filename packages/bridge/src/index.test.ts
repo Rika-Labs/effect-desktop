@@ -647,6 +647,54 @@ test("request envelopes require an id", () => {
   ).toThrow()
 })
 
+test("host protocol envelopes reject empty request IDs", () => {
+  const envelopes: ReadonlyArray<unknown> = [
+    {
+      kind: "request",
+      id: "",
+      method: "host.ping",
+      timestamp: 1710000000000,
+      traceId: "trace-1"
+    },
+    {
+      kind: "response",
+      id: "",
+      timestamp: 1710000000001,
+      traceId: "trace-1"
+    },
+    {
+      kind: "stream",
+      id: "",
+      timestamp: 1710000000002,
+      traceId: "trace-1"
+    },
+    {
+      kind: "stream",
+      id: "",
+      resourceId: "resource-1",
+      timestamp: 1710000000003,
+      traceId: "trace-1"
+    },
+    {
+      kind: "cancel",
+      id: "",
+      timestamp: 1710000000004,
+      traceId: "trace-1"
+    },
+    {
+      kind: "cancel",
+      id: "",
+      resourceId: "resource-1",
+      timestamp: 1710000000005,
+      traceId: "trace-1"
+    }
+  ]
+
+  for (const envelope of envelopes) {
+    expect(() => decodeHostProtocolEnvelope(envelope)).toThrow()
+  }
+})
+
 test("stream envelopes require a request or resource target", () => {
   expect(() =>
     decodeHostProtocolEnvelope({
@@ -739,6 +787,71 @@ test("host protocol envelopes reject control characters in identity fields", () 
       traceId: "trace-1",
       windowId: "main",
       originToken: "origin\nforged"
+    },
+    {
+      kind: "request",
+      id: "request\nforged",
+      method: "host.ping",
+      timestamp: 1710000000004,
+      traceId: "trace-1"
+    },
+    {
+      kind: "response",
+      id: "request\u0000forged",
+      timestamp: 1710000000005,
+      traceId: "trace-1"
+    },
+    {
+      kind: "stream",
+      id: "request\nforged",
+      timestamp: 1710000000006,
+      traceId: "trace-1"
+    },
+    {
+      kind: "stream",
+      id: "request\u0000forged",
+      resourceId: "resource-1",
+      timestamp: 1710000000007,
+      traceId: "trace-1"
+    },
+    {
+      kind: "cancel",
+      id: "request\nforged",
+      timestamp: 1710000000008,
+      traceId: "trace-1"
+    },
+    {
+      kind: "cancel",
+      id: "request\u0000forged",
+      resourceId: "resource-1",
+      timestamp: 1710000000009,
+      traceId: "trace-1"
+    },
+    {
+      kind: "stream",
+      id: "request-1",
+      resourceId: "resource\nforged",
+      timestamp: 1710000000010,
+      traceId: "trace-1"
+    },
+    {
+      kind: "stream",
+      resourceId: "resource\u0000forged",
+      timestamp: 1710000000011,
+      traceId: "trace-1"
+    },
+    {
+      kind: "cancel",
+      id: "request-1",
+      resourceId: "resource\nforged",
+      timestamp: 1710000000012,
+      traceId: "trace-1"
+    },
+    {
+      kind: "cancel",
+      resourceId: "resource\u0000forged",
+      timestamp: 1710000000013,
+      traceId: "trace-1"
     }
   ]
 
