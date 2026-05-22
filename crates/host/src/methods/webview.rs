@@ -3,10 +3,10 @@
 // wire contract. Boxing that error here would obscure the protocol surface.
 
 use crate::window::{
-    WebViewCreateRequest, WebViewExposedApi, WebViewHandleRequest, WebViewIsolationPolicy,
-    WebViewLoadRouteRequest, WebViewLoadUrlRequest, WebViewNavigationDecision,
-    WebViewNavigationPolicy, WebViewSetNavigationPolicyRequest, WebViewSetZoomRequest,
-    WindowMethodHandler,
+    canonical_webview_policy_origin, WebViewCreateRequest, WebViewExposedApi, WebViewHandleRequest,
+    WebViewIsolationPolicy, WebViewLoadRouteRequest, WebViewLoadUrlRequest,
+    WebViewNavigationDecision, WebViewNavigationPolicy, WebViewSetNavigationPolicyRequest,
+    WebViewSetZoomRequest, WindowMethodHandler,
 };
 use host_protocol::HostProtocolError;
 use host_protocol::SessionProfileResourcePayload;
@@ -870,32 +870,10 @@ fn validate_origin(
     operation: &'static str,
 ) -> Result<(), HostProtocolError> {
     validate_printable_value(field, value, operation)?;
-    let Some((scheme, rest)) = value.split_once("://") else {
+    if canonical_webview_policy_origin(value).is_none() {
         return Err(HostProtocolError::invalid_argument(
             field,
-            "must be an origin",
-            operation,
-        ));
-    };
-    let lowercase_scheme = scheme.to_ascii_lowercase();
-    if !matches!(lowercase_scheme.as_str(), "app" | "http" | "https") || rest.is_empty() {
-        return Err(HostProtocolError::invalid_argument(
-            field,
-            "must use app, http, or https origin",
-            operation,
-        ));
-    }
-    if !authority_has_host(rest) {
-        return Err(HostProtocolError::invalid_argument(
-            field,
-            "must include a host",
-            operation,
-        ));
-    }
-    if rest.contains(['/', '?', '#']) || rest.chars().any(char::is_whitespace) {
-        return Err(HostProtocolError::invalid_argument(
-            field,
-            "must not include path, query, fragment, or whitespace",
+            "must be an app, http, or https origin with a host and no path, query, fragment, or whitespace",
             operation,
         ));
     }

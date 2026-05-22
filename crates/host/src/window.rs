@@ -581,8 +581,58 @@ pub(crate) enum WebViewNavigationDecision {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct WebViewNavigationPolicy {
-    allowed_origins: Vec<String>,
+    allowed_origins: Vec<WebViewOrigin>,
     on_disallowed: WebViewNavigationDecision,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct WebViewOrigin(String);
+
+impl WebViewOrigin {
+    fn parse_policy(origin: &str) -> Option<Self> {
+        let (scheme, rest) = origin.split_once("://")?;
+        if !matches!(
+            scheme.to_ascii_lowercase().as_str(),
+            "app" | "http" | "https"
+        ) || rest.is_empty()
+            || rest.contains(['/', '?', '#'])
+            || rest.chars().any(char::is_whitespace)
+        {
+            return None;
+        }
+
+        let parsed = Url::parse(origin).ok()?;
+        if !parsed.username().is_empty() || parsed.password().is_some() {
+            return None;
+        }
+
+        Self::from_url(&parsed)
+    }
+
+    fn parse_url(url: &str) -> Option<Self> {
+        let parsed = Url::parse(url).ok()?;
+        Self::from_url(&parsed)
+    }
+
+    fn from_url(parsed: &Url) -> Option<Self> {
+        let scheme = parsed.scheme().to_ascii_lowercase();
+        let host = parsed.host_str()?.to_ascii_lowercase();
+        let host = if host.contains(':') && !host.starts_with('[') {
+            format!("[{host}]")
+        } else {
+            host
+        };
+
+        let origin = match parsed.port() {
+            Some(port) => format!("{scheme}://{host}:{port}"),
+            None => format!("{scheme}://{host}"),
+        };
+        Some(Self(origin))
+    }
+
+    fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 
 impl WebViewNavigationPolicy {
@@ -592,7 +642,7 @@ impl WebViewNavigationPolicy {
     ) -> Self {
         let allowed_origins = allowed_origins
             .into_iter()
-            .map(|origin| canonical_origin_for_url(&origin).unwrap_or(origin))
+            .filter_map(|origin| WebViewOrigin::parse_policy(&origin))
             .collect();
         Self {
             allowed_origins,
@@ -6020,7 +6070,7 @@ fn origin_allowed(url: &str, policy: &WebViewNavigationPolicy) -> bool {
     match policy.on_disallowed {
         WebViewNavigationDecision::Block | WebViewNavigationDecision::OpenExternal => {}
     }
-    origin_for_url(url).as_deref().is_some_and(|origin| {
+    origin_for_url(url).as_ref().is_some_and(|origin| {
         policy
             .allowed_origins
             .iter()
@@ -6132,24 +6182,12 @@ fn handle_webview_isolation_ipc(
     emit_webview_api_call_event(webview_id, owner_scope, api, method, payload);
 }
 
-fn origin_for_url(url: &str) -> Option<String> {
-    canonical_origin_for_url(url)
+fn origin_for_url(url: &str) -> Option<WebViewOrigin> {
+    WebViewOrigin::parse_url(url)
 }
 
-fn canonical_origin_for_url(url: &str) -> Option<String> {
-    let parsed = Url::parse(url).ok()?;
-    let scheme = parsed.scheme().to_ascii_lowercase();
-    let host = parsed.host_str()?.to_ascii_lowercase();
-    let host = if host.contains(':') && !host.starts_with('[') {
-        format!("[{host}]")
-    } else {
-        host
-    };
-
-    Some(match parsed.port() {
-        Some(port) => format!("{scheme}://{host}:{port}"),
-        None => format!("{scheme}://{host}"),
-    })
+pub(crate) fn canonical_webview_policy_origin(origin: &str) -> Option<String> {
+    WebViewOrigin::parse_policy(origin).map(|origin| origin.as_str().to_string())
 }
 
 fn webview_host_error(error: wry::Error, operation: &'static str) -> HostProtocolError {
@@ -8884,6 +8922,39 @@ mod tests {
             "https://example.com/path",
             &mixed_case_policy
         ));
+    }
+
+    #[test]
+    fn webview_policy_origin_canonicalization_is_the_validation_contract() {
+        for (input, expected) in [
+            ("HTTPS://EXAMPLE.com", "https://example.com"),
+            ("https://example.com:8443", "https://example.com:8443"),
+            ("app://LOCALHOST", "app://localhost"),
+            ("https://[::1]:8443", "https://[::1]:8443"),
+        ] {
+            assert_eq!(
+                super::canonical_webview_policy_origin(input).as_deref(),
+                Some(expected)
+            );
+        }
+
+        for input in [
+            "file://localhost",
+            "https://:443",
+            "https://example.com/path",
+            "https://example.com?query",
+            "https://example.com#fragment",
+            "https://example.com value",
+            "https://user@example.com",
+        ] {
+            assert_eq!(super::canonical_webview_policy_origin(input), None);
+        }
+
+        let policy = WebViewNavigationPolicy::new(
+            vec!["ftp://example.com".to_string()],
+            WebViewNavigationDecision::Block,
+        );
+        assert!(!super::origin_allowed("ftp://example.com/secret", &policy));
     }
 
     #[test]

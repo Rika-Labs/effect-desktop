@@ -5374,6 +5374,17 @@ mod tests {
                 }),
             ),
             (
+                "request-webview-policy-userinfo-origin",
+                host_protocol::WEBVIEW_SET_NAVIGATION_POLICY_METHOD,
+                serde_json::json!({
+                    "webview": webview,
+                    "policy": {
+                        "allowedOrigins": ["https://user@example.com"],
+                        "onDisallowed": "block"
+                    }
+                }),
+            ),
+            (
                 "request-webview-create-invalid-isolation",
                 host_protocol::WEBVIEW_CREATE_METHOD,
                 serde_json::json!({
