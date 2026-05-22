@@ -1,8 +1,13 @@
 import { expect, test } from "bun:test"
-import { type BridgeClientExchange } from "@orika/bridge"
-import { Cause, Effect, Exit, type Layer, ManagedRuntime, Stream } from "effect"
+import {
+  type BridgeClientExchange,
+  HostProtocolEventEnvelope,
+  HostProtocolInvalidOutputError
+} from "@orika/bridge"
+import { Cause, Effect, Exit, type Layer, ManagedRuntime, Option, Schema, Stream } from "effect"
 
 import { makeNativeCapabilityManifest } from "./capabilities.js"
+import { SessionProfileEvent } from "./contracts/session-profile.js"
 import {
   makeSessionProfileBridgeClientLayer,
   makeSessionProfileMemoryClient,
@@ -169,6 +174,65 @@ test("SessionProfile unsupported client fails the event stream as unsupported", 
     })
   ))
 
+test("SessionProfile contracts reject inconsistent event phase payloads", () => {
+  const profile = profileHandle()
+  const invalidPayloads = [
+    {
+      type: "session-profile-event",
+      timestamp: 1_710_000_000_000,
+      phase: "opened",
+      message: "host failed"
+    },
+    {
+      type: "session-profile-event",
+      timestamp: 1_710_000_000_000,
+      phase: "closed",
+      profile,
+      partition: "workspace-1",
+      message: "closed with failure"
+    },
+    {
+      type: "session-profile-event",
+      timestamp: 1_710_000_000_000,
+      phase: "failed",
+      profile,
+      partition: "workspace-1",
+      message: "host failed"
+    }
+  ] as const
+
+  for (const payload of invalidPayloads) {
+    const exit = Effect.runSyncExit(Schema.decodeUnknownEffect(SessionProfileEvent)(payload))
+    expect(exit._tag).toBe("Failure")
+  }
+
+  for (const payload of [
+    {
+      type: "session-profile-event",
+      timestamp: 1_710_000_000_000,
+      phase: "opened",
+      profile,
+      partition: "workspace-1"
+    },
+    {
+      type: "session-profile-event",
+      timestamp: 1_710_000_000_000,
+      phase: "closed",
+      profile,
+      partition: "workspace-1"
+    },
+    {
+      type: "session-profile-event",
+      timestamp: 1_710_000_000_000,
+      phase: "failed",
+      message: "host failed"
+    }
+  ] as const) {
+    const exit = Effect.runSyncExit(Schema.decodeUnknownEffect(SessionProfileEvent)(payload))
+    expect(exit._tag).toBe("Success")
+  }
+})
+
 test("SessionProfile bridge client subscribes to the host event channel", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -194,6 +258,41 @@ test("SessionProfile bridge client subscribes to the host event channel", () =>
     })
   ))
 
+test("SessionProfile bridge client rejects inconsistent event phase payloads as InvalidOutput", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const exchange: BridgeClientExchange = {
+        request: () => Effect.die("SessionProfile test does not issue bridge requests"),
+        subscribe: (method) =>
+          Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              method,
+              timestamp: 1_710_000_000_000,
+              traceId: "session-profile-event-trace",
+              payload: {
+                type: "session-profile-event",
+                timestamp: 1_710_000_000_000,
+                phase: "opened",
+                message: "host failed"
+              }
+            })
+          )
+      }
+      const exit = yield* runScoped(
+        Effect.gen(function* () {
+          const client = yield* SessionProfileClient
+          return yield* Effect.exit(
+            client.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+          )
+        }),
+        makeSessionProfileBridgeClientLayer(exchange)
+      )
+
+      expectInvalidOutput(exit)
+    })
+  ))
+
 const runScoped = <A, E, R>(
   effect: Effect.Effect<A, E, R>,
   layer: Layer.Layer<R, never, never>
@@ -205,6 +304,15 @@ const runScoped = <A, E, R>(
     return result
   })
 
+const profileHandle = () =>
+  ({
+    kind: "session-profile",
+    id: "session-profile:workspace-1",
+    generation: 0,
+    ownerScope: "workspace:1",
+    state: "open"
+  }) as const
+
 const expectExitFailure = <A>(
   exit: Exit.Exit<A, unknown>,
   assert: (error: unknown) => void
@@ -213,4 +321,13 @@ const expectExitFailure = <A>(
   if (Exit.isFailure(exit)) {
     assert(Cause.squash(exit.cause))
   }
+}
+
+const expectInvalidOutput = <A, E>(exit: Exit.Exit<A, E>): void => {
+  expect(exit._tag).toBe("Failure")
+  if (exit._tag !== "Failure") {
+    return
+  }
+
+  expect(Cause.squash(exit.cause)).toBeInstanceOf(HostProtocolInvalidOutputError)
 }

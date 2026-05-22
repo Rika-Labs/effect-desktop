@@ -794,13 +794,10 @@ pub enum RecentDocumentsEventPhasePayload {
     Failed,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RecentDocumentsEventPayload {
     phase: RecentDocumentsEventPhasePayload,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     path: Option<CanonicalPathPayload>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     reason: Option<String>,
 }
 
@@ -814,6 +811,95 @@ impl RecentDocumentsEventPayload {
             phase,
             path,
             reason,
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SerializableRecentDocumentsEventPayload<'a> {
+    phase: RecentDocumentsEventPhasePayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    path: Option<&'a CanonicalPathPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<&'a str>,
+}
+
+impl<'a> TryFrom<&'a RecentDocumentsEventPayload> for SerializableRecentDocumentsEventPayload<'a> {
+    type Error = &'static str;
+
+    fn try_from(payload: &'a RecentDocumentsEventPayload) -> Result<Self, Self::Error> {
+        validate_recent_documents_event_payload(payload.phase, &payload.path, &payload.reason)?;
+        Ok(Self {
+            phase: payload.phase,
+            path: payload.path.as_ref(),
+            reason: payload.reason.as_deref(),
+        })
+    }
+}
+
+impl Serialize for RecentDocumentsEventPayload {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        SerializableRecentDocumentsEventPayload::try_from(self)
+            .map_err(ser::Error::custom)?
+            .serialize(serializer)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawRecentDocumentsEventPayload {
+    phase: RecentDocumentsEventPhasePayload,
+    path: Option<CanonicalPathPayload>,
+    reason: Option<String>,
+}
+
+impl TryFrom<RawRecentDocumentsEventPayload> for RecentDocumentsEventPayload {
+    type Error = &'static str;
+
+    fn try_from(raw: RawRecentDocumentsEventPayload) -> Result<Self, Self::Error> {
+        validate_recent_documents_event_payload(raw.phase, &raw.path, &raw.reason)?;
+        Ok(Self {
+            phase: raw.phase,
+            path: raw.path,
+            reason: raw.reason,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for RecentDocumentsEventPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        RawRecentDocumentsEventPayload::deserialize(deserializer)?
+            .try_into()
+            .map_err(de::Error::custom)
+    }
+}
+
+fn validate_recent_documents_event_payload(
+    phase: RecentDocumentsEventPhasePayload,
+    path: &Option<CanonicalPathPayload>,
+    reason: &Option<String>,
+) -> Result<(), &'static str> {
+    match phase {
+        RecentDocumentsEventPhasePayload::DocumentAdded if path.is_some() && reason.is_none() => {
+            Ok(())
+        }
+        RecentDocumentsEventPhasePayload::DocumentAdded => {
+            Err("document-added recent documents event requires path only")
+        }
+        RecentDocumentsEventPhasePayload::Cleared if path.is_none() && reason.is_none() => Ok(()),
+        RecentDocumentsEventPhasePayload::Cleared => {
+            Err("cleared recent documents event must not include path or reason")
+        }
+        RecentDocumentsEventPhasePayload::Failed if path.is_none() && reason.is_some() => Ok(()),
+        RecentDocumentsEventPhasePayload::Failed => {
+            Err("failed recent documents event requires reason and no path")
         }
     }
 }
@@ -10471,6 +10557,211 @@ impl SessionProfileSupportedPayload {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SessionProfileEventPhasePayload {
+    Opened,
+    Closed,
+    Failed,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct SessionProfileEventPayload {
+    r#type: String,
+    timestamp: u64,
+    phase: SessionProfileEventPhasePayload,
+    profile: Option<SessionProfileResourcePayload>,
+    partition: Option<String>,
+    message: Option<String>,
+}
+
+impl SessionProfileEventPayload {
+    pub fn opened(
+        timestamp: u64,
+        profile: SessionProfileResourcePayload,
+        partition: impl Into<String>,
+    ) -> Self {
+        Self {
+            r#type: "session-profile-event".to_string(),
+            timestamp,
+            phase: SessionProfileEventPhasePayload::Opened,
+            profile: Some(profile),
+            partition: Some(partition.into()),
+            message: None,
+        }
+    }
+
+    pub fn closed(
+        timestamp: u64,
+        profile: SessionProfileResourcePayload,
+        partition: impl Into<String>,
+    ) -> Self {
+        Self {
+            r#type: "session-profile-event".to_string(),
+            timestamp,
+            phase: SessionProfileEventPhasePayload::Closed,
+            profile: Some(profile),
+            partition: Some(partition.into()),
+            message: None,
+        }
+    }
+
+    pub fn failed(timestamp: u64, message: impl Into<String>) -> Self {
+        Self {
+            r#type: "session-profile-event".to_string(),
+            timestamp,
+            phase: SessionProfileEventPhasePayload::Failed,
+            profile: None,
+            partition: None,
+            message: Some(message.into()),
+        }
+    }
+
+    #[cfg(test)]
+    fn new_for_test(timestamp: u64, phase: SessionProfileEventPhasePayload) -> Self {
+        Self {
+            r#type: "session-profile-event".to_string(),
+            timestamp,
+            phase,
+            profile: None,
+            partition: None,
+            message: None,
+        }
+    }
+
+    #[cfg(test)]
+    fn with_profile_for_test(
+        mut self,
+        profile: SessionProfileResourcePayload,
+        partition: impl Into<String>,
+    ) -> Self {
+        self.profile = Some(profile);
+        self.partition = Some(partition.into());
+        self
+    }
+
+    #[cfg(test)]
+    fn with_message_for_test(mut self, message: impl Into<String>) -> Self {
+        self.message = Some(message.into());
+        self
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SerializableSessionProfileEventPayload<'a> {
+    r#type: &'a str,
+    timestamp: u64,
+    phase: SessionProfileEventPhasePayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    profile: Option<&'a SessionProfileResourcePayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    partition: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<&'a str>,
+}
+
+impl<'a> TryFrom<&'a SessionProfileEventPayload> for SerializableSessionProfileEventPayload<'a> {
+    type Error = &'static str;
+
+    fn try_from(payload: &'a SessionProfileEventPayload) -> Result<Self, Self::Error> {
+        validate_session_profile_event_payload(
+            payload.phase,
+            &payload.profile,
+            &payload.partition,
+            &payload.message,
+        )?;
+        Ok(Self {
+            r#type: &payload.r#type,
+            timestamp: payload.timestamp,
+            phase: payload.phase,
+            profile: payload.profile.as_ref(),
+            partition: payload.partition.as_deref(),
+            message: payload.message.as_deref(),
+        })
+    }
+}
+
+impl Serialize for SessionProfileEventPayload {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        SerializableSessionProfileEventPayload::try_from(self)
+            .map_err(ser::Error::custom)?
+            .serialize(serializer)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawSessionProfileEventPayload {
+    r#type: String,
+    timestamp: u64,
+    phase: SessionProfileEventPhasePayload,
+    profile: Option<SessionProfileResourcePayload>,
+    partition: Option<String>,
+    message: Option<String>,
+}
+
+impl TryFrom<RawSessionProfileEventPayload> for SessionProfileEventPayload {
+    type Error = &'static str;
+
+    fn try_from(raw: RawSessionProfileEventPayload) -> Result<Self, Self::Error> {
+        validate_session_profile_event_payload(
+            raw.phase,
+            &raw.profile,
+            &raw.partition,
+            &raw.message,
+        )?;
+        Ok(Self {
+            r#type: raw.r#type,
+            timestamp: raw.timestamp,
+            phase: raw.phase,
+            profile: raw.profile,
+            partition: raw.partition,
+            message: raw.message,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for SessionProfileEventPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        RawSessionProfileEventPayload::deserialize(deserializer)?
+            .try_into()
+            .map_err(de::Error::custom)
+    }
+}
+
+fn validate_session_profile_event_payload(
+    phase: SessionProfileEventPhasePayload,
+    profile: &Option<SessionProfileResourcePayload>,
+    partition: &Option<String>,
+    message: &Option<String>,
+) -> Result<(), &'static str> {
+    let has_profile = profile.is_some();
+    let has_partition = partition.is_some();
+    match phase {
+        SessionProfileEventPhasePayload::Opened | SessionProfileEventPhasePayload::Closed => {
+            if has_profile && has_partition && message.is_none() {
+                Ok(())
+            } else {
+                Err("session profile lifecycle events require profile and partition only")
+            }
+        }
+        SessionProfileEventPhasePayload::Failed => {
+            if !has_profile && !has_partition && message.is_some() {
+                Ok(())
+            } else {
+                Err("failed session profile events require message only")
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum CookieStoreSameSitePayload {
     Lax,
@@ -15561,7 +15852,8 @@ mod tests {
         SessionPermissionEventPhasePayload, SessionPermissionKindPayload,
         SessionPermissionListPayload, SessionPermissionListResultPayload,
         SessionPermissionRequestPayload, SessionPermissionRequestResultPayload,
-        SessionPermissionSupportedPayload, SessionProfileFromPartitionPayload,
+        SessionPermissionSupportedPayload, SessionProfileEventPayload,
+        SessionProfileEventPhasePayload, SessionProfileFromPartitionPayload,
         SessionProfileHandlePayload, SessionProfileListPayload, SessionProfileResourcePayload,
         SessionProfileSupportedPayload, ShellOpenExternalPayload, ShellOpenPathPayload,
         ShellShowItemInFolderPayload, ShellTrashItemPayload, SystemAppearanceAccentColorPayload,
@@ -15966,6 +16258,70 @@ mod tests {
         )
         .expect_err("unknown recent document event phase should be rejected");
         assert!(error.to_string().contains("unknown variant `changed`"));
+    }
+
+    #[test]
+    fn recent_documents_events_reject_inconsistent_phase_payloads() {
+        for source in [
+            r#"{"phase":"document-added"}"#,
+            r#"{"phase":"document-added","reason":"host-failed"}"#,
+            r#"{"phase":"cleared","path":{"path":"/tmp/report.txt"}}"#,
+            r#"{"phase":"cleared","reason":"host-failed"}"#,
+            r#"{"phase":"failed"}"#,
+            r#"{"phase":"failed","path":{"path":"/tmp/report.txt"},"reason":"host-failed"}"#,
+        ] {
+            let error = serde_json::from_str::<RecentDocumentsEventPayload>(source)
+                .expect_err("inconsistent recent documents event should be rejected");
+            assert!(
+                error.to_string().contains("document-added")
+                    || error.to_string().contains("cleared")
+                    || error.to_string().contains("failed")
+                    || error.to_string().contains("phase"),
+                "unexpected error: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn recent_documents_events_reject_inconsistent_phase_payloads_before_serializing() {
+        for event in [
+            RecentDocumentsEventPayload::new(
+                RecentDocumentsEventPhasePayload::DocumentAdded,
+                None,
+                None,
+            ),
+            RecentDocumentsEventPayload::new(
+                RecentDocumentsEventPhasePayload::DocumentAdded,
+                None,
+                Some("host-failed".to_string()),
+            ),
+            RecentDocumentsEventPayload::new(
+                RecentDocumentsEventPhasePayload::Cleared,
+                Some(CanonicalPathPayload::new("/tmp/report.txt")),
+                None,
+            ),
+            RecentDocumentsEventPayload::new(
+                RecentDocumentsEventPhasePayload::Cleared,
+                None,
+                Some("host-failed".to_string()),
+            ),
+            RecentDocumentsEventPayload::new(RecentDocumentsEventPhasePayload::Failed, None, None),
+            RecentDocumentsEventPayload::new(
+                RecentDocumentsEventPhasePayload::Failed,
+                Some(CanonicalPathPayload::new("/tmp/report.txt")),
+                Some("host-failed".to_string()),
+            ),
+        ] {
+            let error = serde_json::to_string(&event)
+                .expect_err("inconsistent recent documents event should not encode");
+            assert!(
+                error.to_string().contains("document-added")
+                    || error.to_string().contains("cleared")
+                    || error.to_string().contains("failed")
+                    || error.to_string().contains("phase"),
+                "unexpected error: {error}"
+            );
+        }
     }
 
     #[test]
@@ -19109,7 +19465,7 @@ mod tests {
             r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"}}"#
         );
 
-        let list = SessionProfileListPayload::new(vec![profile]);
+        let list = SessionProfileListPayload::new(vec![profile.clone()]);
         assert_eq!(list.profiles().len(), 1);
         assert_eq!(
             serde_json::to_string(&list).expect("list payload should encode"),
@@ -19123,6 +19479,84 @@ mod tests {
             .expect("support payload should encode"),
             r#"{"supported":false,"reason":"host-session-profile-routing-unavailable"}"#
         );
+        assert_eq!(
+            serde_json::to_string(&SessionProfileEventPayload::opened(
+                1_710_000_000_000,
+                profile.clone(),
+                "workspace-1",
+            ))
+            .expect("opened event should encode"),
+            r#"{"type":"session-profile-event","timestamp":1710000000000,"phase":"opened","profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"partition":"workspace-1"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&SessionProfileEventPayload::closed(
+                1_710_000_000_001,
+                profile,
+                "workspace-1",
+            ))
+            .expect("closed event should encode"),
+            r#"{"type":"session-profile-event","timestamp":1710000000001,"phase":"closed","profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"partition":"workspace-1"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&SessionProfileEventPayload::failed(
+                1_710_000_000_002,
+                "host failed",
+            ))
+            .expect("failed event should encode"),
+            r#"{"type":"session-profile-event","timestamp":1710000000002,"phase":"failed","message":"host failed"}"#
+        );
+    }
+
+    #[test]
+    fn session_profile_events_reject_inconsistent_phase_payloads() {
+        for source in [
+            r#"{"type":"session-profile-event","timestamp":1710000000000,"phase":"opened","message":"host failed"}"#,
+            r#"{"type":"session-profile-event","timestamp":1710000000000,"phase":"closed","profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"partition":"workspace-1","message":"closed with failure"}"#,
+            r#"{"type":"session-profile-event","timestamp":1710000000000,"phase":"failed","profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"partition":"workspace-1","message":"host failed"}"#,
+        ] {
+            let error = serde_json::from_str::<SessionProfileEventPayload>(source)
+                .expect_err("inconsistent session profile event should be rejected");
+            assert!(
+                error.to_string().contains("profile")
+                    || error.to_string().contains("message")
+                    || error.to_string().contains("phase"),
+                "unexpected error: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn session_profile_events_reject_inconsistent_phase_payloads_before_serializing() {
+        let profile =
+            SessionProfileResourcePayload::new("session-profile:workspace-1", 0, "workspace:1");
+        for event in [
+            SessionProfileEventPayload::new_for_test(
+                1_710_000_000_000,
+                SessionProfileEventPhasePayload::Opened,
+            )
+            .with_message_for_test("host failed"),
+            SessionProfileEventPayload::new_for_test(
+                1_710_000_000_000,
+                SessionProfileEventPhasePayload::Closed,
+            )
+            .with_profile_for_test(profile.clone(), "workspace-1")
+            .with_message_for_test("closed with failure"),
+            SessionProfileEventPayload::new_for_test(
+                1_710_000_000_000,
+                SessionProfileEventPhasePayload::Failed,
+            )
+            .with_profile_for_test(profile, "workspace-1")
+            .with_message_for_test("host failed"),
+        ] {
+            let error = serde_json::to_string(&event)
+                .expect_err("inconsistent session profile event should not encode");
+            assert!(
+                error.to_string().contains("profile")
+                    || error.to_string().contains("message")
+                    || error.to_string().contains("phase"),
+                "unexpected error: {error}"
+            );
+        }
     }
 
     #[test]

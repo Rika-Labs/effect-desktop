@@ -53,11 +53,38 @@ export class RecentDocumentsListResult extends Schema.Class<RecentDocumentsListR
 }) {}
 
 export const RecentDocumentsEventPhase = Schema.Literals(["document-added", "cleared", "failed"])
+export type RecentDocumentsEventPhase = typeof RecentDocumentsEventPhase.Type
+
+const RecentDocumentsEventPhasePayload = Schema.makeFilter<{
+  readonly phase: RecentDocumentsEventPhase
+  readonly path?: typeof RecentDocumentPath.Type | undefined
+  readonly reason?: string | undefined
+}>((value) => {
+  switch (value.phase) {
+    case "document-added":
+      return (
+        (value.path !== undefined && value.reason === undefined) ||
+        "document-added recent documents events require path only"
+      )
+    case "cleared":
+      return (
+        (value.path === undefined && value.reason === undefined) ||
+        "cleared recent documents events must not include path or reason"
+      )
+    case "failed":
+      return (
+        (value.path === undefined && value.reason !== undefined) ||
+        "failed recent documents events require reason and no path"
+      )
+  }
+})
 
 export class RecentDocumentsEvent extends Schema.Class<RecentDocumentsEvent>(
   "RecentDocumentsEvent"
-)({
-  phase: RecentDocumentsEventPhase,
-  path: Schema.optionalKey(RecentDocumentPath),
-  reason: Schema.optionalKey(BridgeSafeNonEmptyString)
-}) {}
+)(
+  Schema.Struct({
+    phase: RecentDocumentsEventPhase,
+    path: Schema.optionalKey(RecentDocumentPath),
+    reason: Schema.optionalKey(BridgeSafeNonEmptyString)
+  }).check(RecentDocumentsEventPhasePayload)
+) {}

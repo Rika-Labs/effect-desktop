@@ -6428,6 +6428,59 @@ test("RecentDocuments bridge client rejects unsafe list and event paths as Inval
     })
   ))
 
+test("RecentDocuments rejects inconsistent event phase payloads before exposing native events", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const invalidPayloads = [
+        { phase: "document-added" },
+        { phase: "document-added", reason: "host failed" },
+        { phase: "cleared", path: { path: "/tmp/report.txt" } },
+        { phase: "cleared", reason: "host failed" },
+        { phase: "failed" },
+        { phase: "failed", path: { path: "/tmp/report.txt" }, reason: "host failed" }
+      ] as const
+
+      for (const payload of invalidPayloads) {
+        const exit = yield* Effect.exit(Schema.decodeUnknownEffect(RecentDocumentsEvent)(payload))
+        expect(Exit.isFailure(exit)).toBe(true)
+      }
+
+      for (const payload of [
+        { phase: "document-added", path: { path: "/tmp/report.txt" } },
+        { phase: "cleared" },
+        { phase: "failed", reason: "host failed" }
+      ] as const) {
+        const exit = yield* Effect.exit(Schema.decodeUnknownEffect(RecentDocumentsEvent)(payload))
+        expect(exit._tag).toBe("Success")
+      }
+
+      const exchange: BridgeClientExchange = {
+        request: () => Effect.die("RecentDocuments event test does not issue bridge requests"),
+        subscribe: (method) =>
+          Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              timestamp: 1_710_000_000_000,
+              traceId: "recent-documents-event-trace",
+              method,
+              payload: invalidPayloads[0]
+            })
+          )
+      }
+      const bridgeExit = yield* runScoped(
+        Effect.gen(function* () {
+          const recentDocuments = yield* RecentDocuments
+          return yield* Effect.exit(
+            recentDocuments.events().pipe(Stream.take(1), Stream.runCollect)
+          )
+        }),
+        Layer.provide(RecentDocumentsLive, makeRecentDocumentsBridgeClientLayer(exchange))
+      )
+
+      expectExitFailure(bridgeExit, (error) => hasErrorTag(error, "InvalidOutput"))
+    })
+  ))
+
 test("native host RPC runtime denies protected RecentDocuments calls before handlers run", () =>
   Effect.runPromise(
     Effect.gen(function* () {
