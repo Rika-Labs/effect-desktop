@@ -12,7 +12,7 @@ import type {
   DesktopAppManifest,
   DesktopRpcRegistrationGroup,
   DesktopRpcsLayer
-} from "./desktop-app.js"
+} from "./renderer-types.js"
 import {
   makeMissingDesktopRpcClientError,
   RendererRpcError,

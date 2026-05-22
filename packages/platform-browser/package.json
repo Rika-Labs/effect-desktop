@@ -22,6 +22,10 @@
       "types": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./context": {
+      "types": "./src/context.ts",
+      "default": "./src/context.ts"
+    },
     "./sql-pglite": {
       "types": "./src/sql-pglite.ts",
       "default": "./src/sql-pglite.ts"

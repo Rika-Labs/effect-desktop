@@ -26,6 +26,10 @@
       "types": "./src/contracts/index.ts",
       "default": "./src/contracts/index.ts"
     },
+    "./contracts/*": {
+      "types": "./src/contracts/*.ts",
+      "default": "./src/contracts/*.ts"
+    },
     "./protocol": {
       "types": "./src/protocol.ts",
       "default": "./src/protocol.ts"

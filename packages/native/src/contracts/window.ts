@@ -1,4 +1,4 @@
-import { ResourceHandleSchema, type ResourceHandle } from "@orika/core"
+import { ResourceHandleSchema, type ResourceHandle } from "@orika/core/runtime/resources"
 import { Schema } from "effect"
 
 const PositiveFiniteNumber = Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0))

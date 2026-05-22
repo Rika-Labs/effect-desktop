@@ -9,10 +9,10 @@ import type {
   DesktopRendererRpcClient,
   DesktopRendererRpcClientMethod
 } from "./renderer-rpc-client.js"
-import type { RpcEndpointDescriptor } from "./rpc-descriptors.js"
+import type { RendererRpcEndpointDescriptor } from "./renderer-types.js"
 
 export interface DesktopEndpointSupport {
-  readonly support: RpcEndpointDescriptor["support"]
+  readonly support: RendererRpcEndpointDescriptor["support"]
   readonly isSupported: boolean
 }
 
@@ -21,12 +21,12 @@ export interface RendererEndpointBinders<Endpoint extends object> {
   readonly mutation: <E>(run: (input: unknown) => Effect.Effect<unknown, E, never>) => Endpoint
   readonly stream: <E>(
     run: (input: unknown) => Stream.Stream<unknown, E, never>,
-    descriptor: RpcEndpointDescriptor
+    descriptor: RendererRpcEndpointDescriptor
   ) => Endpoint
 }
 
 export const bindRendererEndpoints = <Endpoint extends object>(
-  descriptors: readonly RpcEndpointDescriptor[],
+  descriptors: readonly RendererRpcEndpointDescriptor[],
   client: DesktopRendererRpcClient,
   framework: DesktopFramework,
   binders: RendererEndpointBinders<Endpoint>
@@ -68,7 +68,7 @@ const requiredClientMethod =
 
 const attachEndpointSupport = <Endpoint extends object>(
   endpoint: Endpoint,
-  support: RpcEndpointDescriptor["support"]
+  support: RendererRpcEndpointDescriptor["support"]
 ): Endpoint & DesktopEndpointSupport =>
   Object.freeze({
     ...endpoint,

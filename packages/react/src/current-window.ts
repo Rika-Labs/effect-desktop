@@ -56,13 +56,20 @@ const currentWindowEffect = <A>(
 ): Effect.Effect<A, WindowError, never> =>
   Effect.gen(function* () {
     const ctx = yield* optionOrInvalidState(context, operation, "missing DesktopProvider")
-    const window = yield* optionOrInvalidState(
-      Option.fromUndefinedOr(ctx.currentWindow),
-      operation,
-      "missing current window"
-    )
+    const window =
+      ctx.currentWindow === undefined
+        ? yield* resolveCurrentWindow(ctx, operation)
+        : ctx.currentWindow
     return yield* run(ctx, window)
   })
+
+const resolveCurrentWindow = (
+  context: DesktopRuntimeContext,
+  operation: string
+): Effect.Effect<WindowHandle, HostProtocolError, never> =>
+  context.client.window.getCurrent === undefined
+    ? Effect.fail(makeHostProtocolInvalidStateError("missing current window", "call", operation))
+    : context.client.window.getCurrent()
 
 const optionOrInvalidState = <A>(
   option: Option.Option<A>,

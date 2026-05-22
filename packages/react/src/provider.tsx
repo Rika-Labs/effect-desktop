@@ -1,7 +1,8 @@
 import { makeHostProtocolInvalidStateError } from "@orika/bridge"
 import type { WindowError } from "@orika/native"
 import type { WindowCreateOptions, WindowHandle } from "@orika/native/contracts"
-import { BrowserContext, type IndexedDb } from "@orika/platform-browser"
+import type { IndexedDb } from "@orika/platform-browser"
+import { BrowserContext } from "@orika/platform-browser/context"
 import { RegistryContext as DesktopAtomRegistryContext } from "@effect/atom-react"
 import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, type Config } from "effect"
 import { AtomRegistry, Reactivity } from "effect/unstable/reactivity"
@@ -11,6 +12,7 @@ export interface DesktopWindowClient {
   readonly create: (input?: WindowCreateOptions) => Effect.Effect<WindowHandle, WindowError, never>
   readonly close: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
   readonly destroy: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
+  readonly getCurrent?: (() => Effect.Effect<WindowHandle, WindowError, never>) | undefined
 }
 
 export interface DesktopClient {
@@ -62,19 +64,24 @@ export interface DesktopProviderProps {
 
 const DesktopContext = createContext<Option.Option<DesktopRuntimeContext>>(Option.none())
 
-const makeContext = (
-  client: DesktopClient,
-  currentWindow: WindowHandle | undefined
-): DesktopRuntimeContext => {
+const makeBaseContext = (client: DesktopClient): DesktopRuntimeContext => {
   const registry = AtomRegistry.make()
   const runtimeLayer = Layer.merge(
     Layer.provide(Reactivity.layer, AtomRegistry.layer),
     BrowserContext.layer
   )
   const runtime = ManagedRuntime.make(runtimeLayer)
-  return currentWindow === undefined
-    ? { client, registry, runtime }
-    : { client, currentWindow, registry, runtime }
+  return { client, registry, runtime }
+}
+
+const withCurrentWindow = (
+  context: DesktopRuntimeContext,
+  currentWindow: WindowHandle | undefined
+): DesktopRuntimeContext => {
+  if (currentWindow === undefined) {
+    return context
+  }
+  return { ...context, currentWindow }
 }
 
 export const createUnavailableDesktopClient = (message = "missing host bridge"): DesktopClient => {
@@ -98,14 +105,18 @@ export const DesktopProvider = ({
   children,
   onCleanupError
 }: DesktopProviderProps): ReactNode => {
-  const ctx = useMemo(() => makeContext(client, currentWindow), [client, currentWindow])
+  const baseContext = useMemo(() => makeBaseContext(client), [client])
+  const ctx = useMemo(
+    () => withCurrentWindow(baseContext, currentWindow),
+    [baseContext, currentWindow]
+  )
 
   useEffect(
     () => () => {
-      ctx.registry.dispose()
-      disposeRuntime(ctx.runtime, onCleanupError)
+      baseContext.registry.dispose()
+      disposeRuntime(baseContext.runtime, onCleanupError)
     },
-    [ctx, onCleanupError]
+    [baseContext, onCleanupError]
   )
 
   const value = Option.some(ctx)

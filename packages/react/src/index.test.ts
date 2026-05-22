@@ -2,9 +2,32 @@ import { expect, test } from "bun:test"
 import { fileURLToPath } from "node:url"
 import { BunServices } from "@effect/platform-bun"
 import { makeHostProtocolInvalidStateError, RpcEndpoint, RpcSupport } from "@orika/bridge"
-import { Desktop, DuplicateDesktopRpcNameError, MissingDesktopRpcClientError } from "@orika/core"
+import {
+  Desktop,
+  DuplicateDesktopRpcNameError,
+  makeResourceId,
+  MissingDesktopRpcClientError
+} from "@orika/core"
+import {
+  makeWindowServiceLayer,
+  Native,
+  WindowHandlersLive,
+  WindowRpcs,
+  type WindowClientApi
+} from "@orika/native"
+import type { WindowHandle } from "@orika/native/contracts"
 import { AsyncResult, Atom } from "effect/unstable/reactivity"
-import { Cause, Effect, Exit, FileSystem, ManagedRuntime, Option, Schema, Stream } from "effect"
+import {
+  Cause,
+  Effect,
+  Exit,
+  FileSystem,
+  Layer,
+  ManagedRuntime,
+  Option,
+  Schema,
+  Stream
+} from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
@@ -15,6 +38,7 @@ import {
   MissingDesktopContextError,
   ReactDesktop,
   currentWindow,
+  type CurrentWindowCloseMutation,
   type DesktopClient,
   type DesktopWindowClient,
   windows,
@@ -128,6 +152,73 @@ test("disposeRuntime reports cleanup defects through onCleanupError", () =>
 
 const desktop: DesktopClient = Object.freeze({
   window: unavailableWindow
+})
+
+const makeTestWindowHandle = (id: string): WindowHandle => ({
+  kind: "window",
+  id: makeResourceId(id),
+  generation: 0,
+  ownerScope: `window:${id}`,
+  state: "open"
+})
+
+const testNoop = Effect.sync(() => undefined)
+const testWindowBounds = { x: 0, y: 0, width: 100, height: 100 } as const
+const testWindowState = {
+  fullscreen: false,
+  maximized: false,
+  minimized: false,
+  simpleFullscreen: false
+} as const
+
+const makeTestWindowClient = (
+  current: WindowHandle,
+  closedWindowIds: string[]
+): WindowClientApi => ({
+  create: () => Effect.succeed(current),
+  close: (window) =>
+    Effect.sync(() => {
+      closedWindowIds.push(window.id)
+    }),
+  destroy: (window) =>
+    Effect.sync(() => {
+      closedWindowIds.push(window.id)
+    }),
+  show: () => testNoop,
+  hide: () => testNoop,
+  focus: () => testNoop,
+  getCurrent: () => Effect.succeed(current),
+  getById: (windowId) => Effect.succeed(makeTestWindowHandle(windowId)),
+  list: () => Effect.succeed([current]),
+  getParent: () => Effect.sync((): WindowHandle | undefined => undefined),
+  getChildren: () => Effect.succeed([]),
+  getBounds: () => Effect.succeed(testWindowBounds),
+  setBounds: (_window, bounds) => Effect.succeed(bounds),
+  setBoundsOnDisplay: (_window, _displayId, bounds) => Effect.succeed(bounds),
+  center: () => Effect.succeed(testWindowBounds),
+  centerOnDisplay: () => Effect.succeed(testWindowBounds),
+  setTitle: () => testNoop,
+  setResizable: () => testNoop,
+  setDecorations: () => testNoop,
+  setTrafficLights: () => testNoop,
+  setVibrancy: () => testNoop,
+  clearVibrancy: () => testNoop,
+  setShadow: () => testNoop,
+  setTitleBarStyle: () => testNoop,
+  setTitleBarTransparent: () => testNoop,
+  setTransparent: () => testNoop,
+  setAlwaysOnTop: () => testNoop,
+  setSkipTaskbar: () => testNoop,
+  setProgress: () => testNoop,
+  requestAttention: () => testNoop,
+  cancelAttention: () => testNoop,
+  minimize: () => Effect.succeed(testWindowState),
+  maximize: () => Effect.succeed(testWindowState),
+  restore: () => Effect.succeed(testWindowState),
+  setFullscreen: () => Effect.succeed(testWindowState),
+  setSimpleFullscreen: () => Effect.succeed(testWindowState),
+  getState: () => Effect.succeed(testWindowState),
+  events: () => Stream.empty
 })
 
 test("DesktopProvider renders children without crashing (SSR)", () => {
@@ -385,6 +476,47 @@ test("ReactDesktop.from exposes app-scoped RPC hooks from provided groups", () =
   expect(
     renderToStaticMarkup(createElement(NotesReact.DesktopRoot, { rpcs }, createElement(Probe)))
   ).toBe("<span>initial:idle</span>")
+})
+
+test("ReactDesktop root exposes native Window helpers when the app declares Native.Window", () => {
+  let closeCurrentWindow: CurrentWindowCloseMutation | undefined
+  const closedWindowIds: string[] = []
+  const window = makeTestWindowHandle("window-main")
+  const WindowLayer = Desktop.rpc(
+    WindowRpcs,
+    Layer.provide(
+      WindowHandlersLive,
+      makeWindowServiceLayer(makeTestWindowClient(window, closedWindowIds))
+    )
+  )
+  const NotesApp = Desktop.make({
+    windows: Desktop.window("main", { title: "Notes" }),
+    native: Desktop.native(Native.Window)
+  })
+  const NotesReact = ReactDesktop.from(Desktop.manifest(NotesApp))
+  const Probe = () => {
+    closeCurrentWindow = currentWindow.close.useMutation()
+    return createElement("span", null, closeCurrentWindow.status)
+  }
+
+  expect(
+    renderToStaticMarkup(
+      createElement(NotesReact.DesktopRoot, { rpcs: WindowLayer }, createElement(Probe))
+    )
+  ).toBe("<span>idle</span>")
+
+  if (closeCurrentWindow === undefined) {
+    throw new Error("close current window mutation was not captured")
+  }
+  const mutation = closeCurrentWindow
+
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const exit = yield* Effect.promise(() => mutation.runPromise())
+      expect(Exit.isSuccess(exit)).toBe(true)
+      expect(closedWindowIds).toEqual(["window-main"])
+    })
+  )
 })
 
 test("ReactDesktop.useDesktop keeps reserved endpoint names as own properties", () => {
