@@ -188,12 +188,11 @@ pub(crate) fn watch_with_event_sender(
     )?;
     send_event(
         event_sender,
-        NativeFileSystemEventPayload::new(
+        NativeFileSystemEventPayload::watch_started(
             timestamp_millis(),
-            NativeFileSystemEventPhasePayload::WatchStarted,
-        )
-        .with_watch_id(watch_id.clone())
-        .with_path(CanonicalPathPayload::new(input.path().path())),
+            watch_id.clone(),
+            CanonicalPathPayload::new(input.path().path()),
+        ),
     );
 
     encode_payload(
@@ -226,11 +225,7 @@ pub(crate) fn stop_watching_with_event_sender(
     let _ = record.watcher.unwatch(&record.path);
     send_event(
         event_sender,
-        NativeFileSystemEventPayload::new(
-            timestamp_millis(),
-            NativeFileSystemEventPhasePayload::WatchStopped,
-        )
-        .with_watch_id(input.watch_id()),
+        NativeFileSystemEventPayload::watch_stopped(timestamp_millis(), input.watch_id()),
     );
     encode_payload(
         NativeFileSystemStopWatchingResultPayload::new(input.watch_id(), true),
@@ -506,24 +501,28 @@ fn handle_notify_event(
             let Some(path) = path_to_valid_payload(path) else {
                 return send_event(
                     event_sender,
-                    NativeFileSystemEventPayload::new(
+                    NativeFileSystemEventPayload::failed(
                         timestamp_millis(),
-                        NativeFileSystemEventPhasePayload::Failed,
-                    )
-                    .with_watch_id(watch_id)
-                    .with_reason("watch event path was not a valid absolute path"),
+                        watch_id,
+                        "watch event path was not a valid absolute path",
+                    ),
                 );
             };
-            NativeFileSystemEventPayload::new(timestamp_millis(), phase)
-                .with_watch_id(watch_id)
-                .with_path(path)
+            match phase {
+                NativeFileSystemEventPhasePayload::Changed => {
+                    NativeFileSystemEventPayload::changed(timestamp_millis(), watch_id, path)
+                }
+                NativeFileSystemEventPhasePayload::Removed => {
+                    NativeFileSystemEventPayload::removed(timestamp_millis(), watch_id, path)
+                }
+                _ => unreachable!("notify events only map to changed or removed"),
+            }
         }
-        Err(error) => NativeFileSystemEventPayload::new(
+        Err(error) => NativeFileSystemEventPayload::failed(
             timestamp_millis(),
-            NativeFileSystemEventPhasePayload::Failed,
-        )
-        .with_watch_id(watch_id)
-        .with_reason(format!("filesystem watcher failed: {error}")),
+            watch_id,
+            format!("filesystem watcher failed: {error}"),
+        ),
     };
     send_event(event_sender, payload);
 }

@@ -6734,6 +6734,123 @@ test("NativeFileSystem bridge client sends typed host envelopes and decodes even
     })
   ))
 
+test("NativeFileSystem contracts reject inconsistent event phase payloads", () => {
+  const invalidPayloads = [
+    {
+      type: "native-file-system-event",
+      timestamp: 1_710_000_000_100,
+      phase: "watch-started",
+      watchId: "watch-1"
+    },
+    {
+      type: "native-file-system-event",
+      timestamp: 1_710_000_000_100,
+      phase: "changed"
+    },
+    {
+      type: "native-file-system-event",
+      timestamp: 1_710_000_000_100,
+      phase: "removed",
+      watchId: "watch-1",
+      path: { path: "/tmp/report.txt" },
+      reason: "not a failure"
+    },
+    {
+      type: "native-file-system-event",
+      timestamp: 1_710_000_000_100,
+      phase: "failed",
+      watchId: "watch-1"
+    },
+    {
+      type: "native-file-system-event",
+      timestamp: 1_710_000_000_100,
+      phase: "watch-stopped",
+      watchId: "watch-1",
+      path: { path: "/tmp/report.txt" },
+      reason: "not a failure"
+    }
+  ] as const
+
+  for (const payload of invalidPayloads) {
+    const exit = Effect.runSyncExit(Schema.decodeUnknownEffect(NativeFileSystemEvent)(payload))
+    expect(exit._tag).toBe("Failure")
+  }
+
+  for (const payload of [
+    {
+      type: "native-file-system-event",
+      timestamp: 1_710_000_000_100,
+      phase: "watch-started",
+      watchId: "watch-1",
+      path: { path: "/tmp" }
+    },
+    {
+      type: "native-file-system-event",
+      timestamp: 1_710_000_000_100,
+      phase: "changed",
+      watchId: "watch-1",
+      path: { path: "/tmp/report.txt" }
+    },
+    {
+      type: "native-file-system-event",
+      timestamp: 1_710_000_000_100,
+      phase: "removed",
+      watchId: "watch-1",
+      path: { path: "/tmp/report.txt" }
+    },
+    {
+      type: "native-file-system-event",
+      timestamp: 1_710_000_000_100,
+      phase: "failed",
+      watchId: "watch-1",
+      reason: "filesystem watcher failed"
+    },
+    {
+      type: "native-file-system-event",
+      timestamp: 1_710_000_000_100,
+      phase: "watch-stopped",
+      watchId: "watch-1"
+    }
+  ] as const) {
+    const exit = Effect.runSyncExit(Schema.decodeUnknownEffect(NativeFileSystemEvent)(payload))
+    expect(exit._tag).toBe("Success")
+  }
+})
+
+test("NativeFileSystem bridge client rejects inconsistent event phase payloads as InvalidOutput", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const exchange: BridgeClientExchange = {
+        request: () => Effect.die("NativeFileSystem event test does not issue bridge requests"),
+        subscribe: (method) =>
+          Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              timestamp: 1_710_000_000_100,
+              traceId: "native-file-system-event-trace",
+              method,
+              payload: {
+                type: "native-file-system-event",
+                timestamp: 1_710_000_000_100,
+                phase: "changed"
+              }
+            })
+          )
+      }
+      const exit = yield* runScoped(
+        Effect.gen(function* () {
+          const filesystem = yield* NativeFileSystem
+          return yield* Effect.exit(
+            filesystem.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+          )
+        }),
+        Layer.provide(NativeFileSystemLive, makeNativeFileSystemBridgeClientLayer(exchange))
+      )
+
+      expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
+    })
+  ))
+
 test("NativeFileSystem bridge client rejects invalid inputs before transport", () =>
   Effect.runPromise(
     Effect.gen(function* () {

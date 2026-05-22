@@ -146,13 +146,42 @@ export class NativeFileSystemSupportedResult extends Schema.Class<NativeFileSyst
   reason: Schema.optionalKey(BridgeSafeString)
 }) {}
 
+const NativeFileSystemEventPhasePayload = Schema.makeFilter<{
+  readonly phase: NativeFileSystemEventPhase
+  readonly watchId?: string | undefined
+  readonly path?: typeof NativeFileSystemPath.Type | undefined
+  readonly reason?: string | undefined
+}>((value) => {
+  switch (value.phase) {
+    case "watch-started":
+    case "changed":
+    case "removed":
+      return (
+        (value.watchId !== undefined && value.path !== undefined && value.reason === undefined) ||
+        `${value.phase} native filesystem events require watchId and path only`
+      )
+    case "failed":
+      return (
+        (value.watchId !== undefined && value.path === undefined && value.reason !== undefined) ||
+        "failed native filesystem events require watchId and reason only"
+      )
+    case "watch-stopped":
+      return (
+        (value.watchId !== undefined && value.path === undefined && value.reason === undefined) ||
+        "watch-stopped native filesystem events require watchId only"
+      )
+  }
+})
+
 export class NativeFileSystemEvent extends Schema.Class<NativeFileSystemEvent>(
   "NativeFileSystemEvent"
-)({
-  type: NativeFileSystemEventType,
-  timestamp: NonNegativeFiniteNumber,
-  watchId: Schema.optionalKey(BridgeSafeNonEmptyString),
-  path: Schema.optionalKey(NativeFileSystemPath),
-  phase: NativeFileSystemEventPhase,
-  reason: Schema.optionalKey(BridgeSafeString)
-}) {}
+)(
+  Schema.Struct({
+    type: NativeFileSystemEventType,
+    timestamp: NonNegativeFiniteNumber,
+    watchId: Schema.optionalKey(BridgeSafeNonEmptyString),
+    path: Schema.optionalKey(NativeFileSystemPath),
+    phase: NativeFileSystemEventPhase,
+    reason: Schema.optionalKey(BridgeSafeString)
+  }).check(NativeFileSystemEventPhasePayload)
+) {}

@@ -1191,22 +1191,86 @@ impl NativeFileSystemSupportedPayload {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct NativeFileSystemEventPayload {
     r#type: String,
     timestamp: u64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     watch_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     path: Option<CanonicalPathPayload>,
     phase: NativeFileSystemEventPhasePayload,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     reason: Option<String>,
 }
 
 impl NativeFileSystemEventPayload {
-    pub fn new(timestamp: u64, phase: NativeFileSystemEventPhasePayload) -> Self {
+    pub fn watch_started(
+        timestamp: u64,
+        watch_id: impl Into<String>,
+        path: CanonicalPathPayload,
+    ) -> Self {
+        Self {
+            r#type: "native-file-system-event".to_string(),
+            timestamp,
+            watch_id: Some(watch_id.into()),
+            path: Some(path),
+            phase: NativeFileSystemEventPhasePayload::WatchStarted,
+            reason: None,
+        }
+    }
+
+    pub fn changed(
+        timestamp: u64,
+        watch_id: impl Into<String>,
+        path: CanonicalPathPayload,
+    ) -> Self {
+        Self {
+            r#type: "native-file-system-event".to_string(),
+            timestamp,
+            watch_id: Some(watch_id.into()),
+            path: Some(path),
+            phase: NativeFileSystemEventPhasePayload::Changed,
+            reason: None,
+        }
+    }
+
+    pub fn removed(
+        timestamp: u64,
+        watch_id: impl Into<String>,
+        path: CanonicalPathPayload,
+    ) -> Self {
+        Self {
+            r#type: "native-file-system-event".to_string(),
+            timestamp,
+            watch_id: Some(watch_id.into()),
+            path: Some(path),
+            phase: NativeFileSystemEventPhasePayload::Removed,
+            reason: None,
+        }
+    }
+
+    pub fn failed(timestamp: u64, watch_id: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            r#type: "native-file-system-event".to_string(),
+            timestamp,
+            watch_id: Some(watch_id.into()),
+            path: None,
+            phase: NativeFileSystemEventPhasePayload::Failed,
+            reason: Some(reason.into()),
+        }
+    }
+
+    pub fn watch_stopped(timestamp: u64, watch_id: impl Into<String>) -> Self {
+        Self {
+            r#type: "native-file-system-event".to_string(),
+            timestamp,
+            watch_id: Some(watch_id.into()),
+            path: None,
+            phase: NativeFileSystemEventPhasePayload::WatchStopped,
+            reason: None,
+        }
+    }
+
+    #[cfg(test)]
+    fn new_for_test(timestamp: u64, phase: NativeFileSystemEventPhasePayload) -> Self {
         Self {
             r#type: "native-file-system-event".to_string(),
             timestamp,
@@ -1217,19 +1281,160 @@ impl NativeFileSystemEventPayload {
         }
     }
 
-    pub fn with_watch_id(mut self, watch_id: impl Into<String>) -> Self {
+    #[cfg(test)]
+    fn with_watch_id_for_test(mut self, watch_id: impl Into<String>) -> Self {
         self.watch_id = Some(watch_id.into());
         self
     }
 
-    pub fn with_path(mut self, path: CanonicalPathPayload) -> Self {
+    #[cfg(test)]
+    fn with_path_for_test(mut self, path: CanonicalPathPayload) -> Self {
         self.path = Some(path);
         self
     }
 
-    pub fn with_reason(mut self, reason: impl Into<String>) -> Self {
+    #[cfg(test)]
+    fn with_reason_for_test(mut self, reason: impl Into<String>) -> Self {
         self.reason = Some(reason.into());
         self
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SerializableNativeFileSystemEventPayload<'a> {
+    r#type: &'a str,
+    timestamp: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    watch_id: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    path: Option<&'a CanonicalPathPayload>,
+    phase: NativeFileSystemEventPhasePayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<&'a str>,
+}
+
+impl<'a> TryFrom<&'a NativeFileSystemEventPayload>
+    for SerializableNativeFileSystemEventPayload<'a>
+{
+    type Error = &'static str;
+
+    fn try_from(payload: &'a NativeFileSystemEventPayload) -> Result<Self, Self::Error> {
+        if payload.r#type != "native-file-system-event" {
+            return Err("native filesystem event type must be native-file-system-event");
+        }
+        validate_native_file_system_event_payload(
+            payload.phase,
+            &payload.watch_id,
+            &payload.path,
+            &payload.reason,
+        )?;
+        Ok(Self {
+            r#type: &payload.r#type,
+            timestamp: payload.timestamp,
+            watch_id: payload.watch_id.as_deref(),
+            path: payload.path.as_ref(),
+            phase: payload.phase,
+            reason: payload.reason.as_deref(),
+        })
+    }
+}
+
+impl Serialize for NativeFileSystemEventPayload {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        SerializableNativeFileSystemEventPayload::try_from(self)
+            .map_err(ser::Error::custom)?
+            .serialize(serializer)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawNativeFileSystemEventPayload {
+    r#type: String,
+    timestamp: u64,
+    #[serde(default)]
+    watch_id: Option<String>,
+    #[serde(default)]
+    path: Option<CanonicalPathPayload>,
+    phase: NativeFileSystemEventPhasePayload,
+    #[serde(default)]
+    reason: Option<String>,
+}
+
+impl TryFrom<RawNativeFileSystemEventPayload> for NativeFileSystemEventPayload {
+    type Error = &'static str;
+
+    fn try_from(raw: RawNativeFileSystemEventPayload) -> Result<Self, Self::Error> {
+        if raw.r#type != "native-file-system-event" {
+            return Err("native filesystem event type must be native-file-system-event");
+        }
+        validate_native_file_system_event_payload(
+            raw.phase,
+            &raw.watch_id,
+            &raw.path,
+            &raw.reason,
+        )?;
+        Ok(Self {
+            r#type: raw.r#type,
+            timestamp: raw.timestamp,
+            watch_id: raw.watch_id,
+            path: raw.path,
+            phase: raw.phase,
+            reason: raw.reason,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for NativeFileSystemEventPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        RawNativeFileSystemEventPayload::deserialize(deserializer)?
+            .try_into()
+            .map_err(de::Error::custom)
+    }
+}
+
+fn validate_native_file_system_event_payload(
+    phase: NativeFileSystemEventPhasePayload,
+    watch_id: &Option<String>,
+    path: &Option<CanonicalPathPayload>,
+    reason: &Option<String>,
+) -> Result<(), &'static str> {
+    match phase {
+        NativeFileSystemEventPhasePayload::WatchStarted
+        | NativeFileSystemEventPhasePayload::Changed
+        | NativeFileSystemEventPhasePayload::Removed
+            if watch_id.is_some() && path.is_some() && reason.is_none() =>
+        {
+            Ok(())
+        }
+        NativeFileSystemEventPhasePayload::WatchStarted
+        | NativeFileSystemEventPhasePayload::Changed
+        | NativeFileSystemEventPhasePayload::Removed => {
+            Err("native filesystem watch change events require watchId and path only")
+        }
+        NativeFileSystemEventPhasePayload::Failed
+            if watch_id.is_some() && path.is_none() && reason.is_some() =>
+        {
+            Ok(())
+        }
+        NativeFileSystemEventPhasePayload::Failed => {
+            Err("failed native filesystem events require watchId and reason only")
+        }
+        NativeFileSystemEventPhasePayload::WatchStopped
+            if watch_id.is_some() && path.is_none() && reason.is_none() =>
+        {
+            Ok(())
+        }
+        NativeFileSystemEventPhasePayload::WatchStopped => {
+            Err("watch-stopped native filesystem events require watchId only")
+        }
     }
 }
 
@@ -17145,12 +17350,13 @@ mod tests {
             r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#
         );
         assert_eq!(
-            serde_json::to_string(&NativeFileSystemEventPayload::new(
+            serde_json::to_string(&NativeFileSystemEventPayload::failed(
                 1710000000000,
-                NativeFileSystemEventPhasePayload::Failed,
+                "watch-1",
+                "host-adapter-unimplemented",
             ))
             .expect("native filesystem event should encode"),
-            r#"{"type":"native-file-system-event","timestamp":1710000000000,"phase":"failed"}"#
+            r#"{"type":"native-file-system-event","timestamp":1710000000000,"watchId":"watch-1","phase":"failed","reason":"host-adapter-unimplemented"}"#
         );
     }
 
@@ -17173,6 +17379,71 @@ mod tests {
         )
         .expect_err("unknown native filesystem event phase should be rejected");
         assert!(error.to_string().contains("unknown variant `started`"));
+    }
+
+    #[test]
+    fn native_file_system_events_reject_inconsistent_phase_payloads() {
+        for source in [
+            r#"{"type":"native-file-system-event","timestamp":1710000000100,"phase":"watch-started","watchId":"watch-1"}"#,
+            r#"{"type":"native-file-system-event","timestamp":1710000000100,"phase":"changed"}"#,
+            r#"{"type":"native-file-system-event","timestamp":1710000000100,"phase":"removed","watchId":"watch-1","path":{"path":"/tmp/report.txt"},"reason":"not a failure"}"#,
+            r#"{"type":"native-file-system-event","timestamp":1710000000100,"phase":"failed","watchId":"watch-1"}"#,
+            r#"{"type":"native-file-system-event","timestamp":1710000000100,"phase":"watch-stopped","watchId":"watch-1","path":{"path":"/tmp/report.txt"},"reason":"not a failure"}"#,
+        ] {
+            let error = serde_json::from_str::<NativeFileSystemEventPayload>(source)
+                .expect_err("inconsistent native filesystem event should be rejected");
+            assert!(
+                error.to_string().contains("watch")
+                    || error.to_string().contains("path")
+                    || error.to_string().contains("reason")
+                    || error.to_string().contains("phase"),
+                "unexpected error: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn native_file_system_events_reject_inconsistent_phase_payloads_before_serializing() {
+        for event in [
+            NativeFileSystemEventPayload::new_for_test(
+                1_710_000_000_100,
+                NativeFileSystemEventPhasePayload::WatchStarted,
+            )
+            .with_watch_id_for_test("watch-1"),
+            NativeFileSystemEventPayload::new_for_test(
+                1_710_000_000_100,
+                NativeFileSystemEventPhasePayload::Changed,
+            ),
+            NativeFileSystemEventPayload::new_for_test(
+                1_710_000_000_100,
+                NativeFileSystemEventPhasePayload::Removed,
+            )
+            .with_watch_id_for_test("watch-1")
+            .with_path_for_test(CanonicalPathPayload::new("/tmp/report.txt"))
+            .with_reason_for_test("not a failure"),
+            NativeFileSystemEventPayload::new_for_test(
+                1_710_000_000_100,
+                NativeFileSystemEventPhasePayload::Failed,
+            )
+            .with_watch_id_for_test("watch-1"),
+            NativeFileSystemEventPayload::new_for_test(
+                1_710_000_000_100,
+                NativeFileSystemEventPhasePayload::WatchStopped,
+            )
+            .with_watch_id_for_test("watch-1")
+            .with_path_for_test(CanonicalPathPayload::new("/tmp/report.txt"))
+            .with_reason_for_test("not a failure"),
+        ] {
+            let error = serde_json::to_string(&event)
+                .expect_err("inconsistent native filesystem event should not encode");
+            assert!(
+                error.to_string().contains("watch")
+                    || error.to_string().contains("path")
+                    || error.to_string().contains("reason")
+                    || error.to_string().contains("phase"),
+                "unexpected error: {error}"
+            );
+        }
     }
 
     #[test]
