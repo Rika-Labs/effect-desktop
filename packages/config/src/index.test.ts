@@ -468,6 +468,48 @@ test("ProductionChecker accepts hardening-only CSP additions", () =>
     })
   ))
 
+test("ProductionChecker accepts Trusted Types CSP enforcement as hardening", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {
+          security: {
+            csp: {
+              policy: "require-trusted-types-for 'script'"
+            }
+          }
+        }
+      })
+
+      expect(report.passed).toBe(true)
+      expect(report.failures).toEqual([])
+    })
+  ))
+
+test("ProductionChecker rejects invalid Trusted Types CSP enforcement values", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {
+          security: {
+            csp: {
+              policy: "require-trusted-types-for 'none'"
+            }
+          }
+        }
+      })
+
+      expect(report.passed).toBe(false)
+      expect(report.failures).toMatchObject([
+        {
+          rule: "weakened-csp",
+          message:
+            "content security policy weakens the production default: require-trusted-types-for is not part of the default production CSP"
+        }
+      ])
+    })
+  ))
+
 test("ProductionChecker reports acknowledged CSP weakenings without failing", () =>
   Effect.runPromise(
     Effect.gen(function* () {
