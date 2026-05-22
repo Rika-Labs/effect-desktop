@@ -1018,6 +1018,41 @@ test("ProductionChecker flags source native capability usage through optional ch
     })
   ))
 
+test("ProductionChecker flags source native capability usage through computed literal calls", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {},
+        rendererFiles: [
+          {
+            path: "src/renderer/dock.ts",
+            content: ['Dock["setJumpList"]([])', 'Dock?.["setJumpList"]([])'].join("\n")
+          }
+        ]
+      })
+
+      expect(report.passed).toBe(false)
+      expect(report.failures).toMatchObject([
+        {
+          rule: "unsupported-capability-without-guard",
+          location: {
+            path: "src/renderer/dock.ts",
+            line: 1,
+            column: 1
+          }
+        },
+        {
+          rule: "unsupported-capability-without-guard",
+          location: {
+            path: "src/renderer/dock.ts",
+            line: 2,
+            column: 1
+          }
+        }
+      ])
+    })
+  ))
+
 test("ProductionChecker accepts guarded source native capability usage inside template expressions", () =>
   Effect.runPromise(
     Effect.gen(function* () {
