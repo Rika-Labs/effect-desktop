@@ -426,12 +426,12 @@
     {
       "name": "HostProtocolCancelByRequestEnvelope",
       "kind": "class",
-      "signature": "export class HostProtocolCancelByRequestEnvelope extends Schema.Class<HostProtocolCancelByRequestEnvelope>( \"HostProtocolCancelByRequestEnvelope\" )({ kind: Schema.Literal(\"cancel\"), id: Schema.String, resourceId: OptionalNonEmptyString, timestamp: UInt, traceId: HostIdentityString }) {}"
+      "signature": "export class HostProtocolCancelByRequestEnvelope extends Schema.Class<HostProtocolCancelByRequestEnvelope>( \"HostProtocolCancelByRequestEnvelope\" )({ kind: Schema.Literal(\"cancel\"), id: HostIdentityString, resourceId: OptionalHostIdentityString, timestamp: UInt, traceId: HostIdentityString }) {}"
     },
     {
       "name": "HostProtocolCancelByResourceEnvelope",
       "kind": "class",
-      "signature": "export class HostProtocolCancelByResourceEnvelope extends Schema.Class<HostProtocolCancelByResourceEnvelope>( \"HostProtocolCancelByResourceEnvelope\" )({ kind: Schema.Literal(\"cancel\"), id: OptionalString, resourceId: HostProtocolNonEmptyString, timestamp: UInt, traceId: HostIdentityString }) {}"
+      "signature": "export class HostProtocolCancelByResourceEnvelope extends Schema.Class<HostProtocolCancelByResourceEnvelope>( \"HostProtocolCancelByResourceEnvelope\" )({ kind: Schema.Literal(\"cancel\"), id: OptionalHostIdentityString, resourceId: HostIdentityString, timestamp: UInt, traceId: HostIdentityString }) {}"
     },
     {
       "name": "HostProtocolCancelledError",
@@ -586,7 +586,7 @@
     {
       "name": "HostProtocolRequestEnvelope",
       "kind": "class",
-      "signature": "export class HostProtocolRequestEnvelope extends Schema.Class<HostProtocolRequestEnvelope>( \"HostProtocolRequestEnvelope\" )({ kind: Schema.Literal(\"request\"), id: Schema.String, method: HostProtocolNonEmptyString, timestamp: UInt, traceId: HostIdentityString, windowId: OptionalHostIdentityString, originToken: OptionalHostIdentityString, payload: OptionalUnknown }) {}"
+      "signature": "export class HostProtocolRequestEnvelope extends Schema.Class<HostProtocolRequestEnvelope>( \"HostProtocolRequestEnvelope\" )({ kind: Schema.Literal(\"request\"), id: HostIdentityString, method: HostProtocolNonEmptyString, timestamp: UInt, traceId: HostIdentityString, windowId: OptionalHostIdentityString, originToken: OptionalHostIdentityString, payload: OptionalUnknown }) {}"
     },
     {
       "name": "HostProtocolResourceBusyError",
@@ -596,7 +596,7 @@
     {
       "name": "HostProtocolResponseEnvelope",
       "kind": "class",
-      "signature": "export class HostProtocolResponseEnvelope extends Schema.Class<HostProtocolResponseEnvelope>( \"HostProtocolResponseEnvelope\" )({ kind: Schema.Literal(\"response\"), id: Schema.String, timestamp: UInt, traceId: HostIdentityString, payload: OptionalUnknown, error: Schema.optionalKey(HostProtocolError) }) {}"
+      "signature": "export class HostProtocolResponseEnvelope extends Schema.Class<HostProtocolResponseEnvelope>( \"HostProtocolResponseEnvelope\" )({ kind: Schema.Literal(\"response\"), id: HostIdentityString, timestamp: UInt, traceId: HostIdentityString, payload: OptionalUnknown, error: Schema.optionalKey(HostProtocolError) }) {}"
     },
     {
       "name": "HostProtocolRuntimeRestartedError",
@@ -626,12 +626,12 @@
     {
       "name": "HostProtocolStreamByRequestEnvelope",
       "kind": "class",
-      "signature": "export class HostProtocolStreamByRequestEnvelope extends Schema.Class<HostProtocolStreamByRequestEnvelope>( \"HostProtocolStreamByRequestEnvelope\" )({ kind: Schema.Literal(\"stream\"), id: Schema.String, resourceId: OptionalNonEmptyString, timestamp: UInt, traceId: HostIdentityString, payload: OptionalUnknown, error: Schema.optionalKey(HostProtocolError) }) {}"
+      "signature": "export class HostProtocolStreamByRequestEnvelope extends Schema.Class<HostProtocolStreamByRequestEnvelope>( \"HostProtocolStreamByRequestEnvelope\" )({ kind: Schema.Literal(\"stream\"), id: HostIdentityString, resourceId: OptionalHostIdentityString, timestamp: UInt, traceId: HostIdentityString, payload: OptionalUnknown, error: Schema.optionalKey(HostProtocolError) }) {}"
     },
     {
       "name": "HostProtocolStreamByResourceEnvelope",
       "kind": "class",
-      "signature": "export class HostProtocolStreamByResourceEnvelope extends Schema.Class<HostProtocolStreamByResourceEnvelope>( \"HostProtocolStreamByResourceEnvelope\" )({ kind: Schema.Literal(\"stream\"), id: OptionalString, resourceId: HostProtocolNonEmptyString, timestamp: UInt, traceId: HostIdentityString, payload: OptionalUnknown, error: Schema.optionalKey(HostProtocolError) }) {}"
+      "signature": "export class HostProtocolStreamByResourceEnvelope extends Schema.Class<HostProtocolStreamByResourceEnvelope>( \"HostProtocolStreamByResourceEnvelope\" )({ kind: Schema.Literal(\"stream\"), id: OptionalHostIdentityString, resourceId: HostIdentityString, timestamp: UInt, traceId: HostIdentityString, payload: OptionalUnknown, error: Schema.optionalKey(HostProtocolError) }) {}"
     },
     {
       "name": "HostProtocolStreamClosedError",
@@ -1506,12 +1506,12 @@
     {
       "name": "WindowCreateInput",
       "kind": "interface",
-      "signature": "export interface WindowCreateInput { readonly title?: string readonly width?: number readonly height?: number readonly parentWindowId?: string readonly titleBarStyle?: Schema.Schema.Type<typeof WindowTitleBarStyle> readonly vibrancy?: Schema.Schema.Type<typeof WindowVibrancyMaterial> readonly trafficLights?: Schema.Schema.Type<typeof WindowTrafficLights> }"
+      "signature": "export interface WindowCreateInput { readonly title?: string readonly width?: number readonly height?: number readonly renderer?: typeof AppRendererRoute.Type readonly parentWindowId?: string readonly titleBarStyle?: Schema.Schema.Type<typeof WindowTitleBarStyle> readonly vibrancy?: Schema.Schema.Type<typeof WindowVibrancyMaterial> readonly trafficLights?: Schema.Schema.Type<typeof WindowTrafficLights> }"
     },
     {
       "name": "WindowCreatePayload",
       "kind": "class",
-      "signature": "export class WindowCreatePayload extends Schema.Class<WindowCreatePayload>(\"WindowCreatePayload\")({ title: Schema.optionalKey(Schema.NonEmptyString), width: Schema.optionalKey(PositiveFiniteNumber), height: Schema.optionalKey(PositiveFiniteNumber), parentWindowId: Schema.optionalKey(Schema.NonEmptyString), titleBarStyle: Schema.optionalKey(WindowTitleBarStyle), vibrancy: Schema.optionalKey(WindowVibrancyMaterial), trafficLights: Schema.optionalKey(WindowTrafficLights) }) {}"
+      "signature": "export class WindowCreatePayload extends Schema.Class<WindowCreatePayload>(\"WindowCreatePayload\")({ title: Schema.optionalKey(Schema.NonEmptyString), width: Schema.optionalKey(PositiveFiniteNumber), height: Schema.optionalKey(PositiveFiniteNumber), renderer: Schema.optionalKey(AppRendererRoute), parentWindowId: Schema.optionalKey(Schema.NonEmptyString), titleBarStyle: Schema.optionalKey(WindowTitleBarStyle), vibrancy: Schema.optionalKey(WindowVibrancyMaterial), trafficLights: Schema.optionalKey(WindowTrafficLights) }) {}"
     },
     {
       "name": "WindowCreateResponse",

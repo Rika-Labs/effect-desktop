@@ -6,7 +6,7 @@
     {
       "name": "BrowserContext",
       "kind": "value",
-      "signature": "const BrowserContext: Readonly<{ layer: Layer.Layer<BrowserIndexedDb.IndexedDb.IndexedDb, never, never>; }>"
+      "signature": "const BrowserContext: Readonly<{ layer: Layer.Layer<BrowserIndexedDb.IndexedDb.IndexedDb, Config.ConfigError, never>; }>"
     },
     {
       "name": "BrowserHttpClient",
@@ -70,8 +70,8 @@
     },
     {
       "name": "RendererSqliteMemoryOptions",
-      "kind": "interface",
-      "signature": "export interface RendererSqliteMemoryOptions { readonly installReactivityHooks?: boolean | undefined readonly spanAttributes?: Record<string, unknown> | undefined readonly transformResultNames?: ((str: string) => string) | undefined readonly transformQueryNames?: ((str: string) => string) | undefined }"
+      "kind": "type",
+      "signature": "export type RendererSqliteMemoryOptions = SqliteWasmClient.SqliteClientMemoryConfig"
     },
     {
       "name": "RendererSqliteWorkerLive",
@@ -80,8 +80,8 @@
     },
     {
       "name": "RendererSqliteWorkerOptions",
-      "kind": "interface",
-      "signature": "export interface RendererSqliteWorkerOptions { readonly worker: Effect.Effect<Worker | SharedWorker | MessagePort, never, never> readonly installReactivityHooks?: boolean | undefined readonly spanAttributes?: Record<string, unknown> | undefined readonly transformResultNames?: ((str: string) => string) | undefined readonly transformQueryNames?: ((str: string) => string) | undefined }"
+      "kind": "type",
+      "signature": "export type RendererSqliteWorkerOptions = SqliteWasmClient.SqliteClientConfig"
     },
     {
       "name": "SqlClient",

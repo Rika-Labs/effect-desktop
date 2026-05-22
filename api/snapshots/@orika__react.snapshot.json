@@ -106,7 +106,7 @@
     {
       "name": "DesktopRuntimeContext",
       "kind": "interface",
-      "signature": "export interface DesktopRuntimeContext { readonly client: DesktopClient readonly currentWindow?: WindowHandle | undefined readonly registry: AtomRegistry.AtomRegistry readonly runtime: ManagedRuntime.ManagedRuntime< Reactivity.Reactivity | IndexedDb.IndexedDb, never > }"
+      "signature": "export interface DesktopRuntimeContext { readonly client: DesktopClient readonly currentWindow?: WindowHandle | undefined readonly registry: AtomRegistry.AtomRegistry readonly runtime: ManagedRuntime.ManagedRuntime< Reactivity.Reactivity | IndexedDb.IndexedDb, Config.ConfigError > }"
     },
     {
       "name": "DesktopStreamOptions",
@@ -116,7 +116,7 @@
     {
       "name": "DesktopWindowClient",
       "kind": "interface",
-      "signature": "export interface DesktopWindowClient { readonly create: (input?: WindowCreateOptions) => Effect.Effect<WindowHandle, WindowError, never> readonly close: (window: WindowHandle) => Effect.Effect<void, WindowError, never> readonly destroy: (window: WindowHandle) => Effect.Effect<void, WindowError, never> }"
+      "signature": "export interface DesktopWindowClient { readonly create: (input?: WindowCreateOptions) => Effect.Effect<WindowHandle, WindowError, never> readonly close: (window: WindowHandle) => Effect.Effect<void, WindowError, never> readonly destroy: (window: WindowHandle) => Effect.Effect<void, WindowError, never> readonly getCurrent?: (() => Effect.Effect<WindowHandle, WindowError, never>) | undefined }"
     },
     {
       "name": "DisplaysResult",

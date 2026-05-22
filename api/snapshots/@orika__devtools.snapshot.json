@@ -371,12 +371,12 @@
     {
       "name": "InspectorBridgeFramePayload",
       "kind": "class",
-      "signature": "export class InspectorBridgeFramePayload extends Schema.Class<InspectorBridgeFramePayload>( \"InspectorBridgeFramePayload\" )({ ...InspectorPayloadBase, tag: Schema.Literal(\"bridge-frame\"), direction: Schema.Literals([\"renderer-to-host\", \"host-to-renderer\"]), frameKind: NonEmptyString, requestId: Schema.optionalKey(NonEmptyString), payloadBytes: NonNegativeNumber }) {}"
+      "signature": "export class InspectorBridgeFramePayload extends Schema.Class<InspectorBridgeFramePayload>( \"InspectorBridgeFramePayload\" )({ ...InspectorPayloadBase, tag: Schema.Literal(\"bridge-frame\"), direction: Schema.Literals([\"renderer-to-host\", \"host-to-renderer\"]), frameKind: NonEmptyString, requestId: Schema.optionalKey(InspectorIdentityString), payloadBytes: NonNegativeNumber }) {}"
     },
     {
       "name": "InspectorEvent",
       "kind": "class",
-      "signature": "export class InspectorEvent extends Schema.Class<InspectorEvent>(\"InspectorEvent\")({ id: NonEmptyString, source: InspectorEventSource, occurredAt: Schema.DateTimeUtcFromString, traceId: Schema.OptionFromNullishOr(NonEmptyString), spanId: Schema.OptionFromNullishOr(NonEmptyString), layerId: Schema.OptionFromNullishOr(NonEmptyString), providerId: Schema.OptionFromNullishOr(NonEmptyString), severity: InspectorEventSeverity, redaction: InspectorRedactionState, payload: InspectorPayload }) {}"
+      "signature": "export class InspectorEvent extends Schema.Class<InspectorEvent>(\"InspectorEvent\")({ id: InspectorIdentityString, source: InspectorEventSource, occurredAt: Schema.DateTimeUtcFromString, traceId: Schema.OptionFromNullishOr(InspectorIdentityString), spanId: Schema.OptionFromNullishOr(InspectorIdentityString), layerId: Schema.OptionFromNullishOr(InspectorIdentityString), providerId: Schema.OptionFromNullishOr(InspectorIdentityString), severity: InspectorEventSeverity, redaction: InspectorRedactionState, payload: InspectorPayload }) {}"
     },
     {
       "name": "InspectorEventSeverity",
@@ -396,7 +396,7 @@
     {
       "name": "InspectorFiberPayload",
       "kind": "class",
-      "signature": "export class InspectorFiberPayload extends Schema.Class<InspectorFiberPayload>( \"InspectorFiberPayload\" )({ ...InspectorPayloadBase, tag: Schema.Literal(\"fiber\"), fiberId: NonEmptyString, name: Schema.optionalKey(NonEmptyString), state: Schema.Literals([\"started\", \"suspended\", \"resumed\", \"completed\", \"failed\", \"interrupted\"]) }) {}"
+      "signature": "export class InspectorFiberPayload extends Schema.Class<InspectorFiberPayload>( \"InspectorFiberPayload\" )({ ...InspectorPayloadBase, tag: Schema.Literal(\"fiber\"), fiberId: InspectorIdentityString, name: Schema.optionalKey(NonEmptyString), state: Schema.Literals([\"started\", \"suspended\", \"resumed\", \"completed\", \"failed\", \"interrupted\"]) }) {}"
     },
     {
       "name": "InspectorFixtureError",
@@ -406,12 +406,12 @@
     {
       "name": "InspectorLayerGraphPayload",
       "kind": "class",
-      "signature": "export class InspectorLayerGraphPayload extends Schema.Class<InspectorLayerGraphPayload>( \"InspectorLayerGraphPayload\" )({ ...InspectorPayloadBase, tag: Schema.Literal(\"layer-graph\"), layerId: NonEmptyString, label: NonEmptyString, state: Schema.Literals([\"registered\", \"acquired\", \"released\", \"failed\"]), dependencies: Schema.Array(NonEmptyString) }) {}"
+      "signature": "export class InspectorLayerGraphPayload extends Schema.Class<InspectorLayerGraphPayload>( \"InspectorLayerGraphPayload\" )({ ...InspectorPayloadBase, tag: Schema.Literal(\"layer-graph\"), layerId: InspectorIdentityString, label: NonEmptyString, state: Schema.Literals([\"registered\", \"acquired\", \"released\", \"failed\"]), dependencies: Schema.Array(InspectorIdentityString) }) {}"
     },
     {
       "name": "InspectorLogPayload",
       "kind": "class",
-      "signature": "export class InspectorLogPayload extends Schema.Class<InspectorLogPayload>(\"InspectorLogPayload\")({ ...InspectorPayloadBase, tag: Schema.Literal(\"log\"), level: InspectorEventSeverity, message: Schema.String, fiberId: Schema.optionalKey(NonEmptyString) }) {}"
+      "signature": "export class InspectorLogPayload extends Schema.Class<InspectorLogPayload>(\"InspectorLogPayload\")({ ...InspectorPayloadBase, tag: Schema.Literal(\"log\"), level: InspectorEventSeverity, message: Schema.String, fiberId: Schema.optionalKey(InspectorIdentityString) }) {}"
     },
     {
       "name": "InspectorMetricPayload",
@@ -436,17 +436,17 @@
     {
       "name": "InspectorPermissionPayload",
       "kind": "class",
-      "signature": "export class InspectorPermissionPayload extends Schema.Class<InspectorPermissionPayload>( \"InspectorPermissionPayload\" )({ ...InspectorPayloadBase, tag: Schema.Literal(\"permission\"), actor: NonEmptyString, capability: NonEmptyString, decision: Schema.Literals([\"granted\", \"denied\", \"revoked\", \"expired\", \"used\"]), reason: Schema.optionalKey(Schema.String) }) {}"
+      "signature": "export class InspectorPermissionPayload extends Schema.Class<InspectorPermissionPayload>( \"InspectorPermissionPayload\" )({ ...InspectorPayloadBase, tag: Schema.Literal(\"permission\"), actor: InspectorIdentityString, capability: InspectorIdentityString, decision: Schema.Literals([\"granted\", \"denied\", \"revoked\", \"expired\", \"used\"]), reason: Schema.optionalKey(Schema.String) }) {}"
     },
     {
       "name": "InspectorPersistencePayload",
       "kind": "class",
-      "signature": "export class InspectorPersistencePayload extends Schema.Class<InspectorPersistencePayload>( \"InspectorPersistencePayload\" )({ ...InspectorPayloadBase, tag: Schema.Literal(\"persistence\"), store: NonEmptyString, operation: NonEmptyString, key: Schema.optionalKey(NonEmptyString), state: Schema.Literals([\"started\", \"completed\", \"failed\", \"recovered\"]) }) {}"
+      "signature": "export class InspectorPersistencePayload extends Schema.Class<InspectorPersistencePayload>( \"InspectorPersistencePayload\" )({ ...InspectorPayloadBase, tag: Schema.Literal(\"persistence\"), store: NonEmptyString, operation: NonEmptyString, key: Schema.optionalKey(InspectorIdentityString), state: Schema.Literals([\"started\", \"completed\", \"failed\", \"recovered\"]) }) {}"
     },
     {
       "name": "InspectorProviderPayload",
       "kind": "class",
-      "signature": "export class InspectorProviderPayload extends Schema.Class<InspectorProviderPayload>( \"InspectorProviderPayload\" )({ ...InspectorPayloadBase, tag: Schema.Literal(\"provider\"), providerId: NonEmptyString, capability: NonEmptyString, state: Schema.Literals([\"available\", \"unavailable\", \"degraded\"]) }) {}"
+      "signature": "export class InspectorProviderPayload extends Schema.Class<InspectorProviderPayload>( \"InspectorProviderPayload\" )({ ...InspectorPayloadBase, tag: Schema.Literal(\"provider\"), providerId: InspectorIdentityString, capability: InspectorIdentityString, state: Schema.Literals([\"available\", \"unavailable\", \"degraded\"]) }) {}"
     },
     {
       "name": "InspectorRedactionState",
@@ -456,17 +456,17 @@
     {
       "name": "InspectorRendererPayload",
       "kind": "class",
-      "signature": "export class InspectorRendererPayload extends Schema.Class<InspectorRendererPayload>( \"InspectorRendererPayload\" )({ ...InspectorPayloadBase, tag: Schema.Literal(\"renderer\"), windowId: NonEmptyString, event: NonEmptyString, url: Schema.optionalKey(Schema.String) }) {}"
+      "signature": "export class InspectorRendererPayload extends Schema.Class<InspectorRendererPayload>( \"InspectorRendererPayload\" )({ ...InspectorPayloadBase, tag: Schema.Literal(\"renderer\"), windowId: InspectorIdentityString, event: NonEmptyString, url: Schema.optionalKey(Schema.String) }) {}"
     },
     {
       "name": "InspectorResourcePayload",
       "kind": "class",
-      "signature": "export class InspectorResourcePayload extends Schema.Class<InspectorResourcePayload>( \"InspectorResourcePayload\" )({ ...InspectorPayloadBase, tag: Schema.Literal(\"resource\"), resourceId: NonEmptyString, resourceKind: NonEmptyString, ownerScope: NonEmptyString, state: Schema.Literals([\"opened\", \"closed\", \"failed\", \"leaked\"]) }) {}"
+      "signature": "export class InspectorResourcePayload extends Schema.Class<InspectorResourcePayload>( \"InspectorResourcePayload\" )({ ...InspectorPayloadBase, tag: Schema.Literal(\"resource\"), resourceId: InspectorIdentityString, resourceKind: NonEmptyString, ownerScope: InspectorIdentityString, state: Schema.Literals([\"opened\", \"closed\", \"failed\", \"leaked\"]) }) {}"
     },
     {
       "name": "InspectorRpcPayload",
       "kind": "class",
-      "signature": "export class InspectorRpcPayload extends Schema.Class<InspectorRpcPayload>(\"InspectorRpcPayload\")({ ...InspectorPayloadBase, tag: Schema.Literal(\"rpc\"), service: NonEmptyString, method: NonEmptyString, requestId: NonEmptyString, state: Schema.Literals([\"requested\", \"completed\", \"failed\", \"interrupted\"]), latencyMs: Schema.optionalKey(NonNegativeNumber) }) {}"
+      "signature": "export class InspectorRpcPayload extends Schema.Class<InspectorRpcPayload>(\"InspectorRpcPayload\")({ ...InspectorPayloadBase, tag: Schema.Literal(\"rpc\"), service: NonEmptyString, method: NonEmptyString, requestId: InspectorIdentityString, state: Schema.Literals([\"requested\", \"completed\", \"failed\", \"interrupted\"]), latencyMs: Schema.optionalKey(NonNegativeNumber) }) {}"
     },
     {
       "name": "InspectorSpanPayload",
@@ -516,7 +516,7 @@
     {
       "name": "InspectorWorkflowPayload",
       "kind": "class",
-      "signature": "export class InspectorWorkflowPayload extends Schema.Class<InspectorWorkflowPayload>( \"InspectorWorkflowPayload\" )({ ...InspectorPayloadBase, tag: Schema.Literal(\"workflow\"), executionId: NonEmptyString, workflowName: NonEmptyString, state: Schema.Literals([\"started\", \"completed\", \"failed\", \"retrying\", \"compensating\"]) }) {}"
+      "signature": "export class InspectorWorkflowPayload extends Schema.Class<InspectorWorkflowPayload>( \"InspectorWorkflowPayload\" )({ ...InspectorPayloadBase, tag: Schema.Literal(\"workflow\"), executionId: InspectorIdentityString, workflowName: NonEmptyString, state: Schema.Literals([\"started\", \"completed\", \"failed\", \"retrying\", \"compensating\"]) }) {}"
     },
     {
       "name": "LayerGraphPanel",
