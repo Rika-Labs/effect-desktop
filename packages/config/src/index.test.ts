@@ -764,6 +764,38 @@ test("ProductionChecker rejects source native capability usage after a closed gu
     })
   ))
 
+test("ProductionChecker rejects source native capability usage after non-code guard text", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {},
+        rendererFiles: [
+          {
+            path: "src/renderer/dock.ts",
+            content: [
+              'const fake = `if (Dock.isSupported("setJumpList"))`',
+              "{",
+              "  Dock.setJumpList([])",
+              "}"
+            ].join("\n")
+          }
+        ]
+      })
+
+      expect(report.passed).toBe(false)
+      expect(report.failures).toMatchObject([
+        {
+          rule: "unsupported-capability-without-guard",
+          location: {
+            path: "src/renderer/dock.ts",
+            line: 3,
+            column: 3
+          }
+        }
+      ])
+    })
+  ))
+
 test("ProductionChecker rejects source native capability usage inside a negated guard block", () =>
   Effect.runPromise(
     Effect.gen(function* () {

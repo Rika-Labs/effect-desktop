@@ -569,7 +569,6 @@ interface SourceGuardRange {
 }
 
 interface SourceCapabilityScanSource {
-  readonly guardSource: string
   readonly executableSource: string
 }
 
@@ -1099,11 +1098,7 @@ const scanSourceCapabilityUse = (
   capability: SourceCapability
 ): readonly SourceCapabilityUse[] => {
   const uses: SourceCapabilityUse[] = []
-  const guardRanges = supportGuardRanges(
-    source.guardSource,
-    source.executableSource,
-    supportGuardPattern(capability)
-  )
+  const guardRanges = supportGuardRanges(source.executableSource, supportGuardPattern(capability))
   const callPattern = methodCallPattern(capability)
 
   for (const match of source.executableSource.matchAll(callPattern)) {
@@ -1123,15 +1118,11 @@ const scanSourceCapabilityUse = (
   return uses
 }
 
-const supportGuardRanges = (
-  guardSource: string,
-  blockSource: string,
-  pattern: RegExp
-): readonly SourceGuardRange[] =>
-  Array.from(guardSource.matchAll(pattern)).flatMap((match) =>
+const supportGuardRanges = (source: string, pattern: RegExp): readonly SourceGuardRange[] =>
+  Array.from(source.matchAll(pattern)).flatMap((match) =>
     match.index === undefined
       ? []
-      : (blockRangeAfterGuard(blockSource, match.index + match[0].length) ?? [])
+      : (blockRangeAfterGuard(source, match.index + match[0].length) ?? [])
   )
 
 const blockRangeAfterGuard = (source: string, offset: number): SourceGuardRange | undefined => {
@@ -1265,7 +1256,6 @@ const hasForbiddenBridgeProtocolImport = (names: string): boolean =>
     .some((name) => name !== undefined && /(^HOST_PROTOCOL_|HostProtocol)/u.test(name))
 
 const sourceCapabilityScanSource = (source: string): SourceCapabilityScanSource => ({
-  guardSource: maskComments(source),
   executableSource: maskSourceCapabilityNonCode(source)
 })
 
@@ -1388,10 +1378,10 @@ const maskSourceCapabilityNonCode = (source: string): string => {
 
     if (char === "'") {
       state = "single"
-      preserveStringContent = previousNonWhitespace(source, index) === "["
+      preserveStringContent = shouldPreserveSourceStringContent(source, index)
     } else if (char === '"') {
       state = "double"
-      preserveStringContent = previousNonWhitespace(source, index) === "["
+      preserveStringContent = shouldPreserveSourceStringContent(source, index)
     } else if (char === "`") {
       state = "template"
       preserveStringContent = false
@@ -1401,6 +1391,18 @@ const maskSourceCapabilityNonCode = (source: string): string => {
   }
 
   return result
+}
+
+const shouldPreserveSourceStringContent = (source: string, quoteOffset: number): boolean =>
+  previousNonWhitespace(source, quoteOffset) === "[" ||
+  isSupportedArgumentString(source, quoteOffset)
+
+const isSupportedArgumentString = (source: string, quoteOffset: number): boolean => {
+  const prefix = source.slice(0, quoteOffset)
+  return (
+    /(?:\?\.|\.)\s*isSupported\s*(?:\?\.)?\s*\($/u.test(prefix) ||
+    /(?:\?\.)?\[\s*["']isSupported["']\s*\]\s*(?:\?\.)?\s*\($/u.test(prefix)
+  )
 }
 
 const canStartRegexLiteral = (source: string, slashOffset: number): boolean => {
