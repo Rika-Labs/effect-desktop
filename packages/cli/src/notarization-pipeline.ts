@@ -170,6 +170,17 @@ interface PackagedArtifact {
   readonly artifactPath: string
 }
 
+const PackagedArtifactMetadata = Schema.Struct({
+  kind: Schema.optionalKey(Schema.Unknown),
+  target: Schema.optionalKey(Schema.Unknown),
+  fileName: Schema.optionalKey(Schema.Unknown),
+  sizeBytes: Schema.optionalKey(Schema.Unknown),
+  sha256: Schema.optionalKey(Schema.Unknown),
+  appId: Schema.optionalKey(Schema.Unknown),
+  appName: Schema.optionalKey(Schema.Unknown),
+  appVersion: Schema.optionalKey(Schema.Unknown)
+})
+
 interface NotaryCredentials {
   readonly args: readonly string[]
   readonly reportArgs: readonly string[]
@@ -560,16 +571,7 @@ const readPackagedArtifacts = (
         continue
       }
       const metadataPath = join(rootPath, "artifact.json")
-      const metadata = yield* readJson<{
-        readonly kind?: unknown
-        readonly target?: unknown
-        readonly fileName?: unknown
-        readonly sizeBytes?: unknown
-        readonly sha256?: unknown
-        readonly appId?: unknown
-        readonly appName?: unknown
-        readonly appVersion?: unknown
-      }>(metadataPath)
+      const metadata = yield* readJson(metadataPath, PackagedArtifactMetadata)
       const appIdField = `${relative(plan.outputPath, metadataPath)}#appId`
       const appNameField = `${relative(plan.outputPath, metadataPath)}#appName`
       const appVersionField = `${relative(plan.outputPath, metadataPath)}#appVersion`
@@ -910,14 +912,14 @@ const resolveHostTarget = (
     )
   )
 
-const readJson = <A>(path: string): Effect.Effect<A, NotarizeFileError, never> =>
+const readJson = <S extends Schema.Top>(
+  path: string,
+  schema: S
+): Effect.Effect<S["Type"], NotarizeFileError, S["DecodingServices"]> =>
   runReleaseFileSystem(
     Effect.gen(function* () {
       const fs = yield* ReleaseFileSystem
-      const content = yield* fs.readFileString(path)
-      return yield* Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(content).pipe(
-        Effect.map((value) => value as A)
-      )
+      return yield* fs.readFileString(path)
     })
   ).pipe(
     Effect.mapError(
@@ -928,6 +930,19 @@ const readJson = <A>(path: string): Effect.Effect<A, NotarizeFileError, never> =
           message: `failed to read JSON ${path}`,
           cause
         })
+    ),
+    Effect.flatMap((content) =>
+      Schema.decodeUnknownEffect(Schema.fromJsonString(schema))(content).pipe(
+        Effect.mapError(
+          (cause) =>
+            new NotarizeFileError({
+              operation: "read-json",
+              path,
+              message: `failed to read JSON ${path}`,
+              cause
+            })
+        )
+      )
     )
   )
 
