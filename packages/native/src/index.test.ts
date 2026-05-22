@@ -8441,6 +8441,194 @@ test("Screen bridge client sends typed host envelopes and decodes values", () =>
     })
   ))
 
+test("Screen contracts reject invalid display geometry", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const validDisplay = {
+        id: "main",
+        bounds: { x: 0, y: 0, width: 1920, height: 1080 },
+        workArea: { x: 0, y: 24, width: 1920, height: 1056 },
+        scaleFactor: 2,
+        primary: true
+      }
+      const invalidDisplays = [
+        { ...validDisplay, bounds: { ...validDisplay.bounds, x: Number.NaN } },
+        { ...validDisplay, bounds: { ...validDisplay.bounds, width: 0 } },
+        { ...validDisplay, bounds: { ...validDisplay.bounds, height: -1 } },
+        {
+          ...validDisplay,
+          workArea: { ...validDisplay.workArea, width: Number.POSITIVE_INFINITY }
+        },
+        { ...validDisplay, scaleFactor: 0 },
+        { ...validDisplay, scaleFactor: Number.NaN }
+      ]
+
+      for (const display of invalidDisplays) {
+        const exit = yield* Effect.exit(Schema.decodeUnknownEffect(ScreenDisplay)(display))
+        expect(Exit.isFailure(exit)).toBe(true)
+      }
+
+      const negativeCoordinate = yield* Schema.decodeUnknownEffect(ScreenDisplay)({
+        ...validDisplay,
+        bounds: { ...validDisplay.bounds, x: -1920 },
+        workArea: { ...validDisplay.workArea, x: -1920 }
+      })
+      expect(negativeCoordinate.bounds.x).toBe(-1920)
+
+      const invalidPointer = yield* Effect.exit(
+        Schema.decodeUnknownEffect(ScreenPoint)({ x: Number.NaN, y: 34 })
+      )
+      expect(Exit.isFailure(invalidPointer)).toBe(true)
+    })
+  ))
+
+test("Screen bridge client rejects invalid display geometry as InvalidOutput", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const invalidDisplay = {
+        id: "main",
+        bounds: { x: 0, y: 0, width: Number.NaN, height: 1080 },
+        workArea: { x: 0, y: 24, width: 1920, height: 1056 },
+        scaleFactor: 2,
+        primary: true
+      }
+      const exchange: BridgeClientExchange = {
+        request: (request) =>
+          Effect.succeed({
+            kind: "success",
+            payload:
+              request.method === "Screen.getDisplays"
+                ? { displays: [invalidDisplay] }
+                : request.method === "Screen.getPrimaryDisplay"
+                  ? invalidDisplay
+                  : request.method === "Screen.isSupported"
+                    ? { supported: true }
+                    : { x: 12, y: 34 }
+          }),
+        subscribe: (method) =>
+          method === "Screen.DisplaysChanged"
+            ? Stream.make(
+                new HostProtocolEventEnvelope({
+                  kind: "event",
+                  timestamp: 1710000000601,
+                  traceId: "event-trace",
+                  method,
+                  payload: { displays: [invalidDisplay] }
+                })
+              )
+            : Stream.empty
+      }
+      const result = yield* runScoped(
+        Effect.gen(function* () {
+          const screen = yield* Screen
+          const displays = yield* Effect.exit(screen.getDisplays())
+          const primary = yield* Effect.exit(screen.getPrimaryDisplay())
+          const changed = yield* Effect.exit(
+            screen.onDisplaysChanged().pipe(Stream.take(1), Stream.runCollect)
+          )
+          return { changed, displays, primary }
+        }),
+        Layer.provide(ScreenLive, makeScreenBridgeClientLayer(exchange))
+      )
+
+      expectExitFailure(result.displays, (error) => hasErrorTag(error, "InvalidOutput"))
+      expectExitFailure(result.primary, (error) => hasErrorTag(error, "InvalidOutput"))
+      expectExitFailure(result.changed, (error) => hasErrorTag(error, "InvalidOutput"))
+    })
+  ))
+
+test("Screen bridge client rejects invalid primary display topology as InvalidOutput", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const nonPrimaryDisplay = {
+        id: "display-1",
+        bounds: { x: 0, y: 0, width: 1920, height: 1080 },
+        workArea: { x: 0, y: 24, width: 1920, height: 1056 },
+        scaleFactor: 2,
+        primary: false
+      }
+      const exchange = screenExchange([], (request) => ({
+        kind: "success",
+        payload:
+          request.method === "Screen.getPrimaryDisplay"
+            ? nonPrimaryDisplay
+            : request.method === "Screen.getDisplays"
+              ? { displays: [primaryDisplay] }
+              : request.method === "Screen.isSupported"
+                ? { supported: true }
+                : { x: 12, y: 34 }
+      }))
+      const result = yield* Effect.exit(
+        runScoped(
+          Effect.gen(function* () {
+            const screen = yield* Screen
+            return yield* screen.getPrimaryDisplay()
+          }),
+          Layer.provide(ScreenLive, makeScreenBridgeClientLayer(exchange))
+        )
+      )
+
+      expectExitFailure(result, (error) => hasErrorTag(error, "InvalidOutput"))
+    })
+  ))
+
+test("Screen bridge client rejects invalid primary display and display-change geometry", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const notPrimary = {
+        id: "main",
+        bounds: { x: 0, y: 0, width: 1920, height: 1080 },
+        workArea: { x: 0, y: 24, width: 1920, height: 1056 },
+        scaleFactor: 2,
+        primary: false
+      }
+      const invalidEventDisplay = {
+        ...notPrimary,
+        primary: true,
+        bounds: { x: 0, y: 0, width: 1920, height: Number.NaN }
+      }
+      const exchange: BridgeClientExchange = {
+        request: (request) =>
+          Effect.succeed({
+            kind: "success",
+            payload:
+              request.method === "Screen.getPrimaryDisplay"
+                ? notPrimary
+                : request.method === "Screen.isSupported"
+                  ? { supported: true }
+                  : { displays: [primaryDisplay] }
+          }),
+        subscribe: (method) =>
+          method === "Screen.DisplaysChanged"
+            ? Stream.make(
+                new HostProtocolEventEnvelope({
+                  kind: "event",
+                  timestamp: 1_710_000_000_600,
+                  traceId: "event-trace",
+                  method,
+                  payload: { displays: [invalidEventDisplay] }
+                })
+              )
+            : Stream.empty
+      }
+      const result = yield* runScoped(
+        Effect.gen(function* () {
+          const screen = yield* Screen
+          return {
+            primary: yield* Effect.exit(screen.getPrimaryDisplay()),
+            event: yield* Effect.exit(
+              screen.onDisplaysChanged().pipe(Stream.take(1), Stream.runCollect)
+            )
+          }
+        }),
+        Layer.provide(ScreenLive, makeScreenBridgeClientLayer(exchange))
+      )
+
+      expectExitFailure(result.primary, (error) => hasErrorTag(error, "InvalidOutput"))
+      expectExitFailure(result.event, (error) => hasErrorTag(error, "InvalidOutput"))
+    })
+  ))
+
 test("native host RPC runtime denies protected Screen calls before handlers run", () =>
   Effect.runPromise(
     Effect.gen(function* () {

@@ -397,7 +397,7 @@ test("WindowPersistence maps host permission denial, unsupported, and host failu
 })
 
 test("WindowPersistence maps invalid screen display payloads to invalid-output", () => {
-  const calls: WindowPersistenceCalls = { setBounds: [], fullscreen: [] }
+  const requests: HostProtocolRequestEnvelope[] = []
 
   return Effect.runPromise(
     Effect.gen(function* () {
@@ -406,24 +406,19 @@ test("WindowPersistence maps invalid screen display payloads to invalid-output",
           const service = yield* WindowPersistence
           return yield* service.save(windowHandle).pipe(Effect.flip)
         }),
-        fixtureLayer({
-          calls,
-          screenClient: () => ({
-            getDisplays: () =>
-              Effect.succeed(
-                new ScreenDisplaysResult({
-                  displays: [
-                    new ScreenDisplay({
-                      id: "invalid",
-                      bounds: new ScreenBounds({ x: 0, y: 0, width: 1024, height: 768 }),
-                      workArea: new ScreenBounds({ x: 0, y: 0, width: 0, height: 768 }),
-                      scaleFactor: 1,
-                      primary: true
-                    })
-                  ]
-                })
-              )
-          })
+        bridgeFixtureLayer({
+          requests,
+          screenDisplaysPayload: {
+            displays: [
+              {
+                id: "invalid",
+                bounds: { x: 0, y: 0, width: 1024, height: 768 },
+                workArea: { x: 0, y: 0, width: 0, height: 768 },
+                scaleFactor: 1,
+                primary: true
+              }
+            ]
+          }
         })
       )
 
@@ -431,6 +426,7 @@ test("WindowPersistence maps invalid screen display payloads to invalid-output",
         reason: "invalid-output",
         operation: "WindowPersistence.save"
       })
+      expect(requests.map((request) => request.method)).toContain("Screen.getDisplays")
     })
   )
 })
@@ -491,6 +487,7 @@ const fixtureLayer = (options: {
 const bridgeFixtureLayer = (options: {
   readonly requests: HostProtocolRequestEnvelope[]
   readonly denyWindowLookup?: boolean
+  readonly screenDisplaysPayload?: unknown
 }): Layer.Layer<WindowPersistence, never, never> => {
   const exchange = windowPersistenceBridgeExchange(options)
   const registry = Effect.runSync(makeResourceRegistry())
@@ -516,6 +513,7 @@ const bridgeFixtureLayer = (options: {
 const windowPersistenceBridgeExchange = (options: {
   readonly requests: HostProtocolRequestEnvelope[]
   readonly denyWindowLookup?: boolean
+  readonly screenDisplaysPayload?: unknown
 }): BridgeClientExchange => ({
   request: (request) =>
     Effect.sync(() => {
@@ -527,6 +525,7 @@ const windowPersistenceBridgeExchange = (options: {
 const windowPersistenceBridgeResponse = (
   options: {
     readonly denyWindowLookup?: boolean
+    readonly screenDisplaysPayload?: unknown
   },
   request: HostProtocolRequestEnvelope
 ): Effect.Effect<BridgeClientResponse, HostProtocolPermissionDeniedError, never> => {
@@ -568,7 +567,7 @@ const windowPersistenceBridgeResponse = (
     case "Screen.getDisplays":
       return Effect.succeed({
         kind: "success",
-        payload: { displays: [primaryDisplay()] }
+        payload: options.screenDisplaysPayload ?? { displays: [primaryDisplay()] }
       })
     default:
       return Effect.die(`unexpected bridge request: ${request.method}`)

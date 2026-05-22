@@ -220,7 +220,10 @@ const screenClientFromRpcClient = (
       runScreenRpc(client["Screen.getDisplays"](undefined)).pipe(
         Effect.flatMap(validateScreenDisplays)
       ),
-    getPrimaryDisplay: () => runScreenRpc(client["Screen.getPrimaryDisplay"](undefined)),
+    getPrimaryDisplay: () =>
+      runScreenRpc(client["Screen.getPrimaryDisplay"](undefined), "Screen.getPrimaryDisplay").pipe(
+        Effect.flatMap(validatePrimaryScreenDisplay)
+      ),
     getPointerPoint: () => runScreenRpc(client["Screen.getPointerPoint"](undefined)),
     onDisplaysChanged: () =>
       subscribeNativeEvent(exchange, "Screen.DisplaysChanged", ScreenDisplaysChangedEvent).pipe(
@@ -231,8 +234,15 @@ const screenClientFromRpcClient = (
   } satisfies ScreenClientApi)
 
 const runScreenRpc = <A, E>(
-  effect: Effect.Effect<A, E, never>
-): Effect.Effect<A, ScreenError, never> => effect.pipe(Effect.mapError(mapScreenRpcClientError))
+  effect: Effect.Effect<A, E, never>,
+  operation = "Screen"
+): Effect.Effect<A, ScreenError, never> =>
+  effect.pipe(
+    Effect.mapError(mapScreenRpcClientError),
+    Effect.catchDefect((defect) =>
+      Effect.fail(makeHostProtocolInvalidOutputError(operation, formatUnknownError(defect)))
+    )
+  )
 
 const mapScreenRpcClientError = (error: unknown): ScreenError =>
   isScreenError(error)
@@ -258,6 +268,22 @@ const validateScreenDisplaysChangedEvent = (
 ): Effect.Effect<ScreenDisplaysChangedEvent, ScreenError, never> =>
   validateScreenDisplayList(event.displays, "Screen.DisplaysChanged").pipe(Effect.as(event))
 
+const validatePrimaryScreenDisplay = (
+  display: ScreenDisplay
+): Effect.Effect<ScreenDisplay, ScreenError, never> =>
+  validateScreenDisplay(display, "Screen.getPrimaryDisplay").pipe(
+    Effect.flatMap(() =>
+      display.primary
+        ? Effect.succeed(display)
+        : Effect.fail(
+            makeHostProtocolInvalidOutputError(
+              "Screen.getPrimaryDisplay",
+              "primary screen display payload must be marked primary"
+            )
+          )
+    )
+  )
+
 const validateScreenDisplayList = (
   displays: ReadonlyArray<ScreenDisplay>,
   operation: string
@@ -279,5 +305,25 @@ const validateScreenDisplayList = (
       )
     )
   }
-  return Effect.void
+  return Effect.forEach(displays, (display) => validateScreenDisplay(display, operation), {
+    discard: true
+  })
+}
+
+const validateScreenDisplay = (
+  display: ScreenDisplay,
+  operation: string
+): Effect.Effect<void, ScreenError, never> =>
+  Schema.decodeUnknownEffect(ScreenDisplay)(display).pipe(
+    Effect.asVoid,
+    Effect.mapError(() =>
+      makeHostProtocolInvalidOutputError(operation, "screen display payload has invalid geometry")
+    )
+  )
+
+const formatUnknownError = (error: unknown): string => {
+  if (error instanceof Error) {
+    return error.message
+  }
+  return String(error)
 }

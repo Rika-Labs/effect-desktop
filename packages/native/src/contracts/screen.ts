@@ -3,23 +3,27 @@ import { Schema } from "effect"
 export const ScreenMethod = Schema.Literals(["getDisplays", "getPrimaryDisplay", "getPointerPoint"])
 
 export type ScreenMethod = Schema.Schema.Type<typeof ScreenMethod>
+
+const ScreenCoordinate = Schema.Number.check(Schema.isFinite())
+const ScreenPositiveNumber = Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0))
+
 export class ScreenBounds extends Schema.Class<ScreenBounds>("ScreenBounds")({
-  x: Schema.Number,
-  y: Schema.Number,
-  width: Schema.Number,
-  height: Schema.Number
+  x: ScreenCoordinate,
+  y: ScreenCoordinate,
+  width: ScreenPositiveNumber,
+  height: ScreenPositiveNumber
 }) {}
 
 export class ScreenPoint extends Schema.Class<ScreenPoint>("ScreenPoint")({
-  x: Schema.Number,
-  y: Schema.Number
+  x: ScreenCoordinate,
+  y: ScreenCoordinate
 }) {}
 
 export class ScreenDisplay extends Schema.Class<ScreenDisplay>("ScreenDisplay")({
   id: Schema.String,
   bounds: ScreenBounds,
   workArea: ScreenBounds,
-  scaleFactor: Schema.Number,
+  scaleFactor: ScreenPositiveNumber,
   primary: Schema.Boolean
 }) {}
 
