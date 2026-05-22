@@ -11957,6 +11957,54 @@ test("Window.events rejects host-originated opened events with mismatched handle
     })
   ))
 
+test("Window.events rejects registry events with terminal flags that do not match phase", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* makeResourceRegistry()
+      const exchange: BridgeClientExchange = {
+        request: (request) =>
+          request.method === WINDOW_SUBSCRIBE_EVENTS_METHOD
+            ? Effect.succeed({ kind: "success", payload: { subscribed: true } })
+            : Effect.die(`unexpected request: ${request.method}`),
+        subscribe: (method) =>
+          method === WINDOW_EVENT_METHOD
+            ? Stream.make(
+                new HostProtocolEventEnvelope({
+                  kind: "event",
+                  method,
+                  timestamp: 1_710_000_002_651,
+                  traceId: "host-window-terminal-mismatch-event",
+                  payload: {
+                    type: "window-registry-event",
+                    phase: "closed",
+                    windowId: "host-closed-window",
+                    terminal: false
+                  }
+                })
+              )
+            : Stream.empty
+      }
+
+      const result = yield* runScoped(
+        Effect.gen(function* () {
+          const window = yield* Window
+          const eventExit = yield* Effect.exit(window.events().pipe(Stream.take(1), Stream.runHead))
+          const snapshot = yield* registry.list()
+          return { eventExit, snapshot }
+        }),
+        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(exchange, registry))
+      )
+
+      expectExitFailure(
+        result.eventExit,
+        (error) =>
+          Schema.is(HostProtocolInvalidOutputError)(error) &&
+          error.operation === WINDOW_EVENT_METHOD
+      )
+      expect(result.snapshot.entries).toEqual([])
+    })
+  ))
+
 test("Window.events strips handles for host-originated events without local resources", () =>
   Effect.runPromise(
     Effect.gen(function* () {

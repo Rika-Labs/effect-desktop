@@ -47,6 +47,16 @@ const WindowRegistryEventPhase = Schema.Literals([
   "closeRequested",
   "closed"
 ])
+type WindowRegistryEventPhase = typeof WindowRegistryEventPhase.Type
+
+const WindowRegistryEventTerminal = Schema.makeFilter<{
+  readonly phase: WindowRegistryEventPhase
+  readonly terminal: boolean
+}>((value) =>
+  value.terminal === (value.phase === "closed")
+    ? true
+    : `window registry event terminal must match phase ${value.phase}`
+)
 
 export const WindowResource = ResourceHandleSchema("window", "open")
 export type WindowHandle = ResourceHandle<"window", "open">
@@ -96,13 +106,15 @@ export class WindowSubscribeEventsResult extends Schema.Class<WindowSubscribeEve
   subscribed: Schema.Literal(true)
 }) {}
 
-export class WindowRegistryEvent extends Schema.Class<WindowRegistryEvent>("WindowRegistryEvent")({
-  type: Schema.Literal("window-registry-event"),
-  phase: WindowRegistryEventPhase,
-  windowId: Schema.NonEmptyString,
-  window: Schema.optionalKey(WindowResource),
-  terminal: Schema.Boolean
-}) {}
+export class WindowRegistryEvent extends Schema.Class<WindowRegistryEvent>("WindowRegistryEvent")(
+  Schema.Struct({
+    type: Schema.Literal("window-registry-event"),
+    phase: WindowRegistryEventPhase,
+    windowId: Schema.NonEmptyString,
+    window: Schema.optionalKey(WindowResource),
+    terminal: Schema.Boolean
+  }).check(WindowRegistryEventTerminal)
+) {}
 
 export class WindowState extends Schema.Class<WindowState>("WindowState")({
   minimized: Schema.Boolean,

@@ -1,7 +1,71 @@
 import { expect, test } from "bun:test"
 import { rpcSupport, type Rpc } from "@orika/bridge"
+import { Effect, Exit, Schema } from "effect"
 
+import { WindowRegistryEvent } from "./contracts/window.js"
 import { WindowRpcs } from "./window.js"
+
+test("WindowRegistryEvent terminal flag must match phase", () => {
+  for (const payload of [
+    {
+      type: "window-registry-event",
+      phase: "opened",
+      windowId: "window-1",
+      terminal: true
+    },
+    {
+      type: "window-registry-event",
+      phase: "shown",
+      windowId: "window-1",
+      terminal: true
+    },
+    {
+      type: "window-registry-event",
+      phase: "hidden",
+      windowId: "window-1",
+      terminal: true
+    },
+    {
+      type: "window-registry-event",
+      phase: "focused",
+      windowId: "window-1",
+      terminal: true
+    },
+    {
+      type: "window-registry-event",
+      phase: "closeRequested",
+      windowId: "window-1",
+      terminal: true
+    },
+    {
+      type: "window-registry-event",
+      phase: "closed",
+      windowId: "window-1",
+      terminal: false
+    }
+  ] as const) {
+    const exit = Effect.runSyncExit(Schema.decodeUnknownEffect(WindowRegistryEvent)(payload))
+    expect(Exit.isFailure(exit)).toBe(true)
+  }
+
+  for (const payload of [
+    {
+      type: "window-registry-event",
+      phase: "opened",
+      windowId: "window-1",
+      terminal: false
+    },
+    {
+      type: "window-registry-event",
+      phase: "closed",
+      windowId: "window-1",
+      terminal: true
+    }
+  ] as const) {
+    const exit = Effect.runSyncExit(Schema.decodeUnknownEffect(WindowRegistryEvent)(payload))
+    expect(Exit.isSuccess(exit)).toBe(true)
+  }
+})
 
 test("WindowRpcs exposes only host-implemented methods through RpcGroup lowering", () => {
   expect(request("Window.create").pipe(rpcSupport)).toEqual({ status: "supported" })
