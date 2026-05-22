@@ -100,10 +100,11 @@ test("WindowRpcs exposes only host-implemented methods through RpcGroup lowering
   }
   expect(request("Window.setSimpleFullscreen").pipe(rpcSupport)).toMatchObject({
     status: "partial",
+    reason: "simple-fullscreen-macos-only",
     platforms: [
       { platform: "macos", status: "supported" },
-      { platform: "windows", status: "unsupported" },
-      { platform: "linux", status: "unsupported" }
+      { platform: "windows", status: "unsupported", reason: "simple-fullscreen-macos-only" },
+      { platform: "linux", status: "unsupported", reason: "simple-fullscreen-macos-only" }
     ]
   })
 })

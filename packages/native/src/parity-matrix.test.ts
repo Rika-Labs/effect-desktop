@@ -1096,6 +1096,18 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
           ]
         }
       })
+      expect(result.rows.find((row) => row.tag === "Window.setSimpleFullscreen")).toMatchObject({
+        hostStatus: "routed",
+        support: {
+          status: "partial",
+          reason: "simple-fullscreen-macos-only",
+          platforms: [
+            { platform: "macos", status: "supported" },
+            { platform: "windows", status: "unsupported", reason: "simple-fullscreen-macos-only" },
+            { platform: "linux", status: "unsupported", reason: "simple-fullscreen-macos-only" }
+          ]
+        }
+      })
       expect(result.rows.find((row) => row.tag === "EgressPolicy.decide")).toMatchObject({
         hostStatus: "routed",
         support: {
