@@ -145,15 +145,49 @@ export class WorkspaceIndexSupportedResult extends Schema.Class<WorkspaceIndexSu
   reason: Schema.optionalKey(BridgeSafeString)
 }) {}
 
-export class WorkspaceIndexEvent extends Schema.Class<WorkspaceIndexEvent>("WorkspaceIndexEvent")({
-  type: WorkspaceIndexEventType,
-  timestamp: WorkspaceIndexTimestamp,
-  indexId: BridgeSafeNonEmptyString,
-  root: Schema.optionalKey(PrintableNonEmptyString),
-  path: Schema.optionalKey(PrintableNonEmptyString),
-  phase: WorkspaceIndexEventPhase,
-  state: Schema.optionalKey(WorkspaceIndexState),
-  indexed: Schema.optionalKey(WorkspaceIndexNonNegativeInt),
-  invalidated: Schema.optionalKey(WorkspaceIndexNonNegativeInt),
-  ignored: Schema.optionalKey(WorkspaceIndexNonNegativeInt)
-}) {}
+const stateForWorkspaceIndexPhase = (
+  phase: WorkspaceIndexEventPhase
+): WorkspaceIndexState | undefined => {
+  switch (phase) {
+    case "opened":
+      return "opened"
+    case "refresh-started":
+      return "refreshing"
+    case "refresh-completed":
+      return "opened"
+    case "closed":
+      return "closed"
+    case "entry-indexed":
+    case "entry-invalidated":
+      return undefined
+  }
+}
+
+const WorkspaceIndexEventState = Schema.makeFilter<{
+  readonly phase: WorkspaceIndexEventPhase
+  readonly state?: WorkspaceIndexState | undefined
+}>((value) => {
+  if (value.state === undefined) {
+    return true
+  }
+  const state = stateForWorkspaceIndexPhase(value.phase)
+  if (state === undefined) {
+    return `${value.phase} events must not carry state`
+  }
+  return value.state === state || `${value.phase} events require ${state} state`
+})
+
+export class WorkspaceIndexEvent extends Schema.Class<WorkspaceIndexEvent>("WorkspaceIndexEvent")(
+  Schema.Struct({
+    type: WorkspaceIndexEventType,
+    timestamp: WorkspaceIndexTimestamp,
+    indexId: BridgeSafeNonEmptyString,
+    root: Schema.optionalKey(PrintableNonEmptyString),
+    path: Schema.optionalKey(PrintableNonEmptyString),
+    phase: WorkspaceIndexEventPhase,
+    state: Schema.optionalKey(WorkspaceIndexState),
+    indexed: Schema.optionalKey(WorkspaceIndexNonNegativeInt),
+    invalidated: Schema.optionalKey(WorkspaceIndexNonNegativeInt),
+    ignored: Schema.optionalKey(WorkspaceIndexNonNegativeInt)
+  }).check(WorkspaceIndexEventState)
+) {}

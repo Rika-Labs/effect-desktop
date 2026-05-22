@@ -12217,24 +12217,17 @@ impl NativeNetworkEventPayload {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct WorkspaceIndexEventPayload {
     r#type: String,
     timestamp: u64,
     index_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     root: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     path: Option<String>,
     phase: WorkspaceIndexEventPhase,
-    #[serde(skip_serializing_if = "Option::is_none")]
     state: Option<WorkspaceIndexState>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     indexed: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     invalidated: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     ignored: Option<u64>,
 }
 
@@ -12274,6 +12267,128 @@ impl WorkspaceIndexEventPayload {
         self.invalidated = Some(invalidated);
         self.ignored = Some(ignored);
         self
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SerializableWorkspaceIndexEventPayload<'a> {
+    r#type: &'a str,
+    timestamp: u64,
+    index_id: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    root: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    path: Option<&'a str>,
+    phase: WorkspaceIndexEventPhase,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    state: Option<WorkspaceIndexState>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    indexed: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    invalidated: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ignored: Option<u64>,
+}
+
+impl<'a> TryFrom<&'a WorkspaceIndexEventPayload> for SerializableWorkspaceIndexEventPayload<'a> {
+    type Error = &'static str;
+
+    fn try_from(payload: &'a WorkspaceIndexEventPayload) -> Result<Self, Self::Error> {
+        validate_workspace_index_event_payload(payload.phase, payload.state)?;
+        Ok(Self {
+            r#type: &payload.r#type,
+            timestamp: payload.timestamp,
+            index_id: &payload.index_id,
+            root: payload.root.as_deref(),
+            path: payload.path.as_deref(),
+            phase: payload.phase,
+            state: payload.state,
+            indexed: payload.indexed,
+            invalidated: payload.invalidated,
+            ignored: payload.ignored,
+        })
+    }
+}
+
+impl Serialize for WorkspaceIndexEventPayload {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        SerializableWorkspaceIndexEventPayload::try_from(self)
+            .map_err(ser::Error::custom)?
+            .serialize(serializer)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawWorkspaceIndexEventPayload {
+    r#type: String,
+    timestamp: u64,
+    index_id: String,
+    root: Option<String>,
+    path: Option<String>,
+    phase: WorkspaceIndexEventPhase,
+    state: Option<WorkspaceIndexState>,
+    indexed: Option<u64>,
+    invalidated: Option<u64>,
+    ignored: Option<u64>,
+}
+
+impl TryFrom<RawWorkspaceIndexEventPayload> for WorkspaceIndexEventPayload {
+    type Error = &'static str;
+
+    fn try_from(raw: RawWorkspaceIndexEventPayload) -> Result<Self, Self::Error> {
+        validate_workspace_index_event_payload(raw.phase, raw.state)?;
+        Ok(Self {
+            r#type: raw.r#type,
+            timestamp: raw.timestamp,
+            index_id: raw.index_id,
+            root: raw.root,
+            path: raw.path,
+            phase: raw.phase,
+            state: raw.state,
+            indexed: raw.indexed,
+            invalidated: raw.invalidated,
+            ignored: raw.ignored,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for WorkspaceIndexEventPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        RawWorkspaceIndexEventPayload::deserialize(deserializer)?
+            .try_into()
+            .map_err(de::Error::custom)
+    }
+}
+
+fn workspace_index_state_for_event_phase(
+    phase: WorkspaceIndexEventPhase,
+) -> Option<WorkspaceIndexState> {
+    match phase {
+        WorkspaceIndexEventPhase::Opened => Some(WorkspaceIndexState::Opened),
+        WorkspaceIndexEventPhase::RefreshStarted => Some(WorkspaceIndexState::Refreshing),
+        WorkspaceIndexEventPhase::RefreshCompleted => Some(WorkspaceIndexState::Opened),
+        WorkspaceIndexEventPhase::Closed => Some(WorkspaceIndexState::Closed),
+        WorkspaceIndexEventPhase::EntryIndexed | WorkspaceIndexEventPhase::EntryInvalidated => None,
+    }
+}
+
+fn validate_workspace_index_event_payload(
+    phase: WorkspaceIndexEventPhase,
+    state: Option<WorkspaceIndexState>,
+) -> Result<(), &'static str> {
+    match (workspace_index_state_for_event_phase(phase), state) {
+        (_, None) => Ok(()),
+        (Some(expected), Some(actual)) if expected == actual => Ok(()),
+        (Some(_), Some(_)) => Err("workspace index event state must match phase"),
+        (None, Some(_)) => Err("workspace index entry events must not carry state"),
     }
 }
 
@@ -17968,6 +18083,47 @@ mod tests {
             .expect("support payload should encode"),
             r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#
         );
+    }
+
+    #[test]
+    fn workspace_index_events_reject_inconsistent_phase_states() {
+        for source in [
+            r#"{"type":"workspace-index-event","timestamp":1710000000000,"indexId":"workspace-index-1","phase":"closed","state":"opened"}"#,
+            r#"{"type":"workspace-index-event","timestamp":1710000000000,"indexId":"workspace-index-1","phase":"opened","state":"closed"}"#,
+            r#"{"type":"workspace-index-event","timestamp":1710000000000,"indexId":"workspace-index-1","phase":"entry-indexed","state":"opened"}"#,
+        ] {
+            let error = serde_json::from_str::<WorkspaceIndexEventPayload>(source)
+                .expect_err("inconsistent workspace index event should be rejected");
+            assert!(
+                error.to_string().contains("phase") || error.to_string().contains("state"),
+                "unexpected error: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn workspace_index_events_reject_inconsistent_phase_states_before_serializing() {
+        for event in [
+            WorkspaceIndexEventPayload::new(
+                1_710_000_000_000,
+                "workspace-index-1",
+                WorkspaceIndexEventPhase::Closed,
+            )
+            .with_root("/workspace/app", WorkspaceIndexState::Opened),
+            WorkspaceIndexEventPayload::new(
+                1_710_000_000_000,
+                "workspace-index-1",
+                WorkspaceIndexEventPhase::EntryIndexed,
+            )
+            .with_root("/workspace/app", WorkspaceIndexState::Opened),
+        ] {
+            let error = serde_json::to_string(&event)
+                .expect_err("inconsistent workspace index event should not encode");
+            assert!(
+                error.to_string().contains("phase") || error.to_string().contains("state"),
+                "unexpected error: {error}"
+            );
+        }
     }
 
     #[test]

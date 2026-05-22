@@ -7,7 +7,7 @@ import {
   makeHostProtocolInternalError
 } from "@orika/bridge"
 import { type AuditEvent, type AuditEventsApi, makePermissionRegistry, P } from "@orika/core"
-import { Cause, Effect, Exit, type Layer, ManagedRuntime, Option, Stream } from "effect"
+import { Cause, Effect, Exit, type Layer, ManagedRuntime, Option, Schema, Stream } from "effect"
 
 import {
   makeWorkspaceIndexBridgeClientLayer,
@@ -23,6 +23,7 @@ import {
   WorkspaceIndexActor,
   WorkspaceIndexCloseInput,
   WorkspaceIndexCloseRequest,
+  WorkspaceIndexEvent,
   WorkspaceIndexIgnoreRule,
   WorkspaceIndexOpenInput,
   WorkspaceIndexOpenRequest,
@@ -347,7 +348,6 @@ test("WorkspaceIndex bridge client decodes native index events", () =>
           root: "/workspace/app",
           path: "/workspace/app/src/main.ts",
           phase: "entry-indexed",
-          state: "opened",
           indexed: 1,
           invalidated: 0,
           ignored: 0
@@ -374,10 +374,54 @@ test("WorkspaceIndex bridge client decodes native index events", () =>
           indexId: "workspace-index-1",
           path: "/workspace/app/src/main.ts",
           phase: "entry-indexed",
-          state: "opened",
           indexed: 1
         })
       }
+    })
+  ))
+
+test("WorkspaceIndex rejects contradictory event phase states before exposing native events", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const payload = {
+        type: "workspace-index-event",
+        timestamp: 1_710_000_000_000,
+        indexId: "workspace-index-1",
+        phase: "closed",
+        state: "opened"
+      }
+      const directDecode = yield* Effect.exit(
+        Schema.decodeUnknownEffect(WorkspaceIndexEvent)(payload)
+      )
+      const nativeEvent: HostProtocolEventEnvelope = {
+        kind: "event",
+        method: "WorkspaceIndex.Event",
+        timestamp: 1_710_000_000_000,
+        traceId: "trace-workspace-index-event",
+        payload
+      }
+      const exchange: BridgeClientExchange = {
+        request: () => Effect.fail(makeHostProtocolInternalError("unexpected request", "test")),
+        subscribe: (method) => {
+          expect(method).toBe("WorkspaceIndex.Event")
+          return Stream.make(nativeEvent)
+        }
+      }
+      const bridgeDecode = yield* runScoped(
+        Effect.gen(function* () {
+          const client = yield* WorkspaceIndexClient
+          return yield* Effect.exit(client.events().pipe(Stream.runHead))
+        }),
+        makeWorkspaceIndexBridgeClientLayer(exchange)
+      )
+
+      expect(Exit.isFailure(directDecode)).toBe(true)
+      expectExitFailure(bridgeDecode, (error) => {
+        expect(error).toMatchObject({
+          tag: "InvalidOutput",
+          operation: "WorkspaceIndex.Event"
+        })
+      })
     })
   ))
 
