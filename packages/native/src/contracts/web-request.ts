@@ -27,6 +27,22 @@ export type WebRequestAction = typeof WebRequestAction.Type
 
 const WebRequestEventPhase = Schema.Literals(["registered", "removed", "matched", "failed"])
 export type WebRequestEventPhase = typeof WebRequestEventPhase.Type
+const WebRequestEventPhaseMessage = Schema.makeFilter<{
+  readonly phase: WebRequestEventPhase
+  readonly message?: string | undefined
+}>((value) => {
+  switch (value.phase) {
+    case "registered":
+    case "removed":
+    case "matched":
+      return (
+        value.message === undefined || `${value.phase} web request events must not carry message`
+      )
+    case "failed":
+      return value.message !== undefined || "failed web request events require message"
+  }
+})
+
 const WebRequestBeforeRequestRedirect = Schema.makeFilter<{
   readonly action: "allow" | "block" | "redirect"
   readonly redirectUrl?: string | undefined
@@ -123,18 +139,20 @@ export class WebRequestSupportedResult extends Schema.Class<WebRequestSupportedR
   reason: Schema.optionalKey(BridgeSafeString)
 }) {}
 
-export class WebRequestEvent extends Schema.Class<WebRequestEvent>("WebRequestEvent")({
-  type: Schema.Literal("web-request-event"),
-  timestamp: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0)),
-  phase: WebRequestEventPhase,
-  interceptor: WebRequestInterceptorResource,
-  profile: SessionProfileResource,
-  requestPhase: WebRequestPhase,
-  urlPattern: WebRequestUrlPattern,
-  action: WebRequestAction,
-  order: WebRequestOrder,
-  message: Schema.optionalKey(BridgeSafeString)
-}) {}
+export class WebRequestEvent extends Schema.Class<WebRequestEvent>("WebRequestEvent")(
+  Schema.Struct({
+    type: Schema.Literal("web-request-event"),
+    timestamp: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0)),
+    phase: WebRequestEventPhase,
+    interceptor: WebRequestInterceptorResource,
+    profile: SessionProfileResource,
+    requestPhase: WebRequestPhase,
+    urlPattern: WebRequestUrlPattern,
+    action: WebRequestAction,
+    order: WebRequestOrder,
+    message: Schema.optionalKey(BridgeSafeString)
+  }).check(WebRequestEventPhaseMessage)
+) {}
 
 const isAbsoluteHttpUrl = (value: string): boolean => {
   try {

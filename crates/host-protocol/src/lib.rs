@@ -14615,8 +14615,7 @@ impl WebRequestSupportedPayload {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct WebRequestEventPayload {
     r#type: String,
     timestamp: u64,
@@ -14627,7 +14626,6 @@ pub struct WebRequestEventPayload {
     url_pattern: String,
     action: WebRequestActionPayload,
     order: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
     message: Option<String>,
 }
 
@@ -14649,6 +14647,132 @@ impl WebRequestEventPayload {
             order: snapshot.order,
             message: None,
         }
+    }
+
+    pub fn failed(
+        timestamp: u64,
+        snapshot: WebRequestInterceptorSnapshotPayload,
+        message: impl Into<String>,
+    ) -> Self {
+        let mut event = Self::new(timestamp, WebRequestEventPhasePayload::Failed, snapshot);
+        event.message = Some(message.into());
+        event
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SerializableWebRequestEventPayload<'a> {
+    r#type: &'a str,
+    timestamp: u64,
+    phase: WebRequestEventPhasePayload,
+    interceptor: &'a WebRequestInterceptorResourcePayload,
+    profile: &'a SessionProfileResourcePayload,
+    request_phase: WebRequestPhasePayload,
+    url_pattern: &'a str,
+    action: WebRequestActionPayload,
+    order: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<&'a str>,
+}
+
+impl<'a> TryFrom<&'a WebRequestEventPayload> for SerializableWebRequestEventPayload<'a> {
+    type Error = &'static str;
+
+    fn try_from(payload: &'a WebRequestEventPayload) -> Result<Self, Self::Error> {
+        validate_web_request_event_payload(payload.phase, payload.message.as_deref())?;
+        Ok(Self {
+            r#type: &payload.r#type,
+            timestamp: payload.timestamp,
+            phase: payload.phase,
+            interceptor: &payload.interceptor,
+            profile: &payload.profile,
+            request_phase: payload.request_phase,
+            url_pattern: &payload.url_pattern,
+            action: payload.action,
+            order: payload.order,
+            message: payload.message.as_deref(),
+        })
+    }
+}
+
+impl Serialize for WebRequestEventPayload {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        SerializableWebRequestEventPayload::try_from(self)
+            .map_err(ser::Error::custom)?
+            .serialize(serializer)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawWebRequestEventPayload {
+    r#type: String,
+    timestamp: u64,
+    phase: WebRequestEventPhasePayload,
+    interceptor: WebRequestInterceptorResourcePayload,
+    profile: SessionProfileResourcePayload,
+    request_phase: WebRequestPhasePayload,
+    url_pattern: String,
+    action: WebRequestActionPayload,
+    order: u64,
+    #[serde(default)]
+    message: Option<String>,
+}
+
+impl TryFrom<RawWebRequestEventPayload> for WebRequestEventPayload {
+    type Error = &'static str;
+
+    fn try_from(raw: RawWebRequestEventPayload) -> Result<Self, Self::Error> {
+        validate_web_request_event_payload(raw.phase, raw.message.as_deref())?;
+        Ok(Self {
+            r#type: raw.r#type,
+            timestamp: raw.timestamp,
+            phase: raw.phase,
+            interceptor: raw.interceptor,
+            profile: raw.profile,
+            request_phase: raw.request_phase,
+            url_pattern: raw.url_pattern,
+            action: raw.action,
+            order: raw.order,
+            message: raw.message,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for WebRequestEventPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        RawWebRequestEventPayload::deserialize(deserializer)?
+            .try_into()
+            .map_err(de::Error::custom)
+    }
+}
+
+fn validate_web_request_event_payload(
+    phase: WebRequestEventPhasePayload,
+    message: Option<&str>,
+) -> Result<(), &'static str> {
+    match phase {
+        WebRequestEventPhasePayload::Registered
+        | WebRequestEventPhasePayload::Removed
+        | WebRequestEventPhasePayload::Matched
+            if message.is_none() =>
+        {
+            Ok(())
+        }
+        WebRequestEventPhasePayload::Registered
+        | WebRequestEventPhasePayload::Removed
+        | WebRequestEventPhasePayload::Matched => {
+            Err("successful web request events must not carry message")
+        }
+        WebRequestEventPhasePayload::Failed if message.is_some() => Ok(()),
+        WebRequestEventPhasePayload::Failed => Err("failed web request events require message"),
     }
 }
 
@@ -23346,6 +23470,65 @@ mod tests {
                 error.to_string().contains("snapshot") || error.to_string().contains("redirect"),
                 "unexpected error: {error}"
             );
+        }
+    }
+
+    #[test]
+    fn web_request_events_reject_inconsistent_messages() {
+        for source in [
+            r#"{"type":"web-request-event","timestamp":1710000000002,"phase":"registered","interceptor":{"kind":"web-request-interceptor","id":"web-request-interceptor:1","generation":0,"ownerScope":"workspace:1","state":"open"},"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"requestPhase":"before-request","urlPattern":"https://example.test/*","action":"block","order":1,"message":"host failed"}"#,
+            r#"{"type":"web-request-event","timestamp":1710000000002,"phase":"removed","interceptor":{"kind":"web-request-interceptor","id":"web-request-interceptor:1","generation":0,"ownerScope":"workspace:1","state":"open"},"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"requestPhase":"before-request","urlPattern":"https://example.test/*","action":"block","order":1,"message":"host failed"}"#,
+            r#"{"type":"web-request-event","timestamp":1710000000002,"phase":"matched","interceptor":{"kind":"web-request-interceptor","id":"web-request-interceptor:1","generation":0,"ownerScope":"workspace:1","state":"open"},"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"requestPhase":"before-request","urlPattern":"https://example.test/*","action":"block","order":1,"message":"host failed"}"#,
+            r#"{"type":"web-request-event","timestamp":1710000000002,"phase":"failed","interceptor":{"kind":"web-request-interceptor","id":"web-request-interceptor:1","generation":0,"ownerScope":"workspace:1","state":"open"},"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"requestPhase":"before-request","urlPattern":"https://example.test/*","action":"block","order":1}"#,
+        ] {
+            serde_json::from_str::<WebRequestEventPayload>(source)
+                .expect_err("inconsistent web request event should be rejected");
+        }
+
+        for source in [
+            r#"{"type":"web-request-event","timestamp":1710000000002,"phase":"registered","interceptor":{"kind":"web-request-interceptor","id":"web-request-interceptor:1","generation":0,"ownerScope":"workspace:1","state":"open"},"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"requestPhase":"before-request","urlPattern":"https://example.test/*","action":"block","order":1}"#,
+            r#"{"type":"web-request-event","timestamp":1710000000002,"phase":"removed","interceptor":{"kind":"web-request-interceptor","id":"web-request-interceptor:1","generation":0,"ownerScope":"workspace:1","state":"open"},"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"requestPhase":"before-request","urlPattern":"https://example.test/*","action":"block","order":1}"#,
+            r#"{"type":"web-request-event","timestamp":1710000000002,"phase":"matched","interceptor":{"kind":"web-request-interceptor","id":"web-request-interceptor:1","generation":0,"ownerScope":"workspace:1","state":"open"},"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"requestPhase":"before-request","urlPattern":"https://example.test/*","action":"block","order":1}"#,
+            r#"{"type":"web-request-event","timestamp":1710000000002,"phase":"failed","interceptor":{"kind":"web-request-interceptor","id":"web-request-interceptor:1","generation":0,"ownerScope":"workspace:1","state":"open"},"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"requestPhase":"before-request","urlPattern":"https://example.test/*","action":"block","order":1,"message":"host failed"}"#,
+        ] {
+            serde_json::from_str::<WebRequestEventPayload>(source)
+                .expect("consistent web request event should decode");
+        }
+    }
+
+    #[test]
+    fn web_request_events_reject_inconsistent_messages_before_serializing() {
+        let profile =
+            SessionProfileResourcePayload::new("session-profile:workspace-1", 0, "workspace:1");
+        let interceptor = WebRequestInterceptorResourcePayload::new(
+            "web-request-interceptor:1",
+            0,
+            "workspace:1",
+        );
+        let snapshot = WebRequestInterceptorSnapshotPayload::new(
+            interceptor,
+            profile,
+            WebRequestPhasePayload::BeforeRequest,
+            "https://example.test/*",
+            WebRequestActionPayload::Block,
+            1,
+        );
+
+        let mut registered = WebRequestEventPayload::new(
+            1_710_000_000_002,
+            WebRequestEventPhasePayload::Registered,
+            snapshot.clone(),
+        );
+        registered.message = Some("host failed".to_string());
+        let failed = WebRequestEventPayload::new(
+            1_710_000_000_002,
+            WebRequestEventPhasePayload::Failed,
+            snapshot,
+        );
+
+        for event in [registered, failed] {
+            serde_json::to_string(&event)
+                .expect_err("inconsistent web request event should not encode");
         }
     }
 

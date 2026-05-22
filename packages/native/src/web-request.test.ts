@@ -1,10 +1,15 @@
 import { expect, test } from "bun:test"
-import { type BridgeClientExchange } from "@orika/bridge"
-import { Cause, Effect, Exit, type Layer, ManagedRuntime, Schema, Stream } from "effect"
+import {
+  type BridgeClientExchange,
+  HostProtocolEventEnvelope,
+  HostProtocolInvalidOutputError
+} from "@orika/bridge"
+import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Schema, Stream } from "effect"
 
 import { makeNativeCapabilityManifest } from "./capabilities.js"
 import {
   WebRequestBeforeRequestInput,
+  WebRequestEvent,
   WebRequestInterceptorSnapshot
 } from "./contracts/web-request.js"
 import {
@@ -147,6 +152,56 @@ test("WebRequest interceptor snapshots require phase action fields to match", ()
     })
   ))
 
+test("WebRequest events reject inconsistent failure messages", () => {
+  for (const payload of [
+    {
+      ...eventBase(),
+      phase: "registered",
+      message: "host failed"
+    },
+    {
+      ...eventBase(),
+      phase: "removed",
+      message: "host failed"
+    },
+    {
+      ...eventBase(),
+      phase: "matched",
+      message: "host failed"
+    },
+    {
+      ...eventBase(),
+      phase: "failed"
+    }
+  ] as const) {
+    const exit = Effect.runSyncExit(Schema.decodeUnknownEffect(WebRequestEvent)(payload))
+    expect(Exit.isFailure(exit)).toBe(true)
+  }
+
+  for (const payload of [
+    {
+      ...eventBase(),
+      phase: "registered"
+    },
+    {
+      ...eventBase(),
+      phase: "removed"
+    },
+    {
+      ...eventBase(),
+      phase: "matched"
+    },
+    {
+      ...eventBase(),
+      phase: "failed",
+      message: "host failed"
+    }
+  ] as const) {
+    const exit = Effect.runSyncExit(Schema.decodeUnknownEffect(WebRequestEvent)(payload))
+    expect(Exit.isSuccess(exit)).toBe(true)
+  }
+})
+
 test("WebRequest exposes only isSupported as a callable RPC", () => {
   const callableTags = Array.from(WebRequestRpcs.requests.keys()).toSorted()
   expect(callableTags).toEqual(["WebRequest.isSupported"])
@@ -270,6 +325,52 @@ test("WebRequest bridge client subscribes to the host event channel", () =>
     })
   ))
 
+test("WebRequest bridge client rejects inconsistent event messages as InvalidOutput", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const exchange: BridgeClientExchange = {
+        request: () => Effect.die("WebRequest event test does not issue bridge requests"),
+        subscribe: (method) =>
+          Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              method,
+              timestamp: 1_710_000_000_000,
+              traceId: "web-request-event-trace",
+              payload: {
+                ...eventBase(),
+                phase: "registered",
+                message: "host failed"
+              }
+            })
+          )
+      }
+
+      const exit = yield* runScoped(
+        Effect.gen(function* () {
+          const webRequest = yield* WebRequest
+          return yield* Effect.exit(
+            webRequest.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+          )
+        }),
+        Layer.provide(WebRequest.layer, makeWebRequestBridgeClientLayer(exchange))
+      )
+
+      expectInvalidOutput(exit)
+    })
+  ))
+
+const eventBase = () => ({
+  type: "web-request-event",
+  timestamp: 1_710_000_000_000,
+  interceptor: webRequestInterceptor,
+  profile: sessionProfileHandle,
+  requestPhase: "before-request",
+  urlPattern: "https://example.test/*",
+  action: "block",
+  order: 1
+})
+
 const runScoped = <A, E, R>(
   effect: Effect.Effect<A, E, R>,
   layer: Layer.Layer<R, never, never>
@@ -289,4 +390,13 @@ const expectExitFailure = <A>(
   if (Exit.isFailure(exit)) {
     assert(Cause.squash(exit.cause))
   }
+}
+
+const expectInvalidOutput = <A, E>(exit: Exit.Exit<A, E>): void => {
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (!Exit.isFailure(exit)) {
+    return
+  }
+
+  expect(Cause.squash(exit.cause)).toBeInstanceOf(HostProtocolInvalidOutputError)
 }
