@@ -27,12 +27,12 @@ class FakeWindow {
     this.posted.push({ message, targetOrigin })
   }
 
-  dispatch(data: unknown, options?: { readonly origin?: string }): void {
+  dispatch(data: unknown, options?: { readonly origin?: string; readonly source?: unknown }): void {
     for (const listener of this.listeners) {
       listener({
         data,
         origin: options?.origin ?? this.location?.origin ?? "",
-        source: this
+        source: options?.source ?? this
       } as unknown as MessageEvent)
     }
   }
@@ -254,6 +254,48 @@ test("layerPostMessageSocket ignores inbound messages when window origin is abse
       )
 
       expect(Option.isNone(received)).toBe(true)
+      expect(window.listenerCount).toBe(0)
+    })
+  ))
+
+test("layerPostMessageSocket ignores same-origin messages from a different source", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const window = new FakeWindow()
+      const received = yield* withFakeWindow(
+        window,
+        runScoped(
+          Effect.gen(function* () {
+            const socket = yield* Socket.Socket.asEffect()
+            const opened = yield* Deferred.make<void>()
+            const receivedChunk = yield* Deferred.make<Uint8Array>()
+            const fiber = yield* Effect.forkScoped(
+              socket.run((chunk) => Deferred.succeed(receivedChunk, chunk).pipe(Effect.asVoid), {
+                onOpen: Deferred.succeed(opened, undefined).pipe(Effect.asVoid)
+              })
+            )
+            yield* Deferred.await(opened)
+            window.dispatch(new Uint8Array([0x65, 0x76, 0x69, 0x6c]), {
+              origin: CURRENT_ORIGIN,
+              source: { kind: "other-window" }
+            })
+            const otherSource = yield* Deferred.await(receivedChunk).pipe(
+              Effect.timeoutOption("20 millis")
+            )
+            window.dispatch(new Uint8Array([0x68, 0x69]), {
+              origin: CURRENT_ORIGIN,
+              source: window
+            })
+            const sameSource = yield* Deferred.await(receivedChunk)
+            yield* Fiber.interrupt(fiber)
+            return { otherSource, sameSource }
+          }).pipe(Effect.scoped),
+          layerPostMessageSocket
+        )
+      )
+
+      expect(Option.isNone(received.otherSource)).toBe(true)
+      expect([...received.sameSource]).toEqual([0x68, 0x69])
       expect(window.listenerCount).toBe(0)
     })
   ))

@@ -22,7 +22,7 @@ const makePostMessageSocket: Effect.Effect<Socket.Socket> = Effect.gen(function*
         Effect.gen(function* () {
           const listener = (event: MessageEvent) => {
             const win = getWindow()
-            if (!isAllowedMessageOrigin(win, event)) {
+            if (!isAllowedMessageSender(win, event)) {
               return
             }
             const data: unknown = event.data
@@ -104,7 +104,7 @@ const currentWindowOrigin = (win: WindowLike | undefined): string | undefined =>
   return origin === "" ? undefined : origin
 }
 
-const isAllowedMessageOrigin = (win: WindowLike | undefined, event: MessageEvent): boolean => {
+const isAllowedMessageSender = (win: WindowLike | undefined, event: MessageEvent): boolean => {
   const expectedOrigin = currentWindowOrigin(win)
-  return expectedOrigin !== undefined && event.origin === expectedOrigin
+  return expectedOrigin !== undefined && event.origin === expectedOrigin && event.source === win
 }
