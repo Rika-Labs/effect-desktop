@@ -33,9 +33,8 @@ mod tests {
     use host_protocol::{
         SelectionContextAccess, SelectionContextDocumentKind,
         SelectionContextDocumentMetadataPayload, SelectionContextEventPayload,
-        SelectionContextEventPhase, SelectionContextReadSelectionResultPayload,
-        SelectionContextSelectionMetadataPayload, SelectionContextStopWatchingResultPayload,
-        SelectionContextWatchFocusResultPayload,
+        SelectionContextReadSelectionResultPayload, SelectionContextSelectionMetadataPayload,
+        SelectionContextStopWatchingResultPayload, SelectionContextWatchFocusResultPayload,
     };
     use serde_json::json;
 
@@ -81,11 +80,9 @@ mod tests {
             "document-1",
             SelectionContextDocumentKind::EditorBuffer,
         );
-        let event = serde_json::to_value(SelectionContextEventPayload::new(
-            100,
-            SelectionContextEventPhase::WatchStarted,
-        ))
-        .expect("event should encode");
+        let event =
+            serde_json::to_value(SelectionContextEventPayload::watch_started(100, "watch-1"))
+                .expect("event should encode");
 
         assert_eq!(read_selection["metadata"]["characterCount"], json!(12));
         assert_eq!(watch["watchId"], json!("watch-1"));
@@ -97,5 +94,6 @@ mod tests {
         );
         assert_eq!(event["type"], json!("selection-context-event"));
         assert_eq!(event["phase"], json!("watch-started"));
+        assert_eq!(event["watchId"], json!("watch-1"));
     }
 }

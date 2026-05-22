@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test"
 import { type BridgeClientExchange } from "@orika/bridge"
-import { Effect, type Layer, ManagedRuntime, Stream } from "effect"
+import { Effect, type Layer, ManagedRuntime, Schema, Stream } from "effect"
 
 import { makeNativeCapabilityManifest } from "./capabilities.js"
+import { SelectionContextEvent } from "./contracts/selection-context.js"
 import {
   makeSelectionContextBridgeClientLayer,
   makeSelectionContextMemoryClient,
@@ -98,6 +99,107 @@ test("SelectionContext unsupported client reports the host-unavailable reason", 
     })
   ))
 
+test("SelectionContext events reject inconsistent phase payloads", () => {
+  const document = selectionDocument()
+  const selection = selectionMetadata()
+  for (const payload of [
+    {
+      ...eventBase(),
+      phase: "focus-changed"
+    },
+    {
+      ...eventBase(),
+      phase: "focus-changed",
+      document,
+      selection
+    },
+    {
+      ...eventBase(),
+      phase: "selection-changed"
+    },
+    {
+      ...eventBase(),
+      phase: "selection-changed",
+      selection,
+      reason: "host-failed"
+    },
+    {
+      ...eventBase(),
+      phase: "watch-started"
+    },
+    {
+      ...eventBase(),
+      phase: "watch-stopped",
+      watchId: "watch-1",
+      message: "stopped"
+    },
+    {
+      ...eventBase(),
+      phase: "failed"
+    },
+    {
+      ...eventBase(),
+      phase: "failed",
+      reason: "host-failed",
+      document
+    }
+  ] as const) {
+    const exit = Effect.runSyncExit(Schema.decodeUnknownEffect(SelectionContextEvent)(payload))
+    expect(exit._tag).toBe("Failure")
+  }
+
+  for (const payload of [
+    {
+      ...eventBase(),
+      phase: "focus-changed",
+      document
+    },
+    {
+      ...eventBase(),
+      phase: "focus-changed",
+      watchId: "watch-1",
+      document
+    },
+    {
+      ...eventBase(),
+      phase: "selection-changed",
+      selection
+    },
+    {
+      ...eventBase(),
+      phase: "selection-changed",
+      watchId: "watch-1",
+      document,
+      selection
+    },
+    {
+      ...eventBase(),
+      phase: "watch-started",
+      watchId: "watch-1"
+    },
+    {
+      ...eventBase(),
+      phase: "watch-stopped",
+      watchId: "watch-1"
+    },
+    {
+      ...eventBase(),
+      phase: "failed",
+      reason: "host-failed",
+      message: "host failed"
+    },
+    {
+      ...eventBase(),
+      phase: "failed",
+      watchId: "watch-1",
+      reason: "host-failed"
+    }
+  ] as const) {
+    const exit = Effect.runSyncExit(Schema.decodeUnknownEffect(SelectionContextEvent)(payload))
+    expect(exit._tag).toBe("Success")
+  }
+})
+
 test("SelectionContext bridge client fails event stream as unsupported before subscribing", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -125,6 +227,24 @@ test("SelectionContext bridge client fails event stream as unsupported before su
       expect(subscriptions).toEqual([])
     })
   ))
+
+const eventBase = () => ({
+  type: "selection-context-event",
+  timestamp: 1_710_000_000_100
+})
+
+const selectionDocument = () => ({
+  documentId: "document-1",
+  kind: "editor-buffer",
+  title: "Document"
+})
+
+const selectionMetadata = () => ({
+  sourceApplication: "Editor",
+  mimeType: "text/plain",
+  characterCount: 12,
+  selectionHash: "hash-12"
+})
 
 const runScoped = <A, E, R>(
   effect: Effect.Effect<A, E, R>,

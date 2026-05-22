@@ -179,14 +179,36 @@ export class ExtensionPackageSupportedResult extends Schema.Class<ExtensionPacka
   reason: Schema.optionalKey(BridgeSafeString)
 }) {}
 
+const ExtensionPackageEventPhasePayload = Schema.makeFilter<{
+  readonly phase: ExtensionPackageEventPhase
+  readonly reason?: string | undefined
+}>((value) => {
+  switch (value.phase) {
+    case "failed":
+      return value.reason !== undefined || "failed extension package events require reason"
+    case "installing":
+    case "installed":
+    case "updating":
+    case "updated":
+    case "removing":
+    case "removed":
+      return (
+        value.reason === undefined ||
+        "successful extension package events must not include failure reason"
+      )
+  }
+})
+
 export class ExtensionPackageEvent extends Schema.Class<ExtensionPackageEvent>(
   "ExtensionPackageEvent"
-)({
-  type: ExtensionPackageEventType,
-  timestamp: ExtensionPackageTimestamp,
-  packageId: PrintableNonEmptyString,
-  phase: ExtensionPackageEventPhase,
-  version: Schema.optionalKey(BridgeSafeNonEmptyString),
-  revision: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
-  reason: Schema.optionalKey(BridgeSafeString)
-}) {}
+)(
+  Schema.Struct({
+    type: ExtensionPackageEventType,
+    timestamp: ExtensionPackageTimestamp,
+    packageId: PrintableNonEmptyString,
+    phase: ExtensionPackageEventPhase,
+    version: Schema.optionalKey(BridgeSafeNonEmptyString),
+    revision: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
+    reason: Schema.optionalKey(BridgeSafeString)
+  }).check(ExtensionPackageEventPhasePayload)
+) {}

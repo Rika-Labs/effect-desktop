@@ -6176,35 +6176,270 @@ impl SelectionContextSupportedPayload {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct SelectionContextEventPayload {
     r#type: String,
     timestamp: u64,
     phase: SelectionContextEventPhase,
-    #[serde(skip_serializing_if = "Option::is_none")]
     watch_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     document: Option<SelectionContextDocumentMetadataPayload>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     selection: Option<SelectionContextSelectionMetadataPayload>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     reason: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     message: Option<String>,
 }
 
 impl SelectionContextEventPayload {
-    pub fn new(timestamp: u64, phase: SelectionContextEventPhase) -> Self {
+    pub fn focus_changed(
+        timestamp: u64,
+        document: SelectionContextDocumentMetadataPayload,
+    ) -> Self {
         Self {
             r#type: "selection-context-event".to_string(),
             timestamp,
-            phase,
+            phase: SelectionContextEventPhase::FocusChanged,
             watch_id: None,
+            document: Some(document),
+            selection: None,
+            reason: None,
+            message: None,
+        }
+    }
+
+    pub fn selection_changed(
+        timestamp: u64,
+        selection: SelectionContextSelectionMetadataPayload,
+    ) -> Self {
+        Self {
+            r#type: "selection-context-event".to_string(),
+            timestamp,
+            phase: SelectionContextEventPhase::SelectionChanged,
+            watch_id: None,
+            document: None,
+            selection: Some(selection),
+            reason: None,
+            message: None,
+        }
+    }
+
+    pub fn watch_started(timestamp: u64, watch_id: impl Into<String>) -> Self {
+        Self {
+            r#type: "selection-context-event".to_string(),
+            timestamp,
+            phase: SelectionContextEventPhase::WatchStarted,
+            watch_id: Some(watch_id.into()),
             document: None,
             selection: None,
             reason: None,
             message: None,
+        }
+    }
+
+    pub fn watch_stopped(timestamp: u64, watch_id: impl Into<String>) -> Self {
+        Self {
+            r#type: "selection-context-event".to_string(),
+            timestamp,
+            phase: SelectionContextEventPhase::WatchStopped,
+            watch_id: Some(watch_id.into()),
+            document: None,
+            selection: None,
+            reason: None,
+            message: None,
+        }
+    }
+
+    pub fn failed(timestamp: u64, reason: impl Into<String>) -> Self {
+        Self {
+            r#type: "selection-context-event".to_string(),
+            timestamp,
+            phase: SelectionContextEventPhase::Failed,
+            watch_id: None,
+            document: None,
+            selection: None,
+            reason: Some(reason.into()),
+            message: None,
+        }
+    }
+
+    pub fn with_watch_id(mut self, watch_id: impl Into<String>) -> Self {
+        self.watch_id = Some(watch_id.into());
+        self
+    }
+
+    pub fn with_document(mut self, document: SelectionContextDocumentMetadataPayload) -> Self {
+        self.document = Some(document);
+        self
+    }
+
+    pub fn with_message(mut self, message: impl Into<String>) -> Self {
+        self.message = Some(message.into());
+        self
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SerializableSelectionContextEventPayload<'a> {
+    r#type: &'a str,
+    timestamp: u64,
+    phase: SelectionContextEventPhase,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    watch_id: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    document: Option<&'a SelectionContextDocumentMetadataPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    selection: Option<&'a SelectionContextSelectionMetadataPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<&'a str>,
+}
+
+impl<'a> TryFrom<&'a SelectionContextEventPayload>
+    for SerializableSelectionContextEventPayload<'a>
+{
+    type Error = &'static str;
+
+    fn try_from(payload: &'a SelectionContextEventPayload) -> Result<Self, Self::Error> {
+        validate_selection_context_event_payload(
+            &payload.r#type,
+            payload.phase,
+            payload.watch_id.as_deref(),
+            payload.document.as_ref(),
+            payload.selection.as_ref(),
+            payload.reason.as_deref(),
+            payload.message.as_deref(),
+        )?;
+        Ok(Self {
+            r#type: &payload.r#type,
+            timestamp: payload.timestamp,
+            phase: payload.phase,
+            watch_id: payload.watch_id.as_deref(),
+            document: payload.document.as_ref(),
+            selection: payload.selection.as_ref(),
+            reason: payload.reason.as_deref(),
+            message: payload.message.as_deref(),
+        })
+    }
+}
+
+impl Serialize for SelectionContextEventPayload {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        SerializableSelectionContextEventPayload::try_from(self)
+            .map_err(ser::Error::custom)?
+            .serialize(serializer)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawSelectionContextEventPayload {
+    r#type: String,
+    timestamp: u64,
+    phase: SelectionContextEventPhase,
+    #[serde(default)]
+    watch_id: Option<String>,
+    #[serde(default)]
+    document: Option<SelectionContextDocumentMetadataPayload>,
+    #[serde(default)]
+    selection: Option<SelectionContextSelectionMetadataPayload>,
+    #[serde(default)]
+    reason: Option<String>,
+    #[serde(default)]
+    message: Option<String>,
+}
+
+impl TryFrom<RawSelectionContextEventPayload> for SelectionContextEventPayload {
+    type Error = &'static str;
+
+    fn try_from(raw: RawSelectionContextEventPayload) -> Result<Self, Self::Error> {
+        validate_selection_context_event_payload(
+            &raw.r#type,
+            raw.phase,
+            raw.watch_id.as_deref(),
+            raw.document.as_ref(),
+            raw.selection.as_ref(),
+            raw.reason.as_deref(),
+            raw.message.as_deref(),
+        )?;
+        Ok(Self {
+            r#type: raw.r#type,
+            timestamp: raw.timestamp,
+            phase: raw.phase,
+            watch_id: raw.watch_id,
+            document: raw.document,
+            selection: raw.selection,
+            reason: raw.reason,
+            message: raw.message,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for SelectionContextEventPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        RawSelectionContextEventPayload::deserialize(deserializer)?
+            .try_into()
+            .map_err(de::Error::custom)
+    }
+}
+
+fn validate_selection_context_event_payload(
+    event_type: &str,
+    phase: SelectionContextEventPhase,
+    watch_id: Option<&str>,
+    document: Option<&SelectionContextDocumentMetadataPayload>,
+    selection: Option<&SelectionContextSelectionMetadataPayload>,
+    reason: Option<&str>,
+    message: Option<&str>,
+) -> Result<(), &'static str> {
+    if event_type != "selection-context-event" {
+        return Err("selection context event type must match the protocol event name");
+    }
+
+    match phase {
+        SelectionContextEventPhase::FocusChanged
+            if document.is_some()
+                && selection.is_none()
+                && reason.is_none()
+                && message.is_none() =>
+        {
+            Ok(())
+        }
+        SelectionContextEventPhase::FocusChanged => {
+            Err("focus-changed selection context events require document and no selection or failure metadata")
+        }
+        SelectionContextEventPhase::SelectionChanged
+            if selection.is_some() && reason.is_none() && message.is_none() =>
+        {
+            Ok(())
+        }
+        SelectionContextEventPhase::SelectionChanged => {
+            Err("selection-changed selection context events require selection and no failure metadata")
+        }
+        SelectionContextEventPhase::WatchStarted | SelectionContextEventPhase::WatchStopped
+            if watch_id.is_some()
+                && document.is_none()
+                && selection.is_none()
+                && reason.is_none()
+                && message.is_none() =>
+        {
+            Ok(())
+        }
+        SelectionContextEventPhase::WatchStarted | SelectionContextEventPhase::WatchStopped => {
+            Err("watch lifecycle selection context events require watch id only")
+        }
+        SelectionContextEventPhase::Failed
+            if reason.is_some() && document.is_none() && selection.is_none() =>
+        {
+            Ok(())
+        }
+        SelectionContextEventPhase::Failed => {
+            Err("failed selection context events require reason and no context payload")
         }
     }
 }
@@ -16558,18 +16793,14 @@ impl ExtensionPackageSupportedPayload {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ExtensionPackageEventPayload {
     r#type: String,
     timestamp: u64,
     package_id: String,
     phase: ExtensionPackageEventPhase,
-    #[serde(skip_serializing_if = "Option::is_none")]
     version: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     revision: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     reason: Option<String>,
 }
 
@@ -16591,6 +16822,126 @@ impl ExtensionPackageEventPayload {
             revision,
             reason,
         }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SerializableExtensionPackageEventPayload<'a> {
+    r#type: &'a str,
+    timestamp: u64,
+    package_id: &'a str,
+    phase: ExtensionPackageEventPhase,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    version: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    revision: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<&'a str>,
+}
+
+impl<'a> TryFrom<&'a ExtensionPackageEventPayload>
+    for SerializableExtensionPackageEventPayload<'a>
+{
+    type Error = &'static str;
+
+    fn try_from(payload: &'a ExtensionPackageEventPayload) -> Result<Self, Self::Error> {
+        validate_extension_package_event_payload(&payload.r#type, payload.phase, &payload.reason)?;
+        Ok(Self {
+            r#type: &payload.r#type,
+            timestamp: payload.timestamp,
+            package_id: &payload.package_id,
+            phase: payload.phase,
+            version: payload.version.as_deref(),
+            revision: payload.revision,
+            reason: payload.reason.as_deref(),
+        })
+    }
+}
+
+impl Serialize for ExtensionPackageEventPayload {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        SerializableExtensionPackageEventPayload::try_from(self)
+            .map_err(ser::Error::custom)?
+            .serialize(serializer)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawExtensionPackageEventPayload {
+    r#type: String,
+    timestamp: u64,
+    package_id: String,
+    phase: ExtensionPackageEventPhase,
+    #[serde(default)]
+    version: Option<String>,
+    #[serde(default)]
+    revision: Option<u64>,
+    #[serde(default)]
+    reason: Option<String>,
+}
+
+impl TryFrom<RawExtensionPackageEventPayload> for ExtensionPackageEventPayload {
+    type Error = &'static str;
+
+    fn try_from(raw: RawExtensionPackageEventPayload) -> Result<Self, Self::Error> {
+        validate_extension_package_event_payload(&raw.r#type, raw.phase, &raw.reason)?;
+        Ok(Self {
+            r#type: raw.r#type,
+            timestamp: raw.timestamp,
+            package_id: raw.package_id,
+            phase: raw.phase,
+            version: raw.version,
+            revision: raw.revision,
+            reason: raw.reason,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for ExtensionPackageEventPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        RawExtensionPackageEventPayload::deserialize(deserializer)?
+            .try_into()
+            .map_err(de::Error::custom)
+    }
+}
+
+fn validate_extension_package_event_payload(
+    event_type: &str,
+    phase: ExtensionPackageEventPhase,
+    reason: &Option<String>,
+) -> Result<(), &'static str> {
+    if event_type != "extension-package-event" {
+        return Err("extension package event type must match the protocol event name");
+    }
+    match phase {
+        ExtensionPackageEventPhase::Installing
+        | ExtensionPackageEventPhase::Installed
+        | ExtensionPackageEventPhase::Updating
+        | ExtensionPackageEventPhase::Updated
+        | ExtensionPackageEventPhase::Removing
+        | ExtensionPackageEventPhase::Removed
+            if reason.is_none() =>
+        {
+            Ok(())
+        }
+        ExtensionPackageEventPhase::Installing
+        | ExtensionPackageEventPhase::Installed
+        | ExtensionPackageEventPhase::Updating
+        | ExtensionPackageEventPhase::Updated
+        | ExtensionPackageEventPhase::Removing
+        | ExtensionPackageEventPhase::Removed => {
+            Err("successful extension package events must not include failure reason")
+        }
+        ExtensionPackageEventPhase::Failed if reason.is_some() => Ok(()),
+        ExtensionPackageEventPhase::Failed => Err("failed extension package events require reason"),
     }
 }
 
@@ -17349,7 +17700,9 @@ mod tests {
         ScopedAccessGrantEventPayload, ScopedAccessGrantEventPhase, ScopedAccessGrantState,
         ScreenBoundsPayload, ScreenDisplayPayload, ScreenDisplaysChangedEventPayload,
         ScreenDisplaysResultPayload, ScreenIsSupportedPayload, ScreenPointPayload,
-        ScreenSupportedPayload, SessionPermissionDecidePayload, SessionPermissionDecisionPayload,
+        ScreenSupportedPayload, SelectionContextDocumentKind,
+        SelectionContextDocumentMetadataPayload, SelectionContextEventPayload,
+        SessionPermissionDecidePayload, SessionPermissionDecisionPayload,
         SessionPermissionDecisionRecordPayload, SessionPermissionEventPayload,
         SessionPermissionEventPhasePayload, SessionPermissionKindPayload,
         SessionPermissionListPayload, SessionPermissionListResultPayload,
@@ -19825,6 +20178,62 @@ mod tests {
     }
 
     #[test]
+    fn selection_context_events_reject_inconsistent_phase_payloads() {
+        for source in [
+            r#"{"type":"selection-context-event","timestamp":1710000000100,"phase":"focus-changed"}"#,
+            r#"{"type":"selection-context-event","timestamp":1710000000100,"phase":"focus-changed","document":{"documentId":"document-1","kind":"editor-buffer"},"selection":{"characterCount":12}}"#,
+            r#"{"type":"selection-context-event","timestamp":1710000000100,"phase":"selection-changed"}"#,
+            r#"{"type":"selection-context-event","timestamp":1710000000100,"phase":"selection-changed","selection":{"characterCount":12},"reason":"host-failed"}"#,
+            r#"{"type":"selection-context-event","timestamp":1710000000100,"phase":"watch-started"}"#,
+            r#"{"type":"selection-context-event","timestamp":1710000000100,"phase":"watch-stopped","watchId":"watch-1","message":"stopped"}"#,
+            r#"{"type":"selection-context-event","timestamp":1710000000100,"phase":"failed"}"#,
+            r#"{"type":"selection-context-event","timestamp":1710000000100,"phase":"failed","reason":"host-failed","document":{"documentId":"document-1","kind":"editor-buffer"}}"#,
+        ] {
+            serde_json::from_str::<SelectionContextEventPayload>(source)
+                .expect_err("inconsistent selection context event should be rejected");
+        }
+
+        for source in [
+            r#"{"type":"selection-context-event","timestamp":1710000000100,"phase":"focus-changed","document":{"documentId":"document-1","kind":"editor-buffer"}}"#,
+            r#"{"type":"selection-context-event","timestamp":1710000000100,"phase":"focus-changed","watchId":"watch-1","document":{"documentId":"document-1","kind":"editor-buffer"}}"#,
+            r#"{"type":"selection-context-event","timestamp":1710000000100,"phase":"selection-changed","selection":{"characterCount":12}}"#,
+            r#"{"type":"selection-context-event","timestamp":1710000000100,"phase":"selection-changed","watchId":"watch-1","document":{"documentId":"document-1","kind":"editor-buffer"},"selection":{"characterCount":12}}"#,
+            r#"{"type":"selection-context-event","timestamp":1710000000100,"phase":"watch-started","watchId":"watch-1"}"#,
+            r#"{"type":"selection-context-event","timestamp":1710000000100,"phase":"watch-stopped","watchId":"watch-1"}"#,
+            r#"{"type":"selection-context-event","timestamp":1710000000100,"phase":"failed","reason":"host-failed","message":"host failed"}"#,
+            r#"{"type":"selection-context-event","timestamp":1710000000100,"phase":"failed","watchId":"watch-1","reason":"host-failed"}"#,
+        ] {
+            serde_json::from_str::<SelectionContextEventPayload>(source)
+                .expect("consistent selection context event should decode");
+        }
+    }
+
+    #[test]
+    fn selection_context_events_reject_inconsistent_phase_payloads_before_serializing() {
+        for event in [
+            SelectionContextEventPayload::focus_changed(
+                1_710_000_000_100,
+                SelectionContextDocumentMetadataPayload::new(
+                    "document-1",
+                    SelectionContextDocumentKind::EditorBuffer,
+                ),
+            )
+            .with_message("host failed"),
+            SelectionContextEventPayload::watch_started(1_710_000_000_100, "watch-1")
+                .with_message("host failed"),
+            SelectionContextEventPayload::failed(1_710_000_000_100, "host failed").with_document(
+                SelectionContextDocumentMetadataPayload::new(
+                    "document-1",
+                    SelectionContextDocumentKind::EditorBuffer,
+                ),
+            ),
+        ] {
+            serde_json::to_string(&event)
+                .expect_err("inconsistent selection context event should not encode");
+        }
+    }
+
+    #[test]
     fn focused_application_context_events_reject_inconsistent_phase_payloads() {
         for source in [
             r#"{"type":"focused-application-context-event","timestamp":1710000000100,"phase":"focus-changed"}"#,
@@ -20705,6 +21114,56 @@ mod tests {
             .expect("support payload should encode"),
             r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#
         );
+    }
+
+    #[test]
+    fn extension_package_events_reject_inconsistent_reasons() {
+        for source in [
+            r#"{"type":"extension-package-event","timestamp":1710000000000,"packageId":"extension-1","phase":"installing","reason":"host failed"}"#,
+            r#"{"type":"extension-package-event","timestamp":1710000000000,"packageId":"extension-1","phase":"installed","version":"1.0.0","revision":1,"reason":"host failed"}"#,
+            r#"{"type":"extension-package-event","timestamp":1710000000000,"packageId":"extension-1","phase":"updating","reason":"host failed"}"#,
+            r#"{"type":"extension-package-event","timestamp":1710000000000,"packageId":"extension-1","phase":"updated","version":"1.1.0","revision":2,"reason":"host failed"}"#,
+            r#"{"type":"extension-package-event","timestamp":1710000000000,"packageId":"extension-1","phase":"removing","reason":"host failed"}"#,
+            r#"{"type":"extension-package-event","timestamp":1710000000000,"packageId":"extension-1","phase":"removed","revision":3,"reason":"host failed"}"#,
+            r#"{"type":"extension-package-event","timestamp":1710000000000,"packageId":"extension-1","phase":"failed"}"#,
+        ] {
+            serde_json::from_str::<ExtensionPackageEventPayload>(source)
+                .expect_err("inconsistent extension package event should be rejected");
+        }
+
+        for source in [
+            r#"{"type":"extension-package-event","timestamp":1710000000000,"packageId":"extension-1","phase":"installing"}"#,
+            r#"{"type":"extension-package-event","timestamp":1710000000000,"packageId":"extension-1","phase":"installed","version":"1.0.0","revision":1}"#,
+            r#"{"type":"extension-package-event","timestamp":1710000000000,"packageId":"extension-1","phase":"failed","reason":"host failed"}"#,
+        ] {
+            serde_json::from_str::<ExtensionPackageEventPayload>(source)
+                .expect("consistent extension package event should decode");
+        }
+    }
+
+    #[test]
+    fn extension_package_events_reject_inconsistent_reasons_before_serializing() {
+        let successful = ExtensionPackageEventPayload::new(
+            1_710_000_000_000,
+            "extension-1",
+            ExtensionPackageEventPhase::Installed,
+            Some("1.0.0".to_string()),
+            Some(1),
+            Some("host failed".to_string()),
+        );
+        serde_json::to_string(&successful)
+            .expect_err("successful extension package event with reason should not encode");
+
+        let failed = ExtensionPackageEventPayload::new(
+            1_710_000_000_000,
+            "extension-1",
+            ExtensionPackageEventPhase::Failed,
+            None,
+            None,
+            None,
+        );
+        serde_json::to_string(&failed)
+            .expect_err("failed extension package event without reason should not encode");
     }
 
     #[test]

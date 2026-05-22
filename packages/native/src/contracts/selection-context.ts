@@ -182,15 +182,61 @@ export class SelectionContextSupportedResult extends Schema.Class<SelectionConte
   reason: Schema.optionalKey(BridgeSafeString)
 }) {}
 
+const SelectionContextEventPhasePayload = Schema.makeFilter<{
+  readonly phase: SelectionContextEventPhase
+  readonly watchId?: string | undefined
+  readonly document?: SelectionContextDocumentMetadata | undefined
+  readonly selection?: SelectionContextSelectionMetadata | undefined
+  readonly reason?: SelectionContextFailureReason | undefined
+  readonly message?: string | undefined
+}>((value) => {
+  switch (value.phase) {
+    case "focus-changed":
+      return (
+        (value.document !== undefined &&
+          value.selection === undefined &&
+          value.reason === undefined &&
+          value.message === undefined) ||
+        "focus-changed selection context events require document and no selection or failure metadata"
+      )
+    case "selection-changed":
+      return (
+        (value.selection !== undefined &&
+          value.reason === undefined &&
+          value.message === undefined) ||
+        "selection-changed selection context events require selection and no failure metadata"
+      )
+    case "watch-started":
+    case "watch-stopped":
+      return (
+        (value.watchId !== undefined &&
+          value.document === undefined &&
+          value.selection === undefined &&
+          value.reason === undefined &&
+          value.message === undefined) ||
+        `${value.phase} selection context events require watchId only`
+      )
+    case "failed":
+      return (
+        (value.reason !== undefined &&
+          value.document === undefined &&
+          value.selection === undefined) ||
+        "failed selection context events require reason and no context payload"
+      )
+  }
+})
+
 export class SelectionContextEvent extends Schema.Class<SelectionContextEvent>(
   "SelectionContextEvent"
-)({
-  type: SelectionContextEventType,
-  timestamp: SelectionContextTimestamp,
-  phase: SelectionContextEventPhase,
-  watchId: Schema.optionalKey(BridgeSafeNonEmptyString),
-  document: Schema.optionalKey(SelectionContextDocumentMetadata),
-  selection: Schema.optionalKey(SelectionContextSelectionMetadata),
-  reason: Schema.optionalKey(SelectionContextFailureReason),
-  message: Schema.optionalKey(BridgeSafeString)
-}) {}
+)(
+  Schema.Struct({
+    type: SelectionContextEventType,
+    timestamp: SelectionContextTimestamp,
+    phase: SelectionContextEventPhase,
+    watchId: Schema.optionalKey(BridgeSafeNonEmptyString),
+    document: Schema.optionalKey(SelectionContextDocumentMetadata),
+    selection: Schema.optionalKey(SelectionContextSelectionMetadata),
+    reason: Schema.optionalKey(SelectionContextFailureReason),
+    message: Schema.optionalKey(BridgeSafeString)
+  }).check(SelectionContextEventPhasePayload)
+) {}

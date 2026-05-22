@@ -3,6 +3,7 @@ import {
   type BridgeClientExchange,
   type HostProtocolError,
   type HostProtocolEventEnvelope,
+  HostProtocolInvalidOutputError,
   type HostProtocolRequestEnvelope,
   makeHostProtocolInternalError
 } from "@orika/bridge"
@@ -13,7 +14,7 @@ import {
   P,
   PermissionActor
 } from "@orika/core"
-import { Cause, Effect, Exit, type Layer, ManagedRuntime, Stream } from "effect"
+import { Cause, Effect, Exit, type Layer, ManagedRuntime, Schema, Stream } from "effect"
 
 import {
   ExtensionPackage,
@@ -29,6 +30,7 @@ import {
   ExtensionPackageActor,
   ExtensionPackageCapabilityDeclaration,
   ExtensionPackageCompatibility,
+  ExtensionPackageEvent,
   ExtensionPackageInstallInput,
   ExtensionPackageInstallRequest,
   ExtensionPackageManifest,
@@ -442,6 +444,60 @@ test("ExtensionPackage update and remove publish lifecycle state", () =>
     })
   ))
 
+test("ExtensionPackage events reject inconsistent failure reasons", () => {
+  for (const phase of [
+    "installing",
+    "installed",
+    "updating",
+    "updated",
+    "removing",
+    "removed"
+  ] as const) {
+    const exit = Effect.runSyncExit(
+      Schema.decodeUnknownEffect(ExtensionPackageEvent)({
+        ...eventBase(),
+        phase,
+        reason: "host failed"
+      })
+    )
+    expect(exit._tag).toBe("Failure")
+  }
+
+  const failedWithoutReason = Effect.runSyncExit(
+    Schema.decodeUnknownEffect(ExtensionPackageEvent)({
+      ...eventBase(),
+      phase: "failed"
+    })
+  )
+  expect(failedWithoutReason._tag).toBe("Failure")
+
+  for (const phase of [
+    "installing",
+    "installed",
+    "updating",
+    "updated",
+    "removing",
+    "removed"
+  ] as const) {
+    const exit = Effect.runSyncExit(
+      Schema.decodeUnknownEffect(ExtensionPackageEvent)({
+        ...eventBase(),
+        phase
+      })
+    )
+    expect(exit._tag).toBe("Success")
+  }
+
+  const failedWithReason = Effect.runSyncExit(
+    Schema.decodeUnknownEffect(ExtensionPackageEvent)({
+      ...eventBase(),
+      phase: "failed",
+      reason: "host failed"
+    })
+  )
+  expect(failedWithReason._tag).toBe("Success")
+})
+
 test("ExtensionPackage bridge client decodes native lifecycle events", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -486,6 +542,38 @@ test("ExtensionPackage bridge client decodes native lifecycle events", () =>
     })
   ))
 
+test("ExtensionPackage bridge client rejects inconsistent lifecycle events as InvalidOutput", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const nativeEvent: HostProtocolEventEnvelope = {
+        kind: "event",
+        method: "ExtensionPackage.Event",
+        timestamp: 1710000000000,
+        traceId: "trace-extension-package-event",
+        payload: {
+          ...eventBase(),
+          phase: "installed",
+          version: "1.0.0",
+          revision: 1,
+          reason: "host failed"
+        }
+      }
+      const exchange: BridgeClientExchange = {
+        request: () => Effect.fail(makeHostProtocolInternalError("unexpected request", "test")),
+        subscribe: () => Stream.make(nativeEvent)
+      }
+      const exit = yield* runScoped(
+        Effect.gen(function* () {
+          const client = yield* ExtensionPackageClient
+          return yield* Effect.exit(client.events().pipe(Stream.runHead))
+        }),
+        makeExtensionPackageBridgeClientLayer(exchange)
+      )
+
+      expectInvalidOutput(exit)
+    })
+  ))
+
 test("ExtensionPackage RPC metadata reports host methods as supported", () => {
   expect(
     ExtensionPackageSurface.schemaDocs.map((doc) => ({
@@ -512,6 +600,12 @@ const source = (): ExtensionPackageSource =>
   })
 
 const manifestCapability = () => P.filesystemRead({ roots: ["/tmp/effect-desktop/extensions"] })
+
+const eventBase = () => ({
+  type: "extension-package-event",
+  timestamp: 1_710_000_000_000,
+  packageId: "extension-1"
+})
 
 const manifest = (
   overrides: Partial<{
@@ -614,5 +708,12 @@ const expectExitFailure = (
   expect(Exit.isFailure(exit)).toBe(true)
   if (Exit.isFailure(exit)) {
     assertion(Cause.squash(exit.cause))
+  }
+}
+
+const expectInvalidOutput = <A, E>(exit: Exit.Exit<A, E>): void => {
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    expect(Cause.squash(exit.cause)).toBeInstanceOf(HostProtocolInvalidOutputError)
   }
 }
