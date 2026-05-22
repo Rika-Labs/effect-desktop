@@ -73,6 +73,8 @@ const decodeReactPackageJson = Schema.decodeUnknownSync(Schema.fromJsonString(Re
 const reactPackageJsonUrl = new URL("../package.json", import.meta.url)
 const reactPackageRootUrl = new URL("../", import.meta.url)
 const reactPackageIndexUrl = new URL("index.ts", import.meta.url)
+const workspaceRootUrl = new URL("../../../", import.meta.url)
+const reactRootBundleEntryUrl = new URL(".tmp-react-root-bundle-entry.tsx", workspaceRootUrl)
 
 const urlToPath = (url: URL): string => fileURLToPath(url)
 
@@ -120,6 +122,37 @@ test("React package root does not export browser storage services", () =>
       expect(source).not.toContain("RendererSqlite")
       expect(source).not.toContain("indexedDbStorage")
       expect(source).not.toContain("keyValueStorage")
+    })
+  ))
+
+test("React package root hooks browser-bundle without host modules", () =>
+  PlatformRuntime.runPromise(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const entryPath = urlToPath(reactRootBundleEntryUrl)
+      const outdir = yield* fs.makeTempDirectory({ prefix: "orika-react-root-bundle-" })
+
+      try {
+        yield* fs.writeFileString(
+          entryPath,
+          'import { useDesktopQuery } from "@orika/react"\nvoid useDesktopQuery\n'
+        )
+
+        const result = yield* Effect.promise(() =>
+          Bun.build({
+            entrypoints: [entryPath],
+            format: "esm",
+            outdir,
+            target: "browser"
+          })
+        )
+
+        expect(result.logs.map((log) => log.message)).toEqual([])
+        expect(result.success).toBe(true)
+      } finally {
+        yield* fs.remove(entryPath, { force: true })
+        yield* fs.remove(outdir, { recursive: true, force: true })
+      }
     })
   ))
 

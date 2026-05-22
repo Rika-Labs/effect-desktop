@@ -2,7 +2,7 @@ import {
   makeFrameworkScopedOperation,
   runFrameworkEffect,
   type FrameworkRuntime
-} from "@orika/core/renderer"
+} from "@orika/core/runtime/renderer-stream"
 import { Effect, Exit, Layer, ManagedRuntime, type Cause } from "effect"
 import { AsyncResult } from "effect/unstable/reactivity"
 import { useCallback, useEffect, useMemo, useRef, useState, type DependencyList } from "react"
