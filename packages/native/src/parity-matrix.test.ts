@@ -1108,6 +1108,18 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
           ]
         }
       })
+      expect(result.rows.find((row) => row.tag === "Window.setSkipTaskbar")).toMatchObject({
+        hostStatus: "routed",
+        support: {
+          status: "partial",
+          reason: "skip-taskbar-macos-unsupported",
+          platforms: [
+            { platform: "macos", status: "unsupported", reason: "skip-taskbar-macos-unsupported" },
+            { platform: "windows", status: "supported" },
+            { platform: "linux", status: "supported" }
+          ]
+        }
+      })
       expect(result.rows.find((row) => row.tag === "EgressPolicy.decide")).toMatchObject({
         hostStatus: "routed",
         support: {

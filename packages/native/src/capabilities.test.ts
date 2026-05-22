@@ -123,6 +123,16 @@ const WindowSimpleFullscreenMacosOnlySupport = {
   ]
 } as const
 
+const WindowSkipTaskbarSupport = {
+  status: "partial",
+  reason: "skip-taskbar-macos-unsupported",
+  platforms: [
+    { platform: "macos", status: "unsupported", reason: "skip-taskbar-macos-unsupported" },
+    { platform: "windows", status: "supported" },
+    { platform: "linux", status: "supported" }
+  ]
+} as const
+
 const WebViewDebuggerUnavailableSupport = {
   status: "unsupported",
   reason: "host-debugger-protocol-unavailable",
@@ -389,6 +399,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const windowClearVibrancy = yield* capabilities.support("Window.clearVibrancy")
       const windowSetShadow = yield* capabilities.support("Window.setShadow")
       const windowSetSimpleFullscreen = yield* capabilities.support("Window.setSimpleFullscreen")
+      const windowSetSkipTaskbar = yield* capabilities.support("Window.setSkipTaskbar")
       const networkAuthHandleAuth = yield* capabilities.support("NetworkAuth.handleAuth")
       const networkAuthHandleCertificate = yield* capabilities.support(
         "NetworkAuth.handleCertificate"
@@ -500,6 +511,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(windowClearVibrancy).toEqual(WindowVibrancyMacosOnlySupport)
       expect(windowSetShadow).toEqual(WindowShadowMacosOnlySupport)
       expect(windowSetSimpleFullscreen).toEqual(WindowSimpleFullscreenMacosOnlySupport)
+      expect(windowSetSkipTaskbar).toEqual(WindowSkipTaskbarSupport)
       expect(networkAuthHandleAuth).toEqual(NetworkAuthUnavailableSupport)
       expect(networkAuthHandleCertificate).toEqual(NetworkAuthUnavailableSupport)
       expect(networkAuthSetProxy).toEqual(NetworkAuthProxySupport)

@@ -80,8 +80,9 @@ test("WindowRpcs exposes only host-implemented methods through RpcGroup lowering
   expect(request("Window.setAlwaysOnTop").pipe(rpcSupport)).toEqual({ status: "supported" })
   expect(request("Window.setSkipTaskbar").pipe(rpcSupport)).toMatchObject({
     status: "partial",
+    reason: "skip-taskbar-macos-unsupported",
     platforms: [
-      { platform: "macos", status: "unsupported" },
+      { platform: "macos", status: "unsupported", reason: "skip-taskbar-macos-unsupported" },
       { platform: "windows", status: "supported" },
       { platform: "linux", status: "supported" }
     ]

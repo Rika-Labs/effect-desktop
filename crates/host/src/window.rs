@@ -6724,7 +6724,7 @@ fn set_skip_taskbar(
     _skip_taskbar: bool,
 ) -> std::result::Result<(), HostProtocolError> {
     Err(HostProtocolError::unsupported(
-        "skip-taskbar is only supported on Windows and Linux",
+        "skip-taskbar-macos-unsupported",
         host_protocol::WINDOW_SET_SKIP_TASKBAR_METHOD,
     ))
 }
