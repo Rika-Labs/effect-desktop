@@ -12,7 +12,7 @@ export const APP_EXPORT_ENV = "EFFECT_DESKTOP_APP_EXPORT"
 export const STARTUP_WINDOWS_ENV = "EFFECT_DESKTOP_STARTUP_WINDOWS"
 export const WINDOW_SMOKE_TEST_ENV = "EFFECT_DESKTOP_WINDOW_SMOKE_TEST"
 const DEFAULT_APP_EXPORT = "default"
-const RESERVED_WINDOW_NAMES = new Set(["__proto__", "constructor", "prototype"])
+const RESERVED_STARTUP_WINDOW_NAMES = new Set(["__proto__", "constructor", "prototype"])
 const PositiveFiniteNumber = Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0))
 const WindowSpecSchema = Schema.Struct({
   title: Schema.NonEmptyString,
@@ -349,7 +349,7 @@ const validateWindowNames = (
 ): Effect.Effect<Readonly<Record<string, WindowSpec>>, StartupWindowConfigError, never> => {
   const entries: Array<readonly [string, WindowSpec]> = []
   for (const [name, spec] of Object.entries(windows)) {
-    if (!isSafeWindowName(name)) {
+    if (!isSafeStartupWindowName(name)) {
       return invalidStartupWindows(env, `reserved window name "${name}" is not allowed`)
     }
     entries.push([name, Object.freeze({ ...spec })])
@@ -375,8 +375,8 @@ const toStartupEnvironmentConfigError = (error: Config.ConfigError): StartupWind
     message: `Invalid startup environment: ${formatUnknownError(error)}`
   })
 
-const isSafeWindowName = (name: string): boolean =>
-  name.length > 0 && !RESERVED_WINDOW_NAMES.has(name)
+export const isSafeStartupWindowName = (name: string): boolean =>
+  name.length > 0 && !RESERVED_STARTUP_WINDOW_NAMES.has(name)
 
 const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) {

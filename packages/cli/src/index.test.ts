@@ -8257,6 +8257,85 @@ test("desktop build rejects invalid window config before running build steps", (
     })
   ))
 
+test("desktop build rejects startup window names the runtime cannot launch", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      for (const windowName of ["", "__proto__", "constructor", "prototype"]) {
+        const directory = yield* Effect.promise(() =>
+          mkdtemp(join(tmpdir(), "effect-desktop-cli-build-window-names-"))
+        )
+        try {
+          yield* writePlaygroundFixture(directory, {
+            windows: Object.fromEntries([
+              [
+                windowName,
+                {
+                  title: "Bad Window",
+                  route: "/"
+                }
+              ]
+            ])
+          })
+          if (windowName === "__proto__") {
+            const configJson = stringifyJson(
+              {
+                app: {
+                  id: "dev.effect-desktop.inspector",
+                  name: "ORIKA Playground",
+                  version: "0.0.0"
+                },
+                runtime: { entry: "runtime.ts" },
+                renderer: {
+                  entry: "src/renderer/main.tsx",
+                  dist: "dist"
+                },
+                windows: Object.fromEntries([
+                  [
+                    windowName,
+                    {
+                      title: "Bad Window",
+                      route: "/"
+                    }
+                  ]
+                ])
+              },
+              2
+            )
+            yield* Effect.promise(() =>
+              writeFile(
+                join(directory, "apps", "inspector", "desktop.config.ts"),
+                `export default JSON.parse(${JSON.stringify(configJson)}) as const\n`
+              )
+            )
+          }
+          const stderr: string[] = []
+          const calls: string[] = []
+          const exitCode = yield* runCli({
+            argv: ["build", "--config", "apps/inspector/desktop.config.ts"],
+            cwd: directory,
+            hostTarget: "linux-x64",
+            commandRunner: (invocation) =>
+              Effect.sync(() => {
+                calls.push(invocation.step)
+              }),
+            writeStdout: () => {},
+            writeStderr: (text) => {
+              stderr.push(text)
+            }
+          })
+
+          expect(exitCode).toBe(1)
+          expect(stderr.join("")).toContain("BuildConfigError")
+          expect(stderr.join("")).toContain(`windows.${windowName}`)
+          expect(stderr.join("")).toContain("non-empty non-reserved window name")
+          expect(calls).toEqual([])
+        } finally {
+          yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+        }
+      }
+    })
+  ))
+
 test("desktop build emits validated window config in host manifest", () =>
   Effect.runPromise(
     Effect.gen(function* () {

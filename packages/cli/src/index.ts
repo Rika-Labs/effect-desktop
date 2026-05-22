@@ -24,6 +24,7 @@ import {
   type DesktopWindowsLayer,
   type LayerGraphSnapshot
 } from "@orika/core"
+import { isSafeStartupWindowName } from "@orika/core/runtime/window-supervisor"
 import {
   Clock,
   Console,
@@ -2851,6 +2852,14 @@ const readWindowsConfig = (value: unknown): Effect.Effect<unknown, BuildConfigEr
       continue
     }
     const field = `windows.${key}`
+    if (!isSafeStartupWindowName(key)) {
+      return Effect.fail(
+        new BuildConfigError({
+          field,
+          message: `${field} must be a non-empty non-reserved window name`
+        })
+      )
+    }
     const declaration = value[key]
     if (!isRecord(declaration)) {
       return Effect.fail(new BuildConfigError({ field, message: `${field} must be an object` }))
