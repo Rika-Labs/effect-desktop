@@ -310,50 +310,66 @@ test("LocalToolRuntime denies register before host side effects", () =>
 test("LocalToolRuntime rejects malformed manifests before bridge transport", () =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const requests: HostProtocolRequestEnvelope[] = []
-      const exchange: BridgeClientExchange = {
-        request: (request) => {
-          requests.push(request)
-          return Effect.succeed({
-            kind: "success",
-            payload: {
-              runtimeId: "runtime-1",
-              toolId: "tool-1",
-              manifest: manifest(),
-              state: "registered"
-            }
-          })
-        },
-        subscribe: () => Stream.empty
-      }
-
-      const runtime = ManagedRuntime.make(makeLocalToolRuntimeBridgeClientLayer(exchange))
-      const exit = yield* Effect.promise(() =>
-        runtime.runPromise(
-          Effect.gen(function* () {
-            const client = yield* LocalToolRuntimeClient
-            return yield* Effect.exit(
-              client.register(
-                new LocalToolRuntimeRegisterInput({
-                  actor: actor(),
-                  manifest: manifest({
-                    commands: [command({ executable: "/usr/bin/node;rm" })]
-                  })
-                })
-              )
-            )
-          })
-        )
-      )
-      yield* Effect.promise(() => runtime.dispose())
-
-      expect(requests).toEqual([])
-      expectExitFailure(exit, (error) => {
-        expect(error).toMatchObject({
-          tag: "InvalidArgument",
-          operation: "LocalToolRuntime.register"
+      for (const invalidManifest of [
+        manifest({
+          commands: [command({ executable: "/usr/bin/node;rm" })]
+        }),
+        manifestPayload({
+          commands: [commandPayload({ cwd: "/tmp/app/../secret" })]
+        }),
+        manifestPayload({
+          policy: policyPayload({ cwdRoots: ["relative"] })
+        }),
+        manifestPayload({
+          policy: policyPayload({ readRoots: ["/tmp/app/../secret"] })
+        }),
+        manifestPayload({
+          policy: policyPayload({ writeRoots: ["/tmp/app/../secret"] })
         })
-      })
+      ]) {
+        const requests: HostProtocolRequestEnvelope[] = []
+        const exchange: BridgeClientExchange = {
+          request: (request) => {
+            requests.push(request)
+            return Effect.succeed({
+              kind: "success",
+              payload: {
+                runtimeId: "runtime-1",
+                toolId: "tool-1",
+                manifest: manifest(),
+                state: "registered"
+              }
+            })
+          },
+          subscribe: () => Stream.empty
+        }
+
+        const runtime = ManagedRuntime.make(makeLocalToolRuntimeBridgeClientLayer(exchange))
+        const exit = yield* Effect.promise(() =>
+          runtime.runPromise(
+            Effect.gen(function* () {
+              const client = yield* LocalToolRuntimeClient
+              const malformedInput = {
+                actor: actor(),
+                manifest: invalidManifest
+              }
+              return yield* Effect.exit(
+                // @ts-expect-error: malformed JavaScript callers must still be rejected.
+                client.register(malformedInput)
+              )
+            })
+          )
+        )
+        yield* Effect.promise(() => runtime.dispose())
+
+        expect(requests).toEqual([])
+        expectExitFailure(exit, (error) => {
+          expect(error).toMatchObject({
+            tag: "InvalidArgument",
+            operation: "LocalToolRuntime.register"
+          })
+        })
+      }
     })
   ))
 
@@ -554,6 +570,27 @@ const manifest = (
     ...options
   })
 
+const manifestPayload = (options: {
+  readonly commands?: readonly unknown[]
+  readonly policy?: unknown
+}) => ({
+  toolId: "tool-1",
+  name: "Tool One",
+  version: "1.0.0",
+  commands: options.commands ?? [commandPayload()],
+  permissions: [processPermission(), P.filesystemRead({ roots: ["/tmp/app"] })],
+  policy: options.policy ?? policyPayload()
+})
+
+const commandPayload = (options: Record<string, unknown> = {}) => ({
+  commandId: "node-version",
+  executable: "/usr/bin/node",
+  defaultArgs: ["--version"],
+  cwd: "/tmp/app",
+  timeoutMillis: 1_000,
+  ...options
+})
+
 const realHostManifest = (root: string): LocalToolRuntimeManifest =>
   new LocalToolRuntimeManifest({
     toolId: "tool-real-host",
@@ -618,11 +655,20 @@ const realHostManifest = (root: string): LocalToolRuntimeManifest =>
     })
   })
 
-const policy = (): LocalToolRuntimePolicy =>
+interface PolicyOptions {
+  readonly cwdRoots?: readonly string[]
+  readonly readRoots?: readonly string[]
+  readonly writeRoots?: readonly string[]
+}
+
+const policy = (options: PolicyOptions = {}): LocalToolRuntimePolicy =>
   new LocalToolRuntimePolicy({
-    cwd: new LocalToolRuntimeCwdPolicy({ roots: ["/tmp/app"] }),
+    cwd: new LocalToolRuntimeCwdPolicy({ roots: options.cwdRoots ?? ["/tmp/app"] }),
     environment: new LocalToolRuntimeEnvironmentPolicy({ variables: [] }),
-    filesystem: new LocalToolRuntimeFilesystemPolicy({ readRoots: ["/tmp/app"] }),
+    filesystem: new LocalToolRuntimeFilesystemPolicy({
+      readRoots: options.readRoots ?? ["/tmp/app"],
+      ...(options.writeRoots === undefined ? {} : { writeRoots: options.writeRoots })
+    }),
     network: new LocalToolRuntimeNetworkPolicy({ hosts: [] }),
     budgets: new LocalToolRuntimeBudgetPolicy({
       cpuMillis: 500,
@@ -637,6 +683,28 @@ const policy = (): LocalToolRuntimePolicy =>
       removeWorkingDirectory: true
     })
   })
+
+const policyPayload = (options: PolicyOptions = {}) => ({
+  cwd: { roots: options.cwdRoots ?? ["/tmp/app"] },
+  environment: { variables: [] },
+  filesystem: {
+    readRoots: options.readRoots ?? ["/tmp/app"],
+    ...(options.writeRoots === undefined ? {} : { writeRoots: options.writeRoots })
+  },
+  network: { hosts: [] },
+  budgets: {
+    cpuMillis: 500,
+    memoryBytes: 67_108_864,
+    wallClockMillis: 1_000,
+    stdoutBytes: 1_024,
+    stderrBytes: 1_024
+  },
+  stdio: { stdout: "capture", stderr: "capture" },
+  cleanup: {
+    killProcessTree: true,
+    removeWorkingDirectory: true
+  }
+})
 
 const registerRequest = (): LocalToolRuntimeRegisterRequest =>
   new LocalToolRuntimeRegisterRequest({

@@ -1,6 +1,7 @@
 import { NormalizedCapability } from "@orika/core"
 import { Schema } from "effect"
 
+import { NativeBridgePath } from "./path.js"
 import { BridgeSafeNonEmptyString, BridgeSafeString, PrintableNonEmptyString } from "./strings.js"
 
 export const LocalToolRuntimeActorKind = Schema.Literals([
@@ -58,7 +59,7 @@ export class LocalToolRuntimeEnvironmentEntry extends Schema.Class<LocalToolRunt
 export class LocalToolRuntimeCwdPolicy extends Schema.Class<LocalToolRuntimeCwdPolicy>(
   "LocalToolRuntimeCwdPolicy"
 )({
-  roots: Schema.Array(PrintableNonEmptyString)
+  roots: Schema.Array(NativeBridgePath)
 }) {}
 
 export class LocalToolRuntimeEnvironmentPolicy extends Schema.Class<LocalToolRuntimeEnvironmentPolicy>(
@@ -70,8 +71,8 @@ export class LocalToolRuntimeEnvironmentPolicy extends Schema.Class<LocalToolRun
 export class LocalToolRuntimeFilesystemPolicy extends Schema.Class<LocalToolRuntimeFilesystemPolicy>(
   "LocalToolRuntimeFilesystemPolicy"
 )({
-  readRoots: Schema.optionalKey(Schema.Array(PrintableNonEmptyString)),
-  writeRoots: Schema.optionalKey(Schema.Array(PrintableNonEmptyString))
+  readRoots: Schema.optionalKey(Schema.Array(NativeBridgePath)),
+  writeRoots: Schema.optionalKey(Schema.Array(NativeBridgePath))
 }) {}
 
 export class LocalToolRuntimeNetworkPolicy extends Schema.Class<LocalToolRuntimeNetworkPolicy>(
@@ -122,7 +123,7 @@ export class LocalToolRuntimeCommand extends Schema.Class<LocalToolRuntimeComman
   commandId: PrintableNonEmptyString,
   executable: PrintableNonEmptyString,
   defaultArgs: Schema.optionalKey(Schema.Array(BridgeSafeString)),
-  cwd: Schema.optionalKey(PrintableNonEmptyString),
+  cwd: Schema.optionalKey(NativeBridgePath),
   environment: Schema.optionalKey(Schema.Array(LocalToolRuntimeEnvironmentEntry)),
   timeoutMillis: Schema.optionalKey(LocalToolRuntimePositiveInt)
 }) {}
