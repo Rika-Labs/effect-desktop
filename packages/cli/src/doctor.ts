@@ -166,6 +166,31 @@ interface AppConfig {
   }
 }
 
+type DoctorConfigLoadResult =
+  | {
+      readonly _tag: "OutsideWorkspace"
+      readonly path: string
+    }
+  | {
+      readonly _tag: "Missing"
+      readonly path: string
+    }
+  | {
+      readonly _tag: "ImportFailed"
+      readonly path: string
+      readonly cause: unknown
+    }
+  | {
+      readonly _tag: "DefaultExportFailed"
+      readonly path: string
+      readonly cause: unknown
+    }
+  | {
+      readonly _tag: "Loaded"
+      readonly path: string
+      readonly value: unknown
+    }
+
 const DOCS_URL = "https://github.com/Rika-Labs/effect-desktop/blob/main/docs/troubleshooting.md"
 const NATIVE_PARITY_MATRIX_PATH = join(dirname(import.meta.path), "native-parity-matrix.json")
 const NATIVE_PARITY_MATRIX_EVIDENCE_PATH = "packages/cli/src/native-parity-matrix.json"
@@ -180,21 +205,28 @@ export const runDesktopDoctor = (
   options: DesktopDoctorOptions
 ): Effect.Effect<DesktopDoctorReport, DoctorCapabilityTruthUnavailable, never> =>
   Effect.gen(function* () {
-    const probes = yield* Effect.all(
+    const initialProbes = yield* Effect.all(
       [
         probeBunVersion(options),
         probeRustToolchain(options),
         probePlatformSdk(options),
-        probeWebviewRuntime(options),
-        probeSigningCredentials(options),
+        probeWebviewRuntime(options)
+      ],
+      { concurrency: 1 }
+    )
+    const config = yield* loadDoctorConfig(options)
+    const remainingProbes = yield* Effect.all(
+      [
+        probeSigningCredentials(options, config),
         probeBuildTools(options),
         probePackageManagerState(options),
         probeNativeCapabilities(options),
         probeNativeHostCache(options),
-        probeConfig(options)
+        probeConfig(options, config)
       ],
       { concurrency: 1 }
     )
+    const probes = [...initialProbes, ...remainingProbes]
 
     return new DesktopDoctorReport({
       passed: probes.every((probe) => probe.status !== "missing"),
@@ -369,11 +401,14 @@ const probeWebviewRuntime = (
 }
 
 const probeSigningCredentials = (
-  options: DesktopDoctorOptions
+  options: DesktopDoctorOptions,
+  config: DoctorConfigLoadResult
 ): Effect.Effect<DoctorProbeResult, never, DoctorEnvironment> =>
   Effect.gen(function* () {
-    const config = yield* readDesktopConfigForDoctor(options)
-    const hasCredentials = yield* probeSigningCredentialSupport(config, options.platform)
+    const hasCredentials = yield* probeSigningCredentialSupport(
+      appConfigFromDoctorConfig(config),
+      options.platform
+    )
     if (hasCredentials) {
       return ok("signing-credentials", "signing", "signing credential configuration is present")
     }
@@ -532,74 +567,67 @@ const readNativeParityMatrixFile = (
   })
 
 const probeConfig = (
-  options: DesktopDoctorOptions
+  options: DesktopDoctorOptions,
+  configResult: DoctorConfigLoadResult
 ): Effect.Effect<DoctorProbeResult, never, never> =>
-  Effect.gen(function* () {
-    const configPath = resolve(options.cwd, options.configPath ?? "desktop.config.ts")
-    if (!isWorkspaceContainedPath(options.cwd, configPath)) {
-      return missingResult(
-        missing({
-          probe: "config",
-          component: "desktop.config.ts",
-          platform: options.platform,
-          message: `desktop config path must stay inside the workspace: ${configPath}`,
-          remediation: "Run doctor from the workspace root or pass an in-workspace config path.",
-          installHint: `desktop doctor --config ${relativeConfigHint(options)}`,
-          docsUrl: DOCS_URL
-        })
-      )
+  Effect.sync(() => {
+    switch (configResult._tag) {
+      case "OutsideWorkspace":
+        return missingResult(
+          missing({
+            probe: "config",
+            component: "desktop.config.ts",
+            platform: options.platform,
+            message: `desktop config path must stay inside the workspace: ${configResult.path}`,
+            remediation: "Run doctor from the workspace root or pass an in-workspace config path.",
+            installHint: `desktop doctor --config ${relativeConfigHint(options)}`,
+            docsUrl: DOCS_URL
+          })
+        )
+      case "Missing":
+        return missingResult(
+          missing({
+            probe: "config",
+            component: "desktop.config.ts",
+            platform: options.platform,
+            message: `desktop config is missing at ${configResult.path}`,
+            remediation: "Pass --config <path> or create desktop.config.ts.",
+            installHint: `desktop doctor --config ${relativeConfigHint(options)}`,
+            docsUrl: DOCS_URL
+          })
+        )
+      case "ImportFailed":
+        return missingResult(
+          missing({
+            probe: "config",
+            component: "desktop.config.ts",
+            platform: options.platform,
+            message: `desktop config import failed: ${formatUnknownCause(configResult.cause)}`,
+            remediation:
+              "Fix the syntax or runtime error thrown while importing desktop.config.ts.",
+            installHint: `bun desktop doctor --config ${relativeConfigHint(options)}`,
+            docsUrl: DOCS_URL
+          })
+        )
+      case "DefaultExportFailed":
+        return missingResult(
+          missing({
+            probe: "config",
+            component: "desktop.config.ts",
+            platform: options.platform,
+            message: `desktop config import failed: ${formatUnknownCause(configResult.cause)}`,
+            remediation:
+              "Fix the syntax or runtime error thrown while importing desktop.config.ts.",
+            installHint: `bun desktop doctor --config ${relativeConfigHint(options)}`,
+            docsUrl: DOCS_URL
+          })
+        )
+      case "Loaded":
+        break
     }
-    const exists = yield* pathExists(configPath)
-    if (!exists) {
-      return missingResult(
-        missing({
-          probe: "config",
-          component: "desktop.config.ts",
-          platform: options.platform,
-          message: `desktop config is missing at ${configPath}`,
-          remediation: "Pass --config <path> or create desktop.config.ts.",
-          installHint: `desktop doctor --config ${relativeConfigHint(options)}`,
-          docsUrl: DOCS_URL
-        })
-      )
-    }
-    const imported = yield* Effect.tryPromise({
-      try: async () => (await import(pathToFileUrl(configPath))) as { readonly default?: unknown },
-      catch: (cause) => cause
-    }).pipe(
-      Effect.match({
-        onFailure: (cause) => ({ ok: false as const, cause }),
-        onSuccess: (module) => ({ ok: true as const, module })
-      })
-    )
-    if (!imported.ok) {
-      return missingResult(
-        missing({
-          probe: "config",
-          component: "desktop.config.ts",
-          platform: options.platform,
-          message: `desktop config import failed: ${formatUnknownCause(imported.cause)}`,
-          remediation: "Fix the syntax or runtime error thrown while importing desktop.config.ts.",
-          installHint: `bun desktop doctor --config ${relativeConfigHint(options)}`,
-          docsUrl: DOCS_URL
-        })
-      )
-    }
-    const defaultExport = readModuleDefault(imported.module)
-    if (!defaultExport.ok) {
-      return missingResult(
-        missing({
-          probe: "config",
-          component: "desktop.config.ts",
-          platform: options.platform,
-          message: `desktop config import failed: ${formatUnknownCause(defaultExport.cause)}`,
-          remediation: "Fix the syntax or runtime error thrown while importing desktop.config.ts.",
-          installHint: `bun desktop doctor --config ${relativeConfigHint(options)}`,
-          docsUrl: DOCS_URL
-        })
-      )
-    }
-    if (!isRecord(defaultExport.value)) {
+
+    const config = appConfigFromDoctorConfig(configResult)
+    if (config === undefined) {
       return missingResult(
         missing({
           probe: "config",
@@ -612,7 +640,6 @@ const probeConfig = (
         })
       )
     }
-    const config = defaultExport.value as AppConfig
     if (
       typeof config.app?.id === "string" &&
       config.app.id.length > 0 &&
@@ -966,26 +993,49 @@ const makeDoctorEnvironment = (
 const optionalString = (value: unknown): string | undefined =>
   typeof value === "string" && value.length > 0 ? value : undefined
 
-const readDesktopConfigForDoctor = (
+const loadDoctorConfig = (
   options: DesktopDoctorOptions
-): Effect.Effect<AppConfig | undefined, never, never> =>
+): Effect.Effect<DoctorConfigLoadResult, never, never> =>
   Effect.gen(function* () {
     const configPath = resolve(options.cwd, options.configPath ?? "desktop.config.ts")
-    const module = yield* Effect.option(
-      Effect.tryPromise({
-        try: async () =>
-          (await import(pathToFileURL(configPath).href)) as {
-            readonly default?: unknown
-          },
-        catch: (cause) => cause
+    if (!isWorkspaceContainedPath(options.cwd, configPath)) {
+      return { _tag: "OutsideWorkspace", path: configPath }
+    }
+
+    const exists = yield* pathExists(configPath)
+    if (!exists) {
+      return { _tag: "Missing", path: configPath }
+    }
+
+    const imported = yield* Effect.tryPromise({
+      try: async () => (await import(pathToFileUrl(configPath))) as { readonly default?: unknown },
+      catch: (cause) => cause
+    }).pipe(
+      Effect.match({
+        onFailure: (cause) => ({ ok: false as const, cause }),
+        onSuccess: (module) => ({ ok: true as const, module })
       })
     )
-    const defaultExport = Option.getOrUndefined(module)?.default
-    if (!isRecord(defaultExport)) {
-      return undefined
+    if (!imported.ok) {
+      return { _tag: "ImportFailed", path: configPath, cause: imported.cause }
     }
-    return defaultExport as AppConfig
+
+    const defaultExport = readModuleDefault(imported.module)
+    if (!defaultExport.ok) {
+      return { _tag: "DefaultExportFailed", path: configPath, cause: defaultExport.cause }
+    }
+
+    return { _tag: "Loaded", path: configPath, value: defaultExport.value }
   })
+
+const appConfigFromDoctorConfig = (config: DoctorConfigLoadResult): AppConfig | undefined => {
+  if (config._tag !== "Loaded" || !isRecord(config.value)) {
+    return undefined
+  }
+
+  // AppConfig intentionally keeps leaf values unknown; probeConfig validates the consumed fields.
+  return config.value as AppConfig
+}
 
 const remediationForCommand = (command: string): string => {
   if (command === "cargo" || command === "rustc") {

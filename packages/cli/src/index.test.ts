@@ -1510,6 +1510,7 @@ test("desktop doctor reports config import failures with the import cause", () =
         const output = stderr.join("")
         expect(exitCode).toBe(1)
         expect(output).toContain("MISSING  config")
+        expect(output).toContain("signing credentials are not configured")
         expect(output).toContain("desktop config import failed")
         expect(output).toContain("config exploded")
         expect(output).not.toContain("desktop config must export a default object")
@@ -1612,6 +1613,74 @@ test("desktop doctor rejects config paths outside the workspace", () =>
         expect(stderr.join("")).not.toContain(
           "desktop doctor --config apps/inspector/desktop.config.ts"
         )
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+        yield* Effect.promise(() => rm(outsideDirectory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop doctor does not import outside-workspace config paths", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-contained-import-"))
+      )
+      const outsideDirectory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-doctor-outside-import-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        yield* Effect.promise(() =>
+          mkdir(join(outsideDirectory, "apps", "inspector"), {
+            recursive: true
+          })
+        )
+        yield* Effect.promise(() =>
+          writeFile(join(directory, "package.json"), '{"packageManager":"bun@1.3.13"}\n')
+        )
+        yield* Effect.promise(() => writeFile(join(directory, "bun.lock"), ""))
+        const markerPath = join(outsideDirectory, "outside-config-imported")
+        const outsideConfig = join(outsideDirectory, "apps", "inspector", "desktop.config.ts")
+        yield* Effect.promise(() =>
+          writeFile(
+            outsideConfig,
+            [
+              'import { writeFileSync } from "node:fs"',
+              `writeFileSync(${JSON.stringify(markerPath)}, "imported")`,
+              "export default { app: { id: 'outside', name: 'Outside', version: '0.0.0' } }"
+            ].join("\n")
+          )
+        )
+
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["doctor", "--config", relative(directory, outsideConfig), "--json"],
+          cwd: directory,
+          platform: "darwin",
+          arch: "arm64",
+          bunVersion: "1.3.13",
+          doctorCommandRunner: doctorRunner({
+            cargo: true,
+            rustc: true,
+            "xcode-select": true,
+            hdiutil: true
+          }),
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const markerExists = yield* Effect.promise(() =>
+          stat(markerPath).then(
+            () => true,
+            () => false
+          )
+        )
+        expect(exitCode).toBe(1)
+        expect(markerExists).toBe(false)
+        expect(stderr.join("")).toContain("inside the workspace")
       } finally {
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
         yield* Effect.promise(() => rm(outsideDirectory, { recursive: true, force: true }))
