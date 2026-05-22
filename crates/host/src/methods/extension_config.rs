@@ -344,7 +344,7 @@ fn config_event(
     operation: &'static str,
 ) -> Result<Option<Value>, HostProtocolError> {
     encode_payload(
-        ExtensionConfigEventPayload::new(timestamp, extension_id, phase, keys, revision, None),
+        ExtensionConfigEventPayload::new(timestamp, extension_id, phase, keys, revision),
         operation,
     )
 }

@@ -3,6 +3,7 @@ import {
   type BridgeClientExchange,
   type HostProtocolError,
   type HostProtocolEventEnvelope,
+  HostProtocolInvalidOutputError,
   type HostProtocolRequestEnvelope,
   type SecretBytes,
   makeHostProtocolInternalError,
@@ -10,7 +11,7 @@ import {
   unsafeSecretBytes
 } from "@orika/bridge"
 import { type AuditEvent, type AuditEventsApi, makePermissionRegistry, P } from "@orika/core"
-import { Cause, Effect, Exit, type Layer, ManagedRuntime, Stream } from "effect"
+import { Cause, Effect, Exit, type Layer, ManagedRuntime, Schema, Stream } from "effect"
 
 import {
   ExtensionConfig,
@@ -26,6 +27,7 @@ import {
 } from "./extension-config.js"
 import {
   ExtensionConfigActor,
+  ExtensionConfigEvent,
   ExtensionConfigField,
   ExtensionConfigReadInput,
   ExtensionConfigReadRequest,
@@ -391,6 +393,29 @@ test("ExtensionConfig service bridge write sends secret presence without secret 
     })
   ))
 
+test("ExtensionConfig events reject failure reasons on successful phases", () => {
+  for (const phase of ["read", "written", "reset", "redacted"] as const) {
+    const exit = Effect.runSyncExit(
+      Schema.decodeUnknownEffect(ExtensionConfigEvent)({
+        ...eventBase(),
+        phase,
+        reason: "host-failed"
+      })
+    )
+    expect(exit._tag).toBe("Failure")
+  }
+
+  for (const phase of ["read", "written", "reset", "redacted"] as const) {
+    const exit = Effect.runSyncExit(
+      Schema.decodeUnknownEffect(ExtensionConfigEvent)({
+        ...eventBase(),
+        phase
+      })
+    )
+    expect(exit._tag).toBe("Success")
+  }
+})
+
 test("ExtensionConfig bridge client decodes native lifecycle events", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -432,6 +457,38 @@ test("ExtensionConfig bridge client decodes native lifecycle events", () =>
           revision: 1
         })
       }
+    })
+  ))
+
+test("ExtensionConfig bridge client rejects native lifecycle events with reasons as InvalidOutput", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const nativeEvent: HostProtocolEventEnvelope = {
+        kind: "event",
+        method: "ExtensionConfig.Event",
+        timestamp: 1710000000000,
+        traceId: "trace-extension-config-event",
+        payload: {
+          ...eventBase(),
+          phase: "written",
+          keys: ["theme"],
+          revision: 1,
+          reason: "host-failed"
+        }
+      }
+      const exchange: BridgeClientExchange = {
+        request: () => Effect.fail(makeHostProtocolInternalError("unexpected request", "test")),
+        subscribe: () => Stream.make(nativeEvent)
+      }
+      const exit = yield* runScoped(
+        Effect.gen(function* () {
+          const client = yield* ExtensionConfigClient
+          return yield* Effect.exit(client.events().pipe(Stream.runHead))
+        }),
+        makeExtensionConfigBridgeClientLayer(exchange)
+      )
+
+      expectInvalidOutput(exit)
     })
   ))
 
@@ -599,6 +656,12 @@ const resetRequest = (): ExtensionConfigResetRequest =>
     traceId: "trace-reset"
   })
 
+const eventBase = () => ({
+  type: "extension-config-event",
+  timestamp: 1_710_000_000_000,
+  extensionId: "extension-1"
+})
+
 const configuredPermissions = (rows: AuditEvent[]) =>
   Effect.gen(function* () {
     const permissions = yield* makePermissionRegistry({
@@ -736,5 +799,12 @@ const expectExitFailure = (
   expect(Exit.isFailure(exit)).toBe(true)
   if (Exit.isFailure(exit)) {
     assertion(Cause.squash(exit.cause))
+  }
+}
+
+const expectInvalidOutput = <A, E>(exit: Exit.Exit<A, E>): void => {
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    expect(Cause.squash(exit.cause)).toBeInstanceOf(HostProtocolInvalidOutputError)
   }
 }

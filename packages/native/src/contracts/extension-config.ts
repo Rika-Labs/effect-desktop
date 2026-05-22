@@ -176,14 +176,20 @@ export class ExtensionConfigSupportedResult extends Schema.Class<ExtensionConfig
   reason: Schema.optionalKey(BridgeSafeString)
 }) {}
 
+const ExtensionConfigEventForbidsReason = Schema.makeFilter<{
+  readonly reason?: string | undefined
+}>((value) => value.reason === undefined || "extension config events must not include reason")
+
 export class ExtensionConfigEvent extends Schema.Class<ExtensionConfigEvent>(
   "ExtensionConfigEvent"
-)({
-  type: ExtensionConfigEventType,
-  timestamp: ExtensionConfigTimestamp,
-  extensionId: PrintableNonEmptyString,
-  phase: ExtensionConfigEventPhase,
-  keys: Schema.optionalKey(Schema.Array(PrintableNonEmptyString)),
-  revision: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
-  reason: Schema.optionalKey(BridgeSafeString)
-}) {}
+)(
+  Schema.Struct({
+    type: ExtensionConfigEventType,
+    timestamp: ExtensionConfigTimestamp,
+    extensionId: PrintableNonEmptyString,
+    phase: ExtensionConfigEventPhase,
+    keys: Schema.optionalKey(Schema.Array(PrintableNonEmptyString)),
+    revision: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
+    reason: Schema.optionalKey(BridgeSafeString)
+  }).check(ExtensionConfigEventForbidsReason)
+) {}

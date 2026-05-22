@@ -15474,8 +15474,6 @@ pub struct ExtensionConfigEventPayload {
     keys: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     revision: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    reason: Option<String>,
 }
 
 impl ExtensionConfigEventPayload {
@@ -15485,7 +15483,6 @@ impl ExtensionConfigEventPayload {
         phase: ExtensionConfigEventPhase,
         keys: Vec<String>,
         revision: Option<u64>,
-        reason: Option<String>,
     ) -> Self {
         Self {
             r#type: "extension-config-event".to_string(),
@@ -15494,7 +15491,6 @@ impl ExtensionConfigEventPayload {
             phase,
             keys,
             revision,
-            reason,
         }
     }
 }
@@ -20578,7 +20574,6 @@ mod tests {
             ExtensionConfigEventPhase::Written,
             vec!["theme".to_string()],
             Some(1),
-            None,
         );
         assert_eq!(
             serde_json::to_string(&event).expect("event should encode"),
@@ -20592,6 +20587,29 @@ mod tests {
             .expect("support payload should encode"),
             r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#
         );
+    }
+
+    #[test]
+    fn extension_config_events_reject_reasons_on_successful_phases() {
+        for source in [
+            r#"{"type":"extension-config-event","timestamp":1710000000000,"extensionId":"extension-1","phase":"read","reason":"host failed"}"#,
+            r#"{"type":"extension-config-event","timestamp":1710000000000,"extensionId":"extension-1","phase":"written","reason":"host failed"}"#,
+            r#"{"type":"extension-config-event","timestamp":1710000000000,"extensionId":"extension-1","phase":"reset","reason":"host failed"}"#,
+            r#"{"type":"extension-config-event","timestamp":1710000000000,"extensionId":"extension-1","phase":"redacted","reason":"host failed"}"#,
+        ] {
+            serde_json::from_str::<ExtensionConfigEventPayload>(source)
+                .expect_err("extension config event with reason should be rejected");
+        }
+
+        for source in [
+            r#"{"type":"extension-config-event","timestamp":1710000000000,"extensionId":"extension-1","phase":"read"}"#,
+            r#"{"type":"extension-config-event","timestamp":1710000000000,"extensionId":"extension-1","phase":"written","keys":["theme"],"revision":1}"#,
+            r#"{"type":"extension-config-event","timestamp":1710000000000,"extensionId":"extension-1","phase":"reset","keys":["theme"],"revision":2}"#,
+            r#"{"type":"extension-config-event","timestamp":1710000000000,"extensionId":"extension-1","phase":"redacted","keys":["theme"]}"#,
+        ] {
+            serde_json::from_str::<ExtensionConfigEventPayload>(source)
+                .expect("extension config event without reason should decode");
+        }
     }
 
     #[test]
