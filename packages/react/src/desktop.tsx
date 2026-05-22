@@ -2,10 +2,6 @@ import {
   makeHostProtocolInvalidOutputError,
   makeHostProtocolInvalidStateError,
   makeHostProtocolInternalError,
-  rpcCapability,
-  rpcEndpointKind,
-  rpcEndpointName,
-  rpcSupport,
   type HostProtocolError,
   type WithRpcEndpointKind
 } from "@orika/bridge"
@@ -23,22 +19,21 @@ import {
   type DesktopRendererRpcTransport
 } from "@orika/core/runtime/renderer-rpc-client"
 import {
-  makeDuplicateDesktopRpcNameError,
   makeMissingDesktopContextError,
   makeMissingDesktopRpcsError,
   type MissingDesktopRpcClientError
 } from "@orika/core/runtime/desktop-errors"
+import { describeRpcs } from "@orika/core/runtime/renderer-rpc-descriptors"
 import { makeFrameworkRuntime, type FrameworkRuntime } from "@orika/core/runtime/renderer-stream"
 import type {
   DesktopAppManifest,
   DesktopRpcRegistrationGroup as RpcGroupWithRequests,
-  DesktopRpcsLayer,
-  RendererRpcEndpointDescriptor
+  DesktopRpcsLayer
 } from "@orika/core/runtime/renderer-types"
 import type { WindowCreateOptions, WindowHandle } from "@orika/native/contracts/window"
 import { WindowResource } from "@orika/native/contracts/window"
 import { Effect, Exit, ManagedRuntime, Schema, Stream } from "effect"
-import { Rpc, RpcGroup, RpcSchema } from "effect/unstable/rpc"
+import { Rpc, RpcGroup } from "effect/unstable/rpc"
 import {
   createContext,
   createElement,
@@ -83,11 +78,6 @@ export type ReactDesktopRpcs<Group extends RpcGroup.Any> = Readonly<
 export interface ReactDesktopSupport extends DesktopEndpointSupport {}
 
 type WithSupport<Endpoint> = Endpoint & ReactDesktopSupport
-
-interface RpcWithSchemas extends Rpc.Any {
-  readonly payloadSchema: Schema.Top
-  readonly successSchema: Schema.Top
-}
 
 export type ReactDesktopRpcClientMethod = DesktopRendererRpcClientMethod
 export type ReactDesktopRpcClient = DesktopRendererRpcClient
@@ -194,7 +184,7 @@ export const ReactDesktop = Object.freeze({
 
       return useMemo(
         () =>
-          bindRendererEndpoints<ReactEndpoint>(describeManifestRpcs(app, group), client, "react", {
+          bindRendererEndpoints<ReactEndpoint>(describeRpcs(app, group), client, "react", {
             query: (run) => query(context.runtime, run),
             mutation: (run) => mutation(context.runtime, run),
             stream: (run, descriptor) =>
@@ -213,62 +203,6 @@ export const ReactDesktop = Object.freeze({
     })
   }
 })
-
-const describeManifestRpcs = <Group extends RpcGroupWithRequests>(
-  app: DesktopAppManifest,
-  group: Group
-): readonly RendererRpcEndpointDescriptor[] => {
-  const provided = app.rpcGroups.find((descriptor) => descriptor.group === group)
-  if (provided === undefined) {
-    throw makeMissingDesktopRpcsError(
-      groupTags(group),
-      `RpcGroup is not provided to this Desktop app: ${groupTags(group).join(", ")}`
-    )
-  }
-
-  const descriptors = Array.from(provided.group.requests.values()).map((rpc) =>
-    Object.freeze({
-      name: rpcEndpointName(rpc._tag),
-      tag: rpc._tag,
-      kind: endpointKind(rpc),
-      hasPayload: payloadSchema(rpc) !== Schema.Void,
-      rpc,
-      capability: rpcCapability(rpc),
-      support: rpcSupport(rpc)
-    })
-  )
-
-  assertUniqueEndpointNames(descriptors)
-
-  return Object.freeze(descriptors)
-}
-
-const assertUniqueEndpointNames = (descriptors: readonly RendererRpcEndpointDescriptor[]): void => {
-  const seen = new Map<string, string>()
-
-  for (const descriptor of descriptors) {
-    const previous = seen.get(descriptor.name)
-    if (previous !== undefined) {
-      throw makeDuplicateDesktopRpcNameError(
-        descriptor.name,
-        Object.freeze([previous, descriptor.tag]),
-        `Rpc endpoint name "${descriptor.name}" is produced by both "${previous}" and "${descriptor.tag}"`
-      )
-    }
-
-    seen.set(descriptor.name, descriptor.tag)
-  }
-}
-
-const endpointKind = (rpc: Rpc.Any): RendererRpcEndpointDescriptor["kind"] =>
-  RpcSchema.isStreamSchema(successSchema(rpc)) ? "stream" : rpcEndpointKind(rpc)
-
-const payloadSchema = (rpc: Rpc.Any): Schema.Top => (rpc as RpcWithSchemas).payloadSchema
-
-const successSchema = (rpc: Rpc.Any): Schema.Top => (rpc as RpcWithSchemas).successSchema
-
-const groupTags = (group: RpcGroupWithRequests): readonly string[] =>
-  Array.from(group.requests.keys())
 
 const makeReactDesktopRuntime = (
   app: DesktopAppManifest,

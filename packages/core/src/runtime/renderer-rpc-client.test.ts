@@ -1,10 +1,13 @@
 import { expect, test } from "bun:test"
+import { fileURLToPath } from "node:url"
+import { BunServices } from "@effect/platform-bun"
 import { HostProtocolResponseEnvelope, type HostProtocolEnvelope } from "@orika/bridge"
 import {
   Clock,
   Deferred,
   Effect,
   Exit,
+  FileSystem,
   Fiber,
   Layer,
   ManagedRuntime,
@@ -12,6 +15,7 @@ import {
   Scope,
   Stream
 } from "effect"
+import type { PlatformError } from "effect/PlatformError"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 
 import { Desktop } from "../index.js"
@@ -28,6 +32,61 @@ import {
 import { makeRendererInspectorCollector } from "./inspector-events.js"
 
 const Ping = Rpc.make("Notes.Ping", { success: Schema.String })
+const workspaceRootUrl = new URL("../../../../", import.meta.url)
+const rendererEntrypointUrl = new URL("renderer.ts", import.meta.url)
+const PlatformRuntime = ManagedRuntime.make(BunServices.layer)
+
+test("@orika/core/renderer entrypoint avoids host descriptor modules", () =>
+  PlatformRuntime.runPromise(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const source = yield* fs.readFileString(fileURLToPath(rendererEntrypointUrl))
+
+      expect(source).not.toContain("./rpc-descriptors.js")
+      expect(source).not.toContain("./desktop-app.js")
+    })
+  ))
+
+test("@orika/core/renderer browser-bundles descriptor exports without host modules", () =>
+  PlatformRuntime.runPromise(
+    expectBrowserBundle(
+      "core-renderer",
+      [
+        'import { describeRpcs, makeFrameworkScopedOperation } from "@orika/core/renderer"',
+        "globalThis.__orikaCoreRendererSmoke = [describeRpcs, makeFrameworkScopedOperation]"
+      ].join("\n")
+    )
+  ))
+
+test("framework adapters browser-bundle against @orika/core/renderer", () =>
+  PlatformRuntime.runPromise(
+    Effect.gen(function* () {
+      yield* expectBrowserBundle(
+        "solid-renderer",
+        [
+          'import { SolidDesktop } from "./packages/solid/src/index.ts"',
+          "globalThis.__orikaSolidDesktopSmoke = SolidDesktop"
+        ].join("\n"),
+        adapterBundleExternals
+      )
+      yield* expectBrowserBundle(
+        "vue-renderer",
+        [
+          'import { VueDesktop } from "./packages/vue/src/index.ts"',
+          "globalThis.__orikaVueDesktopSmoke = VueDesktop"
+        ].join("\n"),
+        adapterBundleExternals
+      )
+      yield* expectBrowserBundle(
+        "next-renderer",
+        [
+          'import { NextDesktop } from "./packages/next/src/index.ts"',
+          "globalThis.__orikaNextDesktopSmoke = NextDesktop"
+        ].join("\n"),
+        adapterBundleExternals
+      )
+    })
+  ))
 
 test("RendererRpcClients layer fails missing transport as a typed layer error", () =>
   Effect.runPromise(
@@ -259,6 +318,49 @@ test("RendererRpcClients test layer publishes renderer stream interruption event
       ])
     })
   ))
+
+const expectBrowserBundle = (
+  name: string,
+  source: string,
+  extraExternal: readonly string[] = []
+): Effect.Effect<void, PlatformError, FileSystem.FileSystem> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const entryPath = fileURLToPath(new URL(`.tmp-${name}-bundle-entry.ts`, workspaceRootUrl))
+    const outdir = yield* fs.makeTempDirectory({ prefix: `orika-${name}-bundle-` })
+
+    try {
+      yield* fs.writeFileString(entryPath, `${source}\n`)
+
+      const result = yield* Effect.promise(() =>
+        Bun.build({
+          entrypoints: [entryPath],
+          external: [
+            ...extraExternal,
+            "@effect/atom-react",
+            "@effect/atom-solid",
+            "@effect/atom-vue",
+            "@effect/platform-browser",
+            "react",
+            "solid-js",
+            "solid-js/web",
+            "vue"
+          ],
+          format: "esm",
+          outdir,
+          target: "browser"
+        })
+      )
+
+      expect(result.logs.map((log) => log.message)).toEqual([])
+      expect(result.success).toBe(true)
+    } finally {
+      yield* fs.remove(entryPath, { force: true })
+      yield* fs.remove(outdir, { force: true, recursive: true })
+    }
+  })
+
+const adapterBundleExternals = Object.freeze(["@orika/bridge", "effect", "effect/unstable/rpc"])
 
 const manifestFor = (
   group: RpcGroup.Any & { readonly requests: ReadonlyMap<string, Rpc.Any> }

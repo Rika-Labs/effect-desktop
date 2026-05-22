@@ -41,6 +41,21 @@ import { ResourceOwner, makeAppResourceOwner } from "./resource-owner.js"
 import type { ResourceOwnerInvalidArgumentError } from "./resource-owner.js"
 import { EffectTelemetryRuntimeLive, Telemetry, makeTelemetry } from "./telemetry.js"
 import type { DesktopRpcContractLaw, DesktopRpcSchemaDoc } from "./desktop-rpc-surface.js"
+import type {
+  AnyDesktopRpcRegistration,
+  DesktopAppManifest,
+  DesktopRpcsLayer,
+  TypedDesktopRpcRegistrationGroup
+} from "./renderer-types.js"
+export type {
+  AnyDesktopRpcRegistration,
+  DesktopAppManifest,
+  DesktopRpcGroupDescriptor,
+  DesktopRpcRegistration,
+  DesktopRpcRegistrationGroup,
+  DesktopRpcsLayer,
+  TypedDesktopRpcRegistrationGroup
+} from "./renderer-types.js"
 
 export interface WindowSpec {
   readonly title: string
@@ -48,32 +63,6 @@ export interface WindowSpec {
   readonly height?: number
   readonly renderer?: string
 }
-
-export type TypedDesktopRpcRegistrationGroup<Rpcs extends Rpc.Any> = RpcGroup.RpcGroup<Rpcs> & {
-  readonly requests: ReadonlyMap<string, Rpc.Any>
-}
-
-export type DesktopRpcRegistrationGroup = RpcGroup.Any & {
-  readonly requests: ReadonlyMap<string, Rpc.Any>
-}
-
-export interface DesktopRpcRegistration<Rpcs extends Rpc.Any, E = unknown, R = unknown> {
-  readonly _tag: "DesktopRpcRegistration"
-  readonly group: TypedDesktopRpcRegistrationGroup<Rpcs>
-  readonly handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>
-  readonly serverLayer: Layer.Layer<never, E, R>
-}
-
-export interface AnyDesktopRpcRegistration<E = unknown, R = unknown> {
-  readonly _tag: "DesktopRpcRegistration"
-  readonly group: DesktopRpcRegistrationGroup
-  readonly handlers: Layer.Layer<never, E, R>
-  readonly serverLayer: Layer.Layer<never, E, R>
-}
-
-export type DesktopRpcsLayer<E = never, RIn = never> = ReadonlyArray<
-  AnyDesktopRpcRegistration<E, RIn>
->
 
 export interface DesktopWindowRegistration<RIn = unknown> {
   readonly _tag: "DesktopWindowRegistration"
@@ -159,18 +148,6 @@ export interface DesktopAppDescriptor<RIn = never, E = never> extends DesktopCon
   readonly permissions: DesktopPermissionsLayer
   readonly workflows: DesktopWorkflowsLayer<RIn, E>
   readonly windowRegistrations: ReadonlyArray<DesktopWindowRegistration<RIn>>
-}
-
-export interface DesktopRpcGroupDescriptor {
-  readonly _tag: "DesktopRpcGroup"
-  readonly group: DesktopRpcRegistrationGroup
-}
-
-export interface DesktopAppManifest {
-  readonly _tag: "DesktopAppManifest"
-  readonly id: string
-  readonly windows: Readonly<Record<string, WindowSpec>>
-  readonly rpcGroups: ReadonlyArray<DesktopRpcGroupDescriptor>
 }
 
 interface DesktopNativeSelectionSnapshot {

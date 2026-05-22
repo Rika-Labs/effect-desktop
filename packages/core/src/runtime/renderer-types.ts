@@ -14,6 +14,17 @@ export type DesktopRpcRegistrationGroup = RpcGroup.Any & {
   readonly requests: ReadonlyMap<string, Rpc.Any>
 }
 
+export type TypedDesktopRpcRegistrationGroup<Rpcs extends Rpc.Any> = RpcGroup.RpcGroup<Rpcs> & {
+  readonly requests: ReadonlyMap<string, Rpc.Any>
+}
+
+export interface DesktopRpcRegistration<Rpcs extends Rpc.Any, E = unknown, R = unknown> {
+  readonly _tag: "DesktopRpcRegistration"
+  readonly group: TypedDesktopRpcRegistrationGroup<Rpcs>
+  readonly handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>
+  readonly serverLayer: Layer.Layer<never, E, R>
+}
+
 export interface AnyDesktopRpcRegistration<E = unknown, R = unknown> {
   readonly _tag: "DesktopRpcRegistration"
   readonly group: DesktopRpcRegistrationGroup

@@ -46,7 +46,7 @@ export {
   type DesktopRpcDescriptorSource,
   type RpcEndpointDescriptor,
   type RpcEndpointDescriptorKind
-} from "./rpc-descriptors.js"
+} from "./renderer-rpc-descriptors.js"
 export {
   MissingDesktopContextError,
   MissingDesktopRpcClientError,
@@ -57,5 +57,9 @@ export {
   makeMissingDesktopRpcsError,
   type DesktopFramework
 } from "./desktop-errors.js"
-export type { DesktopAppManifest, DesktopRpcsLayer } from "./desktop-app.js"
-export type { DesktopRpcRegistration, DesktopRpcRegistrationGroup } from "./desktop-app.js"
+export type {
+  DesktopAppManifest,
+  DesktopRpcRegistration,
+  DesktopRpcRegistrationGroup,
+  DesktopRpcsLayer
+} from "./renderer-types.js"
