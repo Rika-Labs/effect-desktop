@@ -6261,21 +6261,15 @@ impl DisplayCaptureSupportedPayload {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct DisplayCaptureEventPayload {
     r#type: String,
     timestamp: u64,
     phase: DisplayCaptureEventPhase,
-    #[serde(skip_serializing_if = "Option::is_none")]
     capture_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     source: Option<DisplayCaptureSource>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     byte_length: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     reason: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     message: Option<String>,
 }
 
@@ -6290,6 +6284,180 @@ impl DisplayCaptureEventPayload {
             byte_length: None,
             reason: None,
             message: None,
+        }
+    }
+
+    pub fn captured(
+        timestamp: u64,
+        capture_id: impl Into<String>,
+        source: DisplayCaptureSource,
+        byte_length: u64,
+    ) -> Self {
+        Self {
+            r#type: "display-capture-event".to_string(),
+            timestamp,
+            phase: DisplayCaptureEventPhase::Captured,
+            capture_id: Some(capture_id.into()),
+            source: Some(source),
+            byte_length: Some(byte_length),
+            reason: None,
+            message: None,
+        }
+    }
+
+    pub fn failed(
+        timestamp: u64,
+        capture_id: impl Into<String>,
+        source: DisplayCaptureSource,
+        reason: impl Into<String>,
+    ) -> Self {
+        Self {
+            r#type: "display-capture-event".to_string(),
+            timestamp,
+            phase: DisplayCaptureEventPhase::Failed,
+            capture_id: Some(capture_id.into()),
+            source: Some(source),
+            byte_length: None,
+            reason: Some(reason.into()),
+            message: None,
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SerializableDisplayCaptureEventPayload<'a> {
+    r#type: &'a str,
+    timestamp: u64,
+    phase: DisplayCaptureEventPhase,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    capture_id: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source: Option<DisplayCaptureSource>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    byte_length: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<&'a str>,
+}
+
+impl<'a> TryFrom<&'a DisplayCaptureEventPayload> for SerializableDisplayCaptureEventPayload<'a> {
+    type Error = &'static str;
+
+    fn try_from(payload: &'a DisplayCaptureEventPayload) -> Result<Self, Self::Error> {
+        validate_display_capture_event_payload(
+            payload.phase,
+            &payload.capture_id,
+            payload.source,
+            payload.byte_length,
+            &payload.reason,
+            &payload.message,
+        )?;
+        Ok(Self {
+            r#type: &payload.r#type,
+            timestamp: payload.timestamp,
+            phase: payload.phase,
+            capture_id: payload.capture_id.as_deref(),
+            source: payload.source,
+            byte_length: payload.byte_length,
+            reason: payload.reason.as_deref(),
+            message: payload.message.as_deref(),
+        })
+    }
+}
+
+impl Serialize for DisplayCaptureEventPayload {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        SerializableDisplayCaptureEventPayload::try_from(self)
+            .map_err(ser::Error::custom)?
+            .serialize(serializer)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawDisplayCaptureEventPayload {
+    r#type: String,
+    timestamp: u64,
+    phase: DisplayCaptureEventPhase,
+    capture_id: Option<String>,
+    source: Option<DisplayCaptureSource>,
+    byte_length: Option<u64>,
+    reason: Option<String>,
+    message: Option<String>,
+}
+
+impl TryFrom<RawDisplayCaptureEventPayload> for DisplayCaptureEventPayload {
+    type Error = &'static str;
+
+    fn try_from(raw: RawDisplayCaptureEventPayload) -> Result<Self, Self::Error> {
+        validate_display_capture_event_payload(
+            raw.phase,
+            &raw.capture_id,
+            raw.source,
+            raw.byte_length,
+            &raw.reason,
+            &raw.message,
+        )?;
+        Ok(Self {
+            r#type: raw.r#type,
+            timestamp: raw.timestamp,
+            phase: raw.phase,
+            capture_id: raw.capture_id,
+            source: raw.source,
+            byte_length: raw.byte_length,
+            reason: raw.reason,
+            message: raw.message,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for DisplayCaptureEventPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        RawDisplayCaptureEventPayload::deserialize(deserializer)?
+            .try_into()
+            .map_err(de::Error::custom)
+    }
+}
+
+fn validate_display_capture_event_payload(
+    phase: DisplayCaptureEventPhase,
+    capture_id: &Option<String>,
+    source: Option<DisplayCaptureSource>,
+    byte_length: Option<u64>,
+    reason: &Option<String>,
+    message: &Option<String>,
+) -> Result<(), &'static str> {
+    match phase {
+        DisplayCaptureEventPhase::Captured
+            if capture_id.is_some()
+                && source.is_some()
+                && byte_length.is_some()
+                && reason.is_none()
+                && message.is_none() =>
+        {
+            Ok(())
+        }
+        DisplayCaptureEventPhase::Captured => {
+            Err("captured display capture event requires capture metadata only")
+        }
+        DisplayCaptureEventPhase::Failed
+            if capture_id.is_some()
+                && source.is_some()
+                && byte_length.is_none()
+                && reason.is_some() =>
+        {
+            Ok(())
+        }
+        DisplayCaptureEventPhase::Failed => {
+            Err("failed display capture event requires failure metadata and no capture byte length")
         }
     }
 }
@@ -17417,8 +17585,12 @@ mod tests {
             1710000000000,
         );
         let result = DisplayCaptureResultPayload::new(image, metadata);
-        let event =
-            DisplayCaptureEventPayload::new(1710000000001, DisplayCaptureEventPhase::Captured);
+        let event = DisplayCaptureEventPayload::captured(
+            1710000000001,
+            "capture-1",
+            DisplayCaptureSource::Region,
+            4,
+        );
         let supported =
             DisplayCaptureSupportedPayload::unsupported(DISPLAY_CAPTURE_UNSUPPORTED_REASON);
 
@@ -17432,12 +17604,75 @@ mod tests {
         );
         assert_eq!(
             serde_json::to_string(&event).expect("event payload should encode"),
-            r#"{"type":"display-capture-event","timestamp":1710000000001,"phase":"captured"}"#
+            r#"{"type":"display-capture-event","timestamp":1710000000001,"phase":"captured","captureId":"capture-1","source":"region","byteLength":4}"#
         );
         assert_eq!(
             serde_json::to_string(&supported).expect("support payload should encode"),
             r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#
         );
+    }
+
+    #[test]
+    fn display_capture_events_reject_inconsistent_phase_payloads() {
+        for source in [
+            r#"{"type":"display-capture-event","timestamp":1710000000000,"phase":"captured","reason":"host failed"}"#,
+            r#"{"type":"display-capture-event","timestamp":1710000000000,"phase":"failed","captureId":"capture-1","source":"display","byteLength":7}"#,
+            r#"{"type":"display-capture-event","timestamp":1710000000000,"phase":"captured","captureId":"capture-1","source":"display","byteLength":7,"message":"host failed"}"#,
+        ] {
+            let error = serde_json::from_str::<DisplayCaptureEventPayload>(source)
+                .expect_err("inconsistent display capture event should be rejected");
+            assert!(
+                error.to_string().contains("captured")
+                    || error.to_string().contains("failed")
+                    || error.to_string().contains("phase"),
+                "unexpected error: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn display_capture_events_reject_inconsistent_phase_payloads_before_serializing() {
+        for event in [
+            DisplayCaptureEventPayload {
+                r#type: "display-capture-event".to_string(),
+                timestamp: 1_710_000_000_000,
+                phase: DisplayCaptureEventPhase::Captured,
+                capture_id: None,
+                source: None,
+                byte_length: None,
+                reason: Some("host failed".to_string()),
+                message: None,
+            },
+            DisplayCaptureEventPayload {
+                r#type: "display-capture-event".to_string(),
+                timestamp: 1_710_000_000_000,
+                phase: DisplayCaptureEventPhase::Failed,
+                capture_id: Some("capture-1".to_string()),
+                source: Some(DisplayCaptureSource::Display),
+                byte_length: Some(7),
+                reason: None,
+                message: None,
+            },
+            DisplayCaptureEventPayload {
+                r#type: "display-capture-event".to_string(),
+                timestamp: 1_710_000_000_000,
+                phase: DisplayCaptureEventPhase::Captured,
+                capture_id: Some("capture-1".to_string()),
+                source: Some(DisplayCaptureSource::Display),
+                byte_length: Some(7),
+                reason: None,
+                message: Some("host failed".to_string()),
+            },
+        ] {
+            let error = serde_json::to_string(&event)
+                .expect_err("inconsistent display capture event should not encode");
+            assert!(
+                error.to_string().contains("captured")
+                    || error.to_string().contains("failed")
+                    || error.to_string().contains("phase"),
+                "unexpected error: {error}"
+            );
+        }
     }
 
     #[test]
@@ -18754,7 +18989,7 @@ mod tests {
             r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"types":["cache","cookies","localStorage"]}"#
         );
         assert_eq!(
-            serde_json::to_string(&BrowsingDataEstimatePayload::new(profile))
+            serde_json::to_string(&BrowsingDataEstimatePayload::new(profile.clone()))
                 .expect("estimate payload should encode"),
             r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"}}"#
         );

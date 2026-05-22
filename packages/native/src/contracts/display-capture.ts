@@ -151,13 +151,44 @@ export class DisplayCaptureSupportedResult extends Schema.Class<DisplayCaptureSu
   reason: Schema.optionalKey(BridgeSafeString)
 }) {}
 
-export class DisplayCaptureEvent extends Schema.Class<DisplayCaptureEvent>("DisplayCaptureEvent")({
-  type: DisplayCaptureEventType,
-  timestamp: DisplayCaptureTimestamp,
-  phase: DisplayCaptureEventPhase,
-  captureId: Schema.optionalKey(BridgeSafeNonEmptyString),
-  source: Schema.optionalKey(DisplayCaptureSource),
-  byteLength: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
-  reason: Schema.optionalKey(BridgeSafeString),
-  message: Schema.optionalKey(BridgeSafeString)
-}) {}
+const DisplayCaptureEventPhasePayload = Schema.makeFilter<{
+  readonly phase: DisplayCaptureEventPhase
+  readonly captureId?: string | undefined
+  readonly source?: DisplayCaptureSource | undefined
+  readonly byteLength?: number | undefined
+  readonly reason?: string | undefined
+  readonly message?: string | undefined
+}>((value) => {
+  switch (value.phase) {
+    case "captured":
+      return (
+        (value.captureId !== undefined &&
+          value.source !== undefined &&
+          value.byteLength !== undefined &&
+          value.reason === undefined &&
+          value.message === undefined) ||
+        "captured display capture events require capture metadata only"
+      )
+    case "failed":
+      return (
+        (value.captureId !== undefined &&
+          value.source !== undefined &&
+          value.byteLength === undefined &&
+          value.reason !== undefined) ||
+        "failed display capture events require failure metadata and no capture byte length"
+      )
+  }
+})
+
+export class DisplayCaptureEvent extends Schema.Class<DisplayCaptureEvent>("DisplayCaptureEvent")(
+  Schema.Struct({
+    type: DisplayCaptureEventType,
+    timestamp: DisplayCaptureTimestamp,
+    phase: DisplayCaptureEventPhase,
+    captureId: Schema.optionalKey(BridgeSafeNonEmptyString),
+    source: Schema.optionalKey(DisplayCaptureSource),
+    byteLength: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
+    reason: Schema.optionalKey(BridgeSafeString),
+    message: Schema.optionalKey(BridgeSafeString)
+  }).check(DisplayCaptureEventPhasePayload)
+) {}

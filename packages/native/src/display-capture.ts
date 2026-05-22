@@ -285,7 +285,7 @@ export const makeDisplayCaptureMemoryClient = (
               return yield* Effect.fail(failure)
             }
             const result = yield* captureResult(valid, captureId, source)
-            yield* publishEvent(pubsub, "captured", result.metadata)
+            yield* publishCapturedEvent(pubsub, result.metadata)
             return result
           })
         )
@@ -669,9 +669,8 @@ const targetMetadata = (request: DisplayCaptureRequest) => {
   }
 }
 
-const publishEvent = (
+const publishCapturedEvent = (
   pubsub: PubSub.PubSub<DisplayCaptureEvent>,
-  phase: "captured" | "failed",
   metadata: DisplayCaptureMetadata
 ): Effect.Effect<void, never, never> =>
   Clock.currentTimeMillis.pipe(
@@ -681,7 +680,7 @@ const publishEvent = (
         new DisplayCaptureEvent({
           type: "display-capture-event",
           timestamp,
-          phase,
+          phase: "captured",
           captureId: metadata.captureId,
           source: metadata.source,
           byteLength: metadata.byteLength

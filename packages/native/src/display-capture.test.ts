@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import { type BridgeClientExchange, HostProtocolInternalError } from "@orika/bridge"
 import { type AuditEvent, makePermissionRegistry, P } from "@orika/core"
-import { Cause, Effect, Exit, ManagedRuntime, Option, Stream } from "effect"
+import { Cause, Effect, Exit, ManagedRuntime, Option, Schema, Stream } from "effect"
 
 import {
   DisplayCapture,
@@ -17,6 +17,7 @@ import {
   DisplayCaptureActor,
   DisplayCaptureDisplayRequest,
   DisplayCaptureDisplayTarget,
+  DisplayCaptureEvent,
   DisplayCaptureGrant,
   DisplayCaptureImage,
   DisplayCaptureResult
@@ -308,6 +309,68 @@ test("DisplayCapture emits substitutable failure events", () =>
         source: "display",
         reason: "Internal"
       })
+    })
+  ))
+
+test("DisplayCapture rejects inconsistent event phase payloads", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const invalidPayloads = [
+        {
+          type: "display-capture-event",
+          timestamp: 1_710_000_000_000,
+          phase: "captured",
+          reason: "host failed"
+        },
+        {
+          type: "display-capture-event",
+          timestamp: 1_710_000_000_000,
+          phase: "failed",
+          captureId: "capture-1",
+          source: "display",
+          byteLength: 7
+        },
+        {
+          type: "display-capture-event",
+          timestamp: 1_710_000_000_000,
+          phase: "captured",
+          captureId: "capture-1",
+          source: "display",
+          byteLength: 7,
+          message: "host failed"
+        }
+      ]
+
+      for (const payload of invalidPayloads) {
+        const directDecode = yield* Effect.exit(
+          Schema.decodeUnknownEffect(DisplayCaptureEvent)(payload)
+        )
+        expect(Exit.isFailure(directDecode)).toBe(true)
+      }
+
+      for (const payload of [
+        {
+          type: "display-capture-event",
+          timestamp: 1_710_000_000_000,
+          phase: "captured",
+          captureId: "capture-1",
+          source: "display",
+          byteLength: 7
+        },
+        {
+          type: "display-capture-event",
+          timestamp: 1_710_000_000_000,
+          phase: "failed",
+          captureId: "capture-1",
+          source: "display",
+          reason: "Internal"
+        }
+      ] as const) {
+        const directDecode = yield* Effect.exit(
+          Schema.decodeUnknownEffect(DisplayCaptureEvent)(payload)
+        )
+        expect(Exit.isSuccess(directDecode)).toBe(true)
+      }
     })
   ))
 
