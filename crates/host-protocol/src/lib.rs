@@ -11023,17 +11023,13 @@ impl WebRequestHeaderPayload {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct WebRequestBeforeRequestPayload {
     profile: SessionProfileResourcePayload,
     url_pattern: String,
     action: WebRequestActionPayload,
-    #[serde(skip_serializing_if = "Option::is_none")]
     redirect_url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     owner_scope: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     trace_id: Option<String>,
 }
 
@@ -11056,6 +11052,87 @@ impl WebRequestBeforeRequestPayload {
     pub fn with_redirect_url(mut self, redirect_url: impl Into<String>) -> Self {
         self.redirect_url = Some(redirect_url.into());
         self
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SerializableWebRequestBeforeRequestPayload<'a> {
+    profile: &'a SessionProfileResourcePayload,
+    url_pattern: &'a str,
+    action: WebRequestActionPayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    redirect_url: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    owner_scope: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_id: Option<&'a str>,
+}
+
+impl<'a> TryFrom<&'a WebRequestBeforeRequestPayload>
+    for SerializableWebRequestBeforeRequestPayload<'a>
+{
+    type Error = &'static str;
+
+    fn try_from(payload: &'a WebRequestBeforeRequestPayload) -> Result<Self, Self::Error> {
+        validate_web_request_before_request_shape(payload.action, payload.redirect_url.as_deref())?;
+        Ok(Self {
+            profile: &payload.profile,
+            url_pattern: &payload.url_pattern,
+            action: payload.action,
+            redirect_url: payload.redirect_url.as_deref(),
+            owner_scope: payload.owner_scope.as_deref(),
+            trace_id: payload.trace_id.as_deref(),
+        })
+    }
+}
+
+impl Serialize for WebRequestBeforeRequestPayload {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        SerializableWebRequestBeforeRequestPayload::try_from(self)
+            .map_err(ser::Error::custom)?
+            .serialize(serializer)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawWebRequestBeforeRequestPayload {
+    profile: SessionProfileResourcePayload,
+    url_pattern: String,
+    action: WebRequestActionPayload,
+    redirect_url: Option<String>,
+    owner_scope: Option<String>,
+    trace_id: Option<String>,
+}
+
+impl TryFrom<RawWebRequestBeforeRequestPayload> for WebRequestBeforeRequestPayload {
+    type Error = &'static str;
+
+    fn try_from(raw: RawWebRequestBeforeRequestPayload) -> Result<Self, Self::Error> {
+        validate_web_request_before_request_shape(raw.action, raw.redirect_url.as_deref())?;
+        Ok(Self {
+            profile: raw.profile,
+            url_pattern: raw.url_pattern,
+            action: raw.action,
+            redirect_url: raw.redirect_url,
+            owner_scope: raw.owner_scope,
+            trace_id: raw.trace_id,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for WebRequestBeforeRequestPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        RawWebRequestBeforeRequestPayload::deserialize(deserializer)?
+            .try_into()
+            .map_err(de::Error::custom)
     }
 }
 
@@ -11104,8 +11181,7 @@ impl WebRequestRemoveListenerPayload {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct WebRequestInterceptorSnapshotPayload {
     interceptor: WebRequestInterceptorResourcePayload,
     profile: SessionProfileResourcePayload,
@@ -11113,9 +11189,7 @@ pub struct WebRequestInterceptorSnapshotPayload {
     url_pattern: String,
     action: WebRequestActionPayload,
     order: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
     redirect_url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     response_headers: Option<Vec<WebRequestHeaderPayload>>,
 }
 
@@ -11148,6 +11222,158 @@ impl WebRequestInterceptorSnapshotPayload {
     pub fn with_response_headers(mut self, headers: Vec<WebRequestHeaderPayload>) -> Self {
         self.response_headers = Some(headers);
         self
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SerializableWebRequestInterceptorSnapshotPayload<'a> {
+    interceptor: &'a WebRequestInterceptorResourcePayload,
+    profile: &'a SessionProfileResourcePayload,
+    phase: WebRequestPhasePayload,
+    url_pattern: &'a str,
+    action: WebRequestActionPayload,
+    order: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    redirect_url: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    response_headers: Option<&'a [WebRequestHeaderPayload]>,
+}
+
+impl<'a> TryFrom<&'a WebRequestInterceptorSnapshotPayload>
+    for SerializableWebRequestInterceptorSnapshotPayload<'a>
+{
+    type Error = &'static str;
+
+    fn try_from(payload: &'a WebRequestInterceptorSnapshotPayload) -> Result<Self, Self::Error> {
+        validate_web_request_snapshot_shape(
+            payload.phase,
+            payload.action,
+            payload.redirect_url.as_deref(),
+            payload.response_headers.as_deref(),
+        )?;
+        Ok(Self {
+            interceptor: &payload.interceptor,
+            profile: &payload.profile,
+            phase: payload.phase,
+            url_pattern: &payload.url_pattern,
+            action: payload.action,
+            order: payload.order,
+            redirect_url: payload.redirect_url.as_deref(),
+            response_headers: payload.response_headers.as_deref(),
+        })
+    }
+}
+
+impl Serialize for WebRequestInterceptorSnapshotPayload {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        SerializableWebRequestInterceptorSnapshotPayload::try_from(self)
+            .map_err(ser::Error::custom)?
+            .serialize(serializer)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawWebRequestInterceptorSnapshotPayload {
+    interceptor: WebRequestInterceptorResourcePayload,
+    profile: SessionProfileResourcePayload,
+    phase: WebRequestPhasePayload,
+    url_pattern: String,
+    action: WebRequestActionPayload,
+    order: u64,
+    redirect_url: Option<String>,
+    response_headers: Option<Vec<WebRequestHeaderPayload>>,
+}
+
+impl TryFrom<RawWebRequestInterceptorSnapshotPayload> for WebRequestInterceptorSnapshotPayload {
+    type Error = &'static str;
+
+    fn try_from(raw: RawWebRequestInterceptorSnapshotPayload) -> Result<Self, Self::Error> {
+        validate_web_request_snapshot_shape(
+            raw.phase,
+            raw.action,
+            raw.redirect_url.as_deref(),
+            raw.response_headers.as_deref(),
+        )?;
+        Ok(Self {
+            interceptor: raw.interceptor,
+            profile: raw.profile,
+            phase: raw.phase,
+            url_pattern: raw.url_pattern,
+            action: raw.action,
+            order: raw.order,
+            redirect_url: raw.redirect_url,
+            response_headers: raw.response_headers,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for WebRequestInterceptorSnapshotPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        RawWebRequestInterceptorSnapshotPayload::deserialize(deserializer)?
+            .try_into()
+            .map_err(de::Error::custom)
+    }
+}
+
+fn validate_web_request_before_request_shape(
+    action: WebRequestActionPayload,
+    redirect_url: Option<&str>,
+) -> Result<(), &'static str> {
+    match action {
+        WebRequestActionPayload::Redirect if redirect_url.is_none() => {
+            Err("web request redirect action requires redirectUrl")
+        }
+        WebRequestActionPayload::Redirect => Ok(()),
+        WebRequestActionPayload::Allow | WebRequestActionPayload::Block
+            if redirect_url.is_some() =>
+        {
+            Err("web request redirectUrl requires redirect action")
+        }
+        WebRequestActionPayload::Allow | WebRequestActionPayload::Block => Ok(()),
+        WebRequestActionPayload::ModifyHeaders => {
+            Err("web request before-request payload must not use modify-headers action")
+        }
+    }
+}
+
+fn validate_web_request_snapshot_shape(
+    phase: WebRequestPhasePayload,
+    action: WebRequestActionPayload,
+    redirect_url: Option<&str>,
+    response_headers: Option<&[WebRequestHeaderPayload]>,
+) -> Result<(), &'static str> {
+    match phase {
+        WebRequestPhasePayload::BeforeRequest => {
+            if action == WebRequestActionPayload::ModifyHeaders {
+                return Err(
+                    "web request before-request snapshot must not use modify-headers action",
+                );
+            }
+            if response_headers.is_some() {
+                return Err("web request before-request snapshot must not carry responseHeaders");
+            }
+            validate_web_request_before_request_shape(action, redirect_url)
+        }
+        WebRequestPhasePayload::HeadersReceived => {
+            if action != WebRequestActionPayload::ModifyHeaders {
+                return Err("web request headers-received snapshot requires modify-headers action");
+            }
+            if redirect_url.is_some() {
+                return Err("web request headers-received snapshot must not carry redirectUrl");
+            }
+            if response_headers.is_none() {
+                return Err("web request headers-received snapshot requires responseHeaders");
+            }
+            Ok(())
+        }
     }
 }
 
@@ -17869,6 +18095,116 @@ mod tests {
             .expect("support payload should encode"),
             r#"{"supported":false,"reason":"host-web-request-unavailable"}"#
         );
+    }
+
+    #[test]
+    fn web_request_payloads_reject_inconsistent_action_shapes() {
+        for source in [
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"urlPattern":"https://example.test/*","action":"redirect"}"#,
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"urlPattern":"https://example.test/*","action":"allow","redirectUrl":"https://redirect.example.test/"}"#,
+            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"urlPattern":"https://example.test/*","action":"block","redirectUrl":"https://redirect.example.test/"}"#,
+        ] {
+            let error = serde_json::from_str::<WebRequestBeforeRequestPayload>(source)
+                .expect_err("inconsistent before-request payload should be rejected");
+            assert!(
+                error.to_string().contains("redirect"),
+                "unexpected error: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn web_request_snapshots_reject_inconsistent_phase_action_shapes() {
+        for source in [
+            r#"{"interceptor":{"kind":"web-request-interceptor","id":"web-request-interceptor:1","generation":0,"ownerScope":"workspace:1","state":"open"},"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"phase":"before-request","urlPattern":"https://example.test/*","action":"modify-headers","order":1,"responseHeaders":[{"name":"x-audit","value":"1"}]}"#,
+            r#"{"interceptor":{"kind":"web-request-interceptor","id":"web-request-interceptor:1","generation":0,"ownerScope":"workspace:1","state":"open"},"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"phase":"headers-received","urlPattern":"https://example.test/*","action":"redirect","order":1,"redirectUrl":"https://redirect.example.test/"}"#,
+            r#"{"interceptor":{"kind":"web-request-interceptor","id":"web-request-interceptor:1","generation":0,"ownerScope":"workspace:1","state":"open"},"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"phase":"headers-received","urlPattern":"https://example.test/*","action":"modify-headers","order":1}"#,
+            r#"{"interceptor":{"kind":"web-request-interceptor","id":"web-request-interceptor:1","generation":0,"ownerScope":"workspace:1","state":"open"},"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"phase":"before-request","urlPattern":"https://example.test/*","action":"redirect","order":1}"#,
+        ] {
+            let error = serde_json::from_str::<WebRequestInterceptorSnapshotPayload>(source)
+                .expect_err("inconsistent interceptor snapshot should be rejected");
+            assert!(
+                error.to_string().contains("snapshot") || error.to_string().contains("redirect"),
+                "unexpected error: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn web_request_payloads_reject_inconsistent_shapes_before_serializing() {
+        let profile =
+            SessionProfileResourcePayload::new("session-profile:workspace-1", 0, "workspace:1");
+        let interceptor = WebRequestInterceptorResourcePayload::new(
+            "web-request-interceptor:1",
+            0,
+            "workspace:1",
+        );
+        let headers = vec![WebRequestHeaderPayload::new("x-audit", "1")];
+
+        for payload in [
+            WebRequestBeforeRequestPayload::new(
+                profile.clone(),
+                "https://example.test/*",
+                WebRequestActionPayload::Redirect,
+            ),
+            WebRequestBeforeRequestPayload::new(
+                profile.clone(),
+                "https://example.test/*",
+                WebRequestActionPayload::Allow,
+            )
+            .with_redirect_url("https://redirect.example.test/"),
+        ] {
+            let error = serde_json::to_string(&payload)
+                .expect_err("inconsistent before-request payload should not encode");
+            assert!(
+                error.to_string().contains("redirect"),
+                "unexpected error: {error}"
+            );
+        }
+
+        for snapshot in [
+            WebRequestInterceptorSnapshotPayload::new(
+                interceptor.clone(),
+                profile.clone(),
+                WebRequestPhasePayload::BeforeRequest,
+                "https://example.test/*",
+                WebRequestActionPayload::ModifyHeaders,
+                1,
+            )
+            .with_response_headers(headers.clone()),
+            WebRequestInterceptorSnapshotPayload::new(
+                interceptor.clone(),
+                profile.clone(),
+                WebRequestPhasePayload::HeadersReceived,
+                "https://example.test/*",
+                WebRequestActionPayload::Redirect,
+                1,
+            )
+            .with_redirect_url("https://redirect.example.test/"),
+            WebRequestInterceptorSnapshotPayload::new(
+                interceptor.clone(),
+                profile.clone(),
+                WebRequestPhasePayload::HeadersReceived,
+                "https://example.test/*",
+                WebRequestActionPayload::ModifyHeaders,
+                1,
+            ),
+            WebRequestInterceptorSnapshotPayload::new(
+                interceptor,
+                profile,
+                WebRequestPhasePayload::BeforeRequest,
+                "https://example.test/*",
+                WebRequestActionPayload::Redirect,
+                1,
+            ),
+        ] {
+            let error = serde_json::to_string(&snapshot)
+                .expect_err("inconsistent interceptor snapshot should not encode");
+            assert!(
+                error.to_string().contains("snapshot") || error.to_string().contains("redirect"),
+                "unexpected error: {error}"
+            );
+        }
     }
 
     #[test]
