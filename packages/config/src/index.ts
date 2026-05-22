@@ -1164,13 +1164,13 @@ const blockRangeAfterGuard = (source: string, offset: number): SourceGuardRange 
 
 const methodCallPattern = (capability: SourceCapability): RegExp =>
   new RegExp(
-    `\\b${escapeRegExp(capability.primitive)}\\s*\\.\\s*${escapeRegExp(capability.method)}\\s*\\(`,
+    `\\b${escapeRegExp(capability.primitive)}\\s*(?:\\?\\.|\\.)\\s*${escapeRegExp(capability.method)}\\s*(?:\\?\\.)?\\s*\\(`,
     "gu"
   )
 
 const supportGuardPattern = (capability: SourceCapability): RegExp =>
   new RegExp(
-    `\\bif\\s*\\(\\s*${escapeRegExp(capability.primitive)}\\s*\\.\\s*isSupported\\s*\\(\\s*["']${escapeRegExp(capability.method)}["']\\s*\\)`,
+    `\\bif\\s*\\(\\s*${escapeRegExp(capability.primitive)}\\s*(?:\\?\\.|\\.)\\s*isSupported\\s*(?:\\?\\.)?\\s*\\(\\s*["']${escapeRegExp(capability.method)}["']\\s*\\)`,
     "gu"
   )
 
@@ -1266,8 +1266,16 @@ const sourceCapabilityScanSource = (source: string): SourceCapabilityScanSource 
 
 const maskSourceCapabilityNonCode = (source: string): string => {
   let result = ""
-  let state: "code" | "line-comment" | "block-comment" | "single" | "double" | "template" = "code"
+  let state:
+    | "code"
+    | "line-comment"
+    | "block-comment"
+    | "single"
+    | "double"
+    | "template"
+    | "regex" = "code"
   let escaped = false
+  let regexCharacterClass = false
   let templateExpressionDepth: number | undefined
 
   for (let index = 0; index < source.length; index += 1) {
@@ -1291,6 +1299,22 @@ const maskSourceCapabilityNonCode = (source: string): string => {
         state = "code"
       } else {
         result += char === "\n" ? char : " "
+      }
+      continue
+    }
+
+    if (state === "regex") {
+      result += char === "\n" ? char : " "
+      if (escaped) {
+        escaped = false
+      } else if (char === "\\") {
+        escaped = true
+      } else if (char === "[") {
+        regexCharacterClass = true
+      } else if (char === "]") {
+        regexCharacterClass = false
+      } else if (char === "/" && !regexCharacterClass) {
+        state = "code"
       }
       continue
     }
@@ -1347,6 +1371,14 @@ const maskSourceCapabilityNonCode = (source: string): string => {
       continue
     }
 
+    if (char === "/" && canStartRegexLiteral(source, index)) {
+      result += " "
+      state = "regex"
+      escaped = false
+      regexCharacterClass = false
+      continue
+    }
+
     if (char === "'") {
       state = "single"
     } else if (char === '"') {
@@ -1359,6 +1391,38 @@ const maskSourceCapabilityNonCode = (source: string): string => {
   }
 
   return result
+}
+
+const canStartRegexLiteral = (source: string, slashOffset: number): boolean => {
+  let cursor = slashOffset - 1
+  while (cursor >= 0 && /\s/u.test(source[cursor] ?? "")) {
+    cursor -= 1
+  }
+
+  if (cursor < 0) {
+    return true
+  }
+
+  const previous = source[cursor] ?? ""
+  if (/[([{=,:;!&|?+\-*~^<>]/u.test(previous)) {
+    return true
+  }
+
+  const prefix = source.slice(0, cursor + 1)
+  const keyword = prefix.match(/[A-Za-z_$][\w$]*$/u)?.[0]
+  return (
+    keyword === "return" ||
+    keyword === "throw" ||
+    keyword === "case" ||
+    keyword === "delete" ||
+    keyword === "void" ||
+    keyword === "typeof" ||
+    keyword === "instanceof" ||
+    keyword === "in" ||
+    keyword === "of" ||
+    keyword === "yield" ||
+    keyword === "await"
+  )
 }
 
 const maskComments = (source: string): string => {
