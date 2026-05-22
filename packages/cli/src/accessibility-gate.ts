@@ -93,21 +93,6 @@ export type AccessibilityGateError =
   | AccessibilityGateManifestError
   | AccessibilityGateEvidenceError
 
-interface AxeAudit {
-  readonly url?: string
-  readonly testEngine?: { readonly name?: string }
-  readonly violations?: readonly unknown[]
-  readonly incomplete?: readonly unknown[]
-  readonly passes?: readonly unknown[]
-}
-
-interface Pa11yAudit {
-  readonly url?: string
-  readonly runner?: string
-  readonly standard?: string
-  readonly issues?: readonly unknown[]
-}
-
 interface ResolvedAccessibilityTemplate {
   readonly root: string
   readonly auditDir: string
@@ -140,12 +125,29 @@ const REQUIRED_AUDIT_MODES = new Map<
 const USER_VISIBLE_TEXT_PATTERN =
   /(?:"([^"]*[A-Za-z][A-Za-z ]{3,}[^"]*)"|'([^']*[A-Za-z][A-Za-z ]{3,}[^']*)'|>([^<>{}]*[A-Za-z][A-Za-z ]{3,}[^<{}]*)<)/g
 const StrictParseOptions = { errors: "all", onExcessProperty: "error" } as const
+const AxeAuditReport = Schema.Struct({
+  url: Schema.optionalKey(Schema.String),
+  testEngine: Schema.optionalKey(
+    Schema.Struct({
+      name: Schema.optionalKey(Schema.String)
+    })
+  ),
+  violations: Schema.optionalKey(Schema.Array(Schema.Unknown)),
+  incomplete: Schema.optionalKey(Schema.Array(Schema.Unknown)),
+  passes: Schema.optionalKey(Schema.Array(Schema.Unknown))
+})
+const Pa11yAuditReport = Schema.Struct({
+  url: Schema.optionalKey(Schema.String),
+  runner: Schema.optionalKey(Schema.String),
+  standard: Schema.optionalKey(Schema.String),
+  issues: Schema.optionalKey(Schema.Array(Schema.Unknown))
+})
 
 export const runAccessibilityGate = (
   options: AccessibilityGateOptions
 ): Effect.Effect<AccessibilityGateReport, AccessibilityGateError, never> =>
   Effect.gen(function* () {
-    const rawManifest = yield* readJson<unknown>(resolve(options.cwd, MANIFEST_PATH))
+    const rawManifest = yield* readJson(resolve(options.cwd, MANIFEST_PATH), Schema.Unknown)
     const manifest = yield* decodeAccessibilityManifest(rawManifest)
     yield* validateManifest(manifest)
 
@@ -373,7 +375,7 @@ const validateAuditModes = (
     }
 
     for (const mode of paths.auditModes) {
-      const axe = yield* readJson<AxeAudit>(mode.axePath)
+      const axe = yield* readJson(mode.axePath, AxeAuditReport)
       if (axe.testEngine?.name !== "axe-core") {
         return yield* evidenceError(template, `${mode.axe} must be an axe-core audit`)
       }
@@ -393,7 +395,7 @@ const validateAuditModes = (
         )
       }
 
-      const pa11y = yield* readJson<Pa11yAudit>(mode.pa11yPath)
+      const pa11y = yield* readJson(mode.pa11yPath, Pa11yAuditReport)
       if (pa11y.runner !== "pa11y") {
         return yield* evidenceError(template, `${mode.pa11y} must be a Pa11y audit`)
       }
@@ -629,11 +631,13 @@ const linearize = (channel: number): number => {
   return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
 }
 
-const readJson = <A>(path: string): Effect.Effect<A, AccessibilityGateFileError, never> =>
+const readJson = <S extends Schema.Top>(
+  path: string,
+  schema: S
+): Effect.Effect<S["Type"], AccessibilityGateFileError, S["DecodingServices"]> =>
   readText(path).pipe(
     Effect.flatMap((body) =>
-      Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(body).pipe(
-        Effect.map((value) => value as A),
+      Schema.decodeUnknownEffect(Schema.fromJsonString(schema))(body).pipe(
         Effect.mapError(
           (cause) =>
             new AccessibilityGateFileError({

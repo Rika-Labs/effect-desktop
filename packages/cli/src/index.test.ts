@@ -3804,6 +3804,79 @@ test("desktop check --a11y rejects zero-pass axe reports", () =>
     })
   ))
 
+test("desktop check --a11y rejects malformed axe report JSON as a file error", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
+      )
+      try {
+        yield* writeAccessibilityFixture(directory, {
+          axeAuditForMode: (mode) => ({
+            incomplete: [],
+            passes: "not-an-array",
+            testEngine: { name: "axe-core" },
+            url: defaultAxeUrlForMode(mode),
+            violations: []
+          })
+        })
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--a11y", "--json"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.tag).toBe("AccessibilityGateFileError")
+        expect(payload.message).toContain("failed to parse JSON")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --a11y rejects malformed Pa11y report JSON as a file error", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
+      )
+      try {
+        yield* writeAccessibilityFixture(directory, {
+          pa11yAuditForMode: (mode) => ({
+            issues: "not-an-array",
+            runner: "pa11y",
+            standard: "WCAG2AA",
+            url: defaultAxeUrlForMode(mode)
+          })
+        })
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--a11y", "--json"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.tag).toBe("AccessibilityGateFileError")
+        expect(payload.message).toContain("failed to parse JSON")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
 test("desktop check --a11y rejects comment-only required tokens", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -10434,6 +10507,8 @@ const writeAccessibilityFixture = (
     readonly messages?: string
     readonly manualAudit?: string
     readonly axePasses?: readonly unknown[]
+    readonly axeAuditForMode?: (mode: string) => unknown
+    readonly pa11yAuditForMode?: (mode: string) => unknown
     readonly axeUrlForMode?: (mode: string) => string
     readonly pa11yUrlForMode?: (mode: string) => string
   } = {}
@@ -10475,13 +10550,21 @@ const writeAccessibilityFixture = (
       yield* Effect.promise(() =>
         writeFile(
           join(auditRoot, `axe.${mode}.json`),
-          stringifyJson(axeAuditFixture(mode, overrides.axePasses, overrides.axeUrlForMode), 2)
+          stringifyJson(
+            overrides.axeAuditForMode?.(mode) ??
+              axeAuditFixture(mode, overrides.axePasses, overrides.axeUrlForMode),
+            2
+          )
         )
       )
       yield* Effect.promise(() =>
         writeFile(
           join(auditRoot, `pa11y.${mode}.json`),
-          stringifyJson(pa11yAuditFixture(mode, overrides.pa11yUrlForMode), 2)
+          stringifyJson(
+            overrides.pa11yAuditForMode?.(mode) ??
+              pa11yAuditFixture(mode, overrides.pa11yUrlForMode),
+            2
+          )
         )
       )
     }
