@@ -15,6 +15,15 @@ const DownloadDestination = BridgeSafeNonEmptyString.check(
   Schema.isPattern(/^(?!.*(?:^|[\\/])\.\.(?:[\\/]|$))[\s\S]*$/u)
 )
 const DownloadNonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
+const DownloadByteProgress = Schema.makeFilter<{
+  readonly receivedBytes: number
+  readonly totalBytes?: number | undefined
+}>(
+  (value) =>
+    value.totalBytes === undefined ||
+    value.receivedBytes <= value.totalBytes ||
+    "receivedBytes must not exceed totalBytes"
+)
 
 export const DownloadState = Schema.Literals([
   "running",
@@ -54,16 +63,18 @@ export class DownloadListInput extends Schema.Class<DownloadListInput>("Download
   traceId: Schema.optionalKey(BridgeSafeNonEmptyString)
 }) {}
 
-export class DownloadSnapshot extends Schema.Class<DownloadSnapshot>("DownloadSnapshot")({
-  download: DownloadResource,
-  profile: SessionProfileResource,
-  url: DownloadUrl,
-  destination: Schema.optionalKey(DownloadDestination),
-  state: DownloadState,
-  receivedBytes: DownloadNonNegativeInt,
-  totalBytes: Schema.optionalKey(DownloadNonNegativeInt),
-  message: Schema.optionalKey(BridgeSafeString)
-}) {}
+export class DownloadSnapshot extends Schema.Class<DownloadSnapshot>("DownloadSnapshot")(
+  Schema.Struct({
+    download: DownloadResource,
+    profile: SessionProfileResource,
+    url: DownloadUrl,
+    destination: Schema.optionalKey(DownloadDestination),
+    state: DownloadState,
+    receivedBytes: DownloadNonNegativeInt,
+    totalBytes: Schema.optionalKey(DownloadNonNegativeInt),
+    message: Schema.optionalKey(BridgeSafeString)
+  }).check(DownloadByteProgress)
+) {}
 
 export class DownloadListResult extends Schema.Class<DownloadListResult>("DownloadListResult")({
   downloads: Schema.Array(DownloadSnapshot)
@@ -76,18 +87,20 @@ export class DownloadSupportedResult extends Schema.Class<DownloadSupportedResul
   reason: Schema.optionalKey(BridgeSafeString)
 }) {}
 
-export class DownloadEvent extends Schema.Class<DownloadEvent>("DownloadEvent")({
-  type: Schema.Literal("download-event"),
-  timestamp: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0)),
-  phase: DownloadEventPhase,
-  download: DownloadResource,
-  profile: SessionProfileResource,
-  url: DownloadUrl,
-  destination: Schema.optionalKey(DownloadDestination),
-  receivedBytes: DownloadNonNegativeInt,
-  totalBytes: Schema.optionalKey(DownloadNonNegativeInt),
-  message: Schema.optionalKey(BridgeSafeString)
-}) {}
+export class DownloadEvent extends Schema.Class<DownloadEvent>("DownloadEvent")(
+  Schema.Struct({
+    type: Schema.Literal("download-event"),
+    timestamp: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0)),
+    phase: DownloadEventPhase,
+    download: DownloadResource,
+    profile: SessionProfileResource,
+    url: DownloadUrl,
+    destination: Schema.optionalKey(DownloadDestination),
+    receivedBytes: DownloadNonNegativeInt,
+    totalBytes: Schema.optionalKey(DownloadNonNegativeInt),
+    message: Schema.optionalKey(BridgeSafeString)
+  }).check(DownloadByteProgress)
+) {}
 
 const isAbsoluteHttpUrl = (value: string): boolean => {
   try {
