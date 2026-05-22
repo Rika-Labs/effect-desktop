@@ -13790,6 +13790,7 @@ impl<'a> TryFrom<&'a HostProtocolEnvelope> for SerializableHostProtocolEnvelope<
             } => {
                 validate_host_identity_ref(id)?;
                 validate_host_identity_ref(trace_id)?;
+                validate_host_protocol_outcome("response", payload.is_some(), error.is_some())?;
 
                 Ok(Self::Response {
                     id,
@@ -13826,6 +13827,7 @@ impl<'a> TryFrom<&'a HostProtocolEnvelope> for SerializableHostProtocolEnvelope<
                 error,
             } => {
                 validate_host_protocol_target("stream", id.as_deref(), resource_id.as_deref())?;
+                validate_host_protocol_outcome("stream", payload.is_some(), error.is_some())?;
 
                 validate_optional_host_identity_ref(id.as_deref())?;
                 validate_optional_host_identity_ref(resource_id.as_deref())?;
@@ -13938,13 +13940,17 @@ impl TryFrom<RawHostProtocolEnvelope> for HostProtocolEnvelope {
                 trace_id,
                 payload,
                 error,
-            } => Ok(Self::Response {
-                id: validate_host_identity(id)?,
-                timestamp,
-                trace_id: validate_host_identity(trace_id)?,
-                payload,
-                error,
-            }),
+            } => {
+                validate_host_protocol_outcome("response", payload.is_some(), error.is_some())?;
+
+                Ok(Self::Response {
+                    id: validate_host_identity(id)?,
+                    timestamp,
+                    trace_id: validate_host_identity(trace_id)?,
+                    payload,
+                    error,
+                })
+            }
             RawHostProtocolEnvelope::Event {
                 method,
                 timestamp,
@@ -13967,6 +13973,7 @@ impl TryFrom<RawHostProtocolEnvelope> for HostProtocolEnvelope {
                 error,
             } => {
                 validate_host_protocol_target("stream", id.as_deref(), resource_id.as_deref())?;
+                validate_host_protocol_outcome("stream", payload.is_some(), error.is_some())?;
 
                 Ok(Self::Stream {
                     id: validate_optional_host_identity(id)?,
@@ -14042,6 +14049,22 @@ fn validate_host_protocol_target(
             _ => Err("host protocol envelope must not contain both id and resourceId"),
         },
         (Some(_), None) | (None, Some(_)) => Ok(()),
+    }
+}
+
+fn validate_host_protocol_outcome(
+    kind: &'static str,
+    has_payload: bool,
+    has_error: bool,
+) -> Result<(), &'static str> {
+    if has_payload && has_error {
+        match kind {
+            "response" => Err("response envelope must not contain both payload and error"),
+            "stream" => Err("stream envelope must not contain both payload and error"),
+            _ => Err("host protocol envelope must not contain both payload and error"),
+        }
+    } else {
+        Ok(())
     }
 }
 
@@ -14330,6 +14353,32 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "cancel envelope must not contain both id and resourceId"
+        );
+    }
+
+    #[test]
+    fn response_rejects_mixed_payload_and_error_outcomes() {
+        let error = serde_json::from_str::<HostProtocolEnvelope>(
+            r#"{"kind":"response","id":"request-1","timestamp":1710000000000,"traceId":"trace-1","payload":{"ok":true},"error":{"tag":"InvalidOutput","method":"fixture.operation","reason":"bad","message":"bad","operation":"fixture.operation","recoverable":false}}"#,
+        )
+        .expect_err("response outcome must not be ambiguous");
+
+        assert_eq!(
+            error.to_string(),
+            "response envelope must not contain both payload and error"
+        );
+    }
+
+    #[test]
+    fn stream_rejects_mixed_payload_and_error_outcomes() {
+        let error = serde_json::from_str::<HostProtocolEnvelope>(
+            r#"{"kind":"stream","resourceId":"resource-1","timestamp":1710000000000,"traceId":"trace-1","payload":{"chunk":true},"error":{"tag":"InvalidOutput","method":"fixture.operation","reason":"bad","message":"bad","operation":"fixture.operation","recoverable":false}}"#,
+        )
+        .expect_err("stream outcome must not be ambiguous");
+
+        assert_eq!(
+            error.to_string(),
+            "stream envelope must not contain both payload and error"
         );
     }
 
@@ -14861,6 +14910,49 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "cancel envelope must not contain both id and resourceId"
+        );
+    }
+
+    #[test]
+    fn response_rejects_mixed_payload_and_error_outcomes_before_serializing() {
+        let envelope = HostProtocolEnvelope::Response {
+            id: "request-1".to_string(),
+            timestamp: 1710000000000,
+            trace_id: "trace-1".to_string(),
+            payload: Some(serde_json::json!({ "ok": true })),
+            error: Some(HostProtocolError::invalid_output(
+                "fixture.operation",
+                "bad",
+            )),
+        };
+
+        let error = serde_json::to_string(&envelope).expect_err("response outcome is ambiguous");
+
+        assert_eq!(
+            error.to_string(),
+            "response envelope must not contain both payload and error"
+        );
+    }
+
+    #[test]
+    fn stream_rejects_mixed_payload_and_error_outcomes_before_serializing() {
+        let envelope = HostProtocolEnvelope::Stream {
+            id: None,
+            resource_id: Some("resource-1".to_string()),
+            timestamp: 1710000000000,
+            trace_id: "trace-1".to_string(),
+            payload: Some(serde_json::json!({ "chunk": true })),
+            error: Some(HostProtocolError::invalid_output(
+                "fixture.operation",
+                "bad",
+            )),
+        };
+
+        let error = serde_json::to_string(&envelope).expect_err("stream outcome is ambiguous");
+
+        assert_eq!(
+            error.to_string(),
+            "stream envelope must not contain both payload and error"
         );
     }
 
