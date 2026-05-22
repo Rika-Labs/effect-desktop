@@ -88,14 +88,42 @@ export class JobSnapshot extends Schema.Class<JobSnapshot>("JobSnapshot")({
   reason: Schema.optionalKey(BridgeSafeString)
 }) {}
 
+const isMutableJobState = (state: JobState): boolean => state === "running" || state === "paused"
+
+const JobEventPhaseState = Schema.makeFilter<{
+  readonly phase: JobEventPhase
+  readonly job: {
+    readonly state: JobState
+  }
+}>((value) => {
+  switch (value.phase) {
+    case "started":
+    case "resumed":
+    case "retried":
+      return value.job.state === "running" || `${value.phase} events require running job state`
+    case "paused":
+      return value.job.state === "paused" || "paused events require paused job state"
+    case "interrupted":
+      return value.job.state === "interrupted" || "interrupted events require interrupted job state"
+    case "progress":
+      return isMutableJobState(value.job.state) || "progress events require mutable job state"
+    case "succeeded":
+      return value.job.state === "succeeded" || "succeeded events require succeeded job state"
+    case "failed":
+      return value.job.state === "failed" || "failed events require failed job state"
+  }
+})
+
 export class JobSupportedResult extends Schema.Class<JobSupportedResult>("JobSupportedResult")({
   supported: Schema.Boolean,
   reason: Schema.optionalKey(BridgeSafeString)
 }) {}
 
-export class JobEvent extends Schema.Class<JobEvent>("JobEvent")({
-  type: JobEventType,
-  timestamp: JobTimestamp,
-  phase: JobEventPhase,
-  job: JobSnapshot
-}) {}
+export class JobEvent extends Schema.Class<JobEvent>("JobEvent")(
+  Schema.Struct({
+    type: JobEventType,
+    timestamp: JobTimestamp,
+    phase: JobEventPhase,
+    job: JobSnapshot
+  }).check(JobEventPhaseState)
+) {}

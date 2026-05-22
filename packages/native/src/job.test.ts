@@ -71,6 +71,72 @@ test("Job contracts reject completed progress greater than total progress", asyn
   expect(eventExit._tag).toBe("Failure")
 })
 
+test("Job contracts reject event phases that contradict job state", async () => {
+  const mismatchExit = Effect.runSyncExit(
+    Schema.decodeUnknownEffect(JobEvent)({
+      type: "job-event",
+      timestamp: 1_710_000_000_000,
+      phase: "succeeded",
+      job: jobSnapshotStatePayload("running")
+    })
+  )
+  const terminalProgressExit = Effect.runSyncExit(
+    Schema.decodeUnknownEffect(JobEvent)({
+      type: "job-event",
+      timestamp: 1_710_000_000_000,
+      phase: "progress",
+      job: jobSnapshotStatePayload("succeeded")
+    })
+  )
+  const startedExit = Effect.runSyncExit(
+    Schema.decodeUnknownEffect(JobEvent)({
+      type: "job-event",
+      timestamp: 1_710_000_000_000,
+      phase: "started",
+      job: jobSnapshotStatePayload("running")
+    })
+  )
+  const pausedProgressExit = Effect.runSyncExit(
+    Schema.decodeUnknownEffect(JobEvent)({
+      type: "job-event",
+      timestamp: 1_710_000_000_000,
+      phase: "progress",
+      job: jobSnapshotStatePayload("paused")
+    })
+  )
+
+  expect(mismatchExit._tag).toBe("Failure")
+  expect(terminalProgressExit._tag).toBe("Failure")
+  expect(startedExit._tag).toBe("Success")
+  expect(pausedProgressExit._tag).toBe("Success")
+
+  const exchange: BridgeClientExchange = {
+    request: () => Effect.die("Job event mismatch test does not issue bridge requests"),
+    subscribe: (method) =>
+      Stream.make(
+        new HostProtocolEventEnvelope({
+          kind: "event",
+          method,
+          timestamp: 1_710_000_000_000,
+          traceId: "job-event-trace",
+          payload: {
+            type: "job-event",
+            timestamp: 1_710_000_000_000,
+            phase: "failed",
+            job: jobSnapshotStatePayload("running")
+          }
+        })
+      )
+  }
+  const bridgeExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const client = yield* JobClient
+      return yield* Effect.exit(client.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow)))
+    }).pipe(Effect.provide(makeJobBridgeClientLayer(exchange)))
+  )
+  expectInvalidOutput(bridgeExit)
+})
+
 test("Job bridge client rejects invalid progress from host output and events", async () => {
   const exchange: BridgeClientExchange = {
     request: () =>
@@ -482,6 +548,21 @@ const jobSnapshotPayload = (progress: ReturnType<typeof invalidProgressPayload>)
     startedAt: 1_710_000_000_000,
     updatedAt: 1_710_000_000_000,
     progress
+  }) as const
+
+const jobSnapshotStatePayload = (state: JobSnapshot["state"]) =>
+  ({
+    handle: {
+      kind: "job",
+      id: "job-1",
+      generation: 0,
+      ownerScope: "native-job",
+      state
+    },
+    name: "State mismatch job",
+    state,
+    startedAt: 1_710_000_000_000,
+    updatedAt: 1_710_000_000_000
   }) as const
 
 const expectInvalidOutput = <A>(exit: Exit.Exit<A, unknown>): void => {
