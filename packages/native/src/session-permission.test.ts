@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test"
-import { Effect, type Layer, ManagedRuntime } from "effect"
+import { Effect, Exit, type Layer, ManagedRuntime, Schema } from "effect"
 
 import { makeNativeCapabilityManifest } from "./capabilities.js"
+import { SessionPermissionEvent } from "./contracts/session-permission.js"
 import {
   makeSessionPermissionMemoryClient,
   makeSessionPermissionServiceLayer,
@@ -89,6 +90,44 @@ test("SessionPermission capability facts surface in the manifest and stay non-ca
       expect(nonCallableTags).toEqual(
         UnsupportedMethods.map((method) => `SessionPermission.${method}`).toSorted()
       )
+    })
+  ))
+
+test("SessionPermission events require decisions only for decided phase", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const baseEvent = {
+        type: "session-permission-event",
+        timestamp: 1710000000000,
+        profile: {
+          kind: "session-profile",
+          id: "session-profile:workspace-1",
+          generation: 0,
+          ownerScope: "workspace:1",
+          state: "open"
+        },
+        requestId: "permission-request-1",
+        kind: "camera",
+        origin: "https://example.test"
+      } as const
+
+      for (const event of [
+        { ...baseEvent, phase: "decided" },
+        { ...baseEvent, phase: "requested", decision: "grant" },
+        { ...baseEvent, phase: "failed", decision: "deny" }
+      ] as const) {
+        const exit = yield* Effect.exit(Schema.decodeUnknownEffect(SessionPermissionEvent)(event))
+        expect(Exit.isFailure(exit)).toBe(true)
+      }
+
+      for (const event of [
+        { ...baseEvent, phase: "requested" },
+        { ...baseEvent, phase: "decided", decision: "grant" },
+        { ...baseEvent, phase: "failed", message: "host session permission unavailable" }
+      ] as const) {
+        const decoded = yield* Schema.decodeUnknownEffect(SessionPermissionEvent)(event)
+        expect(decoded.phase).toBe(event.phase)
+      }
     })
   ))
 

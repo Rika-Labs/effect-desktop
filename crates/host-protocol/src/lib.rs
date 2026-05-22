@@ -10384,8 +10384,7 @@ impl SessionPermissionSupportedPayload {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct SessionPermissionEventPayload {
     r#type: String,
     timestamp: u64,
@@ -10394,9 +10393,7 @@ pub struct SessionPermissionEventPayload {
     request_id: String,
     kind: SessionPermissionKindPayload,
     origin: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     decision: Option<SessionPermissionDecisionPayload>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     message: Option<String>,
 }
 
@@ -10425,6 +10422,118 @@ impl SessionPermissionEventPayload {
     pub fn with_decision(mut self, decision: SessionPermissionDecisionPayload) -> Self {
         self.decision = Some(decision);
         self
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SerializableSessionPermissionEventPayload<'a> {
+    r#type: &'a str,
+    timestamp: u64,
+    phase: SessionPermissionEventPhasePayload,
+    profile: &'a SessionProfileResourcePayload,
+    request_id: &'a str,
+    kind: &'a SessionPermissionKindPayload,
+    origin: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    decision: Option<SessionPermissionDecisionPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<&'a str>,
+}
+
+impl<'a> TryFrom<&'a SessionPermissionEventPayload>
+    for SerializableSessionPermissionEventPayload<'a>
+{
+    type Error = &'static str;
+
+    fn try_from(payload: &'a SessionPermissionEventPayload) -> Result<Self, Self::Error> {
+        validate_session_permission_event_decision(payload.phase, payload.decision)?;
+        Ok(Self {
+            r#type: &payload.r#type,
+            timestamp: payload.timestamp,
+            phase: payload.phase,
+            profile: &payload.profile,
+            request_id: &payload.request_id,
+            kind: &payload.kind,
+            origin: &payload.origin,
+            decision: payload.decision,
+            message: payload.message.as_deref(),
+        })
+    }
+}
+
+impl Serialize for SessionPermissionEventPayload {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        SerializableSessionPermissionEventPayload::try_from(self)
+            .map_err(ser::Error::custom)?
+            .serialize(serializer)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawSessionPermissionEventPayload {
+    r#type: String,
+    timestamp: u64,
+    phase: SessionPermissionEventPhasePayload,
+    profile: SessionProfileResourcePayload,
+    request_id: String,
+    kind: SessionPermissionKindPayload,
+    origin: String,
+    decision: Option<SessionPermissionDecisionPayload>,
+    message: Option<String>,
+}
+
+impl TryFrom<RawSessionPermissionEventPayload> for SessionPermissionEventPayload {
+    type Error = &'static str;
+
+    fn try_from(raw: RawSessionPermissionEventPayload) -> Result<Self, Self::Error> {
+        validate_session_permission_event_decision(raw.phase, raw.decision)?;
+        Ok(Self {
+            r#type: raw.r#type,
+            timestamp: raw.timestamp,
+            phase: raw.phase,
+            profile: raw.profile,
+            request_id: raw.request_id,
+            kind: raw.kind,
+            origin: raw.origin,
+            decision: raw.decision,
+            message: raw.message,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for SessionPermissionEventPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        RawSessionPermissionEventPayload::deserialize(deserializer)?
+            .try_into()
+            .map_err(de::Error::custom)
+    }
+}
+
+fn validate_session_permission_event_decision(
+    phase: SessionPermissionEventPhasePayload,
+    decision: Option<SessionPermissionDecisionPayload>,
+) -> Result<(), &'static str> {
+    match phase {
+        SessionPermissionEventPhasePayload::Decided if decision.is_none() => {
+            Err("decided session permission event requires decision")
+        }
+        SessionPermissionEventPhasePayload::Decided => Ok(()),
+        SessionPermissionEventPhasePayload::Requested
+        | SessionPermissionEventPhasePayload::Failed
+            if decision.is_some() =>
+        {
+            Err("non-decision session permission event must not carry decision")
+        }
+        SessionPermissionEventPhasePayload::Requested
+        | SessionPermissionEventPhasePayload::Failed => Ok(()),
     }
 }
 
@@ -17874,6 +17983,64 @@ mod tests {
             .expect("support payload should encode"),
             r#"{"supported":false,"reason":"host-session-permission-unavailable"}"#
         );
+    }
+
+    #[test]
+    fn session_permission_events_reject_inconsistent_decisions() {
+        for source in [
+            r#"{"type":"session-permission-event","timestamp":1710000000001,"phase":"decided","profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"requestId":"permission-request-1","kind":"camera","origin":"https://example.test"}"#,
+            r#"{"type":"session-permission-event","timestamp":1710000000001,"phase":"requested","profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"requestId":"permission-request-1","kind":"camera","origin":"https://example.test","decision":"grant"}"#,
+            r#"{"type":"session-permission-event","timestamp":1710000000001,"phase":"failed","profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"requestId":"permission-request-1","kind":"camera","origin":"https://example.test","decision":"deny"}"#,
+        ] {
+            let error = serde_json::from_str::<SessionPermissionEventPayload>(source)
+                .expect_err("inconsistent session permission event should be rejected");
+            assert!(
+                error.to_string().contains("decision"),
+                "unexpected error: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn session_permission_events_reject_inconsistent_decisions_before_serializing() {
+        let profile =
+            SessionProfileResourcePayload::new("session-profile:workspace-1", 0, "workspace:1");
+
+        for event in [
+            SessionPermissionEventPayload::new(
+                1710000000001,
+                SessionPermissionEventPhasePayload::Decided,
+                profile.clone(),
+                "permission-request-1",
+                SessionPermissionKindPayload::Camera,
+                "https://example.test",
+            ),
+            SessionPermissionEventPayload::new(
+                1710000000001,
+                SessionPermissionEventPhasePayload::Requested,
+                profile.clone(),
+                "permission-request-1",
+                SessionPermissionKindPayload::Camera,
+                "https://example.test",
+            )
+            .with_decision(SessionPermissionDecisionPayload::Grant),
+            SessionPermissionEventPayload::new(
+                1710000000001,
+                SessionPermissionEventPhasePayload::Failed,
+                profile,
+                "permission-request-1",
+                SessionPermissionKindPayload::Camera,
+                "https://example.test",
+            )
+            .with_decision(SessionPermissionDecisionPayload::Deny),
+        ] {
+            let error = serde_json::to_string(&event)
+                .expect_err("inconsistent session permission event should not encode");
+            assert!(
+                error.to_string().contains("decision"),
+                "unexpected error: {error}"
+            );
+        }
     }
 
     #[test]

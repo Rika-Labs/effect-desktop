@@ -29,6 +29,19 @@ const SessionPermissionRequestId = BridgeSafeNonEmptyString
 const SessionPermissionEventPhase = Schema.Literals(["requested", "decided", "failed"])
 export type SessionPermissionEventPhase = typeof SessionPermissionEventPhase.Type
 
+const SessionPermissionEventDecisionShape = Schema.makeFilter<{
+  readonly phase: SessionPermissionEventPhase
+  readonly decision?: SessionPermissionDecision | undefined
+}>((value) => {
+  if (value.phase === "decided") {
+    return value.decision !== undefined || "decided session permission events require decision"
+  }
+  return (
+    value.decision === undefined ||
+    `${value.phase} session permission events must not carry decision`
+  )
+})
+
 export class SessionPermissionRequestInput extends Schema.Class<SessionPermissionRequestInput>(
   "SessionPermissionRequestInput"
 )({
@@ -92,14 +105,16 @@ export class SessionPermissionSupportedResult extends Schema.Class<SessionPermis
 
 export class SessionPermissionEvent extends Schema.Class<SessionPermissionEvent>(
   "SessionPermissionEvent"
-)({
-  type: Schema.Literal("session-permission-event"),
-  timestamp: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0)),
-  phase: SessionPermissionEventPhase,
-  profile: SessionProfileResource,
-  requestId: SessionPermissionRequestId,
-  kind: SessionPermissionKind,
-  origin: SessionPermissionOrigin,
-  decision: Schema.optionalKey(SessionPermissionDecision),
-  message: Schema.optionalKey(BridgeSafeString)
-}) {}
+)(
+  Schema.Struct({
+    type: Schema.Literal("session-permission-event"),
+    timestamp: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0)),
+    phase: SessionPermissionEventPhase,
+    profile: SessionProfileResource,
+    requestId: SessionPermissionRequestId,
+    kind: SessionPermissionKind,
+    origin: SessionPermissionOrigin,
+    decision: Schema.optionalKey(SessionPermissionDecision),
+    message: Schema.optionalKey(BridgeSafeString)
+  }).check(SessionPermissionEventDecisionShape)
+) {}
