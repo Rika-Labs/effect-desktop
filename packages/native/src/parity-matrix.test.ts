@@ -1084,6 +1084,18 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
           ]
         }
       })
+      expect(result.rows.find((row) => row.tag === "Window.setVibrancy")).toMatchObject({
+        hostStatus: "routed",
+        support: {
+          status: "partial",
+          reason: "vibrancy-macos-only",
+          platforms: [
+            { platform: "macos", status: "supported" },
+            { platform: "windows", status: "unsupported", reason: "vibrancy-macos-only" },
+            { platform: "linux", status: "unsupported", reason: "vibrancy-macos-only" }
+          ]
+        }
+      })
       expect(result.rows.find((row) => row.tag === "Window.setShadow")).toMatchObject({
         hostStatus: "routed",
         support: {

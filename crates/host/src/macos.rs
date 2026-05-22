@@ -735,14 +735,14 @@ mod platform {
         _material: super::MacosVibrancyMaterial,
     ) -> std::result::Result<(), HostProtocolError> {
         Err(HostProtocolError::unsupported(
-            "window vibrancy is only supported on macOS",
+            "vibrancy-macos-only",
             host_protocol::WINDOW_SET_VIBRANCY_METHOD,
         ))
     }
 
     pub(super) fn clear_vibrancy(_window: &Window) -> std::result::Result<(), HostProtocolError> {
         Err(HostProtocolError::unsupported(
-            "window vibrancy is only supported on macOS",
+            "vibrancy-macos-only",
             host_protocol::WINDOW_CLEAR_VIBRANCY_METHOD,
         ))
     }

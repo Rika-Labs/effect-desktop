@@ -437,6 +437,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
         "NativeNetwork.closeWebSocket"
       )
       const windowClearVibrancy = yield* capabilities.support("Window.clearVibrancy")
+      const windowSetVibrancy = yield* capabilities.support("Window.setVibrancy")
       const windowSetShadow = yield* capabilities.support("Window.setShadow")
       const windowSetSimpleFullscreen = yield* capabilities.support("Window.setSimpleFullscreen")
       const windowSetSkipTaskbar = yield* capabilities.support("Window.setSkipTaskbar")
@@ -555,6 +556,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(nativeNetworkConnectWebSocket).toEqual(NativeNetworkUnavailableSupport)
       expect(nativeNetworkCloseWebSocket).toEqual(NativeNetworkUnavailableSupport)
       expect(windowClearVibrancy).toEqual(WindowVibrancyMacosOnlySupport)
+      expect(windowSetVibrancy).toEqual(WindowVibrancyMacosOnlySupport)
       expect(windowSetShadow).toEqual(WindowShadowMacosOnlySupport)
       expect(windowSetSimpleFullscreen).toEqual(WindowSimpleFullscreenMacosOnlySupport)
       expect(windowSetSkipTaskbar).toEqual(WindowSkipTaskbarSupport)
