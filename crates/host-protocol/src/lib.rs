@@ -2911,8 +2911,7 @@ impl ScreenDisplayPayload {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ScreenDisplaysPayload {
     displays: Vec<ScreenDisplayPayload>,
 }
@@ -2925,6 +2924,75 @@ impl ScreenDisplaysPayload {
     pub fn displays(&self) -> &[ScreenDisplayPayload] {
         &self.displays
     }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SerializableScreenDisplaysPayload<'a> {
+    displays: &'a [ScreenDisplayPayload],
+}
+
+impl<'a> TryFrom<&'a ScreenDisplaysPayload> for SerializableScreenDisplaysPayload<'a> {
+    type Error = &'static str;
+
+    fn try_from(payload: &'a ScreenDisplaysPayload) -> Result<Self, Self::Error> {
+        validate_screen_display_list(&payload.displays)?;
+        Ok(Self {
+            displays: &payload.displays,
+        })
+    }
+}
+
+impl Serialize for ScreenDisplaysPayload {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        SerializableScreenDisplaysPayload::try_from(self)
+            .map_err(ser::Error::custom)?
+            .serialize(serializer)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawScreenDisplaysPayload {
+    displays: Vec<ScreenDisplayPayload>,
+}
+
+impl TryFrom<RawScreenDisplaysPayload> for ScreenDisplaysPayload {
+    type Error = &'static str;
+
+    fn try_from(raw: RawScreenDisplaysPayload) -> Result<Self, Self::Error> {
+        validate_screen_display_list(&raw.displays)?;
+        Ok(Self {
+            displays: raw.displays,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for ScreenDisplaysPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        RawScreenDisplaysPayload::deserialize(deserializer)?
+            .try_into()
+            .map_err(de::Error::custom)
+    }
+}
+
+fn validate_screen_display_list(displays: &[ScreenDisplayPayload]) -> Result<(), &'static str> {
+    if displays.is_empty() {
+        return Err("screen display payload must include at least one display");
+    }
+
+    let primary_count = displays.iter().filter(|display| display.primary()).count();
+    if primary_count != 1 {
+        return Err("screen display payload must include exactly one primary display");
+    }
+
+    Ok(())
 }
 
 pub type ScreenDisplaysResultPayload = ScreenDisplaysPayload;
@@ -18373,8 +18441,8 @@ mod tests {
         SafeStorageKeyPayload, SafeStorageListResultPayload, SafeStorageSetPayload,
         ScopedAccessGrantEventPayload, ScopedAccessGrantEventPhase, ScopedAccessGrantState,
         ScreenBoundsPayload, ScreenDisplayPayload, ScreenDisplaysChangedEventPayload,
-        ScreenDisplaysResultPayload, ScreenIsSupportedPayload, ScreenPointPayload,
-        ScreenSupportedPayload, SelectionContextDocumentKind,
+        ScreenDisplaysPayload, ScreenDisplaysResultPayload, ScreenIsSupportedPayload,
+        ScreenPointPayload, ScreenSupportedPayload, SelectionContextDocumentKind,
         SelectionContextDocumentMetadataPayload, SelectionContextEventPayload,
         SessionPermissionDecidePayload, SessionPermissionDecisionPayload,
         SessionPermissionDecisionRecordPayload, SessionPermissionEventPayload,
@@ -23911,6 +23979,39 @@ mod tests {
                 .expect("support payload should encode"),
             r#"{"supported":false}"#
         );
+    }
+
+    #[test]
+    fn screen_display_lists_reject_invalid_primary_topologies() {
+        for source in [
+            r#"{"displays":[]}"#,
+            r#"{"displays":[{"id":"display-1","bounds":{"x":0.0,"y":0.0,"width":1920.0,"height":1080.0},"workArea":{"x":0.0,"y":24.0,"width":1920.0,"height":1056.0},"scaleFactor":2.0,"primary":false}]}"#,
+            r#"{"displays":[{"id":"display-1","bounds":{"x":0.0,"y":0.0,"width":1920.0,"height":1080.0},"workArea":{"x":0.0,"y":24.0,"width":1920.0,"height":1056.0},"scaleFactor":2.0,"primary":true},{"id":"display-2","bounds":{"x":1920.0,"y":0.0,"width":1920.0,"height":1080.0},"workArea":{"x":1920.0,"y":24.0,"width":1920.0,"height":1056.0},"scaleFactor":2.0,"primary":true}]}"#,
+        ] {
+            serde_json::from_str::<ScreenDisplaysPayload>(source)
+                .expect_err("invalid screen display list should be rejected");
+        }
+    }
+
+    #[test]
+    fn screen_display_lists_reject_invalid_primary_topologies_before_serializing() {
+        let bounds = ScreenBoundsPayload::new(0.0, 0.0, 1920.0, 1080.0);
+        let work_area = ScreenBoundsPayload::new(0.0, 24.0, 1920.0, 1056.0);
+        let secondary =
+            ScreenDisplayPayload::new("display-1", bounds.clone(), work_area.clone(), 2.0, false);
+        let primary_a =
+            ScreenDisplayPayload::new("display-1", bounds.clone(), work_area.clone(), 2.0, true);
+        let primary_b =
+            ScreenDisplayPayload::new("display-2", bounds.clone(), work_area.clone(), 2.0, true);
+
+        for payload in [
+            ScreenDisplaysPayload::new(vec![]),
+            ScreenDisplaysPayload::new(vec![secondary]),
+            ScreenDisplaysPayload::new(vec![primary_a, primary_b]),
+        ] {
+            serde_json::to_string(&payload)
+                .expect_err("invalid screen display list should not encode");
+        }
     }
 
     #[test]

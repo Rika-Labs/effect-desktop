@@ -27,16 +27,29 @@ export class ScreenDisplay extends Schema.Class<ScreenDisplay>("ScreenDisplay")(
   primary: Schema.Boolean
 }) {}
 
+const ScreenDisplayList = Schema.Array(ScreenDisplay).check(
+  Schema.makeFilter((displays) => {
+    if (displays.length === 0) {
+      return "screen display payload must include at least one display"
+    }
+
+    return (
+      displays.filter((display) => display.primary).length === 1 ||
+      "screen display payload must include exactly one primary display"
+    )
+  })
+)
+
 export class ScreenDisplaysResult extends Schema.Class<ScreenDisplaysResult>(
   "ScreenDisplaysResult"
 )({
-  displays: Schema.Array(ScreenDisplay)
+  displays: ScreenDisplayList
 }) {}
 
 export class ScreenDisplaysChangedEvent extends Schema.Class<ScreenDisplaysChangedEvent>(
   "ScreenDisplaysChangedEvent"
 )({
-  displays: Schema.Array(ScreenDisplay)
+  displays: ScreenDisplayList
 }) {}
 
 export class ScreenIsSupportedInput extends Schema.Class<ScreenIsSupportedInput>(
