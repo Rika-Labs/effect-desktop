@@ -7408,6 +7408,73 @@ test("desktop publish signs macOS app directory artifacts with deterministic dir
     })
   ))
 
+test("desktop publish accepts Linux package metadata with integration sidecars", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-linux-integration-"))
+      )
+      const key = testEd25519Key()
+      const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
+      try {
+        yield* writePlaygroundFixture(directory, {
+          update: {
+            channel: "stable",
+            feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+            publicKey: key.publicKey,
+            privateKeyEnv,
+            keyVersion: 5
+          }
+        })
+        yield* writePackagedArtifactFixture(directory, "linux-x64", "appimage")
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: [
+            "publish",
+            "--config",
+            "apps/inspector/desktop.config.ts",
+            "--platform",
+            "linux-x64"
+          ],
+          cwd: directory,
+          now: () => 1_772_923_200_000,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(0)
+        expect(stderr.join("")).toBe("")
+        const manifest = decodeUpdateManifestJson(
+          yield* Effect.promise(() =>
+            readFile(
+              join(directory, "apps", "inspector", "dist", "desktop", "update-manifest.json"),
+              "utf8"
+            )
+          )
+        )
+
+        expect(verifyUpdateManifest(manifest, key.publicKey)).toBe(true)
+        expect(manifest.artifacts[0]).toMatchObject({
+          platform: "linux-x64",
+          kind: "appimage",
+          url: "https://updates.example.invalid/linux-x64/ORIKA-Playground-0.0.0-linux-x64.AppImage"
+        })
+      } finally {
+        if (previousPrivateKey === undefined) {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
+        } else {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
+        }
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
 test("desktop publish rejects symbolic links inside directory artifacts", () =>
   Effect.runPromise(
     Effect.gen(function* () {

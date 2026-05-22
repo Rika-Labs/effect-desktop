@@ -162,7 +162,15 @@ class PackageArtifactMetadata extends Schema.Class<PackageArtifactMetadata>(
   sha256: Schema.String,
   appId: Schema.String,
   appName: Schema.String,
-  appVersion: Schema.String
+  appVersion: Schema.String,
+  linuxIntegration: Schema.optionalKey(
+    Schema.Struct({
+      desktopFile: Schema.String,
+      appStreamId: Schema.String,
+      flatpakAppId: Schema.String,
+      snapName: Schema.String
+    })
+  )
 }) {}
 
 export const decodeUpdateManifest = (
