@@ -568,6 +568,11 @@ interface SourceGuardRange {
   readonly end: number
 }
 
+interface SourceCapabilityScanSource {
+  readonly guardSource: string
+  readonly callSource: string
+}
+
 interface ParsedCspPolicy {
   readonly directives: ReadonlyMap<string, readonly string[]>
   readonly duplicates: readonly string[]
@@ -1082,22 +1087,26 @@ const sourceCapabilityUses = (
   files: readonly ProductionCheckFile[]
 ): readonly SourceCapabilityUse[] =>
   files.flatMap((file) => {
-    const masked = maskComments(file.content)
+    const source = sourceCapabilityScanSource(file.content)
     return APPENDIX_K_SOURCE_CAPABILITIES.flatMap((capability) =>
-      scanSourceCapabilityUse(file, masked, capability)
+      scanSourceCapabilityUse(file, source, capability)
     )
   })
 
 const scanSourceCapabilityUse = (
   file: ProductionCheckFile,
-  masked: string,
+  source: SourceCapabilityScanSource,
   capability: SourceCapability
 ): readonly SourceCapabilityUse[] => {
   const uses: SourceCapabilityUse[] = []
-  const guardRanges = supportGuardRanges(masked, supportGuardPattern(capability))
+  const guardRanges = supportGuardRanges(
+    source.guardSource,
+    source.callSource,
+    supportGuardPattern(capability)
+  )
   const callPattern = methodCallPattern(capability)
 
-  for (const match of masked.matchAll(callPattern)) {
+  for (const match of source.callSource.matchAll(callPattern)) {
     if (match.index === undefined) {
       continue
     }
@@ -1106,7 +1115,7 @@ const scanSourceCapabilityUse = (
       primitive: capability.primitive,
       method: capability.method,
       support: capability.support,
-      location: offsetLocation(file, masked, offset),
+      location: offsetLocation(file, source.callSource, offset),
       guarded: guardRanges.some((range) => range.start <= offset && offset < range.end)
     })
   }
@@ -1114,11 +1123,15 @@ const scanSourceCapabilityUse = (
   return uses
 }
 
-const supportGuardRanges = (source: string, pattern: RegExp): readonly SourceGuardRange[] =>
-  Array.from(source.matchAll(pattern)).flatMap((match) =>
+const supportGuardRanges = (
+  guardSource: string,
+  blockSource: string,
+  pattern: RegExp
+): readonly SourceGuardRange[] =>
+  Array.from(guardSource.matchAll(pattern)).flatMap((match) =>
     match.index === undefined
       ? []
-      : (blockRangeAfterGuard(source, match.index + match[0].length) ?? [])
+      : (blockRangeAfterGuard(blockSource, match.index + match[0].length) ?? [])
   )
 
 const blockRangeAfterGuard = (source: string, offset: number): SourceGuardRange | undefined => {
@@ -1246,7 +1259,15 @@ const hasForbiddenBridgeProtocolImport = (names: string): boolean =>
     )
     .some((name) => name !== undefined && /(^HOST_PROTOCOL_|HostProtocol)/u.test(name))
 
-const maskComments = (source: string): string => {
+const sourceCapabilityScanSource = (source: string): SourceCapabilityScanSource => ({
+  guardSource: maskComments(source),
+  callSource: maskComments(source, { maskStringContent: true })
+})
+
+const maskComments = (
+  source: string,
+  options?: { readonly maskStringContent?: boolean }
+): string => {
   let result = ""
   let state: "code" | "line-comment" | "block-comment" | "single" | "double" | "template" = "code"
   let escaped = false
@@ -1277,7 +1298,8 @@ const maskComments = (source: string): string => {
     }
 
     if (state === "single" || state === "double" || state === "template") {
-      result += char
+      const shouldMaskStringContent = options?.maskStringContent === true
+      result += shouldMaskStringContent && char !== "\n" ? " " : char
       if (escaped) {
         escaped = false
       } else if (char === "\\") {

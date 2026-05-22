@@ -934,6 +934,28 @@ test("ProductionChecker ignores source native capability usage inside comments",
     })
   ))
 
+test("ProductionChecker ignores source native capability usage inside strings", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {},
+        rendererFiles: [
+          {
+            path: "src/renderer/dock.ts",
+            content: [
+              'const snippet = "Dock.setJumpList([])"',
+              "const template = `Dock.setJumpList([])`",
+              'const block = "{ not a source block }"'
+            ].join("\n")
+          }
+        ]
+      })
+
+      expect(report.passed).toBe(true)
+      expect(report.failures).toEqual([])
+    })
+  ))
+
 test("ProductionChecker fails filesystem writes without scoped roots", () =>
   Effect.runPromise(
     Effect.gen(function* () {
