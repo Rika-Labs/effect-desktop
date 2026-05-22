@@ -4323,6 +4323,32 @@ test("semver guard rejects package version drift from the release manifest", () 
     })
   ))
 
+test("semver guard rejects malformed package metadata as a file error", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-semver-"))
+      )
+      try {
+        yield* writeSemverFixture(directory, {
+          packageJson: {
+            name: "@orika/core",
+            version: ["1.1.0"]
+          }
+        })
+        const error = yield* runSemverGuard({
+          cwd: directory,
+          publicApiCheck: () => Effect.succeed(publicApiReportFixture("added"))
+        }).pipe(Effect.flip)
+
+        expect((error as { readonly _tag: string })._tag).toBe("SemverGuardFileError")
+        expect((error as { readonly message: string }).message).toContain("failed to parse JSON")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
 test("semver guard rejects manifest with missing bridgeEnvelopePolicy", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -10710,6 +10736,7 @@ const writeSemverFixture = (
   overrides: {
     readonly manifest?: unknown
     readonly matrix?: unknown
+    readonly packageJson?: unknown
     readonly packageVersion?: string
   } = {}
 ): Effect.Effect<void, never, never> =>
@@ -10733,7 +10760,7 @@ const writeSemverFixture = (
     yield* Effect.promise(() =>
       writeFile(
         join(root, "packages", "core", "package.json"),
-        stringifyJson({ name: "@orika/core", version: packageVersion }, 2)
+        stringifyJson(overrides.packageJson ?? { name: "@orika/core", version: packageVersion }, 2)
       )
     )
   })

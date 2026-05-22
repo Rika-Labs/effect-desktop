@@ -75,6 +75,10 @@ export class SemverPackageVersion extends Schema.Class<SemverPackageVersion>(
   version: Schema.String,
   path: Schema.String
 }) {}
+const SemverPackageMetadata = Schema.Struct({
+  name: Schema.String,
+  version: Schema.String
+})
 
 export class SemverGuardFileError extends Data.TaggedError("SemverGuardFileError")<{
   readonly operation: string
@@ -140,7 +144,7 @@ export const runSemverGuard = (
   options: SemverGuardOptions
 ): Effect.Effect<SemverGuardReport, SemverGuardError, never> =>
   Effect.gen(function* () {
-    const manifest = yield* readJson(join(options.cwd, MANIFEST_PATH)).pipe(
+    const manifest = yield* readJson(join(options.cwd, MANIFEST_PATH), Schema.Unknown).pipe(
       Effect.flatMap(parseSemverPolicyManifest)
     )
     yield* validateManifest(manifest)
@@ -284,7 +288,7 @@ const validateAppendixCRows = (
       manifest.verificationMatrix,
       "verificationMatrix"
     )
-    const rawMatrix = yield* readJson<unknown>(matrixPath)
+    const rawMatrix = yield* readJson(matrixPath, Schema.Unknown)
     const matrix = yield* decodeVerificationMatrix(rawMatrix)
     const rows = decodeVerificationMatrixRows(matrix)
     const rowSet = new Set(rows)
@@ -344,7 +348,7 @@ const readPackageVersions = (
       if (!(yield* pathExists(absolutePath))) {
         continue
       }
-      const manifest = yield* readJson<unknown>(absolutePath).pipe(
+      const manifest = yield* readJson(absolutePath, SemverPackageMetadata).pipe(
         Effect.flatMap((value) => parsePackageManifest(value, path))
       )
       versions.push(manifest)
@@ -353,17 +357,13 @@ const readPackageVersions = (
   })
 
 const parsePackageManifest = (
-  value: unknown,
+  value: typeof SemverPackageMetadata.Type,
   path: string
 ): Effect.Effect<SemverPackageVersion, SemverGuardManifestError, never> => {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return Effect.fail(new SemverGuardManifestError({ message: `${path} must be a JSON object` }))
-  }
-  const record = value as Record<string, unknown>
   return Schema.decodeUnknownEffect(SemverPackageVersion)(
     {
-      name: record["name"],
-      version: record["version"],
+      name: value.name,
+      version: value.version,
       path
     },
     StrictParseOptions
@@ -419,11 +419,13 @@ const releaseKindForVersion = (release: string): SemverReleaseKind => {
   return "patch"
 }
 
-const readJson = <A>(path: string): Effect.Effect<A, SemverGuardFileError, never> =>
+const readJson = <S extends Schema.Top>(
+  path: string,
+  schema: S
+): Effect.Effect<S["Type"], SemverGuardFileError, S["DecodingServices"]> =>
   readText(path).pipe(
     Effect.flatMap((body) =>
-      Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(body).pipe(
-        Effect.map((value) => value as A),
+      Schema.decodeUnknownEffect(Schema.fromJsonString(schema))(body).pipe(
         Effect.mapError(
           (cause) =>
             new SemverGuardFileError({
