@@ -300,14 +300,18 @@ test("WorkspaceIndex accepts root read grants and rejects noncanonical scope pat
             )
           )
           const rejectedGrant = yield* Effect.exit(
-            client.open(
-              new WorkspaceIndexOpenInput({
-                actor: actor(),
-                scope: scope({
-                  grants: [P.filesystemRead({ roots: ["/workspace/app/.."] })]
-                })
-              })
-            )
+            client.open({
+              actor: { kind: "workspace", id: "workspace-1" },
+              scope: {
+                root: "/workspace/app",
+                ignoreRules: [
+                  { pattern: "node_modules/**", reason: "dependencies" },
+                  { pattern: "dist/**", reason: "build output" }
+                ],
+                grants: [P.filesystemRead({ roots: ["/workspace/app/.."] })],
+                watch: false
+              }
+            })
           )
           return { accepted, rejected, rejectedGrant, rejectedRoot }
         }),

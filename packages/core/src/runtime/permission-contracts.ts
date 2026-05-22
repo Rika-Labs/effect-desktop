@@ -6,6 +6,11 @@ export const PermissionMetadataText = NonEmptyString.check(
   // eslint-disable-next-line no-control-regex
   Schema.isPattern(/^[^\x00-\x1F\x7F]+$/)
 )
+const CapabilityPath = PermissionMetadataText.check(
+  Schema.makeFilter(
+    (value) => isSafeCapabilityPath(value) || "must be an absolute path without dot segments"
+  )
+)
 export const AuditPolicy = Schema.Literals(["always", "on-deny", "never"])
 export type AuditPolicy = typeof AuditPolicy.Type
 export const PermissionTimestamp = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
@@ -44,8 +49,8 @@ export const PermissionActorPayload = Schema.Struct({
 
 const FilesystemCapability = Schema.Struct({
   kind: Schema.Literals(["filesystem.read", "filesystem.write", "filesystem.delete"]),
-  roots: Schema.Array(NonEmptyString),
-  deny: Schema.optionalKey(Schema.Array(NonEmptyString)),
+  roots: Schema.Array(CapabilityPath),
+  deny: Schema.optionalKey(Schema.Array(CapabilityPath)),
   audit: AuditPolicy,
   allowCreate: Schema.optionalKey(Schema.Boolean),
   allowOverwrite: Schema.optionalKey(Schema.Boolean)
@@ -53,15 +58,15 @@ const FilesystemCapability = Schema.Struct({
 
 const SqliteCapability = Schema.Struct({
   kind: Schema.Literal("sqlite.open"),
-  roots: Schema.Array(NonEmptyString),
-  deny: Schema.optionalKey(Schema.Array(NonEmptyString)),
+  roots: Schema.Array(CapabilityPath),
+  deny: Schema.optionalKey(Schema.Array(CapabilityPath)),
   audit: AuditPolicy
 })
 
 const ProcessCapability = Schema.Struct({
   kind: Schema.Literals(["process.spawn", "pty.spawn"]),
   commands: Schema.Array(NonEmptyString),
-  cwd: Schema.optionalKey(Schema.Array(NonEmptyString)),
+  cwd: Schema.optionalKey(Schema.Array(CapabilityPath)),
   environment: Schema.Literals(["none", "allowlist"]),
   shell: Schema.Union([Schema.Literal(false), Schema.Literal("requires-explicit-approval")]),
   audit: Schema.Literals(["always", "on-deny"])
@@ -170,3 +175,21 @@ export class PermissionGrantSnapshot extends Schema.Class<PermissionGrantSnapsho
   status: GrantStatus,
   updatedAt: PermissionTimestamp
 }) {}
+
+const WindowsDriveAbsolutePathPattern = /^[A-Za-z]:[\\/]/u
+const WindowsUncAbsolutePathPattern = /^\\\\[^\\/]+[\\/][^\\/]+(?:[\\/]|$)/u
+
+const isSafeCapabilityPath = (value: string): boolean => {
+  if (value.startsWith("/")) {
+    return !hasDotPathSegment(value, /\/+/u)
+  }
+
+  if (WindowsDriveAbsolutePathPattern.test(value) || WindowsUncAbsolutePathPattern.test(value)) {
+    return !hasDotPathSegment(value, /[\\/]+/u)
+  }
+
+  return false
+}
+
+const hasDotPathSegment = (value: string, separator: RegExp): boolean =>
+  value.split(separator).some((segment) => segment === "." || segment === "..")

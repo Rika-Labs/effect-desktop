@@ -135,6 +135,58 @@ test("PermissionRegistry matches Windows-style roots by path segment", () =>
     })
   ))
 
+test("PermissionRegistry does not let traversal paths satisfy root grants", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* makePermissionRegistry({
+        traceId: () => "trace-1",
+        nextToken: () => "grant-1"
+      })
+      const invalidDeclaration = yield* Effect.exit(
+        registry.declare(filesystemWrite(["/tmp/app/../secret"]), { source: "manifest" })
+      )
+
+      yield* registry.declare(filesystemWrite(["/tmp/app"]), { source: "manifest" })
+      yield* registry.declare(sqliteOpen(["/tmp/app/databases"]), { source: "manifest" })
+      yield* registry.declare(processSpawn(["node"], ["/workspace/app"], "none"), {
+        source: "manifest"
+      })
+      yield* registry.declare(processSpawn(["node"], ["C:\\Temp\\app"], "none"), {
+        source: "manifest"
+      })
+
+      for (const exit of [
+        yield* Effect.exit(
+          registry.check(
+            filesystemWrite(["/tmp/app/../secret/config.json"]),
+            context("window-main")
+          )
+        ),
+        yield* Effect.exit(
+          registry.check(
+            sqliteOpen(["/tmp/app/databases/../secret/main.sqlite"]),
+            context("window-main")
+          )
+        ),
+        yield* Effect.exit(
+          registry.check(
+            processSpawn(["node"], ["/workspace/app/../secret"], "none"),
+            context("window-main")
+          )
+        ),
+        yield* Effect.exit(
+          registry.check(
+            processSpawn(["node"], ["C:\\Temp\\app\\..\\secret"], "none"),
+            context("window-main")
+          )
+        )
+      ]) {
+        expectInvalid(exit)
+      }
+      expectInvalid(invalidDeclaration)
+    })
+  ))
+
 test("PermissionRegistry does not let weaker native audit policy cover stronger requests", () =>
   Effect.runPromise(
     Effect.gen(function* () {

@@ -478,11 +478,17 @@ const environmentCovers = (
 const rootCovers = (declaredRoot: string, requestedRoot: string): boolean => {
   const declared = normalizeRootPath(declaredRoot)
   const requested = normalizeRootPath(requestedRoot)
+  if (hasDotPathSegment(declared) || hasDotPathSegment(requested)) {
+    return false
+  }
   const prefix = declared.endsWith("/") ? declared : `${declared}/`
   return requested === declared || requested.startsWith(prefix)
 }
 
 const normalizeRootPath = (path: string): string => path.replaceAll("\\", "/")
+
+const hasDotPathSegment = (path: string): boolean =>
+  path.split(/\/+/u).some((segment) => segment === "." || segment === "..")
 
 const issueGrant = (
   grants: Ref.Ref<ReadonlyMap<string, TrackedGrant>>,
