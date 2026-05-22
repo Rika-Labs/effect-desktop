@@ -238,6 +238,9 @@ const HostWindowsManifestJson = Schema.fromJsonString(
   Schema.Struct({
     hostManifest: Schema.Struct({
       windows: Schema.Unknown
+    }),
+    runtimeManifest: Schema.Struct({
+      env: Schema.Record(Schema.String, Schema.String)
     })
   })
 )
@@ -8269,6 +8272,7 @@ test("desktop build emits validated window config in host manifest", () =>
             backgroundColor: "#ffffff"
           },
           main: {
+            title: "Inspector",
             route: "/",
             width: 1200,
             height: 800
@@ -8306,6 +8310,16 @@ test("desktop build emits validated window config in host manifest", () =>
 
         expect(exitCode).toBe(0)
         expect(manifest.hostManifest.windows).toEqual(windows)
+        const startupWindows = manifest.runtimeManifest.env["EFFECT_DESKTOP_STARTUP_WINDOWS"]
+        expect(startupWindows).toBeDefined()
+        expect(JSON.parse(startupWindows ?? "")).toEqual({
+          main: {
+            title: "Inspector",
+            width: 1200,
+            height: 800,
+            renderer: "/"
+          }
+        })
       } finally {
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }

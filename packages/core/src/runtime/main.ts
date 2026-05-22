@@ -49,6 +49,9 @@ await runtime.runPromise(
     yield* openDeclaredWindows(windows, declaredRegistrations, {
       smokeTest: startupEnvironment.smokeTest
     })
+    if (!startupEnvironment.smokeTest) {
+      return yield* Effect.never
+    }
   }).pipe(Effect.scoped)
 )
 

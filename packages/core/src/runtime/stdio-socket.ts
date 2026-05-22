@@ -1,5 +1,5 @@
+import { Buffer } from "node:buffer"
 import process from "node:process"
-import { Readable } from "node:stream"
 import { Data, Effect, Layer } from "effect"
 import { Socket } from "effect/unstable/socket"
 
@@ -22,7 +22,19 @@ export const writeStdout = (
 
 const acquire = Effect.acquireRelease(
   Effect.sync(() => {
-    const readable = Readable.toWeb(process.stdin) as ReadableStream<Uint8Array>
+    const readable = new ReadableStream<Uint8Array>({
+      start: (controller) => {
+        process.stdin.on("data", (chunk: Buffer | string) => {
+          controller.enqueue(typeof chunk === "string" ? Buffer.from(chunk) : chunk)
+        })
+        process.stdin.once("end", () => {
+          controller.close()
+        })
+        process.stdin.once("error", (cause) => {
+          controller.error(cause)
+        })
+      }
+    })
 
     const writable = new WritableStream<Uint8Array>({
       write: (chunk) => Effect.runPromise(writeStdout(chunk))

@@ -134,6 +134,30 @@ test("runtime normal launch rejects launch when no startup windows are declared"
     })
   ))
 
+test("runtime normal launch keeps declared startup windows alive", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const result = yield* Effect.promise(() =>
+        runRuntimeWithFakeHost({
+          startupWindows: {
+            main: {
+              title: "Notes",
+              width: 960,
+              height: 640,
+              renderer: "/"
+            }
+          },
+          killAfterMs: 250,
+          windowSmokeTest: false
+        })
+      )
+
+      expect(result.stderr).toBe("")
+      expect(result.trailingStdoutBytes).toBe(0)
+      expect(result.methods).toEqual([HOST_VERSION_METHOD, HOST_PING_METHOD, WINDOW_CREATE_METHOD])
+    })
+  ))
+
 test("runtime entry can open startup windows from the Desktop app module", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -246,6 +270,7 @@ interface RuntimeHostOptions {
   readonly windowSmokeTest?: boolean
   readonly runtimeCommand?: string
   readonly runtimeArgs?: readonly string[]
+  readonly killAfterMs?: number
 }
 
 const runtimeEnv = (options: RuntimeHostOptions): Record<string, string | undefined> => {
@@ -292,6 +317,13 @@ const runRuntimeWithFakeHost = (options: RuntimeHostOptions = {}): Promise<Runti
       return yield* Effect.scoped(
         Effect.gen(function* () {
           const handle = yield* command
+          if (options.killAfterMs !== undefined) {
+            yield* Effect.sleep(`${options.killAfterMs} millis`).pipe(
+              Effect.andThen(handle.kill({ killSignal: "SIGTERM" })),
+              Effect.ignore,
+              Effect.forkChild
+            )
+          }
           const stderrFiber = yield* handle.stderr.pipe(
             Stream.runFold(
               () => Buffer.alloc(0),
@@ -351,14 +383,17 @@ const runRuntimeWithFakeHost = (options: RuntimeHostOptions = {}): Promise<Runti
             Stream.runForEach(processChunk)
           )
 
-          const exitCode = yield* handle.exitCode.pipe(
-            Effect.mapError(
-              (cause) =>
-                new MainTestRuntimeFailure({
-                  message: `runtime process exit failed: ${formatCause(cause)}`
-                })
-            )
-          )
+          const exitCode =
+            options.killAfterMs === undefined
+              ? yield* handle.exitCode.pipe(
+                  Effect.mapError(
+                    (cause) =>
+                      new MainTestRuntimeFailure({
+                        message: `runtime process exit failed: ${formatCause(cause)}`
+                      })
+                  )
+                )
+              : null
           const stderrBuffer = yield* Fiber.join(stderrFiber)
 
           return {

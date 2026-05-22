@@ -441,6 +441,7 @@ const MAX_PROTOCOL_CONCURRENT_STREAMS_PER_WINDOW = 1024
 const DEFAULT_PROTOCOL_QUEUED_EVENTS_PER_SUBSCRIPTION = 1024
 const MAX_PROTOCOL_QUEUED_EVENTS_PER_SUBSCRIPTION = 65_536
 const PROTOCOL_SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*$/u
+const STARTUP_WINDOWS_ENV = "EFFECT_DESKTOP_STARTUP_WINDOWS"
 type BuildExternalNavigationPolicy = "deny" | "ask"
 const WINDOW_TITLE_BAR_STYLES = new Set([
   "default",
@@ -1488,6 +1489,7 @@ const normalizeBuildPlan = (
     const protocolLimits = yield* readProtocolLimits(config.protocol?.limits)
     const security = yield* readBuildSecurity(config.security)
     const windows = yield* readWindowsConfig(config.windows)
+    const targetEnv = withStartupWindowsEnv(profileEnv, windows)
     const buildTargets = yield* readBuildTargets(
       config.build?.targets,
       options.target,
@@ -1528,7 +1530,7 @@ const normalizeBuildPlan = (
       rendererDistPath,
       runtimeEntryPath,
       rendererEntryPath,
-      targetEnv: profileEnv,
+      targetEnv,
       runtimeProtocolLimits: protocolLimits,
       security,
       protocols: protocolEntries,
@@ -2983,6 +2985,82 @@ const readProfileEnv = (
   }
   return Effect.succeed(result)
 }
+
+const withStartupWindowsEnv = (
+  env: Record<string, string>,
+  windows: unknown
+): Record<string, string> => {
+  const startupWindows = startupWindowsEnvFromConfig(windows)
+  if (startupWindows === undefined) {
+    return env
+  }
+  return {
+    ...env,
+    [STARTUP_WINDOWS_ENV]: startupWindows
+  }
+}
+
+const startupWindowsEnvFromConfig = (windows: unknown): string | undefined => {
+  if (!isRecord(windows)) {
+    return undefined
+  }
+
+  const defaults = isRecord(windows["defaults"]) ? windows["defaults"] : {}
+  const startupWindows: Record<
+    string,
+    {
+      title: string
+      width?: number
+      height?: number
+      renderer?: string
+    }
+  > = {}
+
+  for (const key of Object.keys(windows)) {
+    if (key === "defaults") {
+      continue
+    }
+
+    const declaration = windows[key]
+    if (!isRecord(declaration)) {
+      continue
+    }
+
+    const windowSpec: {
+      title: string
+      width?: number
+      height?: number
+      renderer?: string
+    } = {
+      title: readWindowString(declaration["title"]) ?? readWindowString(defaults["title"]) ?? key
+    }
+    const width = readWindowNumber(declaration["width"]) ?? readWindowNumber(defaults["width"])
+    if (width !== undefined) {
+      windowSpec.width = width
+    }
+    const height = readWindowNumber(declaration["height"]) ?? readWindowNumber(defaults["height"])
+    if (height !== undefined) {
+      windowSpec.height = height
+    }
+    const renderer =
+      readWindowString(declaration["renderer"]) ??
+      readWindowString(declaration["route"]) ??
+      readWindowString(defaults["renderer"]) ??
+      readWindowString(defaults["route"])
+    if (renderer !== undefined) {
+      windowSpec.renderer = renderer
+    }
+    startupWindows[key] = windowSpec
+  }
+
+  return Object.keys(startupWindows).length === 0 ? undefined : JSON.stringify(startupWindows)
+}
+
+const readWindowString = (value: unknown): string | undefined =>
+  typeof value === "string" && value.length > 0 ? value : undefined
+
+const readWindowNumber = (value: unknown): number | undefined =>
+  typeof value === "number" && Number.isFinite(value) ? value : undefined
 
 const readUpdateFields = (
   value: unknown,
