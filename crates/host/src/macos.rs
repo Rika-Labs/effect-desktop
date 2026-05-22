@@ -772,7 +772,7 @@ mod platform {
         _title_bar_transparent: bool,
     ) -> std::result::Result<(), HostProtocolError> {
         Err(HostProtocolError::unsupported(
-            "window titlebar transparency is only supported on macOS",
+            "titlebar-transparency-macos-only",
             host_protocol::WINDOW_SET_TITLE_BAR_TRANSPARENT_METHOD,
         ))
     }

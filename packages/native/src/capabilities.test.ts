@@ -143,6 +143,16 @@ const WindowTitleBarStyleMacosOnlySupport = {
   ]
 } as const
 
+const WindowTitleBarTransparentMacosOnlySupport = {
+  status: "partial",
+  reason: "titlebar-transparency-macos-only",
+  platforms: [
+    { platform: "macos", status: "supported" },
+    { platform: "windows", status: "unsupported", reason: "titlebar-transparency-macos-only" },
+    { platform: "linux", status: "unsupported", reason: "titlebar-transparency-macos-only" }
+  ]
+} as const
+
 const WebViewDebuggerUnavailableSupport = {
   status: "unsupported",
   reason: "host-debugger-protocol-unavailable",
@@ -411,6 +421,9 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const windowSetSimpleFullscreen = yield* capabilities.support("Window.setSimpleFullscreen")
       const windowSetSkipTaskbar = yield* capabilities.support("Window.setSkipTaskbar")
       const windowSetTitleBarStyle = yield* capabilities.support("Window.setTitleBarStyle")
+      const windowSetTitleBarTransparent = yield* capabilities.support(
+        "Window.setTitleBarTransparent"
+      )
       const networkAuthHandleAuth = yield* capabilities.support("NetworkAuth.handleAuth")
       const networkAuthHandleCertificate = yield* capabilities.support(
         "NetworkAuth.handleCertificate"
@@ -524,6 +537,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(windowSetSimpleFullscreen).toEqual(WindowSimpleFullscreenMacosOnlySupport)
       expect(windowSetSkipTaskbar).toEqual(WindowSkipTaskbarSupport)
       expect(windowSetTitleBarStyle).toEqual(WindowTitleBarStyleMacosOnlySupport)
+      expect(windowSetTitleBarTransparent).toEqual(WindowTitleBarTransparentMacosOnlySupport)
       expect(networkAuthHandleAuth).toEqual(NetworkAuthUnavailableSupport)
       expect(networkAuthHandleCertificate).toEqual(NetworkAuthUnavailableSupport)
       expect(networkAuthSetProxy).toEqual(NetworkAuthProxySupport)
