@@ -309,6 +309,30 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
           ]
         }
       })
+      expect(result.rows.find((row) => row.tag === "WebView.setUserAgent")).toMatchObject({
+        hostStatus: "capability-fact",
+        support: {
+          status: "unsupported",
+          reason: "host-user-agent-runtime-unavailable",
+          platforms: [
+            {
+              platform: "macos",
+              status: "unsupported",
+              reason: "host-user-agent-runtime-unavailable"
+            },
+            {
+              platform: "windows",
+              status: "unsupported",
+              reason: "host-user-agent-runtime-unavailable"
+            },
+            {
+              platform: "linux",
+              status: "unsupported",
+              reason: "host-user-agent-runtime-unavailable"
+            }
+          ]
+        }
+      })
       expect(result.rows.find((row) => row.tag === "WebView.respondToPermission")).toMatchObject({
         hostStatus: "capability-fact",
         support: {
