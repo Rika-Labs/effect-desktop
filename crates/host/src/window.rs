@@ -590,6 +590,10 @@ impl WebViewNavigationPolicy {
         allowed_origins: Vec<String>,
         on_disallowed: WebViewNavigationDecision,
     ) -> Self {
+        let allowed_origins = allowed_origins
+            .into_iter()
+            .map(|origin| canonical_origin_for_url(&origin).unwrap_or(origin))
+            .collect();
         Self {
             allowed_origins,
             on_disallowed,
@@ -6129,12 +6133,23 @@ fn handle_webview_isolation_ipc(
 }
 
 fn origin_for_url(url: &str) -> Option<String> {
-    let (scheme, rest) = url.split_once("://")?;
-    let authority = rest
-        .split(['/', '?', '#'])
-        .next()
-        .filter(|value| !value.is_empty())?;
-    Some(format!("{scheme}://{authority}"))
+    canonical_origin_for_url(url)
+}
+
+fn canonical_origin_for_url(url: &str) -> Option<String> {
+    let parsed = Url::parse(url).ok()?;
+    let scheme = parsed.scheme().to_ascii_lowercase();
+    let host = parsed.host_str()?.to_ascii_lowercase();
+    let host = if host.contains(':') && !host.starts_with('[') {
+        format!("[{host}]")
+    } else {
+        host
+    };
+
+    Some(match parsed.port() {
+        Some(port) => format!("{scheme}://{host}:{port}"),
+        None => format!("{scheme}://{host}"),
+    })
 }
 
 fn webview_host_error(error: wry::Error, operation: &'static str) -> HostProtocolError {
@@ -8855,9 +8870,19 @@ mod tests {
 
         assert!(super::origin_allowed("app://localhost/settings", &policy));
         assert!(super::origin_allowed("https://example.com/path", &policy));
+        assert!(super::origin_allowed("https://EXAMPLE.com/path", &policy));
         assert!(!super::origin_allowed(
             "https://evil.example.com/path",
             &policy
+        ));
+
+        let mixed_case_policy = WebViewNavigationPolicy::new(
+            vec!["https://EXAMPLE.com".to_string()],
+            WebViewNavigationDecision::Block,
+        );
+        assert!(super::origin_allowed(
+            "https://example.com/path",
+            &mixed_case_policy
         ));
     }
 
