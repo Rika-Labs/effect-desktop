@@ -5721,6 +5721,28 @@ test("AssociationRpcs declares the Phase 8 Association method and event surface"
   expect(Object.keys(AssociationRpcEvents)).toEqual(["Event"])
 })
 
+test("Association contracts reject inconsistent event phase payloads", () => {
+  for (const payload of [
+    { phase: "protocol-checked", reason: "host failed" },
+    { phase: "protocol-updated", reason: "host failed" },
+    { phase: "file-associations-checked", reason: "host failed" },
+    { phase: "failed" }
+  ] as const) {
+    const exit = Effect.runSyncExit(Schema.decodeUnknownEffect(AssociationEvent)(payload))
+    expect(exit._tag).toBe("Failure")
+  }
+
+  for (const payload of [
+    { phase: "protocol-checked" },
+    { phase: "protocol-updated" },
+    { phase: "file-associations-checked" },
+    { phase: "failed", reason: "host failed" }
+  ] as const) {
+    const exit = Effect.runSyncExit(Schema.decodeUnknownEffect(AssociationEvent)(payload))
+    expect(exit._tag).toBe("Success")
+  }
+})
+
 test("Association service delegates through a substitutable AssociationClient port", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -5847,6 +5869,36 @@ test("Association bridge client subscribes to native association events", () =>
       expect(Array.from(events)).toEqual([new AssociationEvent({ phase: "protocol-updated" })])
       expect(requests).toEqual([])
       expect(subscriptions).toEqual(["Association.Event"])
+    })
+  ))
+
+test("Association bridge client rejects inconsistent event phase payloads as InvalidOutput", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const exchange: BridgeClientExchange = {
+        request: () => Effect.succeed({ kind: "success", payload: undefined }),
+        subscribe: (method) =>
+          Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              timestamp: 1_710_000_000_100,
+              traceId: "association-event-trace",
+              method,
+              payload: { phase: "failed" }
+            })
+          )
+      }
+      const exit = yield* Effect.scoped(
+        runScoped(
+          Effect.gen(function* () {
+            const association = yield* Association
+            return yield* Effect.exit(association.events().pipe(Stream.take(1), Stream.runHead))
+          }),
+          Layer.provide(AssociationLive, makeAssociationBridgeClientLayer(exchange))
+        )
+      )
+
+      expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
     })
   ))
 

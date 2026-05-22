@@ -732,17 +732,128 @@ pub enum AssociationEventPhasePayload {
     Failed,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AssociationEventPayload {
     phase: AssociationEventPhasePayload,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     reason: Option<String>,
 }
 
 impl AssociationEventPayload {
-    pub fn new(phase: AssociationEventPhasePayload, reason: Option<String>) -> Self {
+    pub fn protocol_checked() -> Self {
+        Self {
+            phase: AssociationEventPhasePayload::ProtocolChecked,
+            reason: None,
+        }
+    }
+
+    pub fn protocol_updated() -> Self {
+        Self {
+            phase: AssociationEventPhasePayload::ProtocolUpdated,
+            reason: None,
+        }
+    }
+
+    pub fn file_associations_checked() -> Self {
+        Self {
+            phase: AssociationEventPhasePayload::FileAssociationsChecked,
+            reason: None,
+        }
+    }
+
+    pub fn failed(reason: impl Into<String>) -> Self {
+        Self {
+            phase: AssociationEventPhasePayload::Failed,
+            reason: Some(reason.into()),
+        }
+    }
+
+    #[cfg(test)]
+    fn new_for_test(phase: AssociationEventPhasePayload, reason: Option<String>) -> Self {
         Self { phase, reason }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SerializableAssociationEventPayload<'a> {
+    phase: AssociationEventPhasePayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<&'a str>,
+}
+
+impl<'a> TryFrom<&'a AssociationEventPayload> for SerializableAssociationEventPayload<'a> {
+    type Error = &'static str;
+
+    fn try_from(payload: &'a AssociationEventPayload) -> Result<Self, Self::Error> {
+        validate_association_event_payload(payload.phase, &payload.reason)?;
+        Ok(Self {
+            phase: payload.phase,
+            reason: payload.reason.as_deref(),
+        })
+    }
+}
+
+impl Serialize for AssociationEventPayload {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        SerializableAssociationEventPayload::try_from(self)
+            .map_err(ser::Error::custom)?
+            .serialize(serializer)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawAssociationEventPayload {
+    phase: AssociationEventPhasePayload,
+    #[serde(default)]
+    reason: Option<String>,
+}
+
+impl TryFrom<RawAssociationEventPayload> for AssociationEventPayload {
+    type Error = &'static str;
+
+    fn try_from(raw: RawAssociationEventPayload) -> Result<Self, Self::Error> {
+        validate_association_event_payload(raw.phase, &raw.reason)?;
+        Ok(Self {
+            phase: raw.phase,
+            reason: raw.reason,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for AssociationEventPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        RawAssociationEventPayload::deserialize(deserializer)?
+            .try_into()
+            .map_err(de::Error::custom)
+    }
+}
+
+fn validate_association_event_payload(
+    phase: AssociationEventPhasePayload,
+    reason: &Option<String>,
+) -> Result<(), &'static str> {
+    match phase {
+        AssociationEventPhasePayload::ProtocolChecked
+        | AssociationEventPhasePayload::ProtocolUpdated
+        | AssociationEventPhasePayload::FileAssociationsChecked
+            if reason.is_none() =>
+        {
+            Ok(())
+        }
+        AssociationEventPhasePayload::ProtocolChecked
+        | AssociationEventPhasePayload::ProtocolUpdated
+        | AssociationEventPhasePayload::FileAssociationsChecked => {
+            Err("successful association events must not include failure reason")
+        }
+        AssociationEventPhasePayload::Failed if reason.is_some() => Ok(()),
+        AssociationEventPhasePayload::Failed => Err("failed association events require reason"),
     }
 }
 
@@ -17286,12 +17397,11 @@ mod tests {
             r#"{"associations":[{"extension":".txt","isDefault":false}]}"#
         );
         assert_eq!(
-            serde_json::to_string(&AssociationEventPayload::new(
-                AssociationEventPhasePayload::ProtocolChecked,
-                Some("host-adapter-unimplemented".to_string())
+            serde_json::to_string(&AssociationEventPayload::failed(
+                "host-adapter-unimplemented"
             ))
             .expect("association event should encode"),
-            r#"{"phase":"protocol-checked","reason":"host-adapter-unimplemented"}"#
+            r#"{"phase":"failed","reason":"host-adapter-unimplemented"}"#
         );
     }
 
@@ -17307,6 +17417,51 @@ mod tests {
         )
         .expect_err("unknown association event phase should be rejected");
         assert!(error.to_string().contains("unknown variant `changed`"));
+    }
+
+    #[test]
+    fn association_events_reject_inconsistent_phase_payloads() {
+        for payload in [
+            r#"{"phase":"protocol-checked","reason":"host failed"}"#,
+            r#"{"phase":"protocol-updated","reason":"host failed"}"#,
+            r#"{"phase":"file-associations-checked","reason":"host failed"}"#,
+            r#"{"phase":"failed"}"#,
+        ] {
+            serde_json::from_str::<AssociationEventPayload>(payload)
+                .expect_err("inconsistent association event payload should be rejected");
+        }
+
+        for payload in [
+            r#"{"phase":"protocol-checked"}"#,
+            r#"{"phase":"protocol-updated"}"#,
+            r#"{"phase":"file-associations-checked"}"#,
+            r#"{"phase":"failed","reason":"host failed"}"#,
+        ] {
+            serde_json::from_str::<AssociationEventPayload>(payload)
+                .expect("consistent association event payload should decode");
+        }
+    }
+
+    #[test]
+    fn association_events_reject_inconsistent_phase_payloads_before_serializing() {
+        for payload in [
+            AssociationEventPayload::new_for_test(
+                AssociationEventPhasePayload::ProtocolChecked,
+                Some("host failed".to_string()),
+            ),
+            AssociationEventPayload::new_for_test(
+                AssociationEventPhasePayload::ProtocolUpdated,
+                Some("host failed".to_string()),
+            ),
+            AssociationEventPayload::new_for_test(
+                AssociationEventPhasePayload::FileAssociationsChecked,
+                Some("host failed".to_string()),
+            ),
+            AssociationEventPayload::new_for_test(AssociationEventPhasePayload::Failed, None),
+        ] {
+            serde_json::to_string(&payload)
+                .expect_err("inconsistent association event payload should not encode");
+        }
     }
 
     #[test]

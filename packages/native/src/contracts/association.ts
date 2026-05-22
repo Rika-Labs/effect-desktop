@@ -55,8 +55,28 @@ export const AssociationEventPhase = Schema.Literals([
   "file-associations-checked",
   "failed"
 ])
+export type AssociationEventPhase = typeof AssociationEventPhase.Type
 
-export class AssociationEvent extends Schema.Class<AssociationEvent>("AssociationEvent")({
-  phase: AssociationEventPhase,
-  reason: Schema.optionalKey(BridgeSafeNonEmptyString)
-}) {}
+const AssociationEventPhaseReason = Schema.makeFilter<{
+  readonly phase: AssociationEventPhase
+  readonly reason?: string | undefined
+}>((value) => {
+  switch (value.phase) {
+    case "protocol-checked":
+    case "protocol-updated":
+    case "file-associations-checked":
+      return (
+        value.reason === undefined ||
+        "successful association events must not include failure reason"
+      )
+    case "failed":
+      return value.reason !== undefined || "failed association events require reason"
+  }
+})
+
+export class AssociationEvent extends Schema.Class<AssociationEvent>("AssociationEvent")(
+  Schema.Struct({
+    phase: AssociationEventPhase,
+    reason: Schema.optionalKey(BridgeSafeNonEmptyString)
+  }).check(AssociationEventPhaseReason)
+) {}

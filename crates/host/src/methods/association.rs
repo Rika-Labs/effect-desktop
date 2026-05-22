@@ -172,21 +172,34 @@ fn with_event(
 ) -> Result<Option<Value>, HostProtocolError> {
     match action() {
         Ok(payload) => {
-            send_event(
-                event_sender,
-                AssociationEventPayload::new(success_phase, None),
-            );
+            send_event(event_sender, association_success_event(success_phase));
             Ok(payload)
         }
         Err(error) => {
             send_event(
                 event_sender,
-                AssociationEventPayload::new(
-                    AssociationEventPhasePayload::Failed,
-                    Some(error.tag().to_string()),
-                ),
+                AssociationEventPayload::failed(error.tag().to_string()),
             );
             Err(error)
+        }
+    }
+}
+
+fn association_success_event(
+    success_phase: AssociationEventPhasePayload,
+) -> AssociationEventPayload {
+    match success_phase {
+        AssociationEventPhasePayload::ProtocolChecked => {
+            AssociationEventPayload::protocol_checked()
+        }
+        AssociationEventPhasePayload::ProtocolUpdated => {
+            AssociationEventPayload::protocol_updated()
+        }
+        AssociationEventPhasePayload::FileAssociationsChecked => {
+            AssociationEventPayload::file_associations_checked()
+        }
+        AssociationEventPhasePayload::Failed => {
+            unreachable!("success association event cannot use failed phase")
         }
     }
 }
