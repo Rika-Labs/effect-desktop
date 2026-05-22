@@ -221,6 +221,24 @@ interface AppManifest {
 
 const RUNTIME_ENGINES = ["bun", "node"] as const
 
+const BuildProviderReportJson = Schema.Struct({
+  providers: Schema.Struct({
+    runtime: Schema.Literals(["bun", "node"]),
+    runtimePackaging: Schema.Literal("source"),
+    webEngine: Schema.Literals(["system", "chrome"])
+  }),
+  providerBudgets: Schema.Array(
+    Schema.Struct({
+      id: Schema.String,
+      kind: Schema.Literal("runtime"),
+      package: Schema.String,
+      importPath: Schema.String,
+      startupBudgetMs: Schema.Number,
+      bundleBudgetKb: Schema.Number
+    })
+  )
+})
+
 interface PlannedArtifact {
   readonly kind: PackageArtifactKind
   readonly rootPath: string
@@ -371,41 +389,43 @@ const readBuildProviderReport = (
     if (!(yield* pathExists(reportPath))) {
       return undefined
     }
-    const report = yield* readJson<unknown>(reportPath)
-    if (
-      !isRecord(report) ||
-      !isRecord(report["providers"]) ||
-      !Array.isArray(report["providerBudgets"])
-    ) {
-      return undefined
-    }
-    const providers = report["providers"]
-    const runtime = providers["runtime"]
-    const runtimePackaging = providers["runtimePackaging"]
-    const webEngine = providers["webEngine"]
-    if (
-      (runtime !== "bun" && runtime !== "node") ||
-      runtimePackaging !== "source" ||
-      (webEngine !== "system" && webEngine !== "chrome")
-    ) {
-      return undefined
-    }
+    const report = yield* readJson(reportPath).pipe(
+      Effect.flatMap((value) => decodeBuildProviderReport(value, reportPath))
+    )
     return {
-      runtime,
-      runtimePackaging,
-      webEngine,
-      providerBudgets: report["providerBudgets"].filter(isProviderBudget)
+      runtime: report.providers.runtime,
+      runtimePackaging: report.providers.runtimePackaging,
+      webEngine: report.providers.webEngine,
+      providerBudgets: report.providerBudgets
     }
   })
 
-const isProviderBudget = (value: unknown): value is DesktopProviderBudget =>
-  isRecord(value) &&
-  typeof value["id"] === "string" &&
-  value["kind"] === "runtime" &&
-  typeof value["package"] === "string" &&
-  typeof value["importPath"] === "string" &&
-  typeof value["startupBudgetMs"] === "number" &&
-  typeof value["bundleBudgetKb"] === "number"
+const decodeBuildProviderReport = (
+  value: unknown,
+  path: string
+): Effect.Effect<
+  {
+    readonly providers: {
+      readonly runtime: "bun" | "node"
+      readonly runtimePackaging: "source"
+      readonly webEngine: "system" | "chrome"
+    }
+    readonly providerBudgets: readonly DesktopProviderBudget[]
+  },
+  PackageFileError,
+  never
+> =>
+  Schema.decodeUnknownEffect(BuildProviderReportJson)(value).pipe(
+    Effect.mapError(
+      (cause) =>
+        new PackageFileError({
+          operation: "decode-build-report",
+          path,
+          message: `failed to decode build-report.json ${path}`,
+          cause
+        })
+    )
+  )
 
 const validateBuildLayout = (
   plan: PackagePlan
@@ -422,7 +442,7 @@ const validateBuildLayout = (
         })
       )
     }
-    const rawManifest = yield* readJson<unknown>(manifestPath)
+    const rawManifest = yield* readJson(manifestPath)
     const manifest = yield* decodeAppManifest(rawManifest, manifestPath)
     if (
       manifest.id !== plan.appId ||
@@ -1385,14 +1405,12 @@ const loadConfig = (path: string): Effect.Effect<unknown, PackageConfigError, ne
     return module.default
   })
 
-const readJson = <A>(path: string): Effect.Effect<A, PackageFileError, never> =>
+const readJson = (path: string): Effect.Effect<unknown, PackageFileError, never> =>
   runReleaseFileSystem(
     Effect.gen(function* () {
       const fs = yield* ReleaseFileSystem
       const content = yield* fs.readFileString(path)
-      return yield* Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(content).pipe(
-        Effect.map((value) => value as A)
-      )
+      return yield* Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(content)
     })
   ).pipe(
     Effect.mapError(

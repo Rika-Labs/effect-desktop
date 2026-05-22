@@ -9286,6 +9286,66 @@ test("desktop package accepts node runtime launch manifests", () =>
     })
   ))
 
+test("desktop package rejects malformed build provider reports", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-package-build-report-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        yield* writeBuildLayoutFixture(directory, "linux-x64")
+        const layout = join(directory, "apps", "inspector", "build", "effect-desktop", "linux-x64")
+        yield* Effect.promise(() =>
+          writeFile(
+            join(layout, "build-report.json"),
+            `${stringifyJson(
+              {
+                appId: "dev.effect-desktop.inspector",
+                appName: "ORIKA Playground",
+                appVersion: "0.0.0",
+                target: "linux-x64",
+                providers: {
+                  runtime: "bun",
+                  runtimePackaging: "source"
+                },
+                providerBudgets: {}
+              },
+              2
+            )}\n`
+          )
+        )
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: [
+            "package",
+            "--config",
+            "apps/inspector/desktop.config.ts",
+            "--artifact",
+            "appimage",
+            "--json"
+          ],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          packageCommandRunner: () =>
+            Effect.die("package commands should not run for a malformed build report"),
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.tag).toBe("PackageFileError")
+        expect(payload.message).toContain("build-report.json")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
 test("desktop package emits macOS app dmg zip artifacts with metadata", () =>
   Effect.runPromise(
     Effect.gen(function* () {
