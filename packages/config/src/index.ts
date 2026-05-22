@@ -1099,9 +1099,9 @@ const scanSourceCapabilityUse = (
 ): readonly SourceCapabilityUse[] => {
   const uses: SourceCapabilityUse[] = []
   const guardRanges = supportGuardRanges(source.executableSource, supportGuardPattern(capability))
-  const callPattern = methodCallPattern(capability)
+  const referencePattern = methodReferencePattern(capability)
 
-  for (const match of source.executableSource.matchAll(callPattern)) {
+  for (const match of source.executableSource.matchAll(referencePattern)) {
     if (match.index === undefined) {
       continue
     }
@@ -1153,9 +1153,9 @@ const blockRangeAfterGuard = (source: string, offset: number): SourceGuardRange 
   return { start: cursor + 1, end: source.length }
 }
 
-const methodCallPattern = (capability: SourceCapability): RegExp =>
+const methodReferencePattern = (capability: SourceCapability): RegExp =>
   new RegExp(
-    `\\b${escapeRegExp(capability.primitive)}\\s*${propertyCallPattern(capability.method)}`,
+    `\\b${escapeRegExp(capability.primitive)}\\s*${propertyReferencePattern(capability.method)}`,
     "gu"
   )
 
@@ -1165,10 +1165,13 @@ const supportGuardPattern = (capability: SourceCapability): RegExp =>
     "gu"
   )
 
-const propertyCallPattern = (method: string): string => {
+const propertyReferencePattern = (method: string): string => {
   const escapedMethod = escapeRegExp(method)
-  return `(?:(?:\\?\\.|\\.)\\s*${escapedMethod}|(?:\\?\\.)?\\[\\s*["']${escapedMethod}["']\\s*\\])\\s*(?:\\?\\.)?\\s*\\(`
+  return `(?:(?:\\?\\.|\\.)\\s*${escapedMethod}|(?:\\?\\.)?\\[\\s*["']${escapedMethod}["']\\s*\\])`
 }
+
+const propertyCallPattern = (method: string): string =>
+  `${propertyReferencePattern(method)}\\s*(?:\\?\\.)?\\s*\\(`
 
 const offsetLocation = (
   file: ProductionCheckFile,

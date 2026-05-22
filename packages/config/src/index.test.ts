@@ -1103,6 +1103,46 @@ test("ProductionChecker flags source native capability usage through computed li
     })
   ))
 
+test("ProductionChecker flags source native capability method extraction", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {},
+        rendererFiles: [
+          {
+            path: "src/renderer/dock.ts",
+            content: [
+              "const setJumpList = Dock.setJumpList",
+              "const setJumpListComputed = Dock[\"setJumpList\"]",
+              "setJumpList([])",
+              "setJumpListComputed([])"
+            ].join("\n")
+          }
+        ]
+      })
+
+      expect(report.passed).toBe(false)
+      expect(report.failures).toMatchObject([
+        {
+          rule: "unsupported-capability-without-guard",
+          location: {
+            path: "src/renderer/dock.ts",
+            line: 1,
+            column: 21
+          }
+        },
+        {
+          rule: "unsupported-capability-without-guard",
+          location: {
+            path: "src/renderer/dock.ts",
+            line: 2,
+            column: 29
+          }
+        }
+      ])
+    })
+  ))
+
 test("ProductionChecker accepts guarded source native capability usage inside template expressions", () =>
   Effect.runPromise(
     Effect.gen(function* () {
