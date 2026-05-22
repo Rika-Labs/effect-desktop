@@ -3,6 +3,56 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import { expect, test } from "bun:test"
+import { Effect } from "effect"
+
+import { rewritePackageJsonWorkspaceDependencies } from "../packages/cli/src/pack-installable-cli.js"
+
+test("pack-installable-cli rejects malformed dependency maps before rewriting", async () => {
+  let failure = ""
+  try {
+    await Effect.runPromise(
+      rewritePackageJsonWorkspaceDependencies(
+        {
+          name: "@orika/fixture",
+          dependencies: {
+            "@orika/core": 42
+          }
+        },
+        "package.json"
+      )
+    )
+  } catch (error) {
+    failure = String(error)
+  }
+
+  expect(failure).toContain("failed to parse package.json#dependencies")
+})
+
+test("pack-installable-cli rewrites only local workspace dependencies", async () => {
+  const rewritten = await Effect.runPromise(
+    rewritePackageJsonWorkspaceDependencies({
+      name: "@orika/fixture",
+      version: "1.0.0",
+      devDependencies: {
+        "@orika/core": "workspace:*"
+      },
+      dependencies: {
+        "@orika/core": "workspace:*",
+        "left-pad": "^1.3.0"
+      }
+    })
+  )
+
+  expect(rewritten["name"]).toBe("@orika/fixture")
+  expect(rewritten["version"]).toBe("1.0.0")
+  expect(rewritten["devDependencies"]).toEqual({
+    "@orika/core": "workspace:*"
+  })
+  expect(rewritten["dependencies"]).toEqual({
+    "@orika/core": "file:../core",
+    "left-pad": "^1.3.0"
+  })
+})
 
 const repoRoot = join(import.meta.dir, "..")
 

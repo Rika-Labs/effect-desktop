@@ -187,8 +187,7 @@ export const runReleaseGate = (
   options: ReleaseGateOptions
 ): Effect.Effect<ReleaseGateReport, ReleaseGateError, never> =>
   Effect.gen(function* () {
-    const rawChecklist = yield* readJson<unknown>(join(options.cwd, CHECKLIST_PATH))
-    const checklist = yield* decodeReleaseChecklist(rawChecklist)
+    const checklist = yield* readReleaseChecklist(join(options.cwd, CHECKLIST_PATH))
     yield* validateChecklist(checklist)
 
     const ciWorkflow = yield* readText(join(options.cwd, CI_WORKFLOW_PATH))
@@ -320,17 +319,26 @@ const validateChecklist = (
   return Effect.void
 }
 
-const decodeReleaseChecklist = (
-  value: unknown
-): Effect.Effect<ReleaseChecklist, ReleaseGateManifestError, never> =>
-  Schema.decodeUnknownEffect(ReleaseChecklist)(value, StrictParseOptions).pipe(
-    Effect.mapError(
-      (error) =>
-        new ReleaseGateManifestError({
-          message: `release checklist schema validation failed: ${error.message}`
-        })
+const readReleaseChecklist = (
+  path: string
+): Effect.Effect<ReleaseChecklist, ReleaseGateFileError, never> =>
+  Effect.gen(function* () {
+    const body = yield* readText(path)
+    return yield* Schema.decodeUnknownEffect(Schema.fromJsonString(ReleaseChecklist))(
+      body,
+      StrictParseOptions
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new ReleaseGateFileError({
+            operation: "parse",
+            path,
+            message: `failed to parse ${path}`,
+            cause
+          })
+      )
     )
-  )
+  })
 
 const releaseEvidenceError = (
   gate: ReleaseChecklistGate,
@@ -575,23 +583,6 @@ const sectionBody = (body: string, section: string): string => {
 }
 
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-
-const readJson = <A>(path: string): Effect.Effect<A, ReleaseGateFileError, never> =>
-  Effect.gen(function* () {
-    const body = yield* readText(path)
-    return yield* Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(body).pipe(
-      Effect.map((value) => value as A),
-      Effect.mapError(
-        (cause) =>
-          new ReleaseGateFileError({
-            operation: "parse",
-            path,
-            message: `failed to parse ${path}`,
-            cause
-          })
-      )
-    )
-  })
 
 const readText = (path: string): Effect.Effect<string, ReleaseGateFileError, never> =>
   Effect.tryPromise({

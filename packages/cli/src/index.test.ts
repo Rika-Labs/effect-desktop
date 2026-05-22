@@ -2874,7 +2874,7 @@ test("desktop check --docs reports missing pages as typed values", () =>
     })
   ))
 
-test("desktop check --docs rejects non-string page paths as typed manifest errors", () =>
+test("desktop check --docs rejects non-string page paths as typed file errors", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const directory = yield* Effect.promise(() =>
@@ -2897,8 +2897,38 @@ test("desktop check --docs rejects non-string page paths as typed manifest error
 
         const payload = decodeCliJsonError(stderr.join(""))
         expect(exitCode).toBe(1)
-        expect(payload.tag).toBe("DocsGateManifestError")
-        expect(payload.message).toContain("page path")
+        expect(payload.tag).toBe("DocsGateFileError")
+        expect(payload.message).toContain("failed to parse")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --docs rejects malformed manifest JSON as typed file errors", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
+      )
+      try {
+        yield* Effect.promise(() => mkdir(join(directory, "docs"), { recursive: true }))
+        yield* Effect.promise(() => writeFile(join(directory, "docs", "docs-manifest.json"), "{"))
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--docs", "--json"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.tag).toBe("DocsGateFileError")
+        expect(payload.message).toContain("failed to parse")
       } finally {
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
@@ -3254,7 +3284,7 @@ test("desktop check --release rejects incomplete spec gate identities", () =>
     })
   ))
 
-test("desktop check --release rejects malformed checklist shape", () =>
+test("desktop check --release rejects malformed checklist shape as typed file errors", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const directory = yield* Effect.promise(() =>
@@ -3280,8 +3310,38 @@ test("desktop check --release rejects malformed checklist shape", () =>
 
         const payload = decodeCliJsonError(stderr.join(""))
         expect(exitCode).toBe(1)
-        expect(payload.tag).toBe("ReleaseGateManifestError")
-        expect(payload.message).toContain("gates")
+        expect(payload.tag).toBe("ReleaseGateFileError")
+        expect(payload.message).toContain("failed to parse")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --release rejects malformed checklist JSON as typed file errors", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
+      )
+      try {
+        yield* writeReleaseFixture(directory)
+        yield* Effect.promise(() => writeFile(join(directory, "release", "checklist.json"), "{"))
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--release", "--json"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.tag).toBe("ReleaseGateFileError")
+        expect(payload.message).toContain("failed to parse")
       } finally {
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }

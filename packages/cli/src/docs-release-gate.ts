@@ -35,6 +35,18 @@ export interface DocsManifestPage {
   readonly path: string
 }
 
+const DocsManifestPageJson = Schema.Struct({
+  id: Schema.String,
+  title: Schema.String,
+  path: Schema.String
+})
+
+const DocsManifestJson = Schema.Struct({
+  schemaVersion: Schema.Literal(1),
+  source: Schema.String,
+  pages: Schema.Array(DocsManifestPageJson)
+})
+
 export interface DocsExampleReport {
   readonly file: string
   readonly blockIndex: number
@@ -155,9 +167,7 @@ export const runDocsReleaseGate = (
   options: DocsReleaseGateOptions
 ): Effect.Effect<DocsReleaseGateReport, DocsReleaseGateError, never> =>
   Effect.gen(function* () {
-    const manifest = yield* readJson(join(options.cwd, MANIFEST_PATH)).pipe(
-      Effect.flatMap(parseDocsManifest)
-    )
+    const manifest = yield* readDocsManifest(join(options.cwd, MANIFEST_PATH))
     yield* validateManifest(manifest)
 
     const pageReports: DocsPageReport[] = []
@@ -272,74 +282,6 @@ const validateManifest = (
   return Effect.void
 }
 
-const parseDocsManifest = (
-  value: unknown
-): Effect.Effect<DocsManifest, DocsGateManifestError, never> => {
-  if (!isManifestRecord(value)) {
-    return Effect.fail(
-      new DocsGateManifestError({ message: "docs manifest must be a JSON object" })
-    )
-  }
-  const schemaVersion = value["schemaVersion"]
-  if (typeof schemaVersion !== "number") {
-    return Effect.fail(
-      new DocsGateManifestError({ message: "docs schemaVersion must be a number" })
-    )
-  }
-  if (schemaVersion !== 1) {
-    return Effect.fail(
-      new DocsGateManifestError({ message: "docs manifest schemaVersion must be 1" })
-    )
-  }
-  if (typeof value["source"] !== "string") {
-    return Effect.fail(
-      new DocsGateManifestError({ message: "docs manifest source must be a string" })
-    )
-  }
-  if (!Array.isArray(value["pages"])) {
-    return Effect.fail(
-      new DocsGateManifestError({ message: "docs manifest pages must be an array" })
-    )
-  }
-  const pages = value["pages"]
-  const typedPages = []
-  for (const page of pages) {
-    if (!isManifestRecord(page)) {
-      return Effect.fail(
-        new DocsGateManifestError({ message: "docs manifest pages must contain objects" })
-      )
-    }
-    if (typeof page["id"] !== "string") {
-      return Effect.fail(
-        new DocsGateManifestError({ message: "docs manifest page id must be a string" })
-      )
-    }
-    if (typeof page["title"] !== "string") {
-      return Effect.fail(
-        new DocsGateManifestError({ message: "docs manifest page title must be a string" })
-      )
-    }
-    if (typeof page["path"] !== "string") {
-      return Effect.fail(
-        new DocsGateManifestError({ message: "docs manifest page path must be a string" })
-      )
-    }
-    typedPages.push({
-      id: page["id"],
-      title: page["title"],
-      path: page["path"]
-    })
-  }
-  return Effect.succeed({
-    schemaVersion: 1,
-    source: value["source"],
-    pages: typedPages
-  })
-}
-
-const isManifestRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null
-
 const validateRequiredSpecPages = (pages: readonly DocsManifestPage[]): string | undefined => {
   if (pages.length !== REQUIRED_SPEC_PAGES.size) {
     return `docs manifest must declare exactly ${REQUIRED_SPEC_PAGES.size} §25.3 pages`
@@ -448,11 +390,10 @@ const runDocsExample: DocsExampleRunner = (invocation) =>
     yield* effect.pipe(Effect.ensuring(removePath(directory).pipe(Effect.ignore)))
   })
 
-const readJson = <A>(path: string): Effect.Effect<A, DocsGateFileError, never> =>
+const readDocsManifest = (path: string): Effect.Effect<DocsManifest, DocsGateFileError, never> =>
   Effect.gen(function* () {
     const body = yield* readText(path)
-    return yield* Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(body).pipe(
-      Effect.map((value) => value as A),
+    return yield* Schema.decodeUnknownEffect(Schema.fromJsonString(DocsManifestJson))(body).pipe(
       Effect.mapError(
         (cause) =>
           new DocsGateFileError({

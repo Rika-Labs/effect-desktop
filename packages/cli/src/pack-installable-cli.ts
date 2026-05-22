@@ -6,13 +6,12 @@ import type { PlatformError } from "effect/PlatformError"
 import { Argument, Command, type CliError } from "effect/unstable/cli"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 
-interface PackageJson {
-  readonly name?: string
-  readonly dependencies?: Record<string, string>
-  readonly [key: string]: unknown
-}
-
 const PACKAGE_NAMES = ["bridge", "config", "core", "cli"] as const
+
+const PackageJsonFile = Schema.Record(Schema.String, Schema.Unknown)
+type PackageJsonFile = Schema.Schema.Type<typeof PackageJsonFile>
+
+const PackageJsonDependencies = Schema.UndefinedOr(Schema.Record(Schema.String, Schema.String))
 
 class PackInstallableCliError extends Data.TaggedError("PackInstallableCliError")<{
   readonly message: string
@@ -91,15 +90,41 @@ const rewriteLocalPackageDependencies = (
 ): Effect.Effect<void, PackInstallableCliError> =>
   Effect.gen(function* () {
     const packagePath = path.join(outputRoot, "packages", name, "package.json")
-    const packageJson = yield* readJson<PackageJson>(fs, packagePath)
-    const dependencies = { ...packageJson.dependencies }
+    const packageJson = yield* readPackageJson(fs, packagePath).pipe(
+      Effect.flatMap((value) => rewritePackageJsonWorkspaceDependencies(value, packagePath))
+    )
+    yield* writeJson(fs, packagePath, packageJson)
+  })
+
+export const rewritePackageJsonWorkspaceDependencies = (
+  value: unknown,
+  path = "package.json"
+): Effect.Effect<PackageJsonFile, PackInstallableCliError> =>
+  Effect.gen(function* () {
+    const packageJson = yield* Schema.decodeUnknownEffect(PackageJsonFile)(value).pipe(
+      Effect.mapError(
+        (cause) => new PackInstallableCliError({ message: `failed to parse ${path}`, cause })
+      )
+    )
+    const currentDependencies = yield* Schema.decodeUnknownEffect(PackageJsonDependencies)(
+      packageJson["dependencies"]
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new PackInstallableCliError({
+            message: `failed to parse ${path}#dependencies`,
+            cause
+          })
+      )
+    )
+    const dependencies = { ...currentDependencies }
     for (const localName of PACKAGE_NAMES) {
       const dependencyName = `@orika/${localName}`
       if (dependencies[dependencyName] === "workspace:*") {
         dependencies[dependencyName] = `file:../${localName}`
       }
     }
-    yield* writeJson(fs, packagePath, { ...packageJson, dependencies })
+    return { ...packageJson, dependencies }
   })
 
 const installPackageDependencies = (
@@ -158,14 +183,13 @@ const copyTree = (
 
 const shouldSkipCopy = (name: string): boolean => name === "node_modules" || name === ".turbo"
 
-const readJson = <A>(
+const readPackageJson = (
   fs: FileSystem.FileSystem,
   path: string
-): Effect.Effect<A, PackInstallableCliError> =>
+): Effect.Effect<PackageJsonFile, PackInstallableCliError> =>
   Effect.gen(function* () {
     const content = yield* fs.readFileString(path).pipe(mapPlatformError(`failed to read ${path}`))
-    return yield* Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(content).pipe(
-      Effect.map((value) => value as A),
+    return yield* Schema.decodeUnknownEffect(Schema.fromJsonString(PackageJsonFile))(content).pipe(
       Effect.mapError(
         (cause) => new PackInstallableCliError({ message: `failed to parse ${path}`, cause })
       )
