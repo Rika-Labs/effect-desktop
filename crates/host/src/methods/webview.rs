@@ -877,7 +877,8 @@ fn validate_origin(
             operation,
         ));
     };
-    if !matches!(scheme, "app" | "http" | "https") || rest.is_empty() {
+    let lowercase_scheme = scheme.to_ascii_lowercase();
+    if !matches!(lowercase_scheme.as_str(), "app" | "http" | "https") || rest.is_empty() {
         return Err(HostProtocolError::invalid_argument(
             field,
             "must use app, http, or https origin",

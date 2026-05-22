@@ -5260,6 +5260,23 @@ mod tests {
                 }),
             ),
             (
+                "request-webview-set-navigation-policy-uppercase-scheme",
+                host_protocol::WEBVIEW_SET_NAVIGATION_POLICY_METHOD,
+                serde_json::json!({
+                    "webview": serde_json::json!({
+                        "kind": "webview",
+                        "id": "webview-1",
+                        "generation": 0,
+                        "ownerScope": "window:window-1",
+                        "state": "open"
+                    }),
+                    "policy": {
+                        "allowedOrigins": ["HTTPS://example.com"],
+                        "onDisallowed": "openExternal"
+                    }
+                }),
+            ),
+            (
                 "request-webview-open-devtools",
                 host_protocol::WEBVIEW_OPEN_DEVTOOLS_METHOD,
                 serde_json::json!({ "webview": webview }),
