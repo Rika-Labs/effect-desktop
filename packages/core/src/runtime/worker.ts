@@ -24,9 +24,9 @@ import {
 
 import { holdScopedExecutionPermit } from "./execution-budgets.js"
 import {
+  NormalizedCapability,
   PermissionContext,
   PermissionRegistry,
-  type NormalizedCapability,
   type PermissionDeniedError,
   type PermissionRegistryApi,
   type PermissionRegistryError
@@ -51,7 +51,7 @@ const StrictParseOptions = { onExcessProperty: "error" } as const
 export class WorkerSpawnInput extends Schema.Class<WorkerSpawnInput>("WorkerSpawnInput")({
   script: NonEmptyString,
   ownerScope: NonEmptyString,
-  capabilities: Schema.Array(Schema.Unknown)
+  capabilities: Schema.Array(NormalizedCapability)
 }) {}
 
 export class WorkerSnapshot extends Schema.Class<WorkerSnapshot>("WorkerSnapshot")({
@@ -286,7 +286,7 @@ export const makeWorker = (
                 .spawn({
                   script: input.script,
                   ownerScope: input.ownerScope,
-                  capabilities: options.capabilities ?? [],
+                  capabilities: input.capabilities,
                   messageBufferSize: budgets.messageBufferSize,
                   gracefulShutdownMs
                 })
@@ -735,7 +735,7 @@ const authorizeWorkerCapabilities = (
     input.capabilities,
     (capability) =>
       permissions
-        .check(capability as NormalizedCapability, context, {
+        .check(capability, context, {
           source: `worker:${input.script}`
         })
         .pipe(
@@ -744,8 +744,8 @@ const authorizeWorkerCapabilities = (
               new WorkerCapabilityNotHeldError({
                 operation: "Worker.spawn",
                 script: input.script,
-                kind: (capability as NormalizedCapability).kind,
-                capability: capability as NormalizedCapability,
+                kind: capability.kind,
+                capability,
                 context,
                 cause: Option.some(error)
               })

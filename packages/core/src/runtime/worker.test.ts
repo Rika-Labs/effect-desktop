@@ -309,6 +309,40 @@ test("Worker rejects missing capabilities as CapabilityNotHeld before adapter sp
     })
   ))
 
+test("Worker rejects malformed capabilities as invalid spawn input before permission checks", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      let spawnCalls = 0
+      const runtime = yield* makeFakeRuntime()
+      const fixture = yield* makeFixture({
+        spawn: () => {
+          spawnCalls += 1
+          return Effect.succeed(runtime)
+        }
+      })
+
+      const exit = yield* Effect.exit(
+        fixture.service.spawn({
+          script: "./worker.ts",
+          inputSchema: EchoIn,
+          outputSchema: EchoOut,
+          context,
+          capabilities: [
+            {
+              kind: "filesystem.read",
+              // @ts-expect-error intentionally malformed capability exercises runtime validation.
+              roots: [42],
+              audit: "always"
+            }
+          ]
+        })
+      )
+
+      expect(spawnCalls).toBe(0)
+      expectFailure(exit, WorkerInvalidArgumentError)
+    })
+  ))
+
 test("Worker reports crashes on the messages error channel", () =>
   Effect.runPromise(
     Effect.gen(function* () {
