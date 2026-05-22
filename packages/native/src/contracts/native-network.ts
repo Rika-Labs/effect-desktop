@@ -40,6 +40,60 @@ const NativeNetworkByteProgress = Schema.makeFilter<{
     value.sentBytes <= value.totalBytes ||
     "sentBytes must not exceed totalBytes"
 )
+const NativeNetworkEventPayloadShape = Schema.makeFilter<{
+  readonly phase: NativeNetworkEventPhase
+  readonly request?: NativeNetworkRequestHandle | undefined
+  readonly socket?: NativeNetworkWebSocketHandle | undefined
+  readonly url?: string | undefined
+  readonly sentBytes?: number | undefined
+  readonly totalBytes?: number | undefined
+  readonly message?: string | undefined
+}>((value) => {
+  const hasRequest = value.request !== undefined
+  const hasSocket = value.socket !== undefined
+  const hasHttpUrl = value.url !== undefined && isAbsoluteUrl(value.url, ["http:", "https:"])
+  const hasWebSocketUrl = value.url !== undefined && isAbsoluteUrl(value.url, ["ws:", "wss:"])
+  const hasByteProgress = value.sentBytes !== undefined || value.totalBytes !== undefined
+  const hasOnlyRequestResource = hasRequest && !hasSocket && hasHttpUrl
+  const hasOnlySocketResource = hasSocket && !hasRequest && hasWebSocketUrl
+
+  switch (value.phase) {
+    case "fetch-started":
+    case "fetch-completed":
+      return (
+        (hasOnlyRequestResource && !hasByteProgress && value.message === undefined) ||
+        `${value.phase} native network events require request HTTP metadata only`
+      )
+    case "upload-started":
+      return (
+        (hasOnlyRequestResource && !hasByteProgress && value.message === undefined) ||
+        "upload-started native network events require request HTTP metadata only"
+      )
+    case "upload-progress":
+      return (
+        (hasOnlyRequestResource && value.sentBytes !== undefined && value.message === undefined) ||
+        "upload-progress native network events require request HTTP byte progress"
+      )
+    case "upload-completed":
+      return (
+        (hasOnlyRequestResource && !hasByteProgress && value.message === undefined) ||
+        "upload-completed native network events require request HTTP metadata"
+      )
+    case "websocket-opened":
+    case "websocket-closed":
+      return (
+        (hasOnlySocketResource && !hasByteProgress && value.message === undefined) ||
+        `${value.phase} native network events require websocket metadata only`
+      )
+    case "failed":
+      return (
+        (((hasOnlyRequestResource && !hasSocket) || (hasOnlySocketResource && !hasRequest)) &&
+          !hasByteProgress &&
+          value.message !== undefined) ||
+        "failed native network events require one resource kind and message"
+      )
+  }
+})
 
 export const NativeNetworkHttpMethod = Schema.Literals([
   "GET",
@@ -174,7 +228,7 @@ export class NativeNetworkEvent extends Schema.Class<NativeNetworkEvent>("Native
     sentBytes: Schema.optionalKey(NativeNetworkNonNegativeInt),
     totalBytes: Schema.optionalKey(NativeNetworkNonNegativeInt),
     message: Schema.optionalKey(BridgeSafeString)
-  }).check(NativeNetworkByteProgress)
+  }).check(NativeNetworkByteProgress, NativeNetworkEventPayloadShape)
 ) {}
 
 const isAbsoluteUrl = (value: string, protocols: readonly string[]): boolean => {

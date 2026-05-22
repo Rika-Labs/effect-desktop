@@ -142,6 +142,114 @@ test("NativeNetwork contracts reject sent bytes greater than total bytes", () =>
   expect(invalidExit._tag).toBe("Failure")
 })
 
+test("NativeNetwork contracts reject inconsistent event phase payloads", () => {
+  const socket = socketHandle()
+  const request = requestHandle()
+  const invalidPayloads = [
+    {
+      type: "native-network-event",
+      timestamp: 1_710_000_000_000,
+      phase: "fetch-completed",
+      socket,
+      url: "wss://example.test/socket"
+    },
+    {
+      type: "native-network-event",
+      timestamp: 1_710_000_000_000,
+      phase: "websocket-opened",
+      request,
+      url: "https://example.test/data"
+    },
+    {
+      type: "native-network-event",
+      timestamp: 1_710_000_000_000,
+      phase: "failed",
+      request,
+      socket,
+      url: "https://example.test/data",
+      message: "host failed"
+    }
+  ] as const
+
+  for (const payload of invalidPayloads) {
+    const exit = Effect.runSyncExit(Schema.decodeUnknownEffect(NativeNetworkEvent)(payload))
+    expect(exit._tag).toBe("Failure")
+  }
+
+  for (const payload of [
+    {
+      type: "native-network-event",
+      timestamp: 1_710_000_000_000,
+      phase: "fetch-completed",
+      request,
+      url: "https://example.test/data"
+    },
+    {
+      type: "native-network-event",
+      timestamp: 1_710_000_000_000,
+      phase: "upload-progress",
+      request,
+      url: "https://example.test/upload",
+      sentBytes: 20,
+      totalBytes: 100
+    },
+    {
+      type: "native-network-event",
+      timestamp: 1_710_000_000_000,
+      phase: "websocket-opened",
+      socket,
+      url: "wss://example.test/socket"
+    },
+    {
+      type: "native-network-event",
+      timestamp: 1_710_000_000_000,
+      phase: "failed",
+      request,
+      url: "https://example.test/data",
+      message: "host failed"
+    }
+  ] as const) {
+    const exit = Effect.runSyncExit(Schema.decodeUnknownEffect(NativeNetworkEvent)(payload))
+    expect(exit._tag).toBe("Success")
+  }
+})
+
+test("NativeNetwork bridge client rejects inconsistent event phase payloads as InvalidOutput", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const exchange: BridgeClientExchange = {
+        request: () => Effect.die("NativeNetwork test does not issue bridge requests"),
+        subscribe: (method) =>
+          Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              method,
+              timestamp: 1_710_000_000_000,
+              traceId: "native-network-event-trace",
+              payload: {
+                type: "native-network-event",
+                timestamp: 1_710_000_000_000,
+                phase: "fetch-completed",
+                socket: socketHandle(),
+                url: "wss://example.test/socket"
+              }
+            })
+          )
+      }
+      const exit = yield* runScoped(
+        Effect.gen(function* () {
+          const client = yield* NativeNetworkClient
+          return yield* Effect.exit(
+            client.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+          )
+        }),
+        makeNativeNetworkBridgeClientLayer(exchange)
+      )
+
+      expectInvalidOutput(exit)
+    })
+  ))
+
 test("NativeNetwork bridge client rejects invalid byte progress events as InvalidOutput", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -195,6 +303,15 @@ const requestHandle = () =>
   ({
     kind: "native-network-request",
     id: "request-1",
+    generation: 0,
+    ownerScope: "scope-1",
+    state: "open"
+  }) as const
+
+const socketHandle = () =>
+  ({
+    kind: "native-network-websocket",
+    id: "socket-1",
     generation: 0,
     ownerScope: "scope-1",
     state: "open"

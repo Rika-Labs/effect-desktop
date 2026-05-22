@@ -12564,23 +12564,16 @@ impl NativeNetworkSupportedPayload {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct NativeNetworkEventPayload {
     r#type: String,
     timestamp: u64,
     phase: NativeNetworkEventPhasePayload,
-    #[serde(skip_serializing_if = "Option::is_none")]
     request: Option<NativeNetworkRequestResourcePayload>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     socket: Option<NativeNetworkWebSocketResourcePayload>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     sent_bytes: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     total_bytes: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     message: Option<String>,
 }
 
@@ -12618,6 +12611,215 @@ impl NativeNetworkEventPayload {
         self.url = Some(url.into());
         self
     }
+
+    #[cfg(test)]
+    fn with_byte_progress(mut self, sent_bytes: u64, total_bytes: u64) -> Self {
+        self.sent_bytes = Some(sent_bytes);
+        self.total_bytes = Some(total_bytes);
+        self
+    }
+
+    #[cfg(test)]
+    fn with_message(mut self, message: impl Into<String>) -> Self {
+        self.message = Some(message.into());
+        self
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SerializableNativeNetworkEventPayload<'a> {
+    r#type: &'a str,
+    timestamp: u64,
+    phase: NativeNetworkEventPhasePayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    request: Option<&'a NativeNetworkRequestResourcePayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    socket: Option<&'a NativeNetworkWebSocketResourcePayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    url: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sent_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    total_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<&'a str>,
+}
+
+impl<'a> TryFrom<&'a NativeNetworkEventPayload> for SerializableNativeNetworkEventPayload<'a> {
+    type Error = &'static str;
+
+    fn try_from(payload: &'a NativeNetworkEventPayload) -> Result<Self, Self::Error> {
+        validate_native_network_event_payload(
+            payload.phase,
+            &payload.request,
+            &payload.socket,
+            &payload.url,
+            payload.sent_bytes,
+            payload.total_bytes,
+            &payload.message,
+        )?;
+        Ok(Self {
+            r#type: &payload.r#type,
+            timestamp: payload.timestamp,
+            phase: payload.phase,
+            request: payload.request.as_ref(),
+            socket: payload.socket.as_ref(),
+            url: payload.url.as_deref(),
+            sent_bytes: payload.sent_bytes,
+            total_bytes: payload.total_bytes,
+            message: payload.message.as_deref(),
+        })
+    }
+}
+
+impl Serialize for NativeNetworkEventPayload {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        SerializableNativeNetworkEventPayload::try_from(self)
+            .map_err(ser::Error::custom)?
+            .serialize(serializer)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawNativeNetworkEventPayload {
+    r#type: String,
+    timestamp: u64,
+    phase: NativeNetworkEventPhasePayload,
+    request: Option<NativeNetworkRequestResourcePayload>,
+    socket: Option<NativeNetworkWebSocketResourcePayload>,
+    url: Option<String>,
+    sent_bytes: Option<u64>,
+    total_bytes: Option<u64>,
+    message: Option<String>,
+}
+
+impl TryFrom<RawNativeNetworkEventPayload> for NativeNetworkEventPayload {
+    type Error = &'static str;
+
+    fn try_from(raw: RawNativeNetworkEventPayload) -> Result<Self, Self::Error> {
+        validate_native_network_event_payload(
+            raw.phase,
+            &raw.request,
+            &raw.socket,
+            &raw.url,
+            raw.sent_bytes,
+            raw.total_bytes,
+            &raw.message,
+        )?;
+        Ok(Self {
+            r#type: raw.r#type,
+            timestamp: raw.timestamp,
+            phase: raw.phase,
+            request: raw.request,
+            socket: raw.socket,
+            url: raw.url,
+            sent_bytes: raw.sent_bytes,
+            total_bytes: raw.total_bytes,
+            message: raw.message,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for NativeNetworkEventPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        RawNativeNetworkEventPayload::deserialize(deserializer)?
+            .try_into()
+            .map_err(de::Error::custom)
+    }
+}
+
+fn validate_native_network_event_payload(
+    phase: NativeNetworkEventPhasePayload,
+    request: &Option<NativeNetworkRequestResourcePayload>,
+    socket: &Option<NativeNetworkWebSocketResourcePayload>,
+    url: &Option<String>,
+    sent_bytes: Option<u64>,
+    total_bytes: Option<u64>,
+    message: &Option<String>,
+) -> Result<(), &'static str> {
+    if let (Some(sent), Some(total)) = (sent_bytes, total_bytes) {
+        if sent > total {
+            return Err("sentBytes must not exceed totalBytes");
+        }
+    }
+
+    let has_request = request.is_some();
+    let has_socket = socket.is_some();
+    let has_byte_progress = sent_bytes.is_some() || total_bytes.is_some();
+    let has_http_url = url
+        .as_ref()
+        .is_some_and(|value| is_native_network_http_url(value));
+    let has_websocket_url = url
+        .as_ref()
+        .is_some_and(|value| is_native_network_websocket_url(value));
+    let has_only_request_resource = has_request && !has_socket && has_http_url;
+    let has_only_socket_resource = has_socket && !has_request && has_websocket_url;
+
+    match phase {
+        NativeNetworkEventPhasePayload::FetchStarted
+        | NativeNetworkEventPhasePayload::FetchCompleted => {
+            if has_only_request_resource && !has_byte_progress && message.is_none() {
+                Ok(())
+            } else {
+                Err("fetch native network events require request HTTP metadata only")
+            }
+        }
+        NativeNetworkEventPhasePayload::UploadStarted => {
+            if has_only_request_resource && !has_byte_progress && message.is_none() {
+                Ok(())
+            } else {
+                Err("upload-started native network events require request HTTP metadata only")
+            }
+        }
+        NativeNetworkEventPhasePayload::UploadProgress => {
+            if has_only_request_resource && sent_bytes.is_some() && message.is_none() {
+                Ok(())
+            } else {
+                Err("upload-progress native network events require request HTTP byte progress")
+            }
+        }
+        NativeNetworkEventPhasePayload::UploadCompleted => {
+            if has_only_request_resource && !has_byte_progress && message.is_none() {
+                Ok(())
+            } else {
+                Err("upload-completed native network events require request HTTP metadata")
+            }
+        }
+        NativeNetworkEventPhasePayload::WebsocketOpened
+        | NativeNetworkEventPhasePayload::WebsocketClosed => {
+            if has_only_socket_resource && !has_byte_progress && message.is_none() {
+                Ok(())
+            } else {
+                Err("websocket native network events require websocket metadata only")
+            }
+        }
+        NativeNetworkEventPhasePayload::Failed => {
+            if (has_only_request_resource || has_only_socket_resource)
+                && !has_byte_progress
+                && message.is_some()
+            {
+                Ok(())
+            } else {
+                Err("failed native network events require one request or socket resource and message")
+            }
+        }
+    }
+}
+
+fn is_native_network_http_url(value: &str) -> bool {
+    value.starts_with("http://") || value.starts_with("https://")
+}
+
+fn is_native_network_websocket_url(value: &str) -> bool {
+    value.starts_with("ws://") || value.starts_with("wss://")
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -15243,8 +15445,8 @@ mod tests {
         AutostartEventPayload, AutostartEventPhasePayload, AutostartMechanismPayload,
         AutostartStatusPayload, BrowsingDataClearPayload, BrowsingDataClearResultPayload,
         BrowsingDataEstimatePayload, BrowsingDataEstimateResultPayload,
-        BrowsingDataListTypesPayload, BrowsingDataSupportedPayload,
-        BrowsingDataTypeEstimatePayload, BrowsingDataTypePayload, CanonicalPathPayload,
+        BrowsingDataListTypesPayload, BrowsingDataSupportedPayload, BrowsingDataTypeEstimatePayload,
+        BrowsingDataTypePayload, CanonicalPathPayload,
         ClipboardCapabilityPayload, ClipboardHtmlPayload, ClipboardImagePayload,
         ClipboardIsSupportedPayload, ClipboardSupportedPayload, ClipboardTextPayload,
         ContextMenuActivatedEventPayload, CookieStoreCookiePayload, CookieStoreGetPayload,
@@ -19598,6 +19800,18 @@ mod tests {
             r#"{"type":"native-network-event","timestamp":1710000000003,"phase":"websocket-opened","socket":{"kind":"native-network-websocket","id":"native-network-websocket:1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"wss://example.test/socket"}"#
         );
         assert_eq!(
+            serde_json::to_string(
+                &NativeNetworkEventPayload::new(
+                    1710000000004,
+                    NativeNetworkEventPhasePayload::UploadProgress
+                )
+                .with_request(request.clone(), "https://example.test/upload")
+                .with_byte_progress(7, 10)
+            )
+            .expect("upload progress event should encode"),
+            r#"{"type":"native-network-event","timestamp":1710000000004,"phase":"upload-progress","request":{"kind":"native-network-request","id":"native-network-request:1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/upload","sentBytes":7,"totalBytes":10}"#
+        );
+        assert_eq!(
             serde_json::to_string(&NativeNetworkSupportedPayload::unsupported(
                 "host-native-network-unavailable"
             ))
@@ -19609,6 +19823,76 @@ mod tests {
                 .expect("header should encode"),
             r#"{"name":"x-audit","value":"1"}"#
         );
+    }
+
+    #[test]
+    fn native_network_events_accept_consistent_phase_payloads() {
+        for source in [
+            r#"{"type":"native-network-event","timestamp":1710000000000,"phase":"fetch-completed","request":{"kind":"native-network-request","id":"native-network-request:1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/data"}"#,
+            r#"{"type":"native-network-event","timestamp":1710000000000,"phase":"upload-progress","request":{"kind":"native-network-request","id":"native-network-request:1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/upload","sentBytes":20,"totalBytes":100}"#,
+            r#"{"type":"native-network-event","timestamp":1710000000000,"phase":"websocket-opened","socket":{"kind":"native-network-websocket","id":"native-network-websocket:1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"wss://example.test/socket"}"#,
+            r#"{"type":"native-network-event","timestamp":1710000000000,"phase":"failed","request":{"kind":"native-network-request","id":"native-network-request:1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/data","message":"host failed"}"#,
+        ] {
+            serde_json::from_str::<NativeNetworkEventPayload>(source)
+                .expect("consistent native network event should decode");
+        }
+    }
+
+    #[test]
+    fn native_network_events_reject_inconsistent_phase_payloads() {
+        for source in [
+            r#"{"type":"native-network-event","timestamp":1710000000000,"phase":"fetch-completed","socket":{"kind":"native-network-websocket","id":"native-network-websocket:1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"wss://example.test/socket"}"#,
+            r#"{"type":"native-network-event","timestamp":1710000000000,"phase":"websocket-opened","request":{"kind":"native-network-request","id":"native-network-request:1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/data"}"#,
+            r#"{"type":"native-network-event","timestamp":1710000000000,"phase":"failed","request":{"kind":"native-network-request","id":"native-network-request:1","generation":0,"ownerScope":"workspace:1","state":"open"},"socket":{"kind":"native-network-websocket","id":"native-network-websocket:1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/data","message":"host failed"}"#,
+        ] {
+            let error = serde_json::from_str::<NativeNetworkEventPayload>(source)
+                .expect_err("inconsistent native network event should be rejected");
+            assert!(
+                error.to_string().contains("phase")
+                    || error.to_string().contains("request")
+                    || error.to_string().contains("socket"),
+                "unexpected error: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn native_network_events_reject_inconsistent_phase_payloads_before_serializing() {
+        let request =
+            NativeNetworkRequestResourcePayload::new("native-network-request:1", 0, "workspace:1");
+        let socket = NativeNetworkWebSocketResourcePayload::new(
+            "native-network-websocket:1",
+            0,
+            "workspace:1",
+        );
+        for event in [
+            NativeNetworkEventPayload::new(
+                1_710_000_000_000,
+                NativeNetworkEventPhasePayload::FetchCompleted,
+            )
+            .with_socket(socket.clone(), "wss://example.test/socket"),
+            NativeNetworkEventPayload::new(
+                1_710_000_000_000,
+                NativeNetworkEventPhasePayload::WebsocketOpened,
+            )
+            .with_request(request.clone(), "https://example.test/data"),
+            NativeNetworkEventPayload::new(
+                1_710_000_000_000,
+                NativeNetworkEventPhasePayload::Failed,
+            )
+            .with_request(request, "https://example.test/data")
+            .with_socket(socket, "wss://example.test/socket")
+            .with_message("host failed"),
+        ] {
+            let error = serde_json::to_string(&event)
+                .expect_err("inconsistent native network event should not encode");
+            assert!(
+                error.to_string().contains("phase")
+                    || error.to_string().contains("request")
+                    || error.to_string().contains("socket"),
+                "unexpected error: {error}"
+            );
+        }
     }
 
     #[test]
