@@ -33,6 +33,48 @@ export type LocalToolRuntimeEventPhase = typeof LocalToolRuntimeEventPhase.Type
 export const LocalToolRuntimeEventType = Schema.Literal("local-tool-runtime-event")
 export type LocalToolRuntimeEventType = typeof LocalToolRuntimeEventType.Type
 
+const LocalToolRuntimeEventPhasePayload = Schema.makeFilter<{
+  readonly phase: LocalToolRuntimeEventPhase
+  readonly runId?: string | undefined
+  readonly status?: LocalToolRuntimeRunStatus | undefined
+  readonly health?: LocalToolRuntimeHealthStatus | undefined
+}>((value) => {
+  if (value.phase === "run-started") {
+    if (value.runId === undefined) {
+      return "run-started events require runId"
+    }
+    if (value.status !== undefined) {
+      return "run-started events must not carry status"
+    }
+    return value.health === undefined || "run-started events must not carry health"
+  }
+  if (value.phase === "run-completed") {
+    if (value.runId === undefined) {
+      return "run-completed events require runId"
+    }
+    if (value.status === undefined) {
+      return "run-completed events require status"
+    }
+    return value.health === undefined || "run-completed events must not carry health"
+  }
+  if (value.phase === "health-checked") {
+    if (value.health === undefined) {
+      return "health-checked events require health"
+    }
+    if (value.runId !== undefined) {
+      return "health-checked events must not carry runId"
+    }
+    return value.status === undefined || "health-checked events must not carry status"
+  }
+  if (value.runId !== undefined) {
+    return `${value.phase} events must not carry runId`
+  }
+  if (value.status !== undefined) {
+    return `${value.phase} events must not carry status`
+  }
+  return value.health === undefined || `${value.phase} events must not carry health`
+})
+
 export const LocalToolRuntimeStdioMode = Schema.Literals(["capture", "inherit", "ignore"])
 export type LocalToolRuntimeStdioMode = typeof LocalToolRuntimeStdioMode.Type
 
@@ -260,15 +302,17 @@ export class LocalToolRuntimeSupportedResult extends Schema.Class<LocalToolRunti
 
 export class LocalToolRuntimeEvent extends Schema.Class<LocalToolRuntimeEvent>(
   "LocalToolRuntimeEvent"
-)({
-  type: LocalToolRuntimeEventType,
-  timestamp: LocalToolRuntimeTimestamp,
-  runtimeId: BridgeSafeNonEmptyString,
-  toolId: Schema.optionalKey(PrintableNonEmptyString),
-  commandId: Schema.optionalKey(PrintableNonEmptyString),
-  runId: Schema.optionalKey(BridgeSafeNonEmptyString),
-  phase: LocalToolRuntimeEventPhase,
-  status: Schema.optionalKey(LocalToolRuntimeRunStatus),
-  health: Schema.optionalKey(LocalToolRuntimeHealthStatus),
-  reason: Schema.optionalKey(BridgeSafeString)
-}) {}
+)(
+  Schema.Struct({
+    type: LocalToolRuntimeEventType,
+    timestamp: LocalToolRuntimeTimestamp,
+    runtimeId: BridgeSafeNonEmptyString,
+    toolId: Schema.optionalKey(PrintableNonEmptyString),
+    commandId: Schema.optionalKey(PrintableNonEmptyString),
+    runId: Schema.optionalKey(BridgeSafeNonEmptyString),
+    phase: LocalToolRuntimeEventPhase,
+    status: Schema.optionalKey(LocalToolRuntimeRunStatus),
+    health: Schema.optionalKey(LocalToolRuntimeHealthStatus),
+    reason: Schema.optionalKey(BridgeSafeString)
+  }).check(LocalToolRuntimeEventPhasePayload)
+) {}

@@ -23,6 +23,7 @@ import {
   ManagedRuntime,
   Option,
   Queue,
+  Schema,
   Stream
 } from "effect"
 
@@ -45,6 +46,7 @@ import {
   LocalToolRuntimeCommand,
   LocalToolRuntimeCwdPolicy,
   LocalToolRuntimeEnvironmentPolicy,
+  LocalToolRuntimeEvent,
   LocalToolRuntimeFilesystemPolicy,
   LocalToolRuntimeHealthCheck,
   LocalToolRuntimeHealthInput,
@@ -61,6 +63,50 @@ import {
 
 const hostProtocolStdioTest = process.platform === "win32" ? test.skip : test
 const UnboundedOsBudget = Number.MAX_SAFE_INTEGER
+
+test("LocalToolRuntime contracts reject event phases with inconsistent payloads", () => {
+  const baseEvent = {
+    type: "local-tool-runtime-event",
+    timestamp: 1_710_000_000_000,
+    runtimeId: "runtime-1"
+  } as const
+
+  for (const event of [
+    { ...baseEvent, phase: "run-completed" },
+    { ...baseEvent, phase: "registered", status: "completed" },
+    { ...baseEvent, phase: "run-started", runId: "run-1", status: "completed" },
+    { ...baseEvent, phase: "health-checked" },
+    { ...baseEvent, phase: "health-checked", health: "healthy", status: "failed" },
+    { ...baseEvent, phase: "stopped", runId: "run-1" }
+  ] as const) {
+    const exit = Effect.runSyncExit(Schema.decodeUnknownEffect(LocalToolRuntimeEvent)(event))
+    expect(Exit.isFailure(exit)).toBe(true)
+  }
+
+  for (const event of [
+    { ...baseEvent, phase: "registered", toolId: "tool-1" },
+    {
+      ...baseEvent,
+      phase: "run-started",
+      toolId: "tool-1",
+      commandId: "node-version",
+      runId: "run-1"
+    },
+    {
+      ...baseEvent,
+      phase: "run-completed",
+      toolId: "tool-1",
+      commandId: "node-version",
+      runId: "run-1",
+      status: "completed"
+    },
+    { ...baseEvent, phase: "health-checked", toolId: "tool-1", health: "healthy" },
+    { ...baseEvent, phase: "stopped" }
+  ] as const) {
+    const exit = Effect.runSyncExit(Schema.decodeUnknownEffect(LocalToolRuntimeEvent)(event))
+    expect(Exit.isSuccess(exit)).toBe(true)
+  }
+})
 
 test("LocalToolRuntime service registers, runs manifest commands, checks health, stops, emits events, and audits use", () =>
   Effect.runPromise(

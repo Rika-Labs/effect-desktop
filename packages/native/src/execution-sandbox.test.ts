@@ -4,7 +4,7 @@ import type {
   HostProtocolError,
   HostProtocolRequestEnvelope
 } from "@orika/bridge"
-import { Cause, Effect, Exit, type Layer, ManagedRuntime, Stream } from "effect"
+import { Cause, Effect, Exit, type Layer, ManagedRuntime, Schema, Stream } from "effect"
 
 import {
   ExecutionSandbox,
@@ -17,7 +17,10 @@ import {
   makeExecutionSandboxServiceLayer,
   makeExecutionSandboxUnsupportedClient
 } from "./execution-sandbox.js"
-import { ExecutionSandboxSupportedResult } from "./contracts/execution-sandbox.js"
+import {
+  ExecutionSandboxEvent,
+  ExecutionSandboxSupportedResult
+} from "./contracts/execution-sandbox.js"
 
 const UnsupportedMethods = ["create", "run", "destroy"] as const
 
@@ -50,6 +53,35 @@ test("ExecutionSandbox declares create, run, destroy as non-callable capability 
   expect(nonCallableTags).toEqual(
     UnsupportedMethods.map((method) => `ExecutionSandbox.${method}`).toSorted()
   )
+})
+
+test("ExecutionSandbox contracts reject event phases with inconsistent payloads", () => {
+  const baseEvent = {
+    type: "sandbox-event",
+    timestamp: 1_710_000_000_000,
+    sandboxId: "sandbox-1"
+  } as const
+
+  for (const event of [
+    { ...baseEvent, phase: "run-started" },
+    { ...baseEvent, phase: "run-started", runId: "run-1", status: "completed" },
+    { ...baseEvent, phase: "run-completed" },
+    { ...baseEvent, phase: "created", status: "completed" },
+    { ...baseEvent, phase: "destroyed", runId: "run-1", status: "failed" }
+  ] as const) {
+    const exit = Effect.runSyncExit(Schema.decodeUnknownEffect(ExecutionSandboxEvent)(event))
+    expect(Exit.isFailure(exit)).toBe(true)
+  }
+
+  for (const event of [
+    { ...baseEvent, phase: "created" },
+    { ...baseEvent, phase: "run-started", runId: "run-1" },
+    { ...baseEvent, phase: "run-completed", runId: "run-1", status: "completed" },
+    { ...baseEvent, phase: "destroyed" }
+  ] as const) {
+    const exit = Effect.runSyncExit(Schema.decodeUnknownEffect(ExecutionSandboxEvent)(event))
+    expect(Exit.isSuccess(exit)).toBe(true)
+  }
 })
 
 test("ExecutionSandbox isSupported reports supported result through the service", () =>

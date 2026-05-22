@@ -8173,18 +8173,14 @@ impl ExecutionSandboxSupportedPayload {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ExecutionSandboxEventPayload {
     r#type: String,
     timestamp: u64,
     sandbox_id: String,
     phase: ExecutionSandboxEventPhase,
-    #[serde(skip_serializing_if = "Option::is_none")]
     run_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     status: Option<ExecutionSandboxRunStatus>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     reason: Option<String>,
 }
 
@@ -8206,6 +8202,124 @@ impl ExecutionSandboxEventPayload {
             status,
             reason,
         }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SerializableExecutionSandboxEventPayload<'a> {
+    r#type: &'a str,
+    timestamp: u64,
+    sandbox_id: &'a str,
+    phase: ExecutionSandboxEventPhase,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    run_id: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    status: Option<ExecutionSandboxRunStatus>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<&'a str>,
+}
+
+impl<'a> TryFrom<&'a ExecutionSandboxEventPayload>
+    for SerializableExecutionSandboxEventPayload<'a>
+{
+    type Error = &'static str;
+
+    fn try_from(payload: &'a ExecutionSandboxEventPayload) -> Result<Self, Self::Error> {
+        validate_execution_sandbox_event_payload(payload.phase, &payload.run_id, payload.status)?;
+        Ok(Self {
+            r#type: &payload.r#type,
+            timestamp: payload.timestamp,
+            sandbox_id: &payload.sandbox_id,
+            phase: payload.phase,
+            run_id: payload.run_id.as_deref(),
+            status: payload.status,
+            reason: payload.reason.as_deref(),
+        })
+    }
+}
+
+impl Serialize for ExecutionSandboxEventPayload {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        SerializableExecutionSandboxEventPayload::try_from(self)
+            .map_err(ser::Error::custom)?
+            .serialize(serializer)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawExecutionSandboxEventPayload {
+    r#type: String,
+    timestamp: u64,
+    sandbox_id: String,
+    phase: ExecutionSandboxEventPhase,
+    run_id: Option<String>,
+    status: Option<ExecutionSandboxRunStatus>,
+    reason: Option<String>,
+}
+
+impl TryFrom<RawExecutionSandboxEventPayload> for ExecutionSandboxEventPayload {
+    type Error = &'static str;
+
+    fn try_from(raw: RawExecutionSandboxEventPayload) -> Result<Self, Self::Error> {
+        validate_execution_sandbox_event_payload(raw.phase, &raw.run_id, raw.status)?;
+        Ok(Self {
+            r#type: raw.r#type,
+            timestamp: raw.timestamp,
+            sandbox_id: raw.sandbox_id,
+            phase: raw.phase,
+            run_id: raw.run_id,
+            status: raw.status,
+            reason: raw.reason,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionSandboxEventPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        RawExecutionSandboxEventPayload::deserialize(deserializer)?
+            .try_into()
+            .map_err(de::Error::custom)
+    }
+}
+
+fn validate_execution_sandbox_event_payload(
+    phase: ExecutionSandboxEventPhase,
+    run_id: &Option<String>,
+    status: Option<ExecutionSandboxRunStatus>,
+) -> Result<(), &'static str> {
+    match phase {
+        ExecutionSandboxEventPhase::RunStarted if run_id.is_none() => {
+            Err("run-started sandbox event requires runId")
+        }
+        ExecutionSandboxEventPhase::RunStarted if status.is_some() => {
+            Err("run-started sandbox event must not carry status")
+        }
+        ExecutionSandboxEventPhase::RunCompleted if run_id.is_none() => {
+            Err("run-completed sandbox event requires runId")
+        }
+        ExecutionSandboxEventPhase::RunCompleted if status.is_none() => {
+            Err("run-completed sandbox event requires status")
+        }
+        ExecutionSandboxEventPhase::RunStarted | ExecutionSandboxEventPhase::RunCompleted => Ok(()),
+        ExecutionSandboxEventPhase::Created | ExecutionSandboxEventPhase::Destroyed
+            if run_id.is_some() =>
+        {
+            Err("non-run sandbox event must not carry runId")
+        }
+        ExecutionSandboxEventPhase::Created | ExecutionSandboxEventPhase::Destroyed
+            if status.is_some() =>
+        {
+            Err("non-run sandbox event must not carry status")
+        }
+        ExecutionSandboxEventPhase::Created | ExecutionSandboxEventPhase::Destroyed => Ok(()),
     }
 }
 
@@ -8973,24 +9087,17 @@ impl LocalToolRuntimeSupportedPayload {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct LocalToolRuntimeEventPayload {
     r#type: String,
     timestamp: u64,
     runtime_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     tool_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     command_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     run_id: Option<String>,
     phase: LocalToolRuntimeEventPhase,
-    #[serde(skip_serializing_if = "Option::is_none")]
     status: Option<LocalToolRuntimeRunStatus>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     health: Option<LocalToolRuntimeHealthStatus>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     reason: Option<String>,
 }
 
@@ -9058,6 +9165,166 @@ impl LocalToolRuntimeEventPayload {
     pub fn with_reason(mut self, reason: impl Into<String>) -> Self {
         self.reason = Some(reason.into());
         self
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SerializableLocalToolRuntimeEventPayload<'a> {
+    r#type: &'a str,
+    timestamp: u64,
+    runtime_id: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_id: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    command_id: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    run_id: Option<&'a str>,
+    phase: LocalToolRuntimeEventPhase,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    status: Option<LocalToolRuntimeRunStatus>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    health: Option<LocalToolRuntimeHealthStatus>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<&'a str>,
+}
+
+impl<'a> TryFrom<&'a LocalToolRuntimeEventPayload>
+    for SerializableLocalToolRuntimeEventPayload<'a>
+{
+    type Error = &'static str;
+
+    fn try_from(payload: &'a LocalToolRuntimeEventPayload) -> Result<Self, Self::Error> {
+        validate_local_tool_runtime_event_payload(
+            payload.phase,
+            &payload.run_id,
+            payload.status,
+            payload.health,
+        )?;
+        Ok(Self {
+            r#type: &payload.r#type,
+            timestamp: payload.timestamp,
+            runtime_id: &payload.runtime_id,
+            tool_id: payload.tool_id.as_deref(),
+            command_id: payload.command_id.as_deref(),
+            run_id: payload.run_id.as_deref(),
+            phase: payload.phase,
+            status: payload.status,
+            health: payload.health,
+            reason: payload.reason.as_deref(),
+        })
+    }
+}
+
+impl Serialize for LocalToolRuntimeEventPayload {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        SerializableLocalToolRuntimeEventPayload::try_from(self)
+            .map_err(ser::Error::custom)?
+            .serialize(serializer)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawLocalToolRuntimeEventPayload {
+    r#type: String,
+    timestamp: u64,
+    runtime_id: String,
+    tool_id: Option<String>,
+    command_id: Option<String>,
+    run_id: Option<String>,
+    phase: LocalToolRuntimeEventPhase,
+    status: Option<LocalToolRuntimeRunStatus>,
+    health: Option<LocalToolRuntimeHealthStatus>,
+    reason: Option<String>,
+}
+
+impl TryFrom<RawLocalToolRuntimeEventPayload> for LocalToolRuntimeEventPayload {
+    type Error = &'static str;
+
+    fn try_from(raw: RawLocalToolRuntimeEventPayload) -> Result<Self, Self::Error> {
+        validate_local_tool_runtime_event_payload(raw.phase, &raw.run_id, raw.status, raw.health)?;
+        Ok(Self {
+            r#type: raw.r#type,
+            timestamp: raw.timestamp,
+            runtime_id: raw.runtime_id,
+            tool_id: raw.tool_id,
+            command_id: raw.command_id,
+            run_id: raw.run_id,
+            phase: raw.phase,
+            status: raw.status,
+            health: raw.health,
+            reason: raw.reason,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for LocalToolRuntimeEventPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        RawLocalToolRuntimeEventPayload::deserialize(deserializer)?
+            .try_into()
+            .map_err(de::Error::custom)
+    }
+}
+
+fn validate_local_tool_runtime_event_payload(
+    phase: LocalToolRuntimeEventPhase,
+    run_id: &Option<String>,
+    status: Option<LocalToolRuntimeRunStatus>,
+    health: Option<LocalToolRuntimeHealthStatus>,
+) -> Result<(), &'static str> {
+    match phase {
+        LocalToolRuntimeEventPhase::RunStarted if run_id.is_none() => {
+            Err("run-started local tool runtime event requires runId")
+        }
+        LocalToolRuntimeEventPhase::RunStarted if status.is_some() => {
+            Err("run-started local tool runtime event must not carry status")
+        }
+        LocalToolRuntimeEventPhase::RunStarted if health.is_some() => {
+            Err("run-started local tool runtime event must not carry health")
+        }
+        LocalToolRuntimeEventPhase::RunCompleted if run_id.is_none() => {
+            Err("run-completed local tool runtime event requires runId")
+        }
+        LocalToolRuntimeEventPhase::RunCompleted if status.is_none() => {
+            Err("run-completed local tool runtime event requires status")
+        }
+        LocalToolRuntimeEventPhase::RunCompleted if health.is_some() => {
+            Err("run-completed local tool runtime event must not carry health")
+        }
+        LocalToolRuntimeEventPhase::RunStarted | LocalToolRuntimeEventPhase::RunCompleted => Ok(()),
+        LocalToolRuntimeEventPhase::HealthChecked if health.is_none() => {
+            Err("health-checked local tool runtime event requires health")
+        }
+        LocalToolRuntimeEventPhase::HealthChecked if run_id.is_some() => {
+            Err("health-checked local tool runtime event must not carry runId")
+        }
+        LocalToolRuntimeEventPhase::HealthChecked if status.is_some() => {
+            Err("health-checked local tool runtime event must not carry status")
+        }
+        LocalToolRuntimeEventPhase::HealthChecked => Ok(()),
+        LocalToolRuntimeEventPhase::Registered | LocalToolRuntimeEventPhase::Stopped
+            if run_id.is_some() =>
+        {
+            Err("non-run local tool runtime event must not carry runId")
+        }
+        LocalToolRuntimeEventPhase::Registered | LocalToolRuntimeEventPhase::Stopped
+            if status.is_some() =>
+        {
+            Err("non-run local tool runtime event must not carry status")
+        }
+        LocalToolRuntimeEventPhase::Registered | LocalToolRuntimeEventPhase::Stopped
+            if health.is_some() =>
+        {
+            Err("non-health local tool runtime event must not carry health")
+        }
+        LocalToolRuntimeEventPhase::Registered | LocalToolRuntimeEventPhase::Stopped => Ok(()),
     }
 }
 
@@ -17154,6 +17421,64 @@ mod tests {
     }
 
     #[test]
+    fn execution_sandbox_events_reject_inconsistent_phase_payloads() {
+        for source in [
+            r#"{"type":"sandbox-event","timestamp":1710000000000,"sandboxId":"sandbox-1","phase":"run-started","status":"completed"}"#,
+            r#"{"type":"sandbox-event","timestamp":1710000000000,"sandboxId":"sandbox-1","phase":"run-completed"}"#,
+            r#"{"type":"sandbox-event","timestamp":1710000000000,"sandboxId":"sandbox-1","phase":"created","status":"completed"}"#,
+            r#"{"type":"sandbox-event","timestamp":1710000000000,"sandboxId":"sandbox-1","phase":"destroyed","runId":"run-1","status":"failed"}"#,
+        ] {
+            let error = serde_json::from_str::<ExecutionSandboxEventPayload>(source)
+                .expect_err("inconsistent execution sandbox event should be rejected");
+            assert!(
+                error.to_string().contains("phase")
+                    || error.to_string().contains("run")
+                    || error.to_string().contains("status"),
+                "unexpected error: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn execution_sandbox_events_reject_inconsistent_phase_payloads_before_serializing() {
+        for event in [
+            ExecutionSandboxEventPayload::new(
+                1_710_000_000_000,
+                "sandbox-1",
+                ExecutionSandboxEventPhase::RunCompleted,
+                None,
+                None,
+                None,
+            ),
+            ExecutionSandboxEventPayload::new(
+                1_710_000_000_000,
+                "sandbox-1",
+                ExecutionSandboxEventPhase::Created,
+                None,
+                Some(ExecutionSandboxRunStatus::Completed),
+                None,
+            ),
+            ExecutionSandboxEventPayload::new(
+                1_710_000_000_000,
+                "sandbox-1",
+                ExecutionSandboxEventPhase::Destroyed,
+                Some("run-1".to_string()),
+                Some(ExecutionSandboxRunStatus::Failed),
+                None,
+            ),
+        ] {
+            let error = serde_json::to_string(&event)
+                .expect_err("inconsistent execution sandbox event should not encode");
+            assert!(
+                error.to_string().contains("phase")
+                    || error.to_string().contains("run")
+                    || error.to_string().contains("status"),
+                "unexpected error: {error}"
+            );
+        }
+    }
+
+    #[test]
     fn extension_config_payloads_serialize_canonically() {
         let actor =
             ExtensionConfigActorPayload::new(ExtensionConfigActorKind::Extension, "extension-1");
@@ -17482,6 +17807,71 @@ mod tests {
             serde_json::to_string(&empty_policy).expect("empty policy should encode"),
             r#"{"cwd":{"roots":["/tmp/app"]},"environment":{"variables":[]},"filesystem":{},"network":{},"budgets":{"cpuMillis":500,"memoryBytes":67108864,"wallClockMillis":1000,"stdoutBytes":1024,"stderrBytes":1024},"stdio":{"stdout":"capture","stderr":"capture"},"cleanup":{"killProcessTree":true,"removeWorkingDirectory":true}}"#
         );
+    }
+
+    #[test]
+    fn local_tool_runtime_events_reject_inconsistent_phase_payloads() {
+        for source in [
+            r#"{"type":"local-tool-runtime-event","timestamp":1710000000000,"runtimeId":"runtime-1","phase":"run-completed"}"#,
+            r#"{"type":"local-tool-runtime-event","timestamp":1710000000000,"runtimeId":"runtime-1","phase":"registered","status":"completed"}"#,
+            r#"{"type":"local-tool-runtime-event","timestamp":1710000000000,"runtimeId":"runtime-1","phase":"run-started","toolId":"tool-1","commandId":"node-version","runId":"run-1","status":"completed"}"#,
+            r#"{"type":"local-tool-runtime-event","timestamp":1710000000000,"runtimeId":"runtime-1","phase":"health-checked"}"#,
+            r#"{"type":"local-tool-runtime-event","timestamp":1710000000000,"runtimeId":"runtime-1","phase":"health-checked","toolId":"tool-1","health":"healthy","status":"failed"}"#,
+            r#"{"type":"local-tool-runtime-event","timestamp":1710000000000,"runtimeId":"runtime-1","phase":"stopped","runId":"run-1"}"#,
+        ] {
+            let error = serde_json::from_str::<LocalToolRuntimeEventPayload>(source)
+                .expect_err("inconsistent local tool runtime event should be rejected");
+            assert!(
+                error.to_string().contains("phase")
+                    || error.to_string().contains("run")
+                    || error.to_string().contains("status")
+                    || error.to_string().contains("health"),
+                "unexpected error: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn local_tool_runtime_events_reject_inconsistent_phase_payloads_before_serializing() {
+        for event in [
+            LocalToolRuntimeEventPayload::new(
+                1_710_000_000_000,
+                "runtime-1",
+                LocalToolRuntimeEventPhase::RunCompleted,
+            ),
+            LocalToolRuntimeEventPayload::new(
+                1_710_000_000_000,
+                "runtime-1",
+                LocalToolRuntimeEventPhase::Registered,
+            )
+            .with_run(
+                "tool-1",
+                "node-version",
+                "run-1",
+                LocalToolRuntimeRunStatus::Completed,
+            ),
+            LocalToolRuntimeEventPayload::new(
+                1_710_000_000_000,
+                "runtime-1",
+                LocalToolRuntimeEventPhase::HealthChecked,
+            ),
+            LocalToolRuntimeEventPayload::new(
+                1_710_000_000_000,
+                "runtime-1",
+                LocalToolRuntimeEventPhase::Stopped,
+            )
+            .with_run_ref("tool-1", "node-version", "run-1"),
+        ] {
+            let error = serde_json::to_string(&event)
+                .expect_err("inconsistent local tool runtime event should not encode");
+            assert!(
+                error.to_string().contains("phase")
+                    || error.to_string().contains("run")
+                    || error.to_string().contains("status")
+                    || error.to_string().contains("health"),
+                "unexpected error: {error}"
+            );
+        }
     }
 
     #[test]

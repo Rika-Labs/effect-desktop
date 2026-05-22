@@ -28,6 +28,29 @@ export type ExecutionSandboxEventPhase = typeof ExecutionSandboxEventPhase.Type
 export const ExecutionSandboxEventType = Schema.Literal("sandbox-event")
 export type ExecutionSandboxEventType = typeof ExecutionSandboxEventType.Type
 
+const ExecutionSandboxEventPhasePayload = Schema.makeFilter<{
+  readonly phase: ExecutionSandboxEventPhase
+  readonly runId?: string | undefined
+  readonly status?: ExecutionSandboxRunStatus | undefined
+}>((value) => {
+  if (value.phase === "run-started") {
+    if (value.runId === undefined) {
+      return "run-started events require runId"
+    }
+    return value.status === undefined || "run-started events must not carry status"
+  }
+  if (value.phase === "run-completed") {
+    if (value.runId === undefined) {
+      return "run-completed events require runId"
+    }
+    return value.status !== undefined || "run-completed events require status"
+  }
+  if (value.runId !== undefined) {
+    return `${value.phase} events must not carry runId`
+  }
+  return value.status === undefined || `${value.phase} events must not carry status`
+})
+
 const ExecutionSandboxPositiveInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))
 const ExecutionSandboxTimestamp = Schema.Number.check(
   Schema.isFinite(),
@@ -179,12 +202,14 @@ export class ExecutionSandboxSupportedResult extends Schema.Class<ExecutionSandb
 
 export class ExecutionSandboxEvent extends Schema.Class<ExecutionSandboxEvent>(
   "ExecutionSandboxEvent"
-)({
-  type: ExecutionSandboxEventType,
-  timestamp: ExecutionSandboxTimestamp,
-  sandboxId: BridgeSafeNonEmptyString,
-  phase: ExecutionSandboxEventPhase,
-  runId: Schema.optionalKey(BridgeSafeNonEmptyString),
-  status: Schema.optionalKey(ExecutionSandboxRunStatus),
-  reason: Schema.optionalKey(BridgeSafeString)
-}) {}
+)(
+  Schema.Struct({
+    type: ExecutionSandboxEventType,
+    timestamp: ExecutionSandboxTimestamp,
+    sandboxId: BridgeSafeNonEmptyString,
+    phase: ExecutionSandboxEventPhase,
+    runId: Schema.optionalKey(BridgeSafeNonEmptyString),
+    status: Schema.optionalKey(ExecutionSandboxRunStatus),
+    reason: Schema.optionalKey(BridgeSafeString)
+  }).check(ExecutionSandboxEventPhasePayload)
+) {}
