@@ -82,7 +82,10 @@ const makePostMessageSocket: Effect.Effect<Socket.Socket> = Effect.gen(function*
     return Effect.sync(() => {
       const data = chunk instanceof Uint8Array ? chunk : new TextEncoder().encode(chunk)
       const win = getWindow()
-      win?.postMessage(data, targetOriginForWindow(win))
+      const targetOrigin = currentWindowOrigin(win)
+      if (win !== undefined && targetOrigin !== undefined) {
+        win.postMessage(data, targetOrigin)
+      }
     })
   }
 
@@ -96,9 +99,12 @@ export const layerPostMessageSocket: Layer.Layer<Socket.Socket> = Layer.effect(
   makePostMessageSocket
 )
 
-const targetOriginForWindow = (win: WindowLike): string => win.location?.origin ?? "*"
+const currentWindowOrigin = (win: WindowLike | undefined): string | undefined => {
+  const origin = win?.location?.origin
+  return origin === "" ? undefined : origin
+}
 
 const isAllowedMessageOrigin = (win: WindowLike | undefined, event: MessageEvent): boolean => {
-  const expectedOrigin = win?.location?.origin
-  return expectedOrigin === undefined || event.origin === expectedOrigin
+  const expectedOrigin = currentWindowOrigin(win)
+  return expectedOrigin !== undefined && event.origin === expectedOrigin
 }

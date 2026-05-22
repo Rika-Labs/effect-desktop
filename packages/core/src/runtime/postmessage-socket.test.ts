@@ -3,11 +3,17 @@ import { Deferred, Effect, Fiber, Layer, ManagedRuntime, Option } from "effect"
 import { Socket } from "effect/unstable/socket"
 import { layerPostMessageSocket } from "./postmessage-socket.js"
 
+const CURRENT_ORIGIN = "https://app.example"
+
 class FakeWindow {
-  readonly location = { origin: "https://app.example" }
+  readonly location: { readonly origin: string } | undefined
   readonly posted: Array<{ readonly message: unknown; readonly targetOrigin: string | undefined }> =
     []
   private readonly listeners = new Set<(event: MessageEvent) => void>()
+
+  constructor(origin: string | null = CURRENT_ORIGIN) {
+    this.location = origin === null ? undefined : { origin }
+  }
 
   addEventListener(_type: "message", handler: (event: MessageEvent) => void): void {
     this.listeners.add(handler)
@@ -25,7 +31,7 @@ class FakeWindow {
     for (const listener of this.listeners) {
       listener({
         data,
-        origin: options?.origin ?? this.location.origin,
+        origin: options?.origin ?? this.location?.origin ?? "",
         source: this
       } as unknown as MessageEvent)
     }
@@ -123,7 +129,27 @@ test("layerPostMessageSocket writes to the current window origin", () =>
       )
 
       expect(window.posted).toHaveLength(1)
-      expect(window.posted[0]?.targetOrigin).toBe(window.location.origin)
+      expect(window.posted[0]?.targetOrigin).toBe(CURRENT_ORIGIN)
+    })
+  ))
+
+test("layerPostMessageSocket write emits nothing when window origin is absent", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const window = new FakeWindow(null)
+      yield* withFakeWindow(
+        window,
+        runScoped(
+          Effect.gen(function* () {
+            const socket = yield* Socket.Socket.asEffect()
+            const write = yield* socket.writer
+            yield* write(new Uint8Array([0x68, 0x69]))
+          }).pipe(Effect.scoped),
+          layerPostMessageSocket
+        )
+      )
+
+      expect(window.posted).toHaveLength(0)
     })
   ))
 
@@ -181,7 +207,7 @@ test("layerPostMessageSocket ignores cross-origin window messages", () =>
               Effect.timeoutOption("20 millis")
             )
             window.dispatch(new Uint8Array([0x68, 0x69]), {
-              origin: window.location.origin
+              origin: CURRENT_ORIGIN
             })
             const sameOrigin = yield* Deferred.await(receivedChunk)
             yield* Fiber.interrupt(fiber)
@@ -193,6 +219,41 @@ test("layerPostMessageSocket ignores cross-origin window messages", () =>
 
       expect(Option.isNone(received.crossOrigin)).toBe(true)
       expect([...received.sameOrigin]).toEqual([0x68, 0x69])
+      expect(window.listenerCount).toBe(0)
+    })
+  ))
+
+test("layerPostMessageSocket ignores inbound messages when window origin is absent", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const window = new FakeWindow(null)
+      const received = yield* withFakeWindow(
+        window,
+        runScoped(
+          Effect.gen(function* () {
+            const socket = yield* Socket.Socket.asEffect()
+            const opened = yield* Deferred.make<void>()
+            const receivedChunk = yield* Deferred.make<Uint8Array>()
+            const fiber = yield* Effect.forkScoped(
+              socket.run((chunk) => Deferred.succeed(receivedChunk, chunk).pipe(Effect.asVoid), {
+                onOpen: Deferred.succeed(opened, undefined).pipe(Effect.asVoid)
+              })
+            )
+            yield* Deferred.await(opened)
+            window.dispatch(new Uint8Array([0x68, 0x69]), {
+              origin: CURRENT_ORIGIN
+            })
+            const result = yield* Deferred.await(receivedChunk).pipe(
+              Effect.timeoutOption("20 millis")
+            )
+            yield* Fiber.interrupt(fiber)
+            return result
+          }).pipe(Effect.scoped),
+          layerPostMessageSocket
+        )
+      )
+
+      expect(Option.isNone(received)).toBe(true)
       expect(window.listenerCount).toBe(0)
     })
   ))
