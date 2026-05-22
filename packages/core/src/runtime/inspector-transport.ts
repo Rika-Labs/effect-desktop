@@ -101,9 +101,10 @@ export const makeInspectorTransport = (
     if (sessionId.length === 0) {
       return yield* invalid("InspectorTransport.make", "sessionId", "sessionId must not be empty")
     }
+    const startedAt = yield* finiteTimestamp(now(), "InspectorTransport.make", "startedAt")
     const session = new InspectorSession({
       sessionId,
-      startedAt: now(),
+      startedAt,
       ...(options.sessionLabel === undefined ? {} : { label: options.sessionLabel })
     })
     const nextSequence = yield* Ref.make(0)
@@ -122,11 +123,16 @@ export const makeInspectorTransport = (
         if (input.source.length === 0) {
           return yield* invalid("InspectorTransport.publish", "source", "source must not be empty")
         }
+        const timestampMs = yield* finiteTimestamp(
+          input.timestampMs ?? now(),
+          "InspectorTransport.publish",
+          "timestampMs"
+        )
         const sequence = yield* Ref.updateAndGet(nextSequence, (value) => value + 1)
         const event = new InspectorTransportEvent({
           sequence,
           sessionId,
-          timestampMs: input.timestampMs ?? now(),
+          timestampMs,
           source: input.source,
           payload: input.payload
         })
@@ -267,6 +273,17 @@ const replayLimit = (
     return Effect.succeed(resolved)
   }
   return invalid("InspectorTransport.replay", "limit", "limit must be a positive integer")
+}
+
+const finiteTimestamp = (
+  value: number,
+  operation: string,
+  field: string
+): Effect.Effect<number, InspectorTransportInvalidArgumentError, never> => {
+  if (Number.isFinite(value)) {
+    return Effect.succeed(value)
+  }
+  return invalid(operation, field, `${field} must be a finite timestamp`)
 }
 
 const invalid = (

@@ -44,6 +44,69 @@ test("InspectorTransport uses the Effect Clock when no explicit clock is supplie
     })
   ))
 
+test("InspectorTransport rejects non-finite event timestamps before retaining events", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const transport = yield* makeInspectorTransport({
+        sessionId: "session-invalid-timestamp",
+        now: () => 1_000
+      })
+
+      for (const timestampMs of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+        const exit = yield* Effect.exit(
+          transport.publish({ source: "clock", payload: null, timestampMs })
+        )
+
+        expect(exit._tag).toBe("Failure")
+      }
+
+      const event = yield* transport.publish({ source: "clock", payload: null, timestampMs: 1_001 })
+      const replayed = yield* transport.replay()
+      const snapshot = yield* transport.snapshot()
+
+      expect(event.sequence).toBe(1)
+      expect(replayed).toHaveLength(1)
+      expect(replayed[0]?.timestampMs).toBe(1_001)
+      expect(snapshot.retainedEvents).toBe(1)
+      expect(snapshot.droppedBySubscribers).toBe(0)
+    })
+  ))
+
+test("InspectorTransport rejects non-finite clock event timestamps", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const timestamps = [1_000, Number.POSITIVE_INFINITY, 1_001]
+      const transport = yield* makeInspectorTransport({
+        sessionId: "session-invalid-clock",
+        now: () => timestamps.shift() ?? 1_002
+      })
+
+      const invalidPublish = yield* Effect.exit(
+        transport.publish({ source: "clock", payload: null })
+      )
+      const validPublish = yield* transport.publish({ source: "clock", payload: null })
+      const replayed = yield* transport.replay()
+
+      expect(invalidPublish._tag).toBe("Failure")
+      expect(validPublish.sequence).toBe(1)
+      expect(replayed.map((event) => event.timestampMs)).toEqual([1_001])
+    })
+  ))
+
+test("InspectorTransport rejects non-finite startup timestamps", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const transport = yield* Effect.exit(
+        makeInspectorTransport({
+          sessionId: "session-invalid-start",
+          now: () => Number.NaN
+        })
+      )
+
+      expect(transport._tag).toBe("Failure")
+    })
+  ))
+
 test("InspectorTransport replays after a cursor then streams live events", () =>
   Effect.runPromise(
     Effect.gen(function* () {
