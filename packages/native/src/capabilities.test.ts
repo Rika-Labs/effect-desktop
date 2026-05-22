@@ -133,6 +133,20 @@ const WebViewFrameRoutingUnavailableSupport = {
   ]
 } as const
 
+const WebViewRuntimeMediaControlUnavailableSupport = {
+  status: "unsupported",
+  reason: "host-runtime-media-control-unavailable",
+  platforms: [
+    { platform: "macos", status: "unsupported", reason: "host-runtime-media-control-unavailable" },
+    {
+      platform: "windows",
+      status: "unsupported",
+      reason: "host-runtime-media-control-unavailable"
+    },
+    { platform: "linux", status: "unsupported", reason: "host-runtime-media-control-unavailable" }
+  ]
+} as const
+
 const WebViewRuntimePermissionUnavailableSupport = {
   status: "unsupported",
   reason: "host-permission-request-routing-unavailable",
@@ -351,6 +365,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const webViewCaptureScreenshot = yield* capabilities.support("WebView.captureScreenshot")
       const webViewPrintToPdf = yield* capabilities.support("WebView.printToPdf")
       const webViewFindInPage = yield* capabilities.support("WebView.findInPage")
+      const webViewSetAudioMuted = yield* capabilities.support("WebView.setAudioMuted")
       const webViewRespondToPermission = yield* capabilities.support("WebView.respondToPermission")
       const webViewListFrames = yield* capabilities.support("WebView.listFrames")
       const webViewPostToFrame = yield* capabilities.support("WebView.postToFrame")
@@ -433,6 +448,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(webViewCaptureScreenshot).toEqual(WebViewDocumentOutputUnavailableSupport)
       expect(webViewPrintToPdf).toEqual(WebViewDocumentOutputUnavailableSupport)
       expect(webViewFindInPage).toEqual(WebViewFindInPageUnavailableSupport)
+      expect(webViewSetAudioMuted).toEqual(WebViewRuntimeMediaControlUnavailableSupport)
       expect(webViewRespondToPermission).toEqual(WebViewRuntimePermissionUnavailableSupport)
       expect(webViewListFrames).toEqual(WebViewFrameRoutingUnavailableSupport)
       expect(webViewPostToFrame).toEqual(WebViewFrameRoutingUnavailableSupport)

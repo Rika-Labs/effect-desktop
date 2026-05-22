@@ -920,6 +920,20 @@ const webViewFrameRoutingUnsupportedSupport = {
   ]
 } as const
 
+const webViewRuntimeMediaControlUnsupportedSupport = {
+  status: "unsupported",
+  reason: "host-runtime-media-control-unavailable",
+  platforms: [
+    { platform: "macos", status: "unsupported", reason: "host-runtime-media-control-unavailable" },
+    {
+      platform: "windows",
+      status: "unsupported",
+      reason: "host-runtime-media-control-unavailable"
+    },
+    { platform: "linux", status: "unsupported", reason: "host-runtime-media-control-unavailable" }
+  ]
+} as const
+
 const webViewRuntimePermissionUnsupportedSupport = {
   status: "unsupported",
   reason: "host-permission-request-routing-unavailable",
@@ -2304,6 +2318,9 @@ test("WebView declares unsupported methods as non-callable capability facts", ()
   expect(byTag.get("WebView.captureScreenshot")?.support).toEqual(webViewDocumentUnsupportedSupport)
   expect(byTag.get("WebView.printToPdf")?.support).toEqual(webViewDocumentUnsupportedSupport)
   expect(byTag.get("WebView.findInPage")?.support).toEqual(webViewFindInPageUnsupportedSupport)
+  expect(byTag.get("WebView.setAudioMuted")?.support).toEqual(
+    webViewRuntimeMediaControlUnsupportedSupport
+  )
   expect(byTag.get("WebView.respondToPermission")?.support).toEqual(
     webViewRuntimePermissionUnsupportedSupport
   )
@@ -2339,6 +2356,9 @@ test("WebView capability facts surface in the manifest and stay non-callable", (
       )
       expect(byTag.get("WebView.printToPdf")?.support).toEqual(webViewDocumentUnsupportedSupport)
       expect(byTag.get("WebView.findInPage")?.support).toEqual(webViewFindInPageUnsupportedSupport)
+      expect(byTag.get("WebView.setAudioMuted")?.support).toEqual(
+        webViewRuntimeMediaControlUnsupportedSupport
+      )
       expect(byTag.get("WebView.respondToPermission")?.support).toEqual(
         webViewRuntimePermissionUnsupportedSupport
       )

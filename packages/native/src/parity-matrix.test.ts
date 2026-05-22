@@ -309,6 +309,30 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
           ]
         }
       })
+      expect(result.rows.find((row) => row.tag === "WebView.setAudioMuted")).toMatchObject({
+        hostStatus: "capability-fact",
+        support: {
+          status: "unsupported",
+          reason: "host-runtime-media-control-unavailable",
+          platforms: [
+            {
+              platform: "macos",
+              status: "unsupported",
+              reason: "host-runtime-media-control-unavailable"
+            },
+            {
+              platform: "windows",
+              status: "unsupported",
+              reason: "host-runtime-media-control-unavailable"
+            },
+            {
+              platform: "linux",
+              status: "unsupported",
+              reason: "host-runtime-media-control-unavailable"
+            }
+          ]
+        }
+      })
       expect(result.rows.find((row) => row.tag === "WebView.openDevTools")).toMatchObject({
         hostStatus: "routed",
         support: {
