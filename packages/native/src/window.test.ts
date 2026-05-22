@@ -55,10 +55,11 @@ test("WindowRpcs exposes only host-implemented methods through RpcGroup lowering
   })
   expect(request("Window.setTitleBarStyle").pipe(rpcSupport)).toMatchObject({
     status: "partial",
+    reason: "titlebar-style-macos-only",
     platforms: [
       { platform: "macos", status: "supported" },
-      { platform: "windows", status: "unsupported" },
-      { platform: "linux", status: "unsupported" }
+      { platform: "windows", status: "unsupported", reason: "titlebar-style-macos-only" },
+      { platform: "linux", status: "unsupported", reason: "titlebar-style-macos-only" }
     ]
   })
   expect(request("Window.setTitleBarTransparent").pipe(rpcSupport)).toMatchObject({

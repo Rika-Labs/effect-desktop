@@ -762,7 +762,7 @@ mod platform {
         _title_bar_style: host_protocol::WindowTitleBarStyle,
     ) -> std::result::Result<(), HostProtocolError> {
         Err(HostProtocolError::unsupported(
-            "window titlebar style is only supported on macOS",
+            "titlebar-style-macos-only",
             host_protocol::WINDOW_SET_TITLE_BAR_STYLE_METHOD,
         ))
     }
