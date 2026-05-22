@@ -26,7 +26,9 @@ with reason `host-clipboard-unavailable` or `host-clipboard-busy` when the OS cl
 Linux primary-selection behavior is explicitly unsupported through the `selection` capability.
 
 `isSupported` results are strict: supported results do not include `reason`, and unsupported results
-must include `reason`. Malformed host output at this boundary is reported as `InvalidOutput`.
+must include `reason`. The Effect service returns the same `ClipboardSupportedResult` shape as the
+RPC/client boundary; branch on `.supported` when a boolean check is enough. Malformed host output at
+this boundary is reported as `InvalidOutput`.
 
 ## Methods
 

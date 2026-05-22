@@ -35,6 +35,7 @@ import {
 } from "@orika/native"
 import {
   ClipboardImage,
+  ClipboardSupportedResult,
   ScreenDisplay,
   ScreenDisplaysChangedEvent,
   ScreenPoint,
@@ -238,8 +239,17 @@ const makeClipboardScenario = (options: {
         textContent = ""
         imageContent = undefined
       }),
-    isSupported: (capability: ClipboardCapability): Effect.Effect<boolean, ClipboardError, never> =>
-      Effect.sync(() => options.supported[capability] ?? true)
+    isSupported: (
+      capability: ClipboardCapability
+    ): Effect.Effect<ClipboardSupportedResult, ClipboardError, never> =>
+      Effect.sync(() =>
+        (options.supported[capability] ?? true)
+          ? new ClipboardSupportedResult({ supported: true })
+          : new ClipboardSupportedResult({
+              supported: false,
+              reason: "test clipboard capability unsupported"
+            })
+      )
   } satisfies ClipboardServiceApi)
 }
 

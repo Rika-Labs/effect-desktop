@@ -4677,8 +4677,9 @@ test("Clipboard service delegates through a substitutable ClipboardClient port",
           yield* clipboard.writeImage({ mime: "image/png", bytes: pngBytes })
           const image = yield* clipboard.readImage()
           yield* clipboard.clear()
+          const supported = yield* clipboard.isSupported("selection")
 
-          return { html, image, text }
+          return { html, image, supported, text }
         }),
         makeClipboardServiceLayer(clipboardClient(calls))
       )
@@ -4686,6 +4687,7 @@ test("Clipboard service delegates through a substitutable ClipboardClient port",
       expect(result.text).toBe("hello")
       expect(result.html).toBe("<p>hello</p>")
       expect(result.image).toEqual(new ClipboardImage({ mime: "image/png", bytes: pngBytes }))
+      expect(result.supported).toEqual(new ClipboardSupportedResult({ supported: true }))
       expect(calls).toEqual([
         "writeText:hello",
         "readText",
@@ -4693,7 +4695,8 @@ test("Clipboard service delegates through a substitutable ClipboardClient port",
         "readHtml",
         "writeImage:image/png:9",
         "readImage",
-        "clear"
+        "clear",
+        "isSupported:selection"
       ])
     })
   ))
@@ -4771,6 +4774,38 @@ test("Clipboard bridge client preserves unsupported support reasons from host", 
       expect(requests.map((request) => [request.method, request.payload])).toEqual([
         ["Clipboard.isSupported", { capability: "selection" }]
       ])
+    })
+  ))
+
+test("Clipboard handlers preserve unsupported support reasons from the service boundary", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const calls: string[] = []
+      const supportReason = "host-clipboard-unavailable"
+      const testLayer = Layer.provide(
+        ClipboardSurface.testClientLayer,
+        makeClipboardServiceLayer({
+          ...clipboardClient(calls),
+          isSupported: (capability) =>
+            Effect.sync(() => {
+              calls.push(`isSupported:${capability}`)
+              return new ClipboardSupportedResult({ supported: false, reason: supportReason })
+            })
+        })
+      )
+
+      const result = yield* runScoped(
+        Effect.gen(function* () {
+          const client = yield* ClipboardClient
+          return yield* client.isSupported("selection")
+        }),
+        testLayer
+      )
+
+      expect(result).toEqual(
+        new ClipboardSupportedResult({ supported: false, reason: supportReason })
+      )
+      expect(calls).toEqual(["isSupported:selection"])
     })
   ))
 
@@ -4952,7 +4987,12 @@ test("native host RPC runtime denies protected Clipboard calls before handlers r
           "Clipboard.writeImage": () => Effect.void,
           "Clipboard.clear": () => Effect.void,
           "Clipboard.isSupported": () =>
-            Effect.succeed(new ClipboardSupportedResult({ supported: false }))
+            Effect.succeed(
+              new ClipboardSupportedResult({
+                supported: false,
+                reason: "host-adapter-unimplemented"
+              })
+            )
         },
         { originAuth: RendererOriginAuth.unsafeDisabledForTests }
       )

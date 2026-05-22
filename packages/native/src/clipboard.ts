@@ -26,8 +26,6 @@ import { isSupportedImageHeader } from "./contracts/image.js"
 
 export type ClipboardError = HostProtocolError
 
-const ClipboardUnsupportedReason = "host-adapter-unimplemented"
-
 export const ClipboardReadText = NativeSurface.rpc("Clipboard", "readText", {
   payload: Schema.Void,
   success: ClipboardText,
@@ -166,7 +164,7 @@ export interface ClipboardServiceApi {
   readonly clear: () => Effect.Effect<void, ClipboardError, never>
   readonly isSupported: (
     capability: ClipboardCapability
-  ) => Effect.Effect<boolean, ClipboardError, never>
+  ) => Effect.Effect<ClipboardSupportedResult, ClipboardError, never>
 }
 
 export class Clipboard extends Context.Service<Clipboard, ClipboardServiceApi>()(
@@ -237,10 +235,7 @@ export const ClipboardHandlersLive = ClipboardRpcGroup.toLayer({
   "Clipboard.isSupported": (input) =>
     Effect.gen(function* () {
       const clipboard = yield* Clipboard
-      const supported = yield* clipboard.isSupported(input.capability)
-      return supported
-        ? new ClipboardSupportedResult({ supported: true })
-        : new ClipboardSupportedResult({ supported: false, reason: ClipboardUnsupportedReason })
+      return yield* clipboard.isSupported(input.capability)
     })
 })
 
@@ -266,8 +261,7 @@ const makeClipboardService = (client: ClipboardClientApi): ClipboardServiceApi =
     readImage: () => client.readImage(),
     writeImage: (input) => client.writeImage(input),
     clear: () => client.clear(),
-    isSupported: (capability) =>
-      client.isSupported(capability).pipe(Effect.map((result) => result.supported))
+    isSupported: (capability) => client.isSupported(capability)
   }
 
   return Object.freeze(service)

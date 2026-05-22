@@ -221,18 +221,18 @@ const ClipboardContractLaws = CapabilityLaws.make("Clipboard", Clipboard, {
       expect(text).toBe("")
       expect(html).toBe("")
     }),
-  "support queries return booleans": (clipboard) =>
+  "support queries return structured results": (clipboard) =>
     Effect.gen(function* () {
       const textSupported = yield* clipboard.isSupported("text")
       const htmlSupported = yield* clipboard.isSupported("html")
       const imageSupported = yield* clipboard.isSupported("image")
       const clearSupported = yield* clipboard.isSupported("clear")
       const selectionSupported = yield* clipboard.isSupported("selection")
-      expect(typeof textSupported).toBe("boolean")
-      expect(typeof htmlSupported).toBe("boolean")
-      expect(typeof imageSupported).toBe("boolean")
-      expect(typeof clearSupported).toBe("boolean")
-      expect(typeof selectionSupported).toBe("boolean")
+      expect(textSupported).toEqual(new ClipboardSupportedResult({ supported: true }))
+      expect(htmlSupported).toEqual(new ClipboardSupportedResult({ supported: true }))
+      expect(imageSupported).toEqual(new ClipboardSupportedResult({ supported: true }))
+      expect(clearSupported).toEqual(new ClipboardSupportedResult({ supported: true }))
+      expect(selectionSupported).toEqual(new ClipboardSupportedResult({ supported: true }))
     })
 })
 
@@ -256,6 +256,23 @@ test("ClipboardTest clear removes image state", () => {
       yield* clipboard.clear()
       const image = yield* clipboard.readImage()
       expect(image).toEqual(new ClipboardImage({ mime: "image/png", bytes: new Uint8Array(0) }))
+    })
+  )
+})
+
+test("ClipboardTest unsupported capabilities return support reasons", () => {
+  const runtime = ManagedRuntime.make(ClipboardTest({ supported: { selection: false } }))
+  return runtime.runPromise(
+    Effect.gen(function* () {
+      const clipboard = yield* Clipboard
+      const result = yield* clipboard.isSupported("selection")
+
+      expect(result).toEqual(
+        new ClipboardSupportedResult({
+          supported: false,
+          reason: "test clipboard capability unsupported"
+        })
+      )
     })
   )
 })
@@ -301,7 +318,7 @@ const makeClipboardBridgeLawLayer = (lawName: string): Layer.Layer<Clipboard> =>
         ])
       )
       break
-    case "support queries return booleans":
+    case "support queries return structured results":
       Effect.runSync(
         Effect.all([
           bridge.succeed("Clipboard.isSupported", { supported: true }),

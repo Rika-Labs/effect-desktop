@@ -556,7 +556,7 @@
     {
       "name": "ClipboardServiceApi",
       "kind": "interface",
-      "signature": "export interface ClipboardServiceApi { readonly readText: () => Effect.Effect<string, ClipboardError, never> readonly writeText: (text: string) => Effect.Effect<void, ClipboardError, never> readonly readHtml: () => Effect.Effect<string, ClipboardError, never> readonly writeHtml: (html: string) => Effect.Effect<void, ClipboardError, never> readonly readImage: () => Effect.Effect<ClipboardImage, ClipboardError, never> readonly writeImage: (input: ClipboardImageOptions) => Effect.Effect<void, ClipboardError, never> readonly clear: () => Effect.Effect<void, ClipboardError, never> readonly isSupported: ( capability: ClipboardCapability ) => Effect.Effect<boolean, ClipboardError, never> }"
+      "signature": "export interface ClipboardServiceApi { readonly readText: () => Effect.Effect<string, ClipboardError, never> readonly writeText: (text: string) => Effect.Effect<void, ClipboardError, never> readonly readHtml: () => Effect.Effect<string, ClipboardError, never> readonly writeHtml: (html: string) => Effect.Effect<void, ClipboardError, never> readonly readImage: () => Effect.Effect<ClipboardImage, ClipboardError, never> readonly writeImage: (input: ClipboardImageOptions) => Effect.Effect<void, ClipboardError, never> readonly clear: () => Effect.Effect<void, ClipboardError, never> readonly isSupported: ( capability: ClipboardCapability ) => Effect.Effect<ClipboardSupportedResult, ClipboardError, never> }"
     },
     {
       "name": "ClipboardSurface",
