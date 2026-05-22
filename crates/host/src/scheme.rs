@@ -887,6 +887,30 @@ mod tests {
         assert!(body.contains("trace-policy-fails"));
     }
 
+    #[test]
+    fn malformed_manifest_csp_returns_policy_error_response() {
+        let request = Request::builder()
+            .uri(APP_URL)
+            .header(TRACE_ID_HEADER, "trace-policy-control")
+            .body(Vec::new())
+            .expect("test request should build");
+        let response = app_scheme_response_with_policy(
+            &request,
+            rewrite_with_nonce,
+            policy_with_control_character,
+        );
+
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(response.headers().get(CONTENT_SECURITY_POLICY), None);
+        assert_eq!(
+            response.headers().get(TRACE_ID_HEADER),
+            Some(&HeaderValue::from_static("trace-policy-control"))
+        );
+        let body = std::str::from_utf8(response.body()).expect("error body should be utf-8");
+        assert!(body.starts_with(POLICY_FAILED_BODY_PREFIX));
+        assert!(body.contains("trace-policy-control"));
+    }
+
     fn faulty_rewriter(_: &[u8], _: &CspNonce) -> Result<RewriteOutcome, RewriteError> {
         Err(RewriteError::Parse(RewritingError::ContentHandlerError(
             Box::<dyn std::error::Error + Send + Sync>::from("synthetic-rewrite-failure"),
@@ -908,6 +932,12 @@ mod tests {
 
     fn bad_policy() -> Result<CspPolicy, CspPolicyError> {
         CspPolicy::from_manifest_str(r#"{"rendererManifest":{}}"#)
+    }
+
+    fn policy_with_control_character() -> Result<CspPolicy, CspPolicyError> {
+        CspPolicy::from_manifest_str(
+            r#"{"rendererManifest":{"csp":{"directives":[{"name":"script-src","values":["'self'\nobject-src *"]}]}}}"#,
+        )
     }
 
     fn expected_csp(nonce: &str) -> String {

@@ -181,6 +181,11 @@ fn parse_directive(index: usize, value: &Value) -> Result<CspDirective, CspPolic
             "app-manifest.json.rendererManifest.csp.directives[{index}].name must not be empty"
         )));
     }
+    if has_control_character(name) {
+        return Err(CspPolicyError::new(format!(
+            "app-manifest.json.rendererManifest.csp.directives[{index}].name must not contain control characters"
+        )));
+    }
 
     let values = value
         .get("values")
@@ -203,6 +208,11 @@ fn parse_directive(index: usize, value: &Value) -> Result<CspDirective, CspPolic
                     "app-manifest.json.rendererManifest.csp.directives[{index}].values[{value_index}] must not be empty"
                 )));
             }
+            if has_control_character(value) {
+                return Err(CspPolicyError::new(format!(
+                    "app-manifest.json.rendererManifest.csp.directives[{index}].values[{value_index}] must not contain control characters"
+                )));
+            }
             Ok(value.to_owned())
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -211,6 +221,12 @@ fn parse_directive(index: usize, value: &Value) -> Result<CspDirective, CspPolic
         name: name.to_owned(),
         values,
     })
+}
+
+fn has_control_character(value: &str) -> bool {
+    value
+        .chars()
+        .any(|ch| matches!(ch, '\u{0000}'..='\u{001f}' | '\u{007f}'))
 }
 
 fn manifest_path_for_exe(exe: &Path) -> Option<PathBuf> {
@@ -303,6 +319,52 @@ mod tests {
 
         assert!(
             error.to_string().contains("rendererManifest.csp"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn manifest_policy_rejects_control_characters_in_directive_names() {
+        let error = CspPolicy::from_manifest_str(
+            r#"{
+              "rendererManifest": {
+                "csp": {
+                  "directives": [
+                    { "name": "script-src\nframe-ancestors", "values": ["'self'"] }
+                  ]
+                }
+              }
+            }"#,
+        )
+        .expect_err("directive name with control characters should fail");
+
+        assert!(
+            error
+                .to_string()
+                .contains("must not contain control characters"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn manifest_policy_rejects_control_characters_in_directive_values() {
+        let error = CspPolicy::from_manifest_str(
+            r#"{
+              "rendererManifest": {
+                "csp": {
+                  "directives": [
+                    { "name": "script-src", "values": ["'self'\nobject-src *"] }
+                  ]
+                }
+              }
+            }"#,
+        )
+        .expect_err("directive value with control characters should fail");
+
+        assert!(
+            error
+                .to_string()
+                .contains("must not contain control characters"),
             "unexpected error: {error}"
         );
     }
