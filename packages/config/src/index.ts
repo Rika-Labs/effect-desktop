@@ -570,7 +570,7 @@ interface SourceGuardRange {
 
 interface SourceCapabilityScanSource {
   readonly guardSource: string
-  readonly callSource: string
+  readonly executableSource: string
 }
 
 interface ParsedCspPolicy {
@@ -1101,12 +1101,12 @@ const scanSourceCapabilityUse = (
   const uses: SourceCapabilityUse[] = []
   const guardRanges = supportGuardRanges(
     source.guardSource,
-    source.callSource,
+    source.executableSource,
     supportGuardPattern(capability)
   )
   const callPattern = methodCallPattern(capability)
 
-  for (const match of source.callSource.matchAll(callPattern)) {
+  for (const match of source.executableSource.matchAll(callPattern)) {
     if (match.index === undefined) {
       continue
     }
@@ -1115,7 +1115,7 @@ const scanSourceCapabilityUse = (
       primitive: capability.primitive,
       method: capability.method,
       support: capability.support,
-      location: offsetLocation(file, source.callSource, offset),
+      location: offsetLocation(file, source.executableSource, offset),
       guarded: guardRanges.some((range) => range.start <= offset && offset < range.end)
     })
   }
@@ -1261,13 +1261,107 @@ const hasForbiddenBridgeProtocolImport = (names: string): boolean =>
 
 const sourceCapabilityScanSource = (source: string): SourceCapabilityScanSource => ({
   guardSource: maskComments(source),
-  callSource: maskComments(source, { maskStringContent: true })
+  executableSource: maskSourceCapabilityNonCode(source)
 })
 
-const maskComments = (
-  source: string,
-  options?: { readonly maskStringContent?: boolean }
-): string => {
+const maskSourceCapabilityNonCode = (source: string): string => {
+  let result = ""
+  let state: "code" | "line-comment" | "block-comment" | "single" | "double" | "template" = "code"
+  let escaped = false
+  let templateExpressionDepth: number | undefined
+
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index] ?? ""
+    const next = source[index + 1]
+
+    if (state === "line-comment") {
+      if (char === "\n") {
+        state = "code"
+        result += char
+      } else {
+        result += " "
+      }
+      continue
+    }
+
+    if (state === "block-comment") {
+      if (char === "*" && next === "/") {
+        result += "  "
+        index += 1
+        state = "code"
+      } else {
+        result += char === "\n" ? char : " "
+      }
+      continue
+    }
+
+    if (state === "single" || state === "double" || state === "template") {
+      if (state === "template" && !escaped && char === "$" && next === "{") {
+        result += "  "
+        index += 1
+        state = "code"
+        templateExpressionDepth = 0
+        continue
+      }
+
+      result += char === "\n" ? char : " "
+      if (escaped) {
+        escaped = false
+      } else if (char === "\\") {
+        escaped = true
+      } else if (
+        (state === "single" && char === "'") ||
+        (state === "double" && char === '"') ||
+        (state === "template" && char === "`")
+      ) {
+        state = "code"
+      }
+      continue
+    }
+
+    if (templateExpressionDepth !== undefined) {
+      if (char === "}" && templateExpressionDepth === 0) {
+        result += " "
+        state = "template"
+        templateExpressionDepth = undefined
+        continue
+      }
+      if (char === "{") {
+        templateExpressionDepth += 1
+      } else if (char === "}") {
+        templateExpressionDepth -= 1
+      }
+    }
+
+    if (char === "/" && next === "/") {
+      result += "  "
+      index += 1
+      state = "line-comment"
+      continue
+    }
+
+    if (char === "/" && next === "*") {
+      result += "  "
+      index += 1
+      state = "block-comment"
+      continue
+    }
+
+    if (char === "'") {
+      state = "single"
+    } else if (char === '"') {
+      state = "double"
+    } else if (char === "`") {
+      state = "template"
+    }
+
+    result += char
+  }
+
+  return result
+}
+
+const maskComments = (source: string): string => {
   let result = ""
   let state: "code" | "line-comment" | "block-comment" | "single" | "double" | "template" = "code"
   let escaped = false
@@ -1298,8 +1392,7 @@ const maskComments = (
     }
 
     if (state === "single" || state === "double" || state === "template") {
-      const shouldMaskStringContent = options?.maskStringContent === true
-      result += shouldMaskStringContent && char !== "\n" ? " " : char
+      result += char
       if (escaped) {
         escaped = false
       } else if (char === "\\") {

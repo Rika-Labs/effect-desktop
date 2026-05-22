@@ -956,6 +956,57 @@ test("ProductionChecker ignores source native capability usage inside strings", 
     })
   ))
 
+test("ProductionChecker flags source native capability usage inside template expressions", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {},
+        rendererFiles: [
+          {
+            path: "src/renderer/dock.ts",
+            content: "const label = `${Dock.setJumpList([])}`"
+          }
+        ]
+      })
+
+      expect(report.passed).toBe(false)
+      expect(report.failures).toMatchObject([
+        {
+          rule: "unsupported-capability-without-guard",
+          location: {
+            path: "src/renderer/dock.ts",
+            line: 1,
+            column: 18
+          }
+        }
+      ])
+    })
+  ))
+
+test("ProductionChecker accepts guarded source native capability usage inside template expressions", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {},
+        rendererFiles: [
+          {
+            path: "src/renderer/dock.ts",
+            content: [
+              'if (Dock.isSupported("setJumpList")) {',
+              "  const label = `${Dock.setJumpList([])}`",
+              "}"
+            ].join("\n")
+          }
+        ]
+      })
+
+      expect(report.failures.map((violation) => violation.rule)).not.toContain(
+        "unsupported-capability-without-guard"
+      )
+      expect(report.passed).toBe(true)
+    })
+  ))
+
 test("ProductionChecker fails filesystem writes without scoped roots", () =>
   Effect.runPromise(
     Effect.gen(function* () {
