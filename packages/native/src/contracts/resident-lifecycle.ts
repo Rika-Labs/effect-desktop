@@ -83,13 +83,32 @@ export class ResidentLifecycleSupportedResult extends Schema.Class<ResidentLifec
   reason: Schema.optionalKey(BridgeSafeString)
 }) {}
 
+const ResidentLifecycleEventPhaseReason = Schema.makeFilter<{
+  readonly phase: ResidentLifecyclePhase
+  readonly reason?: string | undefined
+}>((value) => {
+  switch (value.phase) {
+    case "enabled":
+    case "disabled":
+    case "changed":
+      return (
+        value.reason === undefined ||
+        "successful resident lifecycle events must not include failure reason"
+      )
+    case "failed":
+      return value.reason !== undefined || "failed resident lifecycle events require reason"
+  }
+})
+
 export class ResidentLifecycleEvent extends Schema.Class<ResidentLifecycleEvent>(
   "ResidentLifecycleEvent"
-)({
-  type: ResidentLifecycleEventType,
-  timestamp: ResidentLifecycleTimestamp,
-  phase: ResidentLifecyclePhase,
-  state: ResidentLifecycleState,
-  traceId: ResidentLifecyclePrintableIdentifier,
-  reason: Schema.optionalKey(BridgeSafeString)
-}) {}
+)(
+  Schema.Struct({
+    type: ResidentLifecycleEventType,
+    timestamp: ResidentLifecycleTimestamp,
+    phase: ResidentLifecyclePhase,
+    state: ResidentLifecycleState,
+    traceId: ResidentLifecyclePrintableIdentifier,
+    reason: Schema.optionalKey(BridgeSafeString)
+  }).check(ResidentLifecycleEventPhaseReason)
+) {}

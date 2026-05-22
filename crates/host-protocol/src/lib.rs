@@ -8754,15 +8754,13 @@ pub enum ResidentLifecycleEventPhase {
     Failed,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ResidentLifecycleEventPayload {
     r#type: String,
     timestamp: u64,
     phase: ResidentLifecycleEventPhase,
     state: ResidentLifecycleStatePayload,
     trace_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     reason: Option<String>,
 }
 
@@ -8780,6 +8778,139 @@ impl ResidentLifecycleEventPayload {
             state,
             trace_id: trace_id.into(),
             reason: None,
+        }
+    }
+
+    pub fn failed(
+        timestamp: u64,
+        state: ResidentLifecycleStatePayload,
+        trace_id: impl Into<String>,
+        reason: impl Into<String>,
+    ) -> Self {
+        Self {
+            r#type: "resident-lifecycle-event".to_string(),
+            timestamp,
+            phase: ResidentLifecycleEventPhase::Failed,
+            state,
+            trace_id: trace_id.into(),
+            reason: Some(reason.into()),
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SerializableResidentLifecycleEventPayload<'a> {
+    r#type: &'a str,
+    timestamp: u64,
+    phase: ResidentLifecycleEventPhase,
+    state: &'a ResidentLifecycleStatePayload,
+    trace_id: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<&'a str>,
+}
+
+impl<'a> TryFrom<&'a ResidentLifecycleEventPayload>
+    for SerializableResidentLifecycleEventPayload<'a>
+{
+    type Error = &'static str;
+
+    fn try_from(payload: &'a ResidentLifecycleEventPayload) -> Result<Self, Self::Error> {
+        validate_resident_lifecycle_event_payload(
+            &payload.r#type,
+            payload.phase.clone(),
+            payload.reason.as_deref(),
+        )?;
+        Ok(Self {
+            r#type: &payload.r#type,
+            timestamp: payload.timestamp,
+            phase: payload.phase.clone(),
+            state: &payload.state,
+            trace_id: &payload.trace_id,
+            reason: payload.reason.as_deref(),
+        })
+    }
+}
+
+impl Serialize for ResidentLifecycleEventPayload {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        SerializableResidentLifecycleEventPayload::try_from(self)
+            .map_err(ser::Error::custom)?
+            .serialize(serializer)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawResidentLifecycleEventPayload {
+    r#type: String,
+    timestamp: u64,
+    phase: ResidentLifecycleEventPhase,
+    state: ResidentLifecycleStatePayload,
+    trace_id: String,
+    #[serde(default)]
+    reason: Option<String>,
+}
+
+impl TryFrom<RawResidentLifecycleEventPayload> for ResidentLifecycleEventPayload {
+    type Error = &'static str;
+
+    fn try_from(raw: RawResidentLifecycleEventPayload) -> Result<Self, Self::Error> {
+        validate_resident_lifecycle_event_payload(
+            &raw.r#type,
+            raw.phase.clone(),
+            raw.reason.as_deref(),
+        )?;
+        Ok(Self {
+            r#type: raw.r#type,
+            timestamp: raw.timestamp,
+            phase: raw.phase,
+            state: raw.state,
+            trace_id: raw.trace_id,
+            reason: raw.reason,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for ResidentLifecycleEventPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        RawResidentLifecycleEventPayload::deserialize(deserializer)?
+            .try_into()
+            .map_err(de::Error::custom)
+    }
+}
+
+fn validate_resident_lifecycle_event_payload(
+    event_type: &str,
+    phase: ResidentLifecycleEventPhase,
+    reason: Option<&str>,
+) -> Result<(), &'static str> {
+    if event_type != "resident-lifecycle-event" {
+        return Err("resident lifecycle event type must match the protocol event name");
+    }
+
+    match phase {
+        ResidentLifecycleEventPhase::Enabled
+        | ResidentLifecycleEventPhase::Disabled
+        | ResidentLifecycleEventPhase::Changed
+            if reason.is_none() =>
+        {
+            Ok(())
+        }
+        ResidentLifecycleEventPhase::Enabled
+        | ResidentLifecycleEventPhase::Disabled
+        | ResidentLifecycleEventPhase::Changed => {
+            Err("successful resident lifecycle events must not include failure reason")
+        }
+        ResidentLifecycleEventPhase::Failed if reason.is_some() => Ok(()),
+        ResidentLifecycleEventPhase::Failed => {
+            Err("failed resident lifecycle events require reason")
         }
     }
 }
@@ -21050,6 +21181,48 @@ mod tests {
             serde_json::to_string(&supported).expect("resident support should encode"),
             r#"{"supported":true}"#
         );
+    }
+
+    #[test]
+    fn resident_lifecycle_events_reject_inconsistent_reasons() {
+        for source in [
+            r#"{"type":"resident-lifecycle-event","timestamp":1710000000001,"phase":"enabled","state":{"enabled":true,"policy":{"process":"keep-running","windows":"close-to-background","background":"tray","launchAtLogin":true}},"traceId":"trace-resident","reason":"host failed"}"#,
+            r#"{"type":"resident-lifecycle-event","timestamp":1710000000001,"phase":"disabled","state":{"enabled":false},"traceId":"trace-resident","reason":"host failed"}"#,
+            r#"{"type":"resident-lifecycle-event","timestamp":1710000000001,"phase":"changed","state":{"enabled":true,"policy":{"process":"keep-running","windows":"close-to-background","background":"tray","launchAtLogin":true}},"traceId":"trace-resident","reason":"host failed"}"#,
+            r#"{"type":"resident-lifecycle-event","timestamp":1710000000001,"phase":"failed","state":{"enabled":true,"policy":{"process":"keep-running","windows":"close-to-background","background":"tray","launchAtLogin":true}},"traceId":"trace-resident"}"#,
+        ] {
+            serde_json::from_str::<ResidentLifecycleEventPayload>(source)
+                .expect_err("inconsistent resident lifecycle event should be rejected");
+        }
+
+        for source in [
+            r#"{"type":"resident-lifecycle-event","timestamp":1710000000001,"phase":"enabled","state":{"enabled":true,"policy":{"process":"keep-running","windows":"close-to-background","background":"tray","launchAtLogin":true}},"traceId":"trace-resident"}"#,
+            r#"{"type":"resident-lifecycle-event","timestamp":1710000000001,"phase":"disabled","state":{"enabled":false},"traceId":"trace-resident"}"#,
+            r#"{"type":"resident-lifecycle-event","timestamp":1710000000001,"phase":"changed","state":{"enabled":true,"policy":{"process":"keep-running","windows":"close-to-background","background":"tray","launchAtLogin":true}},"traceId":"trace-resident"}"#,
+            r#"{"type":"resident-lifecycle-event","timestamp":1710000000001,"phase":"failed","state":{"enabled":true,"policy":{"process":"keep-running","windows":"close-to-background","background":"tray","launchAtLogin":true}},"traceId":"trace-resident","reason":"host failed"}"#,
+        ] {
+            serde_json::from_str::<ResidentLifecycleEventPayload>(source)
+                .expect("consistent resident lifecycle event should decode");
+        }
+    }
+
+    #[test]
+    fn resident_lifecycle_events_reject_inconsistent_reasons_before_serializing() {
+        let policy = ResidentLifecyclePolicyPayload::new(
+            ResidentLifecycleProcessPolicy::KeepRunning,
+            ResidentLifecycleWindowPolicy::CloseToBackground,
+            ResidentLifecycleBackgroundAvailability::Tray,
+            Some(true),
+        );
+        let event = ResidentLifecycleEventPayload::new(
+            1_710_000_000_001,
+            ResidentLifecycleEventPhase::Failed,
+            ResidentLifecycleStatePayload::enabled(policy),
+            "trace-resident",
+        );
+
+        serde_json::to_string(&event)
+            .expect_err("inconsistent resident lifecycle event should not encode");
     }
 
     #[test]

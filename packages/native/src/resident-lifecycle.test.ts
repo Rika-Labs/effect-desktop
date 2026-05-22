@@ -2,6 +2,7 @@ import { expect, test } from "bun:test"
 import {
   type BridgeClientExchange,
   HostProtocolEventEnvelope,
+  HostProtocolInvalidOutputError,
   HostProtocolInternalError,
   type HostProtocolRequestEnvelope
 } from "@orika/bridge"
@@ -36,6 +37,7 @@ import {
 } from "./resident-lifecycle.js"
 import {
   ResidentLifecycleEnableRequest,
+  ResidentLifecycleEvent,
   ResidentLifecyclePolicy
 } from "./contracts/resident-lifecycle.js"
 
@@ -152,6 +154,97 @@ test("ResidentLifecycle bridge client validates before transport and decodes eve
           tag: "InvalidArgument",
           operation: "ResidentLifecycle.enable"
         })
+      })
+    })
+  ))
+
+test("ResidentLifecycle events reject inconsistent failure reasons", () => {
+  for (const payload of [
+    {
+      ...eventBase(),
+      phase: "enabled",
+      state: enabledState(),
+      reason: "host failed"
+    },
+    {
+      ...eventBase(),
+      phase: "disabled",
+      state: { enabled: false },
+      reason: "host failed"
+    },
+    {
+      ...eventBase(),
+      phase: "changed",
+      state: enabledState(),
+      reason: "host failed"
+    },
+    {
+      ...eventBase(),
+      phase: "failed",
+      state: enabledState()
+    }
+  ] as const) {
+    const exit = Effect.runSyncExit(Schema.decodeUnknownEffect(ResidentLifecycleEvent)(payload))
+    expect(Exit.isFailure(exit)).toBe(true)
+  }
+
+  for (const payload of [
+    {
+      ...eventBase(),
+      phase: "enabled",
+      state: enabledState()
+    },
+    {
+      ...eventBase(),
+      phase: "disabled",
+      state: { enabled: false }
+    },
+    {
+      ...eventBase(),
+      phase: "changed",
+      state: enabledState()
+    },
+    {
+      ...eventBase(),
+      phase: "failed",
+      state: enabledState(),
+      reason: "host failed"
+    }
+  ] as const) {
+    const exit = Effect.runSyncExit(Schema.decodeUnknownEffect(ResidentLifecycleEvent)(payload))
+    expect(Exit.isSuccess(exit)).toBe(true)
+  }
+})
+
+test("ResidentLifecycle bridge client rejects inconsistent event reasons as InvalidOutput", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const event = new HostProtocolEventEnvelope({
+        kind: "event",
+        method: "ResidentLifecycle.Event",
+        timestamp: 1,
+        traceId: "trace-event",
+        payload: {
+          ...eventBase(),
+          phase: "failed",
+          state: enabledState()
+        }
+      })
+      const exchange: BridgeClientExchange = {
+        request: () => Effect.die("unexpected request"),
+        subscribe: () => Stream.fromIterable([event])
+      }
+
+      const exit = yield* runScoped(
+        Effect.gen(function* () {
+          const client = yield* ResidentLifecycleClient
+          return yield* Effect.exit(client.events().pipe(Stream.take(1), Stream.runCollect))
+        }),
+        makeResidentLifecycleBridgeClientLayer(exchange)
+      )
+
+      expectExitFailure(exit, (error) => {
+        expect(error).toBeInstanceOf(HostProtocolInvalidOutputError)
       })
     })
   ))
@@ -624,6 +717,22 @@ const enableRequest = () =>
     }),
     traceId: "enable-1"
   })
+
+const eventBase = () => ({
+  type: "resident-lifecycle-event",
+  timestamp: 1,
+  traceId: "trace-event"
+})
+
+const enabledState = () => ({
+  enabled: true,
+  policy: {
+    process: "keep-running",
+    windows: "close-to-background",
+    background: "tray",
+    launchAtLogin: true
+  }
+})
 
 const runScoped = <A, E, R>(
   effect: Effect.Effect<A, E, R>,
