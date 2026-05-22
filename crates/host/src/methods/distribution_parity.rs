@@ -1,7 +1,7 @@
 #![allow(clippy::result_large_err)]
 
 use host_protocol::{
-    DistributionParityEventPayload, DistributionParityEventPhase, DistributionParityEvidenceKind,
+    DistributionParityEventPayload, DistributionParityEvidenceKind,
     DistributionParitySupportedPayload, DistributionParityVerifyPayload,
     DistributionParityVerifyResultPayload, HostProtocolError,
 };
@@ -133,13 +133,7 @@ fn success_event(
     input: &DistributionParityVerifyPayload,
 ) -> Result<Option<Value>, HostProtocolError> {
     encode_payload(
-        DistributionParityEventPayload::new(
-            timestamp,
-            DistributionParityEventPhase::Verified,
-            input.package_id(),
-            Some(input.version().to_string()),
-            None,
-        ),
+        DistributionParityEventPayload::verified(timestamp, input.package_id(), input.version()),
         host_protocol::DISTRIBUTION_PARITY_EVENT,
     )
 }
@@ -149,17 +143,15 @@ fn failure_event(
     input: Option<&DistributionParityVerifyPayload>,
     error: &HostProtocolError,
 ) -> Result<Option<Value>, HostProtocolError> {
-    let package_id = input
-        .map(DistributionParityVerifyPayload::package_id)
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or("unknown");
+    let Some(input) = input else {
+        return Ok(None);
+    };
     encode_payload(
-        DistributionParityEventPayload::new(
+        DistributionParityEventPayload::failed(
             timestamp,
-            DistributionParityEventPhase::Failed,
-            package_id,
-            input.map(|input| input.version().to_string()),
-            Some(format!("{error:?}")),
+            input.package_id(),
+            input.version(),
+            format!("{error:?}"),
         ),
         host_protocol::DISTRIBUTION_PARITY_EVENT,
     )

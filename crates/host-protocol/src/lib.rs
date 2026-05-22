@@ -15292,7 +15292,39 @@ pub struct DistributionParityEventPayload {
 }
 
 impl DistributionParityEventPayload {
-    pub fn new(
+    pub fn verified(
+        timestamp: u64,
+        package_id: impl Into<String>,
+        version: impl Into<String>,
+    ) -> Self {
+        Self {
+            event_type: "distribution-parity-event".to_string(),
+            timestamp,
+            phase: DistributionParityEventPhase::Verified,
+            package_id: package_id.into(),
+            version: Some(version.into()),
+            reason: None,
+        }
+    }
+
+    pub fn failed(
+        timestamp: u64,
+        package_id: impl Into<String>,
+        version: impl Into<String>,
+        reason: impl Into<String>,
+    ) -> Self {
+        Self {
+            event_type: "distribution-parity-event".to_string(),
+            timestamp,
+            phase: DistributionParityEventPhase::Failed,
+            package_id: package_id.into(),
+            version: Some(version.into()),
+            reason: Some(reason.into()),
+        }
+    }
+
+    #[cfg(test)]
+    fn new_for_test(
         timestamp: u64,
         phase: DistributionParityEventPhase,
         package_id: impl Into<String>,
@@ -19551,13 +19583,7 @@ mod tests {
             Some("trace-distribution".to_string()),
         );
         let result = DistributionParityVerifyResultPayload::new("extension-1", "1.0.0", 1, 4);
-        let event = DistributionParityEventPayload::new(
-            1710000000000,
-            DistributionParityEventPhase::Verified,
-            "extension-1",
-            Some("1.0.0".to_string()),
-            None,
-        );
+        let event = DistributionParityEventPayload::verified(1710000000000, "extension-1", "1.0.0");
         let supported =
             DistributionParitySupportedPayload::unsupported(DISTRIBUTION_PARITY_UNSUPPORTED_REASON);
 
@@ -19602,21 +19628,21 @@ mod tests {
     #[test]
     fn distribution_parity_events_reject_inconsistent_phase_payloads_before_serializing() {
         for payload in [
-            DistributionParityEventPayload::new(
+            DistributionParityEventPayload::new_for_test(
                 1_710_000_000_000,
                 DistributionParityEventPhase::Verified,
                 "extension-1",
                 None,
                 None,
             ),
-            DistributionParityEventPayload::new(
+            DistributionParityEventPayload::new_for_test(
                 1_710_000_000_000,
                 DistributionParityEventPhase::Verified,
                 "extension-1",
                 Some("1.0.0".to_string()),
                 Some("host failed".to_string()),
             ),
-            DistributionParityEventPayload::new(
+            DistributionParityEventPayload::new_for_test(
                 1_710_000_000_000,
                 DistributionParityEventPhase::Failed,
                 "extension-1",
