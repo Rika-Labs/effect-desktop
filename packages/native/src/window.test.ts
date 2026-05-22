@@ -46,10 +46,11 @@ test("WindowRpcs exposes only host-implemented methods through RpcGroup lowering
   })
   expect(request("Window.setShadow").pipe(rpcSupport)).toMatchObject({
     status: "partial",
+    reason: "shadow-macos-only",
     platforms: [
       { platform: "macos", status: "supported" },
-      { platform: "windows", status: "unsupported" },
-      { platform: "linux", status: "unsupported" }
+      { platform: "windows", status: "unsupported", reason: "shadow-macos-only" },
+      { platform: "linux", status: "unsupported", reason: "shadow-macos-only" }
     ]
   })
   expect(request("Window.setTitleBarStyle").pipe(rpcSupport)).toMatchObject({

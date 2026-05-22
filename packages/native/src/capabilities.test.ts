@@ -103,6 +103,16 @@ const WindowVibrancyMacosOnlySupport = {
   ]
 } as const
 
+const WindowShadowMacosOnlySupport = {
+  status: "partial",
+  reason: "shadow-macos-only",
+  platforms: [
+    { platform: "macos", status: "supported" },
+    { platform: "windows", status: "unsupported", reason: "shadow-macos-only" },
+    { platform: "linux", status: "unsupported", reason: "shadow-macos-only" }
+  ]
+} as const
+
 const WebViewDebuggerUnavailableSupport = {
   status: "unsupported",
   reason: "host-debugger-protocol-unavailable",
@@ -367,6 +377,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
         "NativeNetwork.closeWebSocket"
       )
       const windowClearVibrancy = yield* capabilities.support("Window.clearVibrancy")
+      const windowSetShadow = yield* capabilities.support("Window.setShadow")
       const networkAuthHandleAuth = yield* capabilities.support("NetworkAuth.handleAuth")
       const networkAuthHandleCertificate = yield* capabilities.support(
         "NetworkAuth.handleCertificate"
@@ -476,6 +487,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(nativeNetworkConnectWebSocket).toEqual(NativeNetworkUnavailableSupport)
       expect(nativeNetworkCloseWebSocket).toEqual(NativeNetworkUnavailableSupport)
       expect(windowClearVibrancy).toEqual(WindowVibrancyMacosOnlySupport)
+      expect(windowSetShadow).toEqual(WindowShadowMacosOnlySupport)
       expect(networkAuthHandleAuth).toEqual(NetworkAuthUnavailableSupport)
       expect(networkAuthHandleCertificate).toEqual(NetworkAuthUnavailableSupport)
       expect(networkAuthSetProxy).toEqual(NetworkAuthProxySupport)
