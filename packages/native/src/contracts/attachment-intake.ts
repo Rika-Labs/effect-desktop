@@ -165,15 +165,51 @@ export class AttachmentIntakeSupportedResult extends Schema.Class<AttachmentInta
   reason: Schema.optionalKey(BridgeSafeString)
 }) {}
 
+const AttachmentIntakeEventPhasePayload = Schema.makeFilter<{
+  readonly phase: AttachmentIntakeEventPhase
+  readonly state?: AttachmentIntakeState | undefined
+  readonly itemCount?: number | undefined
+  readonly reason?: AttachmentIntakeFailureReason | undefined
+  readonly message?: string | undefined
+}>((value) => {
+  switch (value.phase) {
+    case "ingested":
+      return (
+        (value.state === "ingested" &&
+          value.itemCount !== undefined &&
+          value.reason === undefined &&
+          value.message === undefined) ||
+        "ingested attachment intake events require ingested state and itemCount only"
+      )
+    case "disposed":
+      return (
+        (value.state === "disposed" &&
+          value.itemCount === undefined &&
+          value.reason === undefined &&
+          value.message === undefined) ||
+        "disposed attachment intake events require disposed state only"
+      )
+    case "failed":
+      return (
+        (value.state === undefined &&
+          value.itemCount === undefined &&
+          value.reason !== undefined) ||
+        "failed attachment intake events require reason and no state or itemCount"
+      )
+  }
+})
+
 export class AttachmentIntakeEvent extends Schema.Class<AttachmentIntakeEvent>(
   "AttachmentIntakeEvent"
-)({
-  type: AttachmentIntakeEventType,
-  timestamp: AttachmentIntakeTimestamp,
-  intakeId: Schema.optionalKey(BridgeSafeNonEmptyString),
-  phase: AttachmentIntakeEventPhase,
-  state: Schema.optionalKey(AttachmentIntakeState),
-  itemCount: Schema.optionalKey(AttachmentIntakeNonNegativeInt),
-  reason: Schema.optionalKey(AttachmentIntakeFailureReason),
-  message: Schema.optionalKey(BridgeSafeString)
-}) {}
+)(
+  Schema.Struct({
+    type: AttachmentIntakeEventType,
+    timestamp: AttachmentIntakeTimestamp,
+    intakeId: Schema.optionalKey(BridgeSafeNonEmptyString),
+    phase: AttachmentIntakeEventPhase,
+    state: Schema.optionalKey(AttachmentIntakeState),
+    itemCount: Schema.optionalKey(AttachmentIntakeNonNegativeInt),
+    reason: Schema.optionalKey(AttachmentIntakeFailureReason),
+    message: Schema.optionalKey(BridgeSafeString)
+  }).check(AttachmentIntakeEventPhasePayload)
+) {}

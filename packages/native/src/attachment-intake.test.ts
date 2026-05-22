@@ -1,17 +1,24 @@
 import { expect, test } from "bun:test"
-import { makeHostProtocolInternalError } from "@orika/bridge"
+import {
+  type BridgeClientExchange,
+  type HostProtocolEventEnvelope,
+  makeHostProtocolInternalError
+} from "@orika/bridge"
 import { type AuditEvent, makePermissionRegistry, P } from "@orika/core"
-import { Cause, Effect, Exit, ManagedRuntime, Option, Stream } from "effect"
+import { Cause, Effect, Exit, type Layer, ManagedRuntime, Option, Schema, Stream } from "effect"
 
 import {
   AttachmentIntake,
   type AttachmentIntakeClientApi,
+  AttachmentIntakeClient,
+  makeAttachmentIntakeBridgeClientLayer,
   makeAttachmentIntakeMemoryClient,
   makeAttachmentIntakeServiceLayer,
   makeAttachmentIntakeUnsupportedClient
 } from "./attachment-intake.js"
 import {
   AttachmentIntakeActor,
+  AttachmentIntakeEvent,
   AttachmentIntakeIngestRequest,
   AttachmentIntakeItemInput,
   AttachmentIntakePolicy
@@ -236,6 +243,73 @@ test("AttachmentIntake unsupported client validates then fails closed", () =>
     })
   ))
 
+test("AttachmentIntake rejects inconsistent event phase payloads before exposing native events", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const invalidPayloads = [
+        {
+          type: "attachment-intake-event",
+          timestamp: 1_710_000_000_000,
+          intakeId: "intake-1",
+          phase: "failed",
+          state: "ingested",
+          reason: "host-failed"
+        },
+        {
+          type: "attachment-intake-event",
+          timestamp: 1_710_000_000_000,
+          intakeId: "intake-1",
+          phase: "ingested",
+          state: "ingested",
+          reason: "denied"
+        },
+        {
+          type: "attachment-intake-event",
+          timestamp: 1_710_000_000_000,
+          intakeId: "intake-1",
+          phase: "disposed",
+          state: "ingested"
+        }
+      ] as const
+
+      for (const payload of invalidPayloads) {
+        const directDecode = yield* Effect.exit(
+          Schema.decodeUnknownEffect(AttachmentIntakeEvent)(payload)
+        )
+        expect(Exit.isFailure(directDecode)).toBe(true)
+      }
+
+      const nativeEvent: HostProtocolEventEnvelope = {
+        kind: "event",
+        method: "AttachmentIntake.Event",
+        timestamp: 1_710_000_000_000,
+        traceId: "trace-attachment-intake-event",
+        payload: invalidPayloads[0]
+      }
+      const exchange: BridgeClientExchange = {
+        request: () => Effect.fail(makeHostProtocolInternalError("unexpected request", "test")),
+        subscribe: (method) => {
+          expect(method).toBe("AttachmentIntake.Event")
+          return Stream.make(nativeEvent)
+        }
+      }
+      const bridgeDecode = yield* runScoped(
+        Effect.gen(function* () {
+          const client = yield* AttachmentIntakeClient
+          return yield* Effect.exit(client.events().pipe(Stream.runHead))
+        }),
+        makeAttachmentIntakeBridgeClientLayer(exchange)
+      )
+
+      expectExitFailure(bridgeDecode, (error) => {
+        expect(error).toMatchObject({
+          tag: "InvalidOutput",
+          operation: "AttachmentIntake.Event"
+        })
+      })
+    })
+  ))
+
 const configuredPermissions = (rows: AuditEvent[]) =>
   Effect.gen(function* () {
     const permissions = yield* makePermissionRegistry()
@@ -284,6 +358,17 @@ const ingestRequest = (
     actor: actor(),
     policy: options.policy ?? policy(),
     items: [item()]
+  })
+
+const runScoped = <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  layer: Layer.Layer<R, never, never>
+): Effect.Effect<A, E, never> =>
+  Effect.gen(function* () {
+    const runtime = ManagedRuntime.make(layer)
+    const result = yield* Effect.promise(() => runtime.runPromise(effect))
+    yield* Effect.promise(() => runtime.dispose())
+    return result
   })
 
 const expectExitFailure = <A>(

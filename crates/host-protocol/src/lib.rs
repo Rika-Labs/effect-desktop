@@ -5035,21 +5035,15 @@ impl AttachmentIntakeSupportedPayload {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct AttachmentIntakeEventPayload {
     r#type: String,
     timestamp: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
     intake_id: Option<String>,
     phase: AttachmentIntakeEventPhase,
-    #[serde(skip_serializing_if = "Option::is_none")]
     state: Option<AttachmentIntakeState>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     item_count: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     reason: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     message: Option<String>,
 }
 
@@ -5095,6 +5089,150 @@ impl AttachmentIntakeEventPayload {
             item_count: None,
             reason: Some(reason.into()),
             message: Some(message.into()),
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SerializableAttachmentIntakeEventPayload<'a> {
+    r#type: &'a str,
+    timestamp: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    intake_id: Option<&'a str>,
+    phase: AttachmentIntakeEventPhase,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    state: Option<AttachmentIntakeState>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    item_count: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<&'a str>,
+}
+
+impl<'a> TryFrom<&'a AttachmentIntakeEventPayload>
+    for SerializableAttachmentIntakeEventPayload<'a>
+{
+    type Error = &'static str;
+
+    fn try_from(payload: &'a AttachmentIntakeEventPayload) -> Result<Self, Self::Error> {
+        validate_attachment_intake_event_payload(
+            payload.phase,
+            payload.state,
+            payload.item_count,
+            &payload.reason,
+            &payload.message,
+        )?;
+        Ok(Self {
+            r#type: &payload.r#type,
+            timestamp: payload.timestamp,
+            intake_id: payload.intake_id.as_deref(),
+            phase: payload.phase,
+            state: payload.state,
+            item_count: payload.item_count,
+            reason: payload.reason.as_deref(),
+            message: payload.message.as_deref(),
+        })
+    }
+}
+
+impl Serialize for AttachmentIntakeEventPayload {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        SerializableAttachmentIntakeEventPayload::try_from(self)
+            .map_err(ser::Error::custom)?
+            .serialize(serializer)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawAttachmentIntakeEventPayload {
+    r#type: String,
+    timestamp: u64,
+    intake_id: Option<String>,
+    phase: AttachmentIntakeEventPhase,
+    state: Option<AttachmentIntakeState>,
+    item_count: Option<u64>,
+    reason: Option<String>,
+    message: Option<String>,
+}
+
+impl TryFrom<RawAttachmentIntakeEventPayload> for AttachmentIntakeEventPayload {
+    type Error = &'static str;
+
+    fn try_from(raw: RawAttachmentIntakeEventPayload) -> Result<Self, Self::Error> {
+        validate_attachment_intake_event_payload(
+            raw.phase,
+            raw.state,
+            raw.item_count,
+            &raw.reason,
+            &raw.message,
+        )?;
+        Ok(Self {
+            r#type: raw.r#type,
+            timestamp: raw.timestamp,
+            intake_id: raw.intake_id,
+            phase: raw.phase,
+            state: raw.state,
+            item_count: raw.item_count,
+            reason: raw.reason,
+            message: raw.message,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for AttachmentIntakeEventPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        RawAttachmentIntakeEventPayload::deserialize(deserializer)?
+            .try_into()
+            .map_err(de::Error::custom)
+    }
+}
+
+fn validate_attachment_intake_event_payload(
+    phase: AttachmentIntakeEventPhase,
+    state: Option<AttachmentIntakeState>,
+    item_count: Option<u64>,
+    reason: &Option<String>,
+    message: &Option<String>,
+) -> Result<(), &'static str> {
+    match phase {
+        AttachmentIntakeEventPhase::Ingested
+            if state == Some(AttachmentIntakeState::Ingested)
+                && item_count.is_some()
+                && reason.is_none()
+                && message.is_none() =>
+        {
+            Ok(())
+        }
+        AttachmentIntakeEventPhase::Ingested => {
+            Err("ingested attachment intake event requires ingested state and itemCount only")
+        }
+        AttachmentIntakeEventPhase::Disposed
+            if state == Some(AttachmentIntakeState::Disposed)
+                && item_count.is_none()
+                && reason.is_none()
+                && message.is_none() =>
+        {
+            Ok(())
+        }
+        AttachmentIntakeEventPhase::Disposed => {
+            Err("disposed attachment intake event requires disposed state only")
+        }
+        AttachmentIntakeEventPhase::Failed
+            if state.is_none() && item_count.is_none() && reason.is_some() =>
+        {
+            Ok(())
+        }
+        AttachmentIntakeEventPhase::Failed => {
+            Err("failed attachment intake event requires reason and no state or itemCount")
         }
     }
 }
@@ -14835,7 +14973,8 @@ mod tests {
         AppSecondInstanceEventPayload, AppSingleInstancePayload, AssociationEventPayload,
         AssociationEventPhasePayload, AssociationFileAssociationPayload,
         AssociationFileAssociationsPayload, AssociationFileAssociationsResultPayload,
-        AssociationProtocolPayload, AssociationProtocolStatusPayload, AutostartEnablePayload,
+        AssociationProtocolPayload, AssociationProtocolStatusPayload, AttachmentIntakeEventPayload,
+        AttachmentIntakeEventPhase, AttachmentIntakeState, AutostartEnablePayload,
         AutostartEventPayload, AutostartEventPhasePayload, AutostartMechanismPayload,
         AutostartStatusPayload, BrowsingDataClearPayload, BrowsingDataClearResultPayload,
         BrowsingDataEstimatePayload, BrowsingDataEstimateResultPayload,
@@ -17092,6 +17231,69 @@ mod tests {
             serde_json::to_string(&supported).expect("support payload should encode"),
             r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#
         );
+    }
+
+    #[test]
+    fn attachment_intake_events_reject_inconsistent_phase_payloads() {
+        for source in [
+            r#"{"type":"attachment-intake-event","timestamp":1710000000000,"intakeId":"intake-1","phase":"failed","state":"ingested","reason":"host-failed"}"#,
+            r#"{"type":"attachment-intake-event","timestamp":1710000000000,"intakeId":"intake-1","phase":"ingested","state":"ingested","reason":"denied"}"#,
+            r#"{"type":"attachment-intake-event","timestamp":1710000000000,"intakeId":"intake-1","phase":"disposed","state":"ingested"}"#,
+        ] {
+            let error = serde_json::from_str::<AttachmentIntakeEventPayload>(source)
+                .expect_err("inconsistent attachment intake event should be rejected");
+            assert!(
+                error.to_string().contains("phase")
+                    || error.to_string().contains("state")
+                    || error.to_string().contains("reason"),
+                "unexpected error: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn attachment_intake_events_reject_inconsistent_phase_payloads_before_serializing() {
+        for event in [
+            AttachmentIntakeEventPayload {
+                r#type: "attachment-intake-event".to_string(),
+                timestamp: 1_710_000_000_000,
+                intake_id: Some("intake-1".to_string()),
+                phase: AttachmentIntakeEventPhase::Failed,
+                state: Some(AttachmentIntakeState::Ingested),
+                item_count: None,
+                reason: Some("host-failed".to_string()),
+                message: Some("host failed".to_string()),
+            },
+            AttachmentIntakeEventPayload {
+                r#type: "attachment-intake-event".to_string(),
+                timestamp: 1_710_000_000_000,
+                intake_id: Some("intake-1".to_string()),
+                phase: AttachmentIntakeEventPhase::Ingested,
+                state: Some(AttachmentIntakeState::Ingested),
+                item_count: Some(1),
+                reason: Some("denied".to_string()),
+                message: None,
+            },
+            AttachmentIntakeEventPayload {
+                r#type: "attachment-intake-event".to_string(),
+                timestamp: 1_710_000_000_000,
+                intake_id: Some("intake-1".to_string()),
+                phase: AttachmentIntakeEventPhase::Disposed,
+                state: Some(AttachmentIntakeState::Ingested),
+                item_count: None,
+                reason: None,
+                message: None,
+            },
+        ] {
+            let error = serde_json::to_string(&event)
+                .expect_err("inconsistent attachment intake event should not encode");
+            assert!(
+                error.to_string().contains("phase")
+                    || error.to_string().contains("state")
+                    || error.to_string().contains("reason"),
+                "unexpected error: {error}"
+            );
+        }
     }
 
     #[test]
