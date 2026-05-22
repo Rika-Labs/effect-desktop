@@ -23,7 +23,9 @@ import {
   CommandRegistryHandlerFailureError,
   CommandRegistryInvalidInputError,
   CommandRegistryRegistrationLostError,
+  CommandInvocationRecord,
   CommandRegistry,
+  CommandSnapshot,
   DesktopCommands,
   makeCommandRegistry,
   type CommandRegistryApi,
@@ -120,6 +122,45 @@ test("CommandRegistry exposes invocation events and failure state for devtools",
       expect(snapshots[0]?.invocationCount).toBe(2)
       expect(snapshots[0]?.lastInvocation?.outcome).toBe("failure")
       expect(snapshots[0]?.lastError?.errorTag).toBe("HandlerFailure")
+    })
+  ))
+
+test("CommandSnapshot rejects malformed capability contracts", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const exit = yield* Effect.exit(
+        Schema.decodeUnknownEffect(CommandSnapshot)({
+          id: "openProject",
+          capability: {
+            kind: "native.invoke",
+            primitive: "Command",
+            methods: [42],
+            audit: "always"
+          },
+          ownerScope: "app",
+          invocationCount: 0
+        })
+      )
+
+      expect(Exit.isFailure(exit)).toBe(true)
+    })
+  ))
+
+test("CommandInvocationRecord rejects malformed actor contracts", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const exit = yield* Effect.exit(
+        Schema.decodeUnknownEffect(CommandInvocationRecord)({
+          commandId: "openProject",
+          actor: { kind: "window", id: "" },
+          traceId: "trace-1",
+          outcome: "success",
+          timestamp: 0,
+          durationMs: 0
+        })
+      )
+
+      expect(Exit.isFailure(exit)).toBe(true)
     })
   ))
 

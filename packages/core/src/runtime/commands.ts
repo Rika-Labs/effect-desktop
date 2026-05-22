@@ -21,6 +21,7 @@ import { AuditEvent, emitAuditEvent, type AuditEventsApi } from "./audit-events.
 import {
   PermissionRegistry,
   NormalizedCapability as NormalizedCapabilitySchema,
+  PermissionActor,
   type NormalizedCapability,
   type PermissionContext,
   type PermissionRegistryApi
@@ -109,7 +110,7 @@ export class CommandInvocationRecord extends Schema.Class<CommandInvocationRecor
   "CommandInvocationRecord"
 )({
   commandId: Schema.String,
-  actor: Schema.Unknown,
+  actor: PermissionActor,
   traceId: NonEmptyString,
   outcome: Schema.Literals(["success", "failure", "committed-audit-failure"]),
   timestamp: NonNegativeInt,
@@ -119,7 +120,7 @@ export class CommandInvocationRecord extends Schema.Class<CommandInvocationRecor
 
 export class CommandSnapshot extends Schema.Class<CommandSnapshot>("CommandSnapshot")({
   id: NonEmptyString,
-  capability: Schema.Unknown,
+  capability: NormalizedCapabilitySchema,
   ownerScope: NonEmptyString,
   invocationCount: NonNegativeInt,
   lastInvocation: Schema.optionalKey(CommandInvocationRecord),
