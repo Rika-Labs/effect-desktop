@@ -1,3 +1,5 @@
+import { DateTime } from "effect"
+
 import type { InspectorAppSnapshot, InspectorSessionRow } from "./inspector-app.js"
 
 export interface AppProps {
@@ -53,7 +55,9 @@ export function App({ onSelectSession, snapshot }: AppProps) {
         <section className="timeline" aria-label="Timeline events">
           {snapshot.events.map((event) => (
             <article key={event.id} className={`timeline-row ${event.category}`}>
-              <time>{event.atMs}</time>
+              <time dateTime={DateTime.formatIso(DateTime.makeUnsafe(event.atMs))}>
+                {event.atMs}
+              </time>
               <div>
                 <p>{event.title}</p>
                 <span>{event.detail}</span>

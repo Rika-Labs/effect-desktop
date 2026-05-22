@@ -18,7 +18,31 @@ test("App exposes the selected Inspector session to assistive technology", () =>
   expect(html).toContain('class="session-button"')
 })
 
-const inspectorSnapshot = (): InspectorAppSnapshot => ({
+test("App renders timeline event times with machine-readable dates", () => {
+  const html = renderToStaticMarkup(
+    createElement(App, {
+      snapshot: inspectorSnapshot({
+        events: [
+          {
+            id: "event-one",
+            atMs: 1000,
+            surface: "transport",
+            title: "rpc.notes.load",
+            detail: "method",
+            category: "rpc"
+          }
+        ]
+      }),
+      onSelectSession: () => undefined
+    })
+  )
+
+  expect(html).toContain('<time dateTime="1970-01-01T00:00:01.000Z">1000</time>')
+})
+
+const inspectorSnapshot = (
+  overrides: Partial<InspectorAppSnapshot> = {}
+): InspectorAppSnapshot => ({
   selectedSessionId: "recorded-one",
   sessions: [
     {
@@ -37,5 +61,6 @@ const inspectorSnapshot = (): InspectorAppSnapshot => ({
     }
   ],
   events: [],
-  categories: []
+  categories: [],
+  ...overrides
 })
