@@ -3047,7 +3047,7 @@ pub enum SystemAppearanceModePayload {
     HighContrast,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SystemAppearanceColorPayload {
     r: f64,
@@ -3058,7 +3058,43 @@ pub struct SystemAppearanceColorPayload {
 
 impl SystemAppearanceColorPayload {
     pub fn new(r: f64, g: f64, b: f64, a: f64) -> Self {
-        Self { r, g, b, a }
+        Self::try_new(r, g, b, a)
+            .expect("system appearance color channels must be finite numbers between 0 and 1")
+    }
+
+    pub fn try_new(r: f64, g: f64, b: f64, a: f64) -> Result<Self, &'static str> {
+        validate_system_appearance_color_channel(r)?;
+        validate_system_appearance_color_channel(g)?;
+        validate_system_appearance_color_channel(b)?;
+        validate_system_appearance_color_channel(a)?;
+        Ok(Self { r, g, b, a })
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawSystemAppearanceColorPayload {
+    r: f64,
+    g: f64,
+    b: f64,
+    a: f64,
+}
+
+impl<'de> Deserialize<'de> for SystemAppearanceColorPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let raw = RawSystemAppearanceColorPayload::deserialize(deserializer)?;
+        Self::try_new(raw.r, raw.g, raw.b, raw.a).map_err(de::Error::custom)
+    }
+}
+
+fn validate_system_appearance_color_channel(value: f64) -> Result<(), &'static str> {
+    if value.is_finite() && (0.0..=1.0).contains(&value) {
+        Ok(())
+    } else {
+        Err("system appearance color channel must be a finite number between 0 and 1")
     }
 }
 
@@ -15470,12 +15506,12 @@ mod tests {
             r#"{"appearance":"dark"}"#
         );
 
-        let color = SystemAppearanceColorPayload::new(1.0, 2.0, 3.0, 0.5);
+        let color = SystemAppearanceColorPayload::new(1.0, 0.2, 0.3, 0.5);
         let accent = SystemAppearanceAccentColorPayload::new(Some(color));
         assert!(accent.color().is_some());
         assert_eq!(
             serde_json::to_string(&accent).expect("accent should encode"),
-            r#"{"color":{"r":1.0,"g":2.0,"b":3.0,"a":0.5}}"#
+            r#"{"color":{"r":1.0,"g":0.2,"b":0.3,"a":0.5}}"#
         );
 
         let no_accent = SystemAppearanceAccentColorPayload::new(None);
@@ -15547,6 +15583,36 @@ mod tests {
         )
         .expect_err("changed event without accent color should be rejected");
         assert!(error.to_string().contains("missing field `accentColor`"));
+    }
+
+    #[test]
+    fn system_appearance_color_payloads_reject_invalid_channels() {
+        for payload in [
+            r#"{"r":-0.1,"g":0.0,"b":0.0,"a":1.0}"#,
+            r#"{"r":1.1,"g":0.0,"b":0.0,"a":1.0}"#,
+            r#"{"r":0.0,"g":0.0,"b":0.0,"a":1.1}"#,
+        ] {
+            let error = serde_json::from_str::<SystemAppearanceColorPayload>(payload)
+                .expect_err("invalid color channel should be rejected");
+            assert!(error.to_string().contains("color channel"));
+        }
+
+        let error = serde_json::from_str::<SystemAppearanceAccentColorPayload>(
+            r#"{"color":{"r":0.0,"g":2.0,"b":0.0,"a":1.0}}"#,
+        )
+        .expect_err("invalid accent color channel should be rejected");
+        assert!(error.to_string().contains("color channel"));
+
+        let error = serde_json::from_str::<SystemAppearanceChangedPayload>(
+            r#"{"appearance":"dark","accentColor":{"r":0.0,"g":0.0,"b":0.0,"a":-0.1},"reducedMotion":true,"reducedTransparency":false}"#,
+        )
+        .expect_err("invalid changed accent color channel should be rejected");
+        assert!(error.to_string().contains("color channel"));
+
+        assert!(std::panic::catch_unwind(|| {
+            let _ = SystemAppearanceColorPayload::new(0.0, 0.0, 0.0, f64::INFINITY);
+        })
+        .is_err());
     }
 
     #[test]

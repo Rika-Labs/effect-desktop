@@ -9072,6 +9072,87 @@ test("SystemAppearance bridge client decodes nullable accent color and events", 
     })
   ))
 
+test("SystemAppearance contracts reject invalid color channels", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const validColor = yield* Schema.decodeUnknownEffect(SystemAppearanceColor)({
+        r: 0,
+        g: 0.5,
+        b: 1,
+        a: 1
+      })
+      expect(validColor).toEqual(new SystemAppearanceColor({ r: 0, g: 0.5, b: 1, a: 1 }))
+
+      const invalidColors = [
+        { r: Number.NaN, g: 0, b: 0, a: 1 },
+        { r: Number.POSITIVE_INFINITY, g: 0, b: 0, a: 1 },
+        { r: -0.1, g: 0, b: 0, a: 1 },
+        { r: 1.1, g: 0, b: 0, a: 1 },
+        { r: 0, g: 0, b: 0, a: Number.NaN }
+      ]
+
+      for (const color of invalidColors) {
+        const exit = yield* Effect.exit(Schema.decodeUnknownEffect(SystemAppearanceColor)(color))
+        expect(Exit.isFailure(exit)).toBe(true)
+      }
+    })
+  ))
+
+test("SystemAppearance bridge client rejects invalid color channels as InvalidOutput", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const invalidAccentColor = { r: 0, g: 1.25, b: 0, a: 1 }
+      const invalidEventColor = { r: 0, g: 0, b: 0, a: Number.NaN }
+      const exchange: BridgeClientExchange = {
+        request: (request) =>
+          Effect.succeed({
+            kind: "success",
+            payload:
+              request.method === "SystemAppearance.getAccentColor"
+                ? { color: invalidAccentColor }
+                : request.method === "SystemAppearance.isSupported"
+                  ? { supported: true }
+                  : request.method === "SystemAppearance.getAppearance"
+                    ? { appearance: "dark" }
+                    : { enabled: false }
+          }),
+        subscribe: (method) =>
+          method === "SystemAppearance.AppearanceChanged"
+            ? Stream.make(
+                new HostProtocolEventEnvelope({
+                  kind: "event",
+                  timestamp: 1_710_000_000_702,
+                  traceId: "event-trace",
+                  method,
+                  payload: {
+                    appearance: "dark",
+                    accentColor: invalidEventColor,
+                    reducedMotion: false,
+                    reducedTransparency: false
+                  }
+                })
+              )
+            : Stream.empty
+      }
+
+      const result = yield* runScoped(
+        Effect.gen(function* () {
+          const appearance = yield* SystemAppearance
+          return {
+            accent: yield* Effect.exit(appearance.getAccentColor()),
+            changed: yield* Effect.exit(
+              appearance.onAppearanceChanged().pipe(Stream.take(1), Stream.runCollect)
+            )
+          }
+        }),
+        Layer.provide(SystemAppearanceLive, makeSystemAppearanceBridgeClientLayer(exchange))
+      )
+
+      expectExitFailure(result.accent, (error) => hasErrorTag(error, "InvalidOutput"))
+      expectExitFailure(result.changed, (error) => hasErrorTag(error, "InvalidOutput"))
+    })
+  ))
+
 test("SystemAppearance bridge client rejects partial appearance events as InvalidOutput", () =>
   Effect.runPromise(
     Effect.gen(function* () {

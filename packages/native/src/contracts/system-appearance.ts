@@ -13,13 +13,18 @@ export const SystemAppearanceMode = Schema.Literals(["light", "dark", "highContr
 export type SystemAppearanceMethod = Schema.Schema.Type<typeof SystemAppearanceMethod>
 export type SystemAppearanceMode = Schema.Schema.Type<typeof SystemAppearanceMode>
 
+const SystemAppearanceColorChannel = Schema.Number.check(
+  Schema.isFinite(),
+  Schema.isBetween({ minimum: 0, maximum: 1 })
+)
+
 export class SystemAppearanceColor extends Schema.Class<SystemAppearanceColor>(
   "SystemAppearanceColor"
 )({
-  r: Schema.Number,
-  g: Schema.Number,
-  b: Schema.Number,
-  a: Schema.Number
+  r: SystemAppearanceColorChannel,
+  g: SystemAppearanceColorChannel,
+  b: SystemAppearanceColorChannel,
+  a: SystemAppearanceColorChannel
 }) {}
 
 export class SystemAppearanceResult extends Schema.Class<SystemAppearanceResult>(
