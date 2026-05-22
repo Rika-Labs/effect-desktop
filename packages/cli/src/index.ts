@@ -1334,7 +1334,7 @@ export const runDesktopBuild = (
       yield* copyDirectory(plan.rendererDistPath, renderer.outputPath)
     }
 
-    const runtimeNode = yield* makeRuntimeBuildNode(plan)
+    const runtimeNode = yield* makeRuntimeBuildNode(plan, options.cwd)
     const runtime = yield* runBuildNode(options, cache, runtimeNode, {
       name: "runtime",
       command: "bun",
@@ -1587,12 +1587,14 @@ const makeRendererBuildNode = (
   )
 
 const makeRuntimeBuildNode = (
-  plan: BuildPlan
+  plan: BuildPlan,
+  repoRoot: string
 ): Effect.Effect<BuildNodePlan, BuildFileError, never> =>
   hashBuildInputs([
     ["provider.runtime", plan.layerGraph.providers.runtime],
     ["runtime.entry", plan.runtimeEntry],
     ["runtime.entry.sha256", yieldableFileDigest(plan.runtimeEntryPath)],
+    ["workspace.packages.sha256", hashExistingTrees([join(repoRoot, "packages")])],
     ["bridge.protocol", HOST_PROTOCOL_VERSION]
   ]).pipe(
     Effect.map((cacheKey) => ({

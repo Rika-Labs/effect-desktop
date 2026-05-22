@@ -7454,6 +7454,65 @@ test("desktop build reuses provider-owned nodes when only runtime source changes
     })
   ))
 
+test("desktop build invalidates runtime cache when workspace runtime dependencies change", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-build-runtime-deps-cache-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        const appRoot = join(directory, "apps", "inspector")
+        const layout = join(appRoot, "build", "effect-desktop", "linux-x64")
+        const frameworkSource = join(directory, "packages", "core", "src", "runtime", "main.ts")
+        yield* Effect.promise(() => mkdir(dirname(frameworkSource), { recursive: true }))
+        yield* Effect.promise(() =>
+          writeFile(frameworkSource, "export const runtimeVersion = 'old'\n")
+        )
+        const calls: string[] = []
+        const runner: CommandRunner = (invocation) =>
+          Effect.gen(function* () {
+            calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
+            yield* writeBuildFixtureOutput(invocation, { runtimeJs: "console.log('runtime')\n" })
+          })
+
+        const runBuild = () =>
+          runCli({
+            argv: ["build", "--config", "apps/inspector/desktop.config.ts", "--json"],
+            cwd: directory,
+            hostTarget: "linux-x64",
+            commandRunner: runner,
+            writeStdout: () => {},
+            writeStderr: () => {}
+          })
+
+        expect(yield* runBuild()).toBe(0)
+        calls.length = 0
+        yield* Effect.promise(() =>
+          writeFile(frameworkSource, "export const runtimeVersion = 'new'\n")
+        )
+
+        expect(yield* runBuild()).toBe(0)
+
+        const report = decodeBuildStepsReportJson(
+          yield* Effect.promise(() => readFile(join(layout, "build-report.json"), "utf8"))
+        )
+        expect(calls).toEqual([
+          `runtime:bun build ${join(appRoot, "runtime.ts")} --target=bun --outdir ${join(layout, "runtime")}`
+        ])
+        expect(report.steps.map((step) => [step.name, step.status, step.provider])).toEqual([
+          ["renderer", "reused", "renderer:react"],
+          ["runtime", "rebuilt", "runtime:bun"],
+          ["native-host", "reused", "webview:system"],
+          ["bridge", "reused", undefined],
+          ["manifest", "rebuilt", undefined]
+        ])
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
 test("desktop build reuses native host when only renderer source changes", () =>
   Effect.runPromise(
     Effect.gen(function* () {
