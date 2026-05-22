@@ -125,13 +125,26 @@ export class ScopedAccessGrantSupportedResult extends Schema.Class<ScopedAccessG
   reason: Schema.optionalKey(BridgeSafeString)
 }) {}
 
+const ScopedAccessGrantEventPhaseState = Schema.makeFilter<{
+  readonly phase: ScopedAccessGrantEventPhase
+  readonly state?: ScopedAccessGrantState | undefined
+}>((value) => {
+  const expectedState = value.phase
+  return (
+    value.state === expectedState ||
+    `scoped access grant ${value.phase} events require ${expectedState} state`
+  )
+})
+
 export class ScopedAccessGrantEvent extends Schema.Class<ScopedAccessGrantEvent>(
   "ScopedAccessGrantEvent"
-)({
-  type: ScopedAccessGrantEventType,
-  timestamp: ScopedAccessGrantTimestamp,
-  grantId: BridgeSafeNonEmptyString,
-  path: Schema.optionalKey(PrintableNonEmptyString),
-  phase: ScopedAccessGrantEventPhase,
-  state: Schema.optionalKey(ScopedAccessGrantState)
-}) {}
+)(
+  Schema.Struct({
+    type: ScopedAccessGrantEventType,
+    timestamp: ScopedAccessGrantTimestamp,
+    grantId: BridgeSafeNonEmptyString,
+    path: Schema.optionalKey(PrintableNonEmptyString),
+    phase: ScopedAccessGrantEventPhase,
+    state: Schema.optionalKey(ScopedAccessGrantState)
+  }).check(ScopedAccessGrantEventPhaseState)
+) {}

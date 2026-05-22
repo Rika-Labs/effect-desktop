@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import { type BridgeClientExchange } from "@orika/bridge"
-import { Cause, Effect, Exit, type Layer, ManagedRuntime, Stream } from "effect"
+import { Cause, Effect, Exit, type Layer, ManagedRuntime, Schema, Stream } from "effect"
 
 import { makeNativeCapabilityManifest } from "./capabilities.js"
 import {
@@ -11,6 +11,7 @@ import {
   ScopedAccessGrant,
   ScopedAccessGrantCapabilityFacts,
   ScopedAccessGrantClient,
+  ScopedAccessGrantEvent,
   ScopedAccessGrantRpcs,
   ScopedAccessGrantSurface
 } from "./scoped-access-grant.js"
@@ -123,6 +124,41 @@ test("ScopedAccessGrant bridge client fails event stream as unsupported before s
         })
       })
       expect(subscriptions).toEqual([])
+    })
+  ))
+
+test("ScopedAccessGrant rejects contradictory event phase states", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      for (const payload of [
+        {
+          type: "scoped-access-grant-event",
+          timestamp: 1_710_000_000_000,
+          grantId: "grant-1",
+          path: "/tmp/example.txt",
+          phase: "granted",
+          state: "revoked"
+        },
+        {
+          type: "scoped-access-grant-event",
+          timestamp: 1_710_000_000_000,
+          grantId: "grant-1",
+          phase: "resolved",
+          state: "granted"
+        },
+        {
+          type: "scoped-access-grant-event",
+          timestamp: 1_710_000_000_000,
+          grantId: "grant-1",
+          phase: "revoked",
+          state: "resolved"
+        }
+      ] as const) {
+        const decoded = yield* Effect.exit(
+          Schema.decodeUnknownEffect(ScopedAccessGrantEvent)(payload)
+        )
+        expect(Exit.isFailure(decoded)).toBe(true)
+      }
     })
   ))
 

@@ -10029,16 +10029,13 @@ impl ScopedAccessGrantSupportedPayload {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ScopedAccessGrantEventPayload {
     r#type: String,
     timestamp: u64,
     grant_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     path: Option<String>,
     phase: ScopedAccessGrantEventPhase,
-    #[serde(skip_serializing_if = "Option::is_none")]
     state: Option<ScopedAccessGrantState>,
 }
 
@@ -10066,6 +10063,106 @@ impl ScopedAccessGrantEventPayload {
     pub fn with_path(mut self, path: impl Into<String>) -> Self {
         self.path = Some(path.into());
         self
+    }
+
+    #[cfg(test)]
+    fn with_state_for_test(mut self, state: ScopedAccessGrantState) -> Self {
+        self.state = Some(state);
+        self
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SerializableScopedAccessGrantEventPayload<'a> {
+    r#type: &'a str,
+    timestamp: u64,
+    grant_id: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    path: Option<&'a str>,
+    phase: ScopedAccessGrantEventPhase,
+    state: ScopedAccessGrantState,
+}
+
+impl<'a> TryFrom<&'a ScopedAccessGrantEventPayload>
+    for SerializableScopedAccessGrantEventPayload<'a>
+{
+    type Error = &'static str;
+
+    fn try_from(payload: &'a ScopedAccessGrantEventPayload) -> Result<Self, Self::Error> {
+        let state = validate_scoped_access_grant_event_state(payload.phase, payload.state)?;
+        Ok(Self {
+            r#type: &payload.r#type,
+            timestamp: payload.timestamp,
+            grant_id: &payload.grant_id,
+            path: payload.path.as_deref(),
+            phase: payload.phase,
+            state,
+        })
+    }
+}
+
+impl Serialize for ScopedAccessGrantEventPayload {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        SerializableScopedAccessGrantEventPayload::try_from(self)
+            .map_err(ser::Error::custom)?
+            .serialize(serializer)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawScopedAccessGrantEventPayload {
+    r#type: String,
+    timestamp: u64,
+    grant_id: String,
+    path: Option<String>,
+    phase: ScopedAccessGrantEventPhase,
+    state: Option<ScopedAccessGrantState>,
+}
+
+impl TryFrom<RawScopedAccessGrantEventPayload> for ScopedAccessGrantEventPayload {
+    type Error = &'static str;
+
+    fn try_from(raw: RawScopedAccessGrantEventPayload) -> Result<Self, Self::Error> {
+        validate_scoped_access_grant_event_state(raw.phase, raw.state)?;
+        Ok(Self {
+            r#type: raw.r#type,
+            timestamp: raw.timestamp,
+            grant_id: raw.grant_id,
+            path: raw.path,
+            phase: raw.phase,
+            state: raw.state,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for ScopedAccessGrantEventPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        RawScopedAccessGrantEventPayload::deserialize(deserializer)?
+            .try_into()
+            .map_err(de::Error::custom)
+    }
+}
+
+fn validate_scoped_access_grant_event_state(
+    phase: ScopedAccessGrantEventPhase,
+    state: Option<ScopedAccessGrantState>,
+) -> Result<ScopedAccessGrantState, &'static str> {
+    let expected = match phase {
+        ScopedAccessGrantEventPhase::Granted => ScopedAccessGrantState::Granted,
+        ScopedAccessGrantEventPhase::Resolved => ScopedAccessGrantState::Resolved,
+        ScopedAccessGrantEventPhase::Revoked => ScopedAccessGrantState::Revoked,
+    };
+    match state {
+        Some(actual) if actual == expected => Ok(actual),
+        _ => Err("scoped access grant event phase requires matching state"),
     }
 }
 
@@ -15086,6 +15183,7 @@ mod tests {
         ResidentLifecycleProcessPolicy, ResidentLifecycleStatePayload,
         ResidentLifecycleSupportedPayload, ResidentLifecycleWindowPolicy, ResumeTicket,
         SafeStorageKeyPayload, SafeStorageListResultPayload, SafeStorageSetPayload,
+        ScopedAccessGrantEventPayload, ScopedAccessGrantEventPhase, ScopedAccessGrantState,
         ScreenBoundsPayload, ScreenDisplayPayload, ScreenDisplaysChangedEventPayload,
         ScreenDisplaysResultPayload, ScreenIsSupportedPayload, ScreenPointPayload,
         ScreenSupportedPayload, SessionPermissionDecidePayload, SessionPermissionDecisionPayload,
@@ -18433,6 +18531,53 @@ mod tests {
                 .expect("support payload should encode"),
             r#"{"supported":true}"#
         );
+    }
+
+    #[test]
+    fn scoped_access_grant_events_reject_contradictory_states() {
+        for source in [
+            r#"{"type":"scoped-access-grant-event","timestamp":1710000000000,"grantId":"grant-1","path":"/tmp/example.txt","phase":"granted","state":"revoked"}"#,
+            r#"{"type":"scoped-access-grant-event","timestamp":1710000000000,"grantId":"grant-1","phase":"resolved","state":"granted"}"#,
+            r#"{"type":"scoped-access-grant-event","timestamp":1710000000000,"grantId":"grant-1","phase":"revoked","state":"resolved"}"#,
+        ] {
+            let error = serde_json::from_str::<ScopedAccessGrantEventPayload>(source)
+                .expect_err("contradictory scoped access grant event should be rejected");
+            assert!(
+                error.to_string().contains("phase") || error.to_string().contains("state"),
+                "unexpected error: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn scoped_access_grant_events_reject_contradictory_states_before_serializing() {
+        for event in [
+            ScopedAccessGrantEventPayload::new(
+                1_710_000_000_000,
+                "grant-1",
+                ScopedAccessGrantEventPhase::Granted,
+            )
+            .with_state_for_test(ScopedAccessGrantState::Revoked),
+            ScopedAccessGrantEventPayload::new(
+                1_710_000_000_000,
+                "grant-1",
+                ScopedAccessGrantEventPhase::Resolved,
+            )
+            .with_state_for_test(ScopedAccessGrantState::Granted),
+            ScopedAccessGrantEventPayload::new(
+                1_710_000_000_000,
+                "grant-1",
+                ScopedAccessGrantEventPhase::Revoked,
+            )
+            .with_state_for_test(ScopedAccessGrantState::Resolved),
+        ] {
+            let error = serde_json::to_string(&event)
+                .expect_err("contradictory scoped access grant event should not encode");
+            assert!(
+                error.to_string().contains("phase") || error.to_string().contains("state"),
+                "unexpected error: {error}"
+            );
+        }
     }
 
     #[test]
