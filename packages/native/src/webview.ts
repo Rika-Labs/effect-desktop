@@ -229,7 +229,7 @@ export const WebViewStop = NativeSurface.rpc("WebView", "stop", {
     P.nativeInvoke({ primitive: "WebView", methods: ["stop"] })
   ),
   endpoint: "mutation",
-  support: WebViewNavigationSupport
+  support: NativeSurface.support.supported
 })
 export const WebViewGoBack = NativeSurface.rpc("WebView", "goBack", {
   payload: WebViewHandleInput,

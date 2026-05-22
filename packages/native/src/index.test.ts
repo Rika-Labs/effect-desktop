@@ -2332,6 +2332,7 @@ test("WebView support metadata reflects resource lifecycle, print, and devtools 
   expect(byTag.get("WebView.loadRoute")?.support).toEqual({ status: "supported" })
   expect(byTag.get("WebView.loadUrl")?.support).toEqual({ status: "supported" })
   expect(byTag.get("WebView.reload")?.support).toEqual({ status: "supported" })
+  expect(byTag.get("WebView.stop")?.support).toEqual({ status: "supported" })
   expect(byTag.get("WebView.print")?.support).toEqual({ status: "supported" })
   expect(byTag.get("WebView.setZoom")?.support).toEqual({ status: "supported" })
   expect(byTag.get("WebView.goBack")?.support).toEqual(webViewNavigationTrackedSupport)

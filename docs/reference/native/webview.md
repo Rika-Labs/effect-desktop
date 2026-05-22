@@ -245,11 +245,10 @@ For the example above, renderer code can call
 
 The contract is declared through `WebViewRpcs`. App runtime WebView attachment
 is owned by `Window.create`. `WebView.create`, `WebView.destroy`,
-`WebView.loadRoute`, `WebView.loadUrl`, and `WebView.reload` are host-backed
-and report `supported`. Other direct child WebView navigation methods are
-routed through host-backed resources and report `partial` support with
-`host-navigation-state-tracked`. `setNavigationPolicy` is host-backed and
-reports `partial` support with
+`WebView.loadRoute`, `WebView.loadUrl`, `WebView.reload`, and `WebView.stop`
+are host-backed and report `supported`. History-state methods are routed
+through host-backed resources and report `partial` support with
+`host-navigation-state-tracked`. `setNavigationPolicy` is host-backed and reports `partial` support with
 `host-navigation-policy-open-external-unavailable` because popup approval and
 external-open delegation are still intentionally conservative.
 Create-time preload isolation is host-backed through Wry initialization-script
