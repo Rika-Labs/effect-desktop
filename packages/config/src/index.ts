@@ -573,6 +573,13 @@ interface ParsedCspPolicy {
   readonly duplicates: readonly string[]
 }
 
+type CspDirectiveKind = "source-list" | "no-value-hardening" | "value-hardening"
+
+interface CspDirectiveSemantics {
+  readonly kind: CspDirectiveKind
+  readonly hardeningValues?: ReadonlySet<string>
+}
+
 export const defineDesktopConfig = <Config extends DesktopConfig>(config: Config): Config => config
 
 const normalizeDesktopConfig = (config: DesktopConfig): DesktopConfig => ({
@@ -1407,28 +1414,40 @@ const isPermittedDefaultSource = (
   defaults: ReadonlySet<string> | undefined
 ): boolean => defaults?.has(normalizeCspValue(source)) === true
 
-const isAdditionalCspTightening = (directive: string, values: readonly string[]): boolean =>
-  (values.length === 0 && NO_VALUE_HARDENING_CSP_DIRECTIVES.has(directive)) ||
-  (VALUE_HARDENING_CSP_DIRECTIVES.has(directive)
-    ? isValueBearingCspTightening(directive, values)
-    : values.length > 0 && values.every((value) => value === "'none'"))
+const isAdditionalCspTightening = (directive: string, values: readonly string[]): boolean => {
+  const semantics = CSP_DIRECTIVE_SEMANTICS.get(directive)
+  if (semantics === undefined) {
+    return false
+  }
 
-const isValueBearingCspTightening = (directive: string, values: readonly string[]): boolean => {
-  const allowedValues = VALUE_HARDENING_CSP_DIRECTIVES.get(directive)
-  return (
-    allowedValues !== undefined &&
-    values.length === 1 &&
-    allowedValues.has(normalizeCspValue(values[0] ?? ""))
-  )
+  switch (semantics.kind) {
+    case "no-value-hardening":
+      return values.length === 0
+    case "source-list":
+    case "value-hardening":
+      return isAllowedCspHardeningValueSet(values, semantics.hardeningValues)
+  }
 }
 
-const NO_VALUE_HARDENING_CSP_DIRECTIVES = new Set([
-  "block-all-mixed-content",
-  "upgrade-insecure-requests"
-])
+const isAllowedCspHardeningValueSet = (
+  values: readonly string[],
+  allowedValues: ReadonlySet<string> | undefined
+): boolean =>
+  allowedValues !== undefined &&
+  values.length > 0 &&
+  values.every((value) => allowedValues.has(normalizeCspValue(value)))
 
-const VALUE_HARDENING_CSP_DIRECTIVES = new Map([
-  ["require-trusted-types-for", new Set(["'script'"])]
+const SOURCE_LIST_HARDENING_VALUES = new Set(["'none'"])
+
+const CSP_DIRECTIVE_SEMANTICS = new Map<string, CspDirectiveSemantics>([
+  ...DEFAULT_CSP_DIRECTIVES.map(([directive]): [string, CspDirectiveSemantics] => [
+    directive,
+    { kind: "source-list", hardeningValues: SOURCE_LIST_HARDENING_VALUES }
+  ]),
+  ["frame-src", { kind: "source-list", hardeningValues: SOURCE_LIST_HARDENING_VALUES }],
+  ["block-all-mixed-content", { kind: "no-value-hardening" }],
+  ["upgrade-insecure-requests", { kind: "no-value-hardening" }],
+  ["require-trusted-types-for", { kind: "value-hardening", hardeningValues: new Set(["'script'"]) }]
 ])
 
 interface SourceCapability {

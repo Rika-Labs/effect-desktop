@@ -344,12 +344,26 @@ test("CSP config flags directive loosening beyond the default", () => {
 })
 
 test("CSP config can add hardening-only directives", () => {
-  const csp = { policy: "frame-src 'none'; upgrade-insecure-requests" }
+  const csp = { policy: "frame-src 'none'; upgrade-insecure-requests; block-all-mixed-content" }
 
   expect(cspWeakenings(csp)).toEqual([])
   expect(renderEffectiveCsp(csp, "abc123")).toContain("frame-src 'none'")
   expect(renderEffectiveCsp(csp, "abc123")).toContain("upgrade-insecure-requests")
+  expect(renderEffectiveCsp(csp, "abc123")).toContain("block-all-mixed-content")
 })
+
+test("CSP hardening classification uses one directive semantics table", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        Bun.file(new URL("index.ts", import.meta.url)).text()
+      )
+
+      expect(source).toContain("CSP_DIRECTIVE_SEMANTICS")
+      expect(source).not.toContain("NO_VALUE_HARDENING_CSP_DIRECTIVES")
+      expect(source).not.toContain("VALUE_HARDENING_CSP_DIRECTIVES")
+    })
+  ))
 
 test("CSP config flags unknown directives that add sources", () => {
   expect(cspWeakenings({ policy: "frame-src https:" })).toEqual([
