@@ -32,6 +32,7 @@ import {
   WorkerCrashedError,
   WorkerInvalidArgumentError,
   WorkerResourceBusyError,
+  WorkerSnapshot,
   WorkerStaleHandleError,
   WorkerUnsupportedError,
   type WorkerAdapter,
@@ -177,6 +178,31 @@ test("Worker list returns live snapshots and removes closed workers", () =>
       expect(listed[0]?.resourceId).toBe(handle.resource.id)
       expect(listed[0]?.capabilities).toEqual([filesystemReadCapability])
       expect(afterClose).toEqual([])
+    })
+  ))
+
+test("WorkerSnapshot rejects malformed capability entries", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const exit = yield* Effect.exit(
+        Schema.decodeUnknownEffect(WorkerSnapshot)({
+          id: "worker-1",
+          script: "./worker.ts",
+          ownerScope: "scope-main",
+          resourceId: "resource-1",
+          status: "running",
+          uptimeMs: 0,
+          capabilities: [
+            {
+              kind: "filesystem.read",
+              roots: [42],
+              audit: "always"
+            }
+          ]
+        })
+      )
+
+      expect(Exit.isFailure(exit)).toBe(true)
     })
   ))
 

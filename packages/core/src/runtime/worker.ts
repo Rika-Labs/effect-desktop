@@ -61,7 +61,7 @@ export class WorkerSnapshot extends Schema.Class<WorkerSnapshot>("WorkerSnapshot
   resourceId: NonEmptyString,
   status: Schema.Literals(["running"]),
   uptimeMs: NonNegativeInt,
-  capabilities: Schema.Array(Schema.Unknown),
+  capabilities: Schema.Array(NormalizedCapability),
   lastError: Schema.optionalKey(Schema.Unknown)
 }) {}
 
@@ -592,7 +592,7 @@ interface StoredWorker {
   readonly ownerScope: string
   readonly resourceId: string
   readonly startedAt: number
-  readonly capabilities: readonly unknown[]
+  readonly capabilities: readonly NormalizedCapability[]
   readonly lastError?: unknown
 }
 
