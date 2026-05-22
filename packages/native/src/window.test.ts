@@ -74,10 +74,11 @@ test("WindowRpcs exposes only host-implemented methods through RpcGroup lowering
   })
   expect(request("Window.setTransparent").pipe(rpcSupport)).toMatchObject({
     status: "partial",
+    reason: "window-transparency-macos-only",
     platforms: [
       { platform: "macos", status: "supported" },
-      { platform: "windows", status: "unsupported" },
-      { platform: "linux", status: "unsupported" }
+      { platform: "windows", status: "unsupported", reason: "window-transparency-macos-only" },
+      { platform: "linux", status: "unsupported", reason: "window-transparency-macos-only" }
     ]
   })
   expect(request("Window.setAlwaysOnTop").pipe(rpcSupport)).toEqual({ status: "supported" })

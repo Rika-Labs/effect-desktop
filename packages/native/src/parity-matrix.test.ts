@@ -1168,6 +1168,22 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
           ]
         }
       })
+      expect(result.rows.find((row) => row.tag === "Window.setTransparent")).toMatchObject({
+        hostStatus: "routed",
+        support: {
+          status: "partial",
+          reason: "window-transparency-macos-only",
+          platforms: [
+            { platform: "macos", status: "supported" },
+            {
+              platform: "windows",
+              status: "unsupported",
+              reason: "window-transparency-macos-only"
+            },
+            { platform: "linux", status: "unsupported", reason: "window-transparency-macos-only" }
+          ]
+        }
+      })
       expect(result.rows.find((row) => row.tag === "EgressPolicy.decide")).toMatchObject({
         hostStatus: "routed",
         support: {

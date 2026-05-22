@@ -782,7 +782,7 @@ mod platform {
         _transparent: bool,
     ) -> std::result::Result<(), HostProtocolError> {
         Err(HostProtocolError::unsupported(
-            "window transparency is only supported on macOS",
+            "window-transparency-macos-only",
             host_protocol::WINDOW_SET_TRANSPARENT_METHOD,
         ))
     }

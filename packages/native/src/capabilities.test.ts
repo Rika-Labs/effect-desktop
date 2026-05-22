@@ -163,6 +163,16 @@ const WindowTitleBarTransparentMacosOnlySupport = {
   ]
 } as const
 
+const WindowTransparentMacosOnlySupport = {
+  status: "partial",
+  reason: "window-transparency-macos-only",
+  platforms: [
+    { platform: "macos", status: "supported" },
+    { platform: "windows", status: "unsupported", reason: "window-transparency-macos-only" },
+    { platform: "linux", status: "unsupported", reason: "window-transparency-macos-only" }
+  ]
+} as const
+
 const WebViewDebuggerUnavailableSupport = {
   status: "unsupported",
   reason: "host-debugger-protocol-unavailable",
@@ -435,6 +445,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
         "Window.setTitleBarTransparent"
       )
       const windowSetTrafficLights = yield* capabilities.support("Window.setTrafficLights")
+      const windowSetTransparent = yield* capabilities.support("Window.setTransparent")
       const networkAuthHandleAuth = yield* capabilities.support("NetworkAuth.handleAuth")
       const networkAuthHandleCertificate = yield* capabilities.support(
         "NetworkAuth.handleCertificate"
@@ -550,6 +561,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(windowSetTitleBarStyle).toEqual(WindowTitleBarStyleMacosOnlySupport)
       expect(windowSetTitleBarTransparent).toEqual(WindowTitleBarTransparentMacosOnlySupport)
       expect(windowSetTrafficLights).toEqual(WindowTrafficLightsMacosOnlySupport)
+      expect(windowSetTransparent).toEqual(WindowTransparentMacosOnlySupport)
       expect(networkAuthHandleAuth).toEqual(NetworkAuthUnavailableSupport)
       expect(networkAuthHandleCertificate).toEqual(NetworkAuthUnavailableSupport)
       expect(networkAuthSetProxy).toEqual(NetworkAuthProxySupport)
