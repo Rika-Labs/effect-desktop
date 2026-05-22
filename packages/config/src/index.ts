@@ -563,6 +563,11 @@ interface SourceCapabilityUse {
   readonly guarded: boolean
 }
 
+interface SourceGuardRange {
+  readonly start: number
+  readonly end: number
+}
+
 interface ParsedCspPolicy {
   readonly directives: ReadonlyMap<string, readonly string[]>
   readonly duplicates: readonly string[]
@@ -1082,7 +1087,7 @@ const scanSourceCapabilityUse = (
   capability: SourceCapability
 ): readonly SourceCapabilityUse[] => {
   const uses: SourceCapabilityUse[] = []
-  const guardOffsets = matchOffsets(masked, supportGuardPattern(capability))
+  const guardRanges = supportGuardRanges(masked, supportGuardPattern(capability))
   const callPattern = methodCallPattern(capability)
 
   for (const match of masked.matchAll(callPattern)) {
@@ -1095,17 +1100,47 @@ const scanSourceCapabilityUse = (
       method: capability.method,
       support: capability.support,
       location: offsetLocation(file, masked, offset),
-      guarded: guardOffsets.some((guardOffset) => guardOffset < offset)
+      guarded: guardRanges.some((range) => range.start <= offset && offset < range.end)
     })
   }
 
   return uses
 }
 
-const matchOffsets = (source: string, pattern: RegExp): readonly number[] =>
-  Array.from(source.matchAll(pattern))
-    .map((match) => match.index)
-    .filter((index): index is number => index !== undefined)
+const supportGuardRanges = (source: string, pattern: RegExp): readonly SourceGuardRange[] =>
+  Array.from(source.matchAll(pattern)).flatMap((match) =>
+    match.index === undefined
+      ? []
+      : (blockRangeAfterGuard(source, match.index + match[0].length) ?? [])
+  )
+
+const blockRangeAfterGuard = (source: string, offset: number): SourceGuardRange | undefined => {
+  let cursor = offset
+  while (cursor < source.length && (/\s/u.test(source[cursor] ?? "") || source[cursor] === ")")) {
+    cursor += 1
+  }
+  if (source[cursor] !== "{") {
+    return undefined
+  }
+
+  let depth = 0
+  for (let index = cursor; index < source.length; index += 1) {
+    const char = source[index]
+    if (char === "{") {
+      depth += 1
+      continue
+    }
+    if (char !== "}") {
+      continue
+    }
+    depth -= 1
+    if (depth === 0) {
+      return { start: cursor + 1, end: index }
+    }
+  }
+
+  return { start: cursor + 1, end: source.length }
+}
 
 const methodCallPattern = (capability: SourceCapability): RegExp =>
   new RegExp(
@@ -1115,7 +1150,7 @@ const methodCallPattern = (capability: SourceCapability): RegExp =>
 
 const supportGuardPattern = (capability: SourceCapability): RegExp =>
   new RegExp(
-    `\\b${escapeRegExp(capability.primitive)}\\s*\\.\\s*isSupported\\s*\\(\\s*["']${escapeRegExp(capability.method)}["']\\s*\\)`,
+    `\\bif\\s*\\(\\s*${escapeRegExp(capability.primitive)}\\s*\\.\\s*isSupported\\s*\\(\\s*["']${escapeRegExp(capability.method)}["']\\s*\\)`,
     "gu"
   )
 

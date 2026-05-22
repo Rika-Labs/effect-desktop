@@ -676,6 +676,69 @@ test("ProductionChecker accepts guarded source native capability usage", () =>
     })
   ))
 
+test("ProductionChecker rejects source native capability usage after a closed guard block", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {},
+        rendererFiles: [
+          {
+            path: "src/renderer/dock.ts",
+            content: [
+              'if (Dock.isSupported("setJumpList")) {',
+              "  console.info('supported')",
+              "}",
+              "Dock.setJumpList([])"
+            ].join("\n")
+          }
+        ]
+      })
+
+      expect(report.passed).toBe(false)
+      expect(report.failures).toMatchObject([
+        {
+          rule: "unsupported-capability-without-guard",
+          location: {
+            path: "src/renderer/dock.ts",
+            line: 4,
+            column: 1
+          }
+        }
+      ])
+    })
+  ))
+
+test("ProductionChecker rejects source native capability usage inside a negated guard block", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {},
+        rendererFiles: [
+          {
+            path: "src/renderer/dock.ts",
+            content: [
+              'if (!Dock.isSupported("setJumpList")) {',
+              "  Dock.setJumpList([])",
+              "}"
+            ].join("\n")
+          }
+        ]
+      })
+
+      expect(report.passed).toBe(false)
+      expect(report.failures).toMatchObject([
+        {
+          rule: "unsupported-capability-without-guard",
+          location: {
+            path: "src/renderer/dock.ts",
+            line: 2,
+            column: 3
+          }
+        }
+      ])
+    })
+  ))
+
 test("ProductionChecker flags unguarded partial Dock badge count usage", () =>
   Effect.runPromise(
     Effect.gen(function* () {
