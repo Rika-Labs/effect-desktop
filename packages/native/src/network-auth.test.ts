@@ -1,15 +1,23 @@
 import { expect, test } from "bun:test"
+import {
+  type BridgeClientExchange,
+  HostProtocolEventEnvelope,
+  HostProtocolInvalidOutputError
+} from "@orika/bridge"
 import { makeResourceId, P } from "@orika/core"
-import { Effect, type Layer, ManagedRuntime } from "effect"
+import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Schema, Stream } from "effect"
 
 import { makeNativeCapabilityManifest } from "./capabilities.js"
+import { NetworkAuthEvent } from "./contracts/network-auth.js"
 import type { SessionProfileHandle } from "./contracts/session-profile.js"
 import {
+  makeNetworkAuthBridgeClientLayer,
   makeNetworkAuthMemoryClient,
   makeNetworkAuthServiceLayer,
   makeNetworkAuthUnsupportedClient,
   NetworkAuth,
   NetworkAuthCapabilityFacts,
+  NetworkAuthLive,
   NetworkAuthRpcs,
   NetworkAuthSurface
 } from "./network-auth.js"
@@ -99,6 +107,124 @@ test("NetworkAuth setProxy returns the stored proxy policy through the service",
     })
   ))
 
+test("NetworkAuth contracts reject inconsistent event phase payloads", () => {
+  const invalidPayloads = [
+    {
+      type: "network-auth-event",
+      timestamp: 1_710_000_000_000,
+      phase: "proxy-updated",
+      profile: Profile,
+      requestId: "request-1",
+      decision: "allow"
+    },
+    {
+      type: "network-auth-event",
+      timestamp: 1_710_000_000_000,
+      phase: "auth-decided",
+      profile: Profile,
+      message: "missing decision"
+    },
+    {
+      type: "network-auth-event",
+      timestamp: 1_710_000_000_000,
+      phase: "certificate-decided",
+      profile: Profile,
+      requestId: "request-1",
+      origin: "https://example.test",
+      decision: "allow",
+      message: "extra failure"
+    },
+    {
+      type: "network-auth-event",
+      timestamp: 1_710_000_000_000,
+      phase: "failed",
+      profile: Profile,
+      requestId: "request-1",
+      origin: "https://example.test",
+      decision: "deny",
+      message: "host failed"
+    }
+  ] as const
+
+  for (const payload of invalidPayloads) {
+    const exit = Effect.runSyncExit(Schema.decodeUnknownEffect(NetworkAuthEvent)(payload))
+    expect(exit._tag).toBe("Failure")
+  }
+
+  for (const payload of [
+    {
+      type: "network-auth-event",
+      timestamp: 1_710_000_000_000,
+      phase: "proxy-updated",
+      profile: Profile
+    },
+    {
+      type: "network-auth-event",
+      timestamp: 1_710_000_000_000,
+      phase: "auth-decided",
+      profile: Profile,
+      requestId: "request-1",
+      origin: "https://example.test",
+      decision: "allow"
+    },
+    {
+      type: "network-auth-event",
+      timestamp: 1_710_000_000_000,
+      phase: "certificate-decided",
+      profile: Profile,
+      requestId: "request-1",
+      origin: "https://example.test",
+      decision: "deny"
+    },
+    {
+      type: "network-auth-event",
+      timestamp: 1_710_000_000_000,
+      phase: "failed",
+      profile: Profile,
+      message: "host failed"
+    }
+  ] as const) {
+    const exit = Effect.runSyncExit(Schema.decodeUnknownEffect(NetworkAuthEvent)(payload))
+    expect(exit._tag).toBe("Success")
+  }
+})
+
+test("NetworkAuth bridge client rejects inconsistent event phase payloads as InvalidOutput", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const exchange: BridgeClientExchange = {
+        request: () => Effect.die("NetworkAuth event test does not issue bridge requests"),
+        subscribe: (method) =>
+          Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              method,
+              timestamp: 1_710_000_000_000,
+              traceId: "network-auth-event-trace",
+              payload: {
+                type: "network-auth-event",
+                timestamp: 1_710_000_000_000,
+                phase: "auth-decided",
+                profile: Profile,
+                message: "missing decision"
+              }
+            })
+          )
+      }
+      const exit = yield* runScoped(
+        Effect.gen(function* () {
+          const networkAuth = yield* NetworkAuth
+          return yield* Effect.exit(
+            networkAuth.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+          )
+        }),
+        Layer.provide(NetworkAuthLive, makeNetworkAuthBridgeClientLayer(exchange))
+      )
+
+      expectInvalidOutput(exit)
+    })
+  ))
+
 test("NetworkAuth declares the 2 unsupported methods as non-callable capability facts", () => {
   const factTags = NetworkAuthCapabilityFacts.map((fact) => fact.tag).toSorted()
   expect(factTags).toEqual(UnsupportedMethods.map((method) => `NetworkAuth.${method}`).toSorted())
@@ -156,3 +282,12 @@ const runScoped = <A, E, R>(
     yield* Effect.promise(() => runtime.dispose())
     return result
   })
+
+const expectInvalidOutput = <A, E>(exit: Exit.Exit<A, E>): void => {
+  expect(exit._tag).toBe("Failure")
+  if (exit._tag !== "Failure") {
+    return
+  }
+
+  expect(Cause.squash(exit.cause)).toBeInstanceOf(HostProtocolInvalidOutputError)
+}

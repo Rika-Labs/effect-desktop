@@ -88,13 +88,51 @@ export class NetworkAuthSupportedResult extends Schema.Class<NetworkAuthSupporte
   reason: Schema.optionalKey(BridgeSafeString)
 }) {}
 
-export class NetworkAuthEvent extends Schema.Class<NetworkAuthEvent>("NetworkAuthEvent")({
-  type: Schema.Literal("network-auth-event"),
-  timestamp: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0)),
-  phase: NetworkAuthEventPhase,
-  profile: SessionProfileResource,
-  requestId: Schema.optionalKey(BridgeSafeNonEmptyString),
-  origin: Schema.optionalKey(NetworkAuthOrigin),
-  decision: Schema.optionalKey(NetworkAuthDecision),
-  message: Schema.optionalKey(BridgeSafeString)
-}) {}
+const NetworkAuthEventPhasePayload = Schema.makeFilter<{
+  readonly phase: NetworkAuthEventPhase
+  readonly requestId?: string | undefined
+  readonly origin?: string | undefined
+  readonly decision?: NetworkAuthDecision | undefined
+  readonly message?: string | undefined
+}>((value) => {
+  switch (value.phase) {
+    case "proxy-updated":
+      return (
+        (value.requestId === undefined &&
+          value.origin === undefined &&
+          value.decision === undefined &&
+          value.message === undefined) ||
+        "proxy-updated network auth events must not include decision or message fields"
+      )
+    case "auth-decided":
+    case "certificate-decided":
+      return (
+        (value.requestId !== undefined &&
+          value.origin !== undefined &&
+          value.decision !== undefined &&
+          value.message === undefined) ||
+        `${value.phase} network auth events require requestId, origin, and decision only`
+      )
+    case "failed":
+      return (
+        (value.requestId === undefined &&
+          value.origin === undefined &&
+          value.decision === undefined &&
+          value.message !== undefined) ||
+        "failed network auth events require message only"
+      )
+  }
+})
+
+export class NetworkAuthEvent extends Schema.Class<NetworkAuthEvent>("NetworkAuthEvent")(
+  Schema.Struct({
+    type: Schema.Literal("network-auth-event"),
+    timestamp: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0)),
+    phase: NetworkAuthEventPhase,
+    profile: SessionProfileResource,
+    requestId: Schema.optionalKey(BridgeSafeNonEmptyString),
+    origin: Schema.optionalKey(NetworkAuthOrigin),
+    decision: Schema.optionalKey(NetworkAuthDecision),
+    message: Schema.optionalKey(BridgeSafeString)
+  }).check(NetworkAuthEventPhasePayload)
+) {}

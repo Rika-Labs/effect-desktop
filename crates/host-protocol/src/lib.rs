@@ -12420,25 +12420,89 @@ impl NetworkAuthSupportedPayload {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct NetworkAuthEventPayload {
     r#type: String,
     timestamp: u64,
     phase: NetworkAuthEventPhasePayload,
     profile: SessionProfileResourcePayload,
-    #[serde(skip_serializing_if = "Option::is_none")]
     request_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     origin: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     decision: Option<NetworkAuthDecisionPayload>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     message: Option<String>,
 }
 
 impl NetworkAuthEventPayload {
-    pub fn new(
+    pub fn proxy_updated(timestamp: u64, profile: SessionProfileResourcePayload) -> Self {
+        Self {
+            r#type: "network-auth-event".to_string(),
+            timestamp,
+            phase: NetworkAuthEventPhasePayload::ProxyUpdated,
+            profile,
+            request_id: None,
+            origin: None,
+            decision: None,
+            message: None,
+        }
+    }
+
+    pub fn auth_decided(
+        timestamp: u64,
+        profile: SessionProfileResourcePayload,
+        request_id: impl Into<String>,
+        origin: impl Into<String>,
+        decision: NetworkAuthDecisionPayload,
+    ) -> Self {
+        Self {
+            r#type: "network-auth-event".to_string(),
+            timestamp,
+            phase: NetworkAuthEventPhasePayload::AuthDecided,
+            profile,
+            request_id: Some(request_id.into()),
+            origin: Some(origin.into()),
+            decision: Some(decision),
+            message: None,
+        }
+    }
+
+    pub fn certificate_decided(
+        timestamp: u64,
+        profile: SessionProfileResourcePayload,
+        request_id: impl Into<String>,
+        origin: impl Into<String>,
+        decision: NetworkAuthDecisionPayload,
+    ) -> Self {
+        Self {
+            r#type: "network-auth-event".to_string(),
+            timestamp,
+            phase: NetworkAuthEventPhasePayload::CertificateDecided,
+            profile,
+            request_id: Some(request_id.into()),
+            origin: Some(origin.into()),
+            decision: Some(decision),
+            message: None,
+        }
+    }
+
+    pub fn failed(
+        timestamp: u64,
+        profile: SessionProfileResourcePayload,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            r#type: "network-auth-event".to_string(),
+            timestamp,
+            phase: NetworkAuthEventPhasePayload::Failed,
+            profile,
+            request_id: None,
+            origin: None,
+            decision: None,
+            message: Some(message.into()),
+        }
+    }
+
+    #[cfg(test)]
+    fn new_for_test(
         timestamp: u64,
         phase: NetworkAuthEventPhasePayload,
         profile: SessionProfileResourcePayload,
@@ -12455,7 +12519,8 @@ impl NetworkAuthEventPayload {
         }
     }
 
-    pub fn with_decision(
+    #[cfg(test)]
+    fn with_decision_for_test(
         mut self,
         request_id: impl Into<String>,
         origin: impl Into<String>,
@@ -12465,6 +12530,165 @@ impl NetworkAuthEventPayload {
         self.origin = Some(origin.into());
         self.decision = Some(decision);
         self
+    }
+
+    #[cfg(test)]
+    fn with_message_for_test(mut self, message: impl Into<String>) -> Self {
+        self.message = Some(message.into());
+        self
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SerializableNetworkAuthEventPayload<'a> {
+    r#type: &'a str,
+    timestamp: u64,
+    phase: NetworkAuthEventPhasePayload,
+    profile: &'a SessionProfileResourcePayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    request_id: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    origin: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    decision: Option<NetworkAuthDecisionPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<&'a str>,
+}
+
+impl<'a> TryFrom<&'a NetworkAuthEventPayload> for SerializableNetworkAuthEventPayload<'a> {
+    type Error = &'static str;
+
+    fn try_from(payload: &'a NetworkAuthEventPayload) -> Result<Self, Self::Error> {
+        validate_network_auth_event_payload(
+            payload.phase,
+            &payload.request_id,
+            &payload.origin,
+            &payload.decision,
+            &payload.message,
+        )?;
+        Ok(Self {
+            r#type: &payload.r#type,
+            timestamp: payload.timestamp,
+            phase: payload.phase,
+            profile: &payload.profile,
+            request_id: payload.request_id.as_deref(),
+            origin: payload.origin.as_deref(),
+            decision: payload.decision,
+            message: payload.message.as_deref(),
+        })
+    }
+}
+
+impl Serialize for NetworkAuthEventPayload {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        SerializableNetworkAuthEventPayload::try_from(self)
+            .map_err(ser::Error::custom)?
+            .serialize(serializer)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawNetworkAuthEventPayload {
+    r#type: String,
+    timestamp: u64,
+    phase: NetworkAuthEventPhasePayload,
+    profile: SessionProfileResourcePayload,
+    #[serde(default)]
+    request_id: Option<String>,
+    #[serde(default)]
+    origin: Option<String>,
+    #[serde(default)]
+    decision: Option<NetworkAuthDecisionPayload>,
+    #[serde(default)]
+    message: Option<String>,
+}
+
+impl TryFrom<RawNetworkAuthEventPayload> for NetworkAuthEventPayload {
+    type Error = &'static str;
+
+    fn try_from(raw: RawNetworkAuthEventPayload) -> Result<Self, Self::Error> {
+        if raw.r#type != "network-auth-event" {
+            return Err("network auth event type must be network-auth-event");
+        }
+        validate_network_auth_event_payload(
+            raw.phase,
+            &raw.request_id,
+            &raw.origin,
+            &raw.decision,
+            &raw.message,
+        )?;
+        Ok(Self {
+            r#type: raw.r#type,
+            timestamp: raw.timestamp,
+            phase: raw.phase,
+            profile: raw.profile,
+            request_id: raw.request_id,
+            origin: raw.origin,
+            decision: raw.decision,
+            message: raw.message,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for NetworkAuthEventPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        RawNetworkAuthEventPayload::deserialize(deserializer)?
+            .try_into()
+            .map_err(de::Error::custom)
+    }
+}
+
+fn validate_network_auth_event_payload(
+    phase: NetworkAuthEventPhasePayload,
+    request_id: &Option<String>,
+    origin: &Option<String>,
+    decision: &Option<NetworkAuthDecisionPayload>,
+    message: &Option<String>,
+) -> Result<(), &'static str> {
+    match phase {
+        NetworkAuthEventPhasePayload::ProxyUpdated
+            if request_id.is_none()
+                && origin.is_none()
+                && decision.is_none()
+                && message.is_none() =>
+        {
+            Ok(())
+        }
+        NetworkAuthEventPhasePayload::ProxyUpdated => {
+            Err("proxy-updated network auth events must not include decision or message fields")
+        }
+        NetworkAuthEventPhasePayload::AuthDecided
+        | NetworkAuthEventPhasePayload::CertificateDecided
+            if request_id.is_some()
+                && origin.is_some()
+                && decision.is_some()
+                && message.is_none() =>
+        {
+            Ok(())
+        }
+        NetworkAuthEventPhasePayload::AuthDecided
+        | NetworkAuthEventPhasePayload::CertificateDecided => {
+            Err("network auth decision events require requestId, origin, and decision only")
+        }
+        NetworkAuthEventPhasePayload::Failed
+            if request_id.is_none()
+                && origin.is_none()
+                && decision.is_none()
+                && message.is_some() =>
+        {
+            Ok(())
+        }
+        NetworkAuthEventPhasePayload::Failed => {
+            Err("failed network auth events require message only")
+        }
     }
 }
 
@@ -20523,18 +20747,13 @@ mod tests {
             r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"requestId":"cert-request-1","origin":"https://example.test","kind":"certificate","decision":"allow","decidedAt":1710000000000}"#
         );
         assert_eq!(
-            serde_json::to_string(
-                &NetworkAuthEventPayload::new(
-                    1710000000001,
-                    NetworkAuthEventPhasePayload::CertificateDecided,
-                    profile
-                )
-                .with_decision(
-                    "cert-request-1",
-                    "https://example.test",
-                    NetworkAuthDecisionPayload::Allow
-                )
-            )
+            serde_json::to_string(&NetworkAuthEventPayload::certificate_decided(
+                1710000000001,
+                profile,
+                "cert-request-1",
+                "https://example.test",
+                NetworkAuthDecisionPayload::Allow
+            ))
             .expect("event should encode"),
             r#"{"type":"network-auth-event","timestamp":1710000000001,"phase":"certificate-decided","profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"requestId":"cert-request-1","origin":"https://example.test","decision":"allow"}"#
         );
@@ -20545,6 +20764,80 @@ mod tests {
             .expect("support payload should encode"),
             r#"{"supported":false,"reason":"host-network-auth-unavailable"}"#
         );
+    }
+
+    #[test]
+    fn network_auth_events_reject_inconsistent_phase_payloads() {
+        for source in [
+            r#"{"type":"network-auth-event","timestamp":1710000000000,"phase":"proxy-updated","profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"requestId":"request-1","decision":"allow"}"#,
+            r#"{"type":"network-auth-event","timestamp":1710000000000,"phase":"auth-decided","profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"message":"missing decision"}"#,
+            r#"{"type":"network-auth-event","timestamp":1710000000000,"phase":"certificate-decided","profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"requestId":"request-1","origin":"https://example.test","decision":"allow","message":"extra failure"}"#,
+            r#"{"type":"network-auth-event","timestamp":1710000000000,"phase":"failed","profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"requestId":"request-1","origin":"https://example.test","decision":"deny","message":"host failed"}"#,
+        ] {
+            let error = serde_json::from_str::<NetworkAuthEventPayload>(source)
+                .expect_err("inconsistent network auth event should be rejected");
+            assert!(
+                error.to_string().contains("decision")
+                    || error.to_string().contains("message")
+                    || error.to_string().contains("phase"),
+                "unexpected error: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn network_auth_events_reject_inconsistent_phase_payloads_before_serializing() {
+        let profile =
+            SessionProfileResourcePayload::new("session-profile:workspace-1", 0, "workspace:1");
+        for event in [
+            NetworkAuthEventPayload::new_for_test(
+                1_710_000_000_000,
+                NetworkAuthEventPhasePayload::ProxyUpdated,
+                profile.clone(),
+            )
+            .with_decision_for_test(
+                "request-1",
+                "https://example.test",
+                NetworkAuthDecisionPayload::Allow,
+            ),
+            NetworkAuthEventPayload::new_for_test(
+                1_710_000_000_000,
+                NetworkAuthEventPhasePayload::AuthDecided,
+                profile.clone(),
+            )
+            .with_message_for_test("missing decision"),
+            NetworkAuthEventPayload::new_for_test(
+                1_710_000_000_000,
+                NetworkAuthEventPhasePayload::CertificateDecided,
+                profile.clone(),
+            )
+            .with_decision_for_test(
+                "request-1",
+                "https://example.test",
+                NetworkAuthDecisionPayload::Allow,
+            )
+            .with_message_for_test("extra failure"),
+            NetworkAuthEventPayload::new_for_test(
+                1_710_000_000_000,
+                NetworkAuthEventPhasePayload::Failed,
+                profile,
+            )
+            .with_decision_for_test(
+                "request-1",
+                "https://example.test",
+                NetworkAuthDecisionPayload::Deny,
+            )
+            .with_message_for_test("host failed"),
+        ] {
+            let error = serde_json::to_string(&event)
+                .expect_err("inconsistent network auth event should not encode");
+            assert!(
+                error.to_string().contains("decision")
+                    || error.to_string().contains("message")
+                    || error.to_string().contains("phase"),
+                "unexpected error: {error}"
+            );
+        }
     }
 
     #[test]
