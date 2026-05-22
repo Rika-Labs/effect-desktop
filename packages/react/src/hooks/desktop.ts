@@ -63,30 +63,19 @@ export const useDesktopAction = <Args extends readonly unknown[], A, E>(
 ): DesktopAction<Args, A, E> => {
   const concurrency = options.concurrency ?? "drop"
   const operationRef = useRef(operation)
-  const mountedRef = useRef(true)
+  const actionOperation = useMemo(() => makeFrameworkScopedOperation(defaultRuntime), [])
   const runningRef = useRef(false)
-  const interruptRef = useRef<(() => void) | undefined>(undefined)
-  const runIdRef = useRef(0)
   const queueRef = useRef<Args[]>([])
   const [state, setState] = useState<DesktopAsyncState<A, E>>(idle<A, E>)
 
   operationRef.current = operation
 
-  const start = useCallback((args: Args): void => {
-    runningRef.current = true
-    const runId = runIdRef.current + 1
-    runIdRef.current = runId
-    setState(running<A, E>())
+  const start = useCallback(
+    (args: Args): void => {
+      runningRef.current = true
+      setState(running<A, E>())
 
-    const interrupt = runFrameworkEffect(
-      defaultRuntime,
-      runAsyncResult(operationRef.current(...args)),
-      (exit) => {
-        if (!mountedRef.current || runId !== runIdRef.current) {
-          return
-        }
-
-        interruptRef.current = undefined
+      actionOperation.runLatest(runAsyncResult(operationRef.current(...args)), (exit) => {
         runningRef.current = false
 
         setState(asyncResultFromExit(exit))
@@ -95,19 +84,25 @@ export const useDesktopAction = <Args extends readonly unknown[], A, E>(
         if (next !== undefined) {
           start(next)
         }
-      }
-    )
-    interruptRef.current = interrupt
-  }, [])
+      })
+    },
+    [actionOperation]
+  )
 
-  const cancel = useCallback((): void => {
-    const interrupt = interruptRef.current
-    if (interrupt === undefined) {
+  const cancelActiveAction = useCallback((): void => {
+    if (!runningRef.current && queueRef.current.length === 0) {
       return
     }
 
-    interrupt()
-  }, [])
+    runningRef.current = false
+    queueRef.current = []
+    setState(idle<A, E>())
+    actionOperation.reset()
+  }, [actionOperation])
+
+  const cancel = useCallback((): void => {
+    cancelActiveAction()
+  }, [cancelActiveAction])
 
   const run = useCallback(
     (...args: Args): void => {
@@ -120,7 +115,7 @@ export const useDesktopAction = <Args extends readonly unknown[], A, E>(
         case "drop":
           return
         case "replace":
-          cancel()
+          cancelActiveAction()
           start(args)
           return
         case "queue":
@@ -128,24 +123,21 @@ export const useDesktopAction = <Args extends readonly unknown[], A, E>(
           return
       }
     },
-    [cancel, concurrency, start]
+    [cancelActiveAction, concurrency, start]
   )
 
   const reset = useCallback((): void => {
-    queueRef.current = []
-    setState(idle<A, E>())
-  }, [])
+    cancelActiveAction()
+  }, [cancelActiveAction])
 
-  useEffect(() => {
-    mountedRef.current = true
-    return () => {
-      mountedRef.current = false
-      const interrupt = interruptRef.current
-      if (interrupt !== undefined) {
-        interrupt()
-      }
-    }
-  }, [])
+  useEffect(
+    () => () => {
+      runningRef.current = false
+      queueRef.current = []
+      actionOperation.dispose()
+    },
+    [actionOperation]
+  )
 
   return {
     state,

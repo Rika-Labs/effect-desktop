@@ -20,6 +20,7 @@ import {
   windows,
   type PermissionState,
   useDesktop,
+  useDesktopAction,
   useAtomValue,
   usePermission,
   useWindow
@@ -271,6 +272,49 @@ test("useDesktopQuery defaults to reload-only dependencies for inline operations
       expect(source).not.toContain("deps === undefined ? [reloads, operation]")
     })
   ))
+
+test("useDesktopAction cancel clears active action state synchronously", () =>
+  PlatformRuntime.runPromise(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const source = yield* fs.readFileString(
+        urlToPath(new URL("./hooks/desktop.ts", import.meta.url))
+      )
+
+      expect(source).toContain("const cancelActiveAction = useCallback")
+      expect(source).toContain(
+        "const actionOperation = useMemo(() => makeFrameworkScopedOperation(defaultRuntime), [])"
+      )
+      expect(source).toContain("runningRef.current = false")
+      expect(source).toContain("queueRef.current = []")
+      expect(source).toContain("setState(idle<A, E>())")
+      expect(source).not.toContain("const mountedRef = useRef(true)")
+      expect(source).not.toContain("const runIdRef = useRef(0)")
+    })
+  ))
+
+test("useDesktopAction accepts a new default action immediately after cancel", () => {
+  let starts = 0
+  let action: { readonly run: () => void; readonly cancel: () => void } | undefined
+
+  const Probe = () => {
+    action = useDesktopAction(() => {
+      starts += 1
+      return Effect.never
+    })
+    return createElement("span", null, "ready")
+  }
+
+  expect(renderToStaticMarkup(createElement(Probe))).toBe("<span>ready</span>")
+  expect(action).toBeDefined()
+
+  action?.run()
+  action?.cancel()
+  action?.run()
+  action?.cancel()
+
+  expect(starts).toBe(2)
+})
 
 test("React adapter lifecycle paths use the shared scoped framework helper", () =>
   PlatformRuntime.runPromise(
