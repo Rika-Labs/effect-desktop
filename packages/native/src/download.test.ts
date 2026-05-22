@@ -126,6 +126,78 @@ test("Download contracts reject received bytes greater than total bytes", () => 
   expect(eventExit._tag).toBe("Failure")
 })
 
+test("Download contracts reject inconsistent failure messages", () => {
+  const invalidSnapshots = [
+    { state: "running", message: "host failed" },
+    { state: "failed" }
+  ] as const
+  for (const invalid of invalidSnapshots) {
+    const exit = Effect.runSyncExit(
+      Schema.decodeUnknownEffect(DownloadSnapshot)({
+        download: downloadHandle(),
+        profile: profileHandle(),
+        url: "https://example.test/file.zip",
+        receivedBytes: 0,
+        ...invalid
+      })
+    )
+    expect(Exit.isFailure(exit)).toBe(true)
+  }
+
+  const invalidEvents = [
+    { phase: "completed", message: "host failed" },
+    { phase: "failed" }
+  ] as const
+  for (const invalid of invalidEvents) {
+    const exit = Effect.runSyncExit(
+      Schema.decodeUnknownEffect(DownloadEvent)({
+        type: "download-event",
+        timestamp: 1_710_000_000_000,
+        download: downloadHandle(),
+        profile: profileHandle(),
+        url: "https://example.test/file.zip",
+        receivedBytes: 0,
+        ...invalid
+      })
+    )
+    expect(Exit.isFailure(exit)).toBe(true)
+  }
+
+  for (const valid of [
+    { state: "running" },
+    { state: "failed", message: "host failed" }
+  ] as const) {
+    const exit = Effect.runSyncExit(
+      Schema.decodeUnknownEffect(DownloadSnapshot)({
+        download: downloadHandle(),
+        profile: profileHandle(),
+        url: "https://example.test/file.zip",
+        receivedBytes: 0,
+        ...valid
+      })
+    )
+    expect(Exit.isSuccess(exit)).toBe(true)
+  }
+
+  for (const valid of [
+    { phase: "completed" },
+    { phase: "failed", message: "host failed" }
+  ] as const) {
+    const exit = Effect.runSyncExit(
+      Schema.decodeUnknownEffect(DownloadEvent)({
+        type: "download-event",
+        timestamp: 1_710_000_000_000,
+        download: downloadHandle(),
+        profile: profileHandle(),
+        url: "https://example.test/file.zip",
+        receivedBytes: 0,
+        ...valid
+      })
+    )
+    expect(Exit.isSuccess(exit)).toBe(true)
+  }
+})
+
 test("Download bridge client rejects invalid byte progress events as InvalidOutput", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -162,6 +234,58 @@ test("Download bridge client rejects invalid byte progress events as InvalidOutp
       )
 
       expectInvalidOutput(exit)
+    })
+  ))
+
+test("Download bridge client rejects inconsistent failure messages as InvalidOutput", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      for (const payload of [
+        {
+          type: "download-event",
+          timestamp: 1_710_000_000_000,
+          phase: "completed",
+          download: downloadHandle(),
+          profile: profileHandle(),
+          url: "https://example.test/file.zip",
+          receivedBytes: 0,
+          message: "host failed"
+        },
+        {
+          type: "download-event",
+          timestamp: 1_710_000_000_000,
+          phase: "failed",
+          download: downloadHandle(),
+          profile: profileHandle(),
+          url: "https://example.test/file.zip",
+          receivedBytes: 0
+        }
+      ] as const) {
+        const exchange: BridgeClientExchange = {
+          request: () => Effect.die("Download test does not issue bridge requests"),
+          subscribe: (method) =>
+            Stream.make(
+              new HostProtocolEventEnvelope({
+                kind: "event",
+                method,
+                timestamp: 1_710_000_000_000,
+                traceId: "download-event-trace",
+                payload
+              })
+            )
+        }
+        const exit = yield* runScoped(
+          Effect.gen(function* () {
+            const client = yield* DownloadClient
+            return yield* Effect.exit(
+              client.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+            )
+          }),
+          makeDownloadBridgeClientLayer(exchange)
+        )
+
+        expectInvalidOutput(exit)
+      }
     })
   ))
 

@@ -13473,6 +13473,7 @@ impl<'a> TryFrom<&'a DownloadSnapshotPayload> for SerializableDownloadSnapshotPa
 
     fn try_from(payload: &'a DownloadSnapshotPayload) -> Result<Self, Self::Error> {
         validate_download_byte_progress(payload.received_bytes, payload.total_bytes)?;
+        validate_download_snapshot_message(payload.state, payload.message.as_deref())?;
         Ok(Self {
             download: &payload.download,
             profile: &payload.profile,
@@ -13518,6 +13519,7 @@ impl TryFrom<RawDownloadSnapshotPayload> for DownloadSnapshotPayload {
 
     fn try_from(raw: RawDownloadSnapshotPayload) -> Result<Self, Self::Error> {
         validate_download_byte_progress(raw.received_bytes, raw.total_bytes)?;
+        validate_download_snapshot_message(raw.state, raw.message.as_deref())?;
         Ok(Self {
             download: raw.download,
             profile: raw.profile,
@@ -13632,6 +13634,7 @@ impl<'a> TryFrom<&'a DownloadEventPayload> for SerializableDownloadEventPayload<
 
     fn try_from(payload: &'a DownloadEventPayload) -> Result<Self, Self::Error> {
         validate_download_byte_progress(payload.received_bytes, payload.total_bytes)?;
+        validate_download_event_message(payload.phase, payload.message.as_deref())?;
         Ok(Self {
             r#type: &payload.r#type,
             timestamp: payload.timestamp,
@@ -13684,6 +13687,7 @@ impl TryFrom<RawDownloadEventPayload> for DownloadEventPayload {
             return Err("download event type must be download-event");
         }
         validate_download_byte_progress(raw.received_bytes, raw.total_bytes)?;
+        validate_download_event_message(raw.phase, raw.message.as_deref())?;
         Ok(Self {
             r#type: raw.r#type,
             timestamp: raw.timestamp,
@@ -13719,6 +13723,30 @@ fn validate_download_byte_progress(
             Err("receivedBytes must not exceed totalBytes")
         }
         _ => Ok(()),
+    }
+}
+
+fn validate_download_snapshot_message(
+    state: DownloadStatePayload,
+    message: Option<&str>,
+) -> Result<(), &'static str> {
+    match (state, message) {
+        (DownloadStatePayload::Failed, None) => Err("failed download snapshot requires message"),
+        (DownloadStatePayload::Failed, Some(_)) => Ok(()),
+        (_, None) => Ok(()),
+        (_, Some(_)) => Err("non-failed download snapshot must not include message"),
+    }
+}
+
+fn validate_download_event_message(
+    phase: DownloadEventPhasePayload,
+    message: Option<&str>,
+) -> Result<(), &'static str> {
+    match (phase, message) {
+        (DownloadEventPhasePayload::Failed, None) => Err("failed download event requires message"),
+        (DownloadEventPhasePayload::Failed, Some(_)) => Ok(()),
+        (_, None) => Ok(()),
+        (_, Some(_)) => Err("non-failed download event must not include message"),
     }
 }
 
@@ -23274,6 +23302,107 @@ mod tests {
                 error.to_string().contains("receivedBytes")
                     || error.to_string().contains("totalBytes")
                     || error.to_string().contains("byte"),
+                "unexpected error: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn download_payloads_reject_inconsistent_failure_messages() {
+        for source in [
+            r#"{"download":{"kind":"download","id":"download:1","generation":0,"ownerScope":"workspace:1","state":"open"},"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/file.zip","state":"completed","receivedBytes":20,"message":"host failed"}"#,
+            r#"{"download":{"kind":"download","id":"download:1","generation":0,"ownerScope":"workspace:1","state":"open"},"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/file.zip","state":"failed","receivedBytes":20}"#,
+        ] {
+            let error = serde_json::from_str::<DownloadSnapshotPayload>(source)
+                .expect_err("inconsistent download snapshot failure message should be rejected");
+            assert!(
+                error.to_string().contains("message"),
+                "unexpected error: {error}"
+            );
+        }
+
+        for source in [
+            r#"{"type":"download-event","timestamp":1710000000000,"phase":"completed","download":{"kind":"download","id":"download:1","generation":0,"ownerScope":"workspace:1","state":"open"},"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/file.zip","receivedBytes":20,"message":"host failed"}"#,
+            r#"{"type":"download-event","timestamp":1710000000000,"phase":"failed","download":{"kind":"download","id":"download:1","generation":0,"ownerScope":"workspace:1","state":"open"},"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/file.zip","receivedBytes":20}"#,
+        ] {
+            let error = serde_json::from_str::<DownloadEventPayload>(source)
+                .expect_err("inconsistent download event failure message should be rejected");
+            assert!(
+                error.to_string().contains("message"),
+                "unexpected error: {error}"
+            );
+        }
+
+        for source in [
+            r#"{"download":{"kind":"download","id":"download:1","generation":0,"ownerScope":"workspace:1","state":"open"},"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/file.zip","state":"completed","receivedBytes":20}"#,
+            r#"{"download":{"kind":"download","id":"download:1","generation":0,"ownerScope":"workspace:1","state":"open"},"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/file.zip","state":"failed","receivedBytes":20,"message":"host failed"}"#,
+        ] {
+            serde_json::from_str::<DownloadSnapshotPayload>(source)
+                .expect("consistent download snapshot failure message should decode");
+        }
+
+        for source in [
+            r#"{"type":"download-event","timestamp":1710000000000,"phase":"completed","download":{"kind":"download","id":"download:1","generation":0,"ownerScope":"workspace:1","state":"open"},"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/file.zip","receivedBytes":20}"#,
+            r#"{"type":"download-event","timestamp":1710000000000,"phase":"failed","download":{"kind":"download","id":"download:1","generation":0,"ownerScope":"workspace:1","state":"open"},"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"url":"https://example.test/file.zip","receivedBytes":20,"message":"host failed"}"#,
+        ] {
+            serde_json::from_str::<DownloadEventPayload>(source)
+                .expect("consistent download event failure message should decode");
+        }
+    }
+
+    #[test]
+    fn download_payloads_reject_inconsistent_failure_messages_before_serializing() {
+        let profile =
+            SessionProfileResourcePayload::new("session-profile:workspace-1", 0, "workspace:1");
+        let download = DownloadResourcePayload::new("download:1", 0, "workspace:1");
+        let completed_snapshot_with_message = DownloadSnapshotPayload {
+            download: download.clone(),
+            profile: profile.clone(),
+            url: "https://example.test/file.zip".to_string(),
+            destination: None,
+            state: DownloadStatePayload::Completed,
+            received_bytes: 20,
+            total_bytes: None,
+            message: Some("host failed".to_string()),
+        };
+        let failed_snapshot_without_message = DownloadSnapshotPayload::new(
+            download.clone(),
+            profile.clone(),
+            "https://example.test/file.zip",
+            DownloadStatePayload::Failed,
+            20,
+        );
+        let completed_event_with_message = DownloadEventPayload {
+            r#type: "download-event".to_string(),
+            timestamp: 1_710_000_000_000,
+            phase: DownloadEventPhasePayload::Completed,
+            download: download.clone(),
+            profile: profile.clone(),
+            url: "https://example.test/file.zip".to_string(),
+            destination: None,
+            received_bytes: 20,
+            total_bytes: None,
+            message: Some("host failed".to_string()),
+        };
+        let failed_event_without_message = DownloadEventPayload::new(
+            1_710_000_000_000,
+            DownloadEventPhasePayload::Failed,
+            download,
+            profile,
+            "https://example.test/file.zip",
+            20,
+        );
+
+        for source in [
+            serde_json::to_string(&completed_snapshot_with_message),
+            serde_json::to_string(&failed_snapshot_without_message),
+            serde_json::to_string(&completed_event_with_message),
+            serde_json::to_string(&failed_event_without_message),
+        ] {
+            let error =
+                source.expect_err("inconsistent download failure message should not encode");
+            assert!(
+                error.to_string().contains("message"),
                 "unexpected error: {error}"
             );
         }

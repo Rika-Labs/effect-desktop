@@ -24,6 +24,22 @@ const DownloadByteProgress = Schema.makeFilter<{
     value.receivedBytes <= value.totalBytes ||
     "receivedBytes must not exceed totalBytes"
 )
+const DownloadSnapshotFailureMessage = Schema.makeFilter<{
+  readonly state: DownloadState
+  readonly message?: string | undefined
+}>((value) =>
+  value.state === "failed"
+    ? value.message !== undefined || "failed download snapshot requires message"
+    : value.message === undefined || "non-failed download snapshot must not include message"
+)
+const DownloadEventFailureMessage = Schema.makeFilter<{
+  readonly phase: DownloadEventPhase
+  readonly message?: string | undefined
+}>((value) =>
+  value.phase === "failed"
+    ? value.message !== undefined || "failed download event requires message"
+    : value.message === undefined || "non-failed download event must not include message"
+)
 
 export const DownloadState = Schema.Literals([
   "running",
@@ -73,7 +89,7 @@ export class DownloadSnapshot extends Schema.Class<DownloadSnapshot>("DownloadSn
     receivedBytes: DownloadNonNegativeInt,
     totalBytes: Schema.optionalKey(DownloadNonNegativeInt),
     message: Schema.optionalKey(BridgeSafeString)
-  }).check(DownloadByteProgress)
+  }).check(DownloadByteProgress, DownloadSnapshotFailureMessage)
 ) {}
 
 export class DownloadListResult extends Schema.Class<DownloadListResult>("DownloadListResult")({
@@ -99,7 +115,7 @@ export class DownloadEvent extends Schema.Class<DownloadEvent>("DownloadEvent")(
     receivedBytes: DownloadNonNegativeInt,
     totalBytes: Schema.optionalKey(DownloadNonNegativeInt),
     message: Schema.optionalKey(BridgeSafeString)
-  }).check(DownloadByteProgress)
+  }).check(DownloadByteProgress, DownloadEventFailureMessage)
 ) {}
 
 const isAbsoluteHttpUrl = (value: string): boolean => {
