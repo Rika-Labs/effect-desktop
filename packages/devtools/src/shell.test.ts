@@ -3,6 +3,7 @@ import { BunServices } from "@effect/platform-bun"
 import { Deferred, Effect, Exit, Fiber, FileSystem, ManagedRuntime, Option, Path } from "effect"
 
 import {
+  DevtoolsInvalidInputError,
   DevtoolsShellOpenError,
   DevtoolsTokenError,
   DevtoolsUnsafeProductionCaptureError,
@@ -150,6 +151,41 @@ test("DevtoolsShell rotates the token on every start", () =>
       yield* second.disable
 
       expect(firstToken).not.toBe(secondToken)
+    })
+  ))
+
+test("DevtoolsShell rejects unsafe token names before writing outside the state directory", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      for (const tokenName of [
+        "",
+        ".",
+        "..",
+        "../escaped-devtools-token",
+        "nested/devtools-token",
+        "nested\\devtools-token",
+        "devtools-token\nforged"
+      ]) {
+        const stateDir = yield* tempStateDir
+        const escapedPath = `${stateDir}/../escaped-devtools-token`
+        const shell = yield* makeDevtoolsShell({
+          tokenName,
+          transport: fakeTransport([]),
+          shellWindow: fakeShellWindow([])
+        })
+
+        const exit = yield* Effect.exit(shell.start({ profile: "dev", stateDir, openShell: false }))
+        if (Exit.isSuccess(exit)) {
+          yield* exit.value.disable
+        }
+
+        expect(Exit.isFailure(exit)).toBe(true)
+        if (Exit.isFailure(exit)) {
+          const failure = exit.cause.reasons.find((reason) => reason._tag === "Fail")
+          expect(failure?.error).toBeInstanceOf(DevtoolsInvalidInputError)
+        }
+        expect(yield* fileExists(escapedPath)).toBe(false)
+      }
     })
   ))
 

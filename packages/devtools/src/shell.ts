@@ -99,6 +99,10 @@ export interface DevtoolsShellOptions {
   readonly tokenName?: string
 }
 
+interface DevtoolsTokenName {
+  readonly value: string
+}
+
 export class DevtoolsShell extends Context.Service<DevtoolsShell, DevtoolsShellApi>()(
   "@orika/devtools/shell/DevtoolsShell"
 ) {}
@@ -112,12 +116,13 @@ export const makeDevtoolsShell = (
   Effect.sync(() => {
     const transport = options.transport ?? BunLoopbackDevtoolsTransport
     const shellWindow = options.shellWindow ?? UnavailableDevtoolsShellWindow
-    const tokenName = options.tokenName ?? "devtools-token"
+    const configuredTokenName = options.tokenName ?? "devtools-token"
 
     return Object.freeze({
       start: (rawInput) =>
         Effect.gen(function* () {
           const input = yield* decodeStartInput(rawInput)
+          const tokenName = yield* validateTokenName(configuredTokenName)
           yield* rejectUnsafeProductionCapture(input)
           if (!shouldStartDevtools(input)) {
             return disabledHandle
@@ -234,7 +239,30 @@ const decodeStartInput = (
 
 const mintToken = (): string => randomBytes(TokenBytes).toString("hex")
 
-const tokenFilePath = (stateDir: string, tokenName: string): string => `${stateDir}/${tokenName}`
+const tokenFilePath = (stateDir: string, tokenName: DevtoolsTokenName): string =>
+  `${stateDir}/${tokenName.value}`
+
+const validateTokenName = (
+  tokenName: string
+): Effect.Effect<DevtoolsTokenName, DevtoolsInvalidInputError, never> =>
+  tokenName.length === 0 ||
+  tokenName === "." ||
+  tokenName === ".." ||
+  /[/\\]/u.test(tokenName) ||
+  hasControlCharacter(tokenName)
+    ? Effect.fail(
+        new DevtoolsInvalidInputError({
+          operation: "Devtools.token.name",
+          cause: "tokenName must be a simple file name"
+        })
+      )
+    : Effect.succeed(Object.freeze({ value: tokenName }))
+
+const hasControlCharacter = (value: string): boolean =>
+  Array.from(value).some((char) => {
+    const code = char.codePointAt(0)
+    return code !== undefined && (code <= 0x1f || code === 0x7f)
+  })
 
 const rejectUnsafeProductionCapture = (
   input: DevtoolsStartInput
