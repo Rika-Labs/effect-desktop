@@ -655,19 +655,7 @@ const validateControl = (
   decodeNativeInput(JobControlRequest, input, operation)
 
 const validateProgress = (input: unknown): Effect.Effect<JobProgressRequest, JobError, never> =>
-  decodeNativeInput(JobProgressRequest, input, "Job.reportProgress").pipe(
-    Effect.flatMap((request) =>
-      request.total !== undefined && request.completed > request.total
-        ? Effect.fail(
-            makeHostProtocolInvalidArgumentError(
-              "completed",
-              "job progress completed must not exceed total",
-              "Job.reportProgress"
-            )
-          )
-        : Effect.succeed(request)
-    )
-  )
+  decodeNativeInput(JobProgressRequest, input, "Job.reportProgress")
 
 const validateGet = (input: unknown): Effect.Effect<JobGetRequest, JobError, never> =>
   decodeNativeInput(JobGetRequest, input, "Job.get")

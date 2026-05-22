@@ -2,7 +2,9 @@
 import { expect, test } from "bun:test"
 import {
   type BridgeClientExchange,
+  HostProtocolEventEnvelope,
   HostProtocolInternalError,
+  HostProtocolInvalidOutputError,
   HostProtocolRequestEnvelope,
   type HostProtocolRequestEnvelope as HostProtocolRequestEnvelopeShape,
   RendererOriginAuth
@@ -16,13 +18,15 @@ import {
   PermissionRegistry,
   P
 } from "@orika/core"
-import { Cause, Effect, Exit, Layer, Stream } from "effect"
+import { Cause, Effect, Exit, Layer, Option, Schema, Stream } from "effect"
 import * as EventJournal from "effect/unstable/eventlog/EventJournal"
 
 import {
   Job,
   JobClient,
+  JobEvent,
   JobHandle,
+  JobProgress,
   JobSnapshot,
   JobRuntime,
   JobRuntimeLive,
@@ -34,6 +38,79 @@ import {
   makeJobServiceLayer,
   makeJobUnsupportedClient
 } from "./job.js"
+
+test("Job contracts reject completed progress greater than total progress", async () => {
+  const progressExit = Effect.runSyncExit(
+    Schema.decodeUnknownEffect(JobProgress)({
+      completed: 20,
+      total: 10,
+      updatedAt: 1_710_000_000_000
+    })
+  )
+  const unknownTotalExit = Effect.runSyncExit(
+    Schema.decodeUnknownEffect(JobProgress)({
+      completed: 20,
+      updatedAt: 1_710_000_000_000
+    })
+  )
+  const snapshotExit = Effect.runSyncExit(
+    Schema.decodeUnknownEffect(JobSnapshot)(jobSnapshotPayload(invalidProgressPayload()))
+  )
+  const eventExit = Effect.runSyncExit(
+    Schema.decodeUnknownEffect(JobEvent)({
+      type: "job-event",
+      timestamp: 1_710_000_000_000,
+      phase: "progress",
+      job: jobSnapshotPayload(invalidProgressPayload())
+    })
+  )
+
+  expect(unknownTotalExit._tag).toBe("Success")
+  expect(progressExit._tag).toBe("Failure")
+  expect(snapshotExit._tag).toBe("Failure")
+  expect(eventExit._tag).toBe("Failure")
+})
+
+test("Job bridge client rejects invalid progress from host output and events", async () => {
+  const exchange: BridgeClientExchange = {
+    request: () =>
+      Effect.succeed({
+        kind: "success",
+        payload: jobSnapshotPayload(invalidProgressPayload())
+      }),
+    subscribe: (method) =>
+      Stream.make(
+        new HostProtocolEventEnvelope({
+          kind: "event",
+          method,
+          timestamp: 1_710_000_000_000,
+          traceId: "job-event-trace",
+          payload: {
+            type: "job-event",
+            timestamp: 1_710_000_000_000,
+            phase: "progress",
+            job: jobSnapshotPayload(invalidProgressPayload())
+          }
+        })
+      )
+  }
+
+  const resultExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const client = yield* JobClient
+      return yield* Effect.exit(client.get({ jobId: "job-1" }))
+    }).pipe(Effect.provide(makeJobBridgeClientLayer(exchange)))
+  )
+  const eventExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const client = yield* JobClient
+      return yield* Effect.exit(client.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow)))
+    }).pipe(Effect.provide(makeJobBridgeClientLayer(exchange)))
+  )
+
+  expectInvalidOutput(resultExit)
+  expectInvalidOutput(eventExit)
+})
 
 test("Job starts, records progress, controls terminal states, and emits events", async () => {
   const rows: AuditEvent[] = []
@@ -383,6 +460,36 @@ const memoryAudit = (rows: AuditEvent[]): AuditEventsApi => ({
     }),
   observe: () => Stream.fromIterable(rows)
 })
+
+const invalidProgressPayload = () =>
+  ({
+    completed: 20,
+    total: 10,
+    updatedAt: 1_710_000_000_000
+  }) as const
+
+const jobSnapshotPayload = (progress: ReturnType<typeof invalidProgressPayload>) =>
+  ({
+    handle: {
+      kind: "job",
+      id: "job-1",
+      generation: 0,
+      ownerScope: "native-job",
+      state: "running"
+    },
+    name: "Invalid progress job",
+    state: "running",
+    startedAt: 1_710_000_000_000,
+    updatedAt: 1_710_000_000_000,
+    progress
+  }) as const
+
+const expectInvalidOutput = <A>(exit: Exit.Exit<A, unknown>): void => {
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    expect(Cause.squash(exit.cause)).toBeInstanceOf(HostProtocolInvalidOutputError)
+  }
+}
 
 const expectExitFailure = <A>(exit: Exit.Exit<A, unknown>, assert: (error: unknown) => void) => {
   expect(Exit.isFailure(exit)).toBe(true)

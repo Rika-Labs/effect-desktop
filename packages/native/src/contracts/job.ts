@@ -26,6 +26,13 @@ const JobProgressCompleted = Schema.Number.check(
   Schema.isGreaterThanOrEqualTo(0)
 )
 const JobProgressTotal = Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0))
+const JobProgressRange = Schema.makeFilter<{
+  readonly completed: number
+  readonly total?: number | undefined
+}>(
+  (value) =>
+    value.total === undefined || value.completed <= value.total || "completed must not exceed total"
+)
 
 export class JobHandle extends Schema.Class<JobHandle>("JobHandle")({
   kind: Schema.Literal("job"),
@@ -47,25 +54,29 @@ export class JobControlRequest extends Schema.Class<JobControlRequest>("JobContr
   traceId: Schema.optionalKey(BridgeSafeNonEmptyString)
 }) {}
 
-export class JobProgressRequest extends Schema.Class<JobProgressRequest>("JobProgressRequest")({
-  jobId: BridgeSafeNonEmptyString,
-  completed: JobProgressCompleted,
-  total: Schema.optionalKey(JobProgressTotal),
-  message: Schema.optionalKey(BridgeSafeString),
-  traceId: Schema.optionalKey(BridgeSafeNonEmptyString)
-}) {}
+export class JobProgressRequest extends Schema.Class<JobProgressRequest>("JobProgressRequest")(
+  Schema.Struct({
+    jobId: BridgeSafeNonEmptyString,
+    completed: JobProgressCompleted,
+    total: Schema.optionalKey(JobProgressTotal),
+    message: Schema.optionalKey(BridgeSafeString),
+    traceId: Schema.optionalKey(BridgeSafeNonEmptyString)
+  }).check(JobProgressRange)
+) {}
 
 export class JobGetRequest extends Schema.Class<JobGetRequest>("JobGetRequest")({
   jobId: BridgeSafeNonEmptyString,
   traceId: Schema.optionalKey(BridgeSafeNonEmptyString)
 }) {}
 
-export class JobProgress extends Schema.Class<JobProgress>("JobProgress")({
-  completed: JobProgressCompleted,
-  total: Schema.optionalKey(JobProgressTotal),
-  message: Schema.optionalKey(BridgeSafeString),
-  updatedAt: JobTimestamp
-}) {}
+export class JobProgress extends Schema.Class<JobProgress>("JobProgress")(
+  Schema.Struct({
+    completed: JobProgressCompleted,
+    total: Schema.optionalKey(JobProgressTotal),
+    message: Schema.optionalKey(BridgeSafeString),
+    updatedAt: JobTimestamp
+  }).check(JobProgressRange)
+) {}
 
 export class JobSnapshot extends Schema.Class<JobSnapshot>("JobSnapshot")({
   handle: JobHandle,
