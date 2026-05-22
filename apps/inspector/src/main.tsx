@@ -1,7 +1,7 @@
 import { makeInspectorTransport } from "@orika/core/inspector-transport"
 import { makeReplayTransport } from "@orika/devtools/testing"
-import { Cause, Effect, Exit } from "effect"
-import { StrictMode, useState } from "react"
+import { Cause, Effect, Exit, Stream } from "effect"
+import { StrictMode, useEffect, useState } from "react"
 
 import { App } from "./App.js"
 import {
@@ -67,18 +67,34 @@ interface InspectorRootProps {
 function InspectorRoot({ initialSnapshot, service }: InspectorRootProps) {
   const [snapshot, setSnapshot] = useState(initialSnapshot)
   const [snapshotError, setSnapshotError] = useState<unknown>()
+  const [selectedSessionId, setSelectedSessionId] = useState(initialSnapshot.selectedSessionId)
 
-  const selectSession = (sessionId: string): void => {
-    void Effect.runCallback(service.snapshot(sessionId), {
-      onExit: (exit) => {
-        if (Exit.isSuccess(exit)) {
-          setSnapshot(exit.value)
-          setSnapshotError(undefined)
-        } else {
-          setSnapshotError(Cause.squash(exit.cause))
+  useEffect(() => {
+    const interrupt = Effect.runCallback(
+      service.observe(selectedSessionId).pipe(
+        Stream.runForEach((nextSnapshot) =>
+          Effect.sync(() => {
+            setSnapshot(nextSnapshot)
+            setSnapshotError(undefined)
+          })
+        )
+      ),
+      {
+        onExit: (exit) => {
+          if (Exit.isFailure(exit) && !Cause.hasInterruptsOnly(exit.cause)) {
+            setSnapshotError(Cause.squash(exit.cause))
+          }
         }
       }
-    })
+    )
+
+    return () => {
+      interrupt()
+    }
+  }, [selectedSessionId, service])
+
+  const selectSession = (sessionId: string): void => {
+    setSelectedSessionId(sessionId)
   }
 
   return (
