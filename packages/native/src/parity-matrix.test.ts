@@ -196,6 +196,26 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
           ]
         }
       })
+      expect(result.rows.find((row) => row.tag === "WebView.printToPdf")).toMatchObject({
+        hostStatus: "capability-fact",
+        support: {
+          status: "unsupported",
+          reason: "host-document-output-unavailable",
+          platforms: [
+            {
+              platform: "macos",
+              status: "unsupported",
+              reason: "host-document-output-unavailable"
+            },
+            {
+              platform: "windows",
+              status: "unsupported",
+              reason: "host-document-output-unavailable"
+            },
+            { platform: "linux", status: "unsupported", reason: "host-document-output-unavailable" }
+          ]
+        }
+      })
       expect(result.rows.find((row) => row.tag === "WebView.findInPage")).toMatchObject({
         hostStatus: "capability-fact",
         support: {
