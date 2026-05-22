@@ -78,6 +78,7 @@ function SessionButton({ onSelect, selected, session }: SessionButtonProps) {
     <button
       type="button"
       className={selected ? "session-button selected" : "session-button"}
+      aria-current={selected ? "page" : undefined}
       onClick={() => onSelect(session.id)}
     >
       <span>{session.label}</span>
