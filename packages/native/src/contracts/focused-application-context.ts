@@ -167,14 +167,48 @@ export class FocusedApplicationContextSupportedResult extends Schema.Class<Focus
   reason: Schema.optionalKey(BridgeSafeString)
 }) {}
 
+const FocusedApplicationContextEventPhasePayload = Schema.makeFilter<{
+  readonly phase: FocusedApplicationContextEventPhase
+  readonly watchId?: string | undefined
+  readonly snapshot?: FocusedApplicationContextSnapshotResult | undefined
+  readonly reason?: FocusedApplicationContextFailureReason | undefined
+  readonly message?: string | undefined
+}>((value) => {
+  switch (value.phase) {
+    case "focus-changed":
+      return (
+        (value.snapshot !== undefined &&
+          value.reason === undefined &&
+          value.message === undefined) ||
+        "focus-changed focused application context events require snapshot and no failure metadata"
+      )
+    case "watch-started":
+    case "watch-stopped":
+      return (
+        (value.watchId !== undefined &&
+          value.snapshot === undefined &&
+          value.reason === undefined &&
+          value.message === undefined) ||
+        `${value.phase} focused application context events require watchId only`
+      )
+    case "failed":
+      return (
+        (value.reason !== undefined && value.snapshot === undefined) ||
+        "failed focused application context events require reason and no snapshot"
+      )
+  }
+})
+
 export class FocusedApplicationContextEvent extends Schema.Class<FocusedApplicationContextEvent>(
   "FocusedApplicationContextEvent"
-)({
-  type: FocusedApplicationContextEventType,
-  timestamp: FocusedApplicationContextTimestamp,
-  phase: FocusedApplicationContextEventPhase,
-  watchId: Schema.optionalKey(BridgeSafeNonEmptyString),
-  snapshot: Schema.optionalKey(FocusedApplicationContextSnapshotResult),
-  reason: Schema.optionalKey(FocusedApplicationContextFailureReason),
-  message: Schema.optionalKey(BridgeSafeString)
-}) {}
+)(
+  Schema.Struct({
+    type: FocusedApplicationContextEventType,
+    timestamp: FocusedApplicationContextTimestamp,
+    phase: FocusedApplicationContextEventPhase,
+    watchId: Schema.optionalKey(BridgeSafeNonEmptyString),
+    snapshot: Schema.optionalKey(FocusedApplicationContextSnapshotResult),
+    reason: Schema.optionalKey(FocusedApplicationContextFailureReason),
+    message: Schema.optionalKey(BridgeSafeString)
+  }).check(FocusedApplicationContextEventPhasePayload)
+) {}

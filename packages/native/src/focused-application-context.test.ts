@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import { type BridgeClientExchange, makeHostProtocolInternalError } from "@orika/bridge"
 import { type AuditEvent, makePermissionRegistry, makeResourceRegistry, P } from "@orika/core"
-import { Cause, Effect, Exit, type Layer, ManagedRuntime, Stream } from "effect"
+import { Cause, Effect, Exit, type Layer, ManagedRuntime, Schema, Stream } from "effect"
 
 import { makeNativeCapabilityManifest } from "./capabilities.js"
 import {
@@ -18,6 +18,7 @@ import {
 } from "./focused-application-context.js"
 import {
   FocusedApplicationContextActor,
+  FocusedApplicationContextEvent,
   FocusedApplicationContextSnapshotRequest
 } from "./contracts/focused-application-context.js"
 
@@ -76,6 +77,82 @@ test("FocusedApplicationContext capability facts surface in the manifest and sta
       )
     })
   ))
+
+test("FocusedApplicationContext events reject inconsistent phase payloads", () => {
+  const snapshot = focusedSnapshot()
+  for (const payload of [
+    {
+      ...eventBase(),
+      phase: "focus-changed"
+    },
+    {
+      ...eventBase(),
+      phase: "focus-changed",
+      snapshot,
+      reason: "host-failed"
+    },
+    {
+      ...eventBase(),
+      phase: "watch-started"
+    },
+    {
+      ...eventBase(),
+      phase: "watch-stopped",
+      watchId: "watch-1",
+      message: "stopped"
+    },
+    {
+      ...eventBase(),
+      phase: "failed"
+    },
+    {
+      ...eventBase(),
+      phase: "failed",
+      reason: "host-failed",
+      snapshot
+    }
+  ] as const) {
+    const exit = Effect.runSyncExit(
+      Schema.decodeUnknownEffect(FocusedApplicationContextEvent)(payload)
+    )
+    expect(exit._tag).toBe("Failure")
+  }
+
+  for (const payload of [
+    {
+      ...eventBase(),
+      phase: "focus-changed",
+      snapshot
+    },
+    {
+      ...eventBase(),
+      phase: "focus-changed",
+      watchId: "watch-1",
+      snapshot
+    },
+    {
+      ...eventBase(),
+      phase: "watch-started",
+      watchId: "watch-1"
+    },
+    {
+      ...eventBase(),
+      phase: "watch-stopped",
+      watchId: "watch-1"
+    },
+    {
+      ...eventBase(),
+      phase: "failed",
+      reason: "host-failed",
+      message: "host failed"
+    }
+  ] as const) {
+    const exit = Effect.runSyncExit(
+      Schema.decodeUnknownEffect(FocusedApplicationContextEvent)(payload)
+    )
+    expect(exit._tag).toBe("Success")
+  }
+})
 
 test("FocusedApplicationContext snapshots expose focused surface metadata only", () =>
   Effect.runPromise(
@@ -291,6 +368,19 @@ const memoryAudit = (rows: AuditEvent[]) => ({
 })
 
 const actor = () => new FocusedApplicationContextActor({ kind: "workspace", id: "workspace-1" })
+
+const eventBase = () => ({
+  type: "focused-application-context-event",
+  timestamp: 1_710_000_000_100
+})
+
+const focusedSnapshot = () => ({
+  application: {
+    applicationId: "com.example.App",
+    name: "Example App"
+  },
+  observedAt: 1_710_000_000_000
+})
 
 const runScoped = <A, E, R>(
   effect: Effect.Effect<A, E, R>,

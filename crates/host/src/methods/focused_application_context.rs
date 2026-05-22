@@ -297,8 +297,7 @@ mod macos_focused_application {
 mod tests {
     use super::*;
     use host_protocol::{
-        FocusedApplicationContextEventPayload, FocusedApplicationContextEventPhase,
-        FocusedApplicationContextSnapshotResultPayload,
+        FocusedApplicationContextEventPayload, FocusedApplicationContextSnapshotResultPayload,
         FocusedApplicationContextStopWatchingResultPayload,
         FocusedApplicationContextWatchResultPayload, FocusedApplicationMetadataPayload,
         HostProtocolError,
@@ -386,9 +385,8 @@ mod tests {
             FocusedApplicationContextStopWatchingResultPayload::new("watch-1", true),
         )
         .expect("stop result should encode");
-        let event = serde_json::to_value(FocusedApplicationContextEventPayload::new(
-            100,
-            FocusedApplicationContextEventPhase::WatchStarted,
+        let event = serde_json::to_value(FocusedApplicationContextEventPayload::watch_started(
+            100, "watch-1",
         ))
         .expect("event should encode");
 
@@ -398,6 +396,7 @@ mod tests {
         assert_eq!(stopped["stopped"], json!(true));
         assert_eq!(event["type"], json!("focused-application-context-event"));
         assert_eq!(event["phase"], json!("watch-started"));
+        assert_eq!(event["watchId"], json!("watch-1"));
     }
 
     fn valid_snapshot() -> Value {

@@ -6524,32 +6524,223 @@ impl FocusedApplicationContextSupportedPayload {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct FocusedApplicationContextEventPayload {
     r#type: String,
     timestamp: u64,
     phase: FocusedApplicationContextEventPhase,
-    #[serde(skip_serializing_if = "Option::is_none")]
     watch_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     snapshot: Option<FocusedApplicationContextSnapshotResultPayload>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     reason: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     message: Option<String>,
 }
 
 impl FocusedApplicationContextEventPayload {
-    pub fn new(timestamp: u64, phase: FocusedApplicationContextEventPhase) -> Self {
+    pub fn focus_changed(
+        timestamp: u64,
+        snapshot: FocusedApplicationContextSnapshotResultPayload,
+    ) -> Self {
         Self {
             r#type: "focused-application-context-event".to_string(),
             timestamp,
-            phase,
+            phase: FocusedApplicationContextEventPhase::FocusChanged,
             watch_id: None,
+            snapshot: Some(snapshot),
+            reason: None,
+            message: None,
+        }
+    }
+
+    pub fn watch_started(timestamp: u64, watch_id: impl Into<String>) -> Self {
+        Self {
+            r#type: "focused-application-context-event".to_string(),
+            timestamp,
+            phase: FocusedApplicationContextEventPhase::WatchStarted,
+            watch_id: Some(watch_id.into()),
             snapshot: None,
             reason: None,
             message: None,
+        }
+    }
+
+    pub fn watch_stopped(timestamp: u64, watch_id: impl Into<String>) -> Self {
+        Self {
+            r#type: "focused-application-context-event".to_string(),
+            timestamp,
+            phase: FocusedApplicationContextEventPhase::WatchStopped,
+            watch_id: Some(watch_id.into()),
+            snapshot: None,
+            reason: None,
+            message: None,
+        }
+    }
+
+    pub fn failed(timestamp: u64, reason: impl Into<String>) -> Self {
+        Self {
+            r#type: "focused-application-context-event".to_string(),
+            timestamp,
+            phase: FocusedApplicationContextEventPhase::Failed,
+            watch_id: None,
+            snapshot: None,
+            reason: Some(reason.into()),
+            message: None,
+        }
+    }
+
+    pub fn with_watch_id(mut self, watch_id: impl Into<String>) -> Self {
+        self.watch_id = Some(watch_id.into());
+        self
+    }
+
+    pub fn with_message(mut self, message: impl Into<String>) -> Self {
+        self.message = Some(message.into());
+        self
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SerializableFocusedApplicationContextEventPayload<'a> {
+    r#type: &'a str,
+    timestamp: u64,
+    phase: FocusedApplicationContextEventPhase,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    watch_id: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    snapshot: Option<&'a FocusedApplicationContextSnapshotResultPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<&'a str>,
+}
+
+impl<'a> TryFrom<&'a FocusedApplicationContextEventPayload>
+    for SerializableFocusedApplicationContextEventPayload<'a>
+{
+    type Error = &'static str;
+
+    fn try_from(payload: &'a FocusedApplicationContextEventPayload) -> Result<Self, Self::Error> {
+        validate_focused_application_context_event_payload(
+            &payload.r#type,
+            payload.phase,
+            payload.watch_id.as_deref(),
+            payload.snapshot.as_ref(),
+            payload.reason.as_deref(),
+            payload.message.as_deref(),
+        )?;
+        Ok(Self {
+            r#type: &payload.r#type,
+            timestamp: payload.timestamp,
+            phase: payload.phase,
+            watch_id: payload.watch_id.as_deref(),
+            snapshot: payload.snapshot.as_ref(),
+            reason: payload.reason.as_deref(),
+            message: payload.message.as_deref(),
+        })
+    }
+}
+
+impl Serialize for FocusedApplicationContextEventPayload {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        SerializableFocusedApplicationContextEventPayload::try_from(self)
+            .map_err(ser::Error::custom)?
+            .serialize(serializer)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawFocusedApplicationContextEventPayload {
+    r#type: String,
+    timestamp: u64,
+    phase: FocusedApplicationContextEventPhase,
+    #[serde(default)]
+    watch_id: Option<String>,
+    #[serde(default)]
+    snapshot: Option<FocusedApplicationContextSnapshotResultPayload>,
+    #[serde(default)]
+    reason: Option<String>,
+    #[serde(default)]
+    message: Option<String>,
+}
+
+impl TryFrom<RawFocusedApplicationContextEventPayload> for FocusedApplicationContextEventPayload {
+    type Error = &'static str;
+
+    fn try_from(raw: RawFocusedApplicationContextEventPayload) -> Result<Self, Self::Error> {
+        validate_focused_application_context_event_payload(
+            &raw.r#type,
+            raw.phase,
+            raw.watch_id.as_deref(),
+            raw.snapshot.as_ref(),
+            raw.reason.as_deref(),
+            raw.message.as_deref(),
+        )?;
+        Ok(Self {
+            r#type: raw.r#type,
+            timestamp: raw.timestamp,
+            phase: raw.phase,
+            watch_id: raw.watch_id,
+            snapshot: raw.snapshot,
+            reason: raw.reason,
+            message: raw.message,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for FocusedApplicationContextEventPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        RawFocusedApplicationContextEventPayload::deserialize(deserializer)?
+            .try_into()
+            .map_err(de::Error::custom)
+    }
+}
+
+fn validate_focused_application_context_event_payload(
+    event_type: &str,
+    phase: FocusedApplicationContextEventPhase,
+    watch_id: Option<&str>,
+    snapshot: Option<&FocusedApplicationContextSnapshotResultPayload>,
+    reason: Option<&str>,
+    message: Option<&str>,
+) -> Result<(), &'static str> {
+    if event_type != "focused-application-context-event" {
+        return Err("focused application context event type must match the protocol event name");
+    }
+
+    match phase {
+        FocusedApplicationContextEventPhase::FocusChanged
+            if snapshot.is_some() && reason.is_none() && message.is_none() =>
+        {
+            Ok(())
+        }
+        FocusedApplicationContextEventPhase::FocusChanged => {
+            Err("focus-changed focused application context events require snapshot and no failure metadata")
+        }
+        FocusedApplicationContextEventPhase::WatchStarted
+        | FocusedApplicationContextEventPhase::WatchStopped
+            if watch_id.is_some()
+                && snapshot.is_none()
+                && reason.is_none()
+                && message.is_none() =>
+        {
+            Ok(())
+        }
+        FocusedApplicationContextEventPhase::WatchStarted
+        | FocusedApplicationContextEventPhase::WatchStopped => {
+            Err("watch lifecycle focused application context events require watch id only")
+        }
+        FocusedApplicationContextEventPhase::Failed if reason.is_some() && snapshot.is_none() => {
+            Ok(())
+        }
+        FocusedApplicationContextEventPhase::Failed => {
+            Err("failed focused application context events require reason and no snapshot")
         }
     }
 }
@@ -17101,7 +17292,9 @@ mod tests {
         ExtensionPackageInstallResultPayload, ExtensionPackageManifestPayload,
         ExtensionPackageRemoveResultPayload, ExtensionPackageSourceKind,
         ExtensionPackageSourcePayload, ExtensionPackageSupportedPayload,
-        ExtensionPackageUpdateResultPayload, HostProtocolEnvelope, HostProtocolError,
+        ExtensionPackageUpdateResultPayload, FocusedApplicationContextEventPayload,
+        FocusedApplicationContextEventPhase, FocusedApplicationContextSnapshotResultPayload,
+        FocusedApplicationMetadataPayload, HostProtocolEnvelope, HostProtocolError,
         HostVersionPayload, JobControlPayload, JobEventPayload, JobEventPhase, JobGetPayload,
         JobHandlePayload, JobProgressPayload, JobProgressReportPayload, JobSnapshotPayload,
         JobStartPayload, JobState, JobSupportedPayload, LocalToolRuntimeActorKind,
@@ -19632,6 +19825,72 @@ mod tests {
                     || error.to_string().contains("reason"),
                 "unexpected error: {error}"
             );
+        }
+    }
+
+    #[test]
+    fn focused_application_context_events_reject_inconsistent_phase_payloads() {
+        for source in [
+            r#"{"type":"focused-application-context-event","timestamp":1710000000100,"phase":"focus-changed"}"#,
+            r#"{"type":"focused-application-context-event","timestamp":1710000000100,"phase":"focus-changed","snapshot":{"application":{"applicationId":"app-1"},"observedAt":1710000000000},"reason":"host-failed"}"#,
+            r#"{"type":"focused-application-context-event","timestamp":1710000000100,"phase":"watch-started"}"#,
+            r#"{"type":"focused-application-context-event","timestamp":1710000000100,"phase":"watch-stopped","watchId":"watch-1","message":"stopped"}"#,
+            r#"{"type":"focused-application-context-event","timestamp":1710000000100,"phase":"failed"}"#,
+            r#"{"type":"focused-application-context-event","timestamp":1710000000100,"phase":"failed","reason":"host-failed","snapshot":{"application":{"applicationId":"app-1"},"observedAt":1710000000000}}"#,
+        ] {
+            serde_json::from_str::<FocusedApplicationContextEventPayload>(source)
+                .expect_err("inconsistent focused application context event should be rejected");
+        }
+
+        for source in [
+            r#"{"type":"focused-application-context-event","timestamp":1710000000100,"phase":"focus-changed","snapshot":{"application":{"applicationId":"app-1"},"observedAt":1710000000000}}"#,
+            r#"{"type":"focused-application-context-event","timestamp":1710000000100,"phase":"focus-changed","watchId":"watch-1","snapshot":{"application":{"applicationId":"app-1"},"observedAt":1710000000000}}"#,
+            r#"{"type":"focused-application-context-event","timestamp":1710000000100,"phase":"watch-started","watchId":"watch-1"}"#,
+            r#"{"type":"focused-application-context-event","timestamp":1710000000100,"phase":"watch-stopped","watchId":"watch-1"}"#,
+            r#"{"type":"focused-application-context-event","timestamp":1710000000100,"phase":"failed","reason":"host-failed","message":"host failed"}"#,
+        ] {
+            serde_json::from_str::<FocusedApplicationContextEventPayload>(source)
+                .expect("consistent focused application context event should decode");
+        }
+    }
+
+    #[test]
+    fn focused_application_context_events_reject_inconsistent_phase_payloads_before_serializing() {
+        let snapshot = FocusedApplicationContextSnapshotResultPayload::new(
+            FocusedApplicationMetadataPayload::new("app-1"),
+            1_710_000_000_000,
+        );
+        for event in [
+            FocusedApplicationContextEventPayload {
+                r#type: "focused-application-context-event".to_string(),
+                timestamp: 1_710_000_000_100,
+                phase: FocusedApplicationContextEventPhase::FocusChanged,
+                watch_id: None,
+                snapshot: None,
+                reason: None,
+                message: None,
+            },
+            FocusedApplicationContextEventPayload {
+                r#type: "focused-application-context-event".to_string(),
+                timestamp: 1_710_000_000_100,
+                phase: FocusedApplicationContextEventPhase::WatchStarted,
+                watch_id: None,
+                snapshot: None,
+                reason: None,
+                message: None,
+            },
+            FocusedApplicationContextEventPayload {
+                r#type: "focused-application-context-event".to_string(),
+                timestamp: 1_710_000_000_100,
+                phase: FocusedApplicationContextEventPhase::Failed,
+                watch_id: None,
+                snapshot: Some(snapshot),
+                reason: Some("host-failed".to_string()),
+                message: None,
+            },
+        ] {
+            serde_json::to_string(&event)
+                .expect_err("inconsistent focused application context event should not encode");
         }
     }
 
