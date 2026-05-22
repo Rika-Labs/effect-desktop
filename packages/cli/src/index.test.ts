@@ -5222,6 +5222,45 @@ test("desktop sign rejects tampered package artifacts before signing", () =>
     })
   ))
 
+test("desktop sign rejects malformed artifact metadata as a file error", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-sign-malformed-metadata-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, { signing: { linux: { gpgKey: "ABCD1234" } } })
+        const artifactPath = yield* writePackagedArtifactFixture(directory, "linux-x64", "appimage")
+        const artifactJsonPath = join(dirname(artifactPath), "artifact.json")
+        yield* Effect.promise(() => writeFile(artifactJsonPath, '["not-metadata"]\n'))
+        const calls: string[] = []
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["sign", "--config", "apps/inspector/desktop.config.ts", "--json"],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          signCommandRunner: (invocation) =>
+            Effect.sync(() => {
+              calls.push(invocation.step)
+            }),
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const error = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(calls).toEqual([])
+        expect(error.tag).toBe("SignFileError")
+        expect(error.message).toContain("failed to read JSON")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
 test("desktop sign rejects Linux signable artifacts without linuxIntegration metadata", () =>
   Effect.runPromise(
     Effect.gen(function* () {
