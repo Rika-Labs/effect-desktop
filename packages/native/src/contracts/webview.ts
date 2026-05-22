@@ -271,17 +271,62 @@ export class WebViewRuntimePoint extends Schema.Class<WebViewRuntimePoint>("WebV
   y: Schema.Int
 }) {}
 
-export class WebViewRuntimeEvent extends Schema.Class<WebViewRuntimeEvent>("WebViewRuntimeEvent")({
-  webview: WebViewResource,
-  phase: WebViewRuntimeEventPhase,
-  url: Schema.optionalKey(WebViewRuntimeUrl),
-  reason: Schema.optionalKey(WebViewRuntimeEventReason),
-  requestId: Schema.optionalKey(WebViewRuntimeRequestId),
-  permission: Schema.optionalKey(WebViewRuntimePermissionKind),
-  decision: Schema.optionalKey(WebViewPermissionDecision),
-  position: Schema.optionalKey(WebViewRuntimePoint),
-  paths: Schema.optionalKey(Schema.Array(WebViewRuntimePath))
-}) {}
+const WebViewRuntimeEventShape = Schema.makeFilter<{
+  readonly phase: WebViewRuntimeEventPhase
+  readonly url?: string | undefined
+  readonly paths?: readonly string[] | undefined
+  readonly position?: { readonly x: number; readonly y: number } | undefined
+}>((value) => {
+  if (value.phase === "page-load-started" || value.phase === "page-load-finished") {
+    if (value.url === undefined) {
+      return "page-load events require url"
+    }
+    return noDragPayload(value, "page-load events")
+  }
+
+  if (value.phase === "drag-enter" || value.phase === "drag-drop") {
+    if (value.paths === undefined) {
+      return `${value.phase} events require paths`
+    }
+    if (value.position === undefined) {
+      return `${value.phase} events require position`
+    }
+    return value.url === undefined || `${value.phase} events must not carry url`
+  }
+
+  if (value.phase === "drag-over") {
+    if (value.position === undefined) {
+      return "drag-over events require position"
+    }
+    if (value.paths !== undefined) {
+      return "drag-over events must not carry paths"
+    }
+    return value.url === undefined || "drag-over events must not carry url"
+  }
+
+  if (value.phase === "drag-leave") {
+    if (value.paths !== undefined || value.position !== undefined) {
+      return "drag-leave events must not carry drag payload"
+    }
+    return value.url === undefined || "drag-leave events must not carry url"
+  }
+
+  return true
+})
+
+export class WebViewRuntimeEvent extends Schema.Class<WebViewRuntimeEvent>("WebViewRuntimeEvent")(
+  Schema.Struct({
+    webview: WebViewResource,
+    phase: WebViewRuntimeEventPhase,
+    url: Schema.optionalKey(WebViewRuntimeUrl),
+    reason: Schema.optionalKey(WebViewRuntimeEventReason),
+    requestId: Schema.optionalKey(WebViewRuntimeRequestId),
+    permission: Schema.optionalKey(WebViewRuntimePermissionKind),
+    decision: Schema.optionalKey(WebViewPermissionDecision),
+    position: Schema.optionalKey(WebViewRuntimePoint),
+    paths: Schema.optionalKey(Schema.Array(WebViewRuntimePath))
+  }).check(WebViewRuntimeEventShape)
+) {}
 
 export class WebViewFrameEvent extends Schema.Class<WebViewFrameEvent>("WebViewFrameEvent")({
   webview: WebViewResource,
@@ -301,3 +346,14 @@ const isAbsoluteUrl = (value: string): boolean => {
     return false
   }
 }
+
+const noDragPayload = (
+  value: {
+    readonly paths?: readonly string[] | undefined
+    readonly position?: { readonly x: number; readonly y: number } | undefined
+  },
+  label: string
+): true | string =>
+  value.paths === undefined && value.position === undefined
+    ? true
+    : `${label} must not carry drag payload`
