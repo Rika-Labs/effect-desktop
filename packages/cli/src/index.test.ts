@@ -15,7 +15,7 @@ const { basename, dirname, join, relative } = nodePath
 import { tmpdir } from "node:os"
 
 import { expect, test } from "bun:test"
-import { Clock, Effect, Exit, ManagedRuntime, Option, Schema } from "effect"
+import { Clock, Effect, Exit, ManagedRuntime, Schema } from "effect"
 import { WorkflowEngine } from "effect/unstable/workflow"
 
 const WorkflowMemoryRuntime = ManagedRuntime.make(WorkflowEngine.layerMemory)
@@ -48,6 +48,8 @@ import { desktopArtifactExtension, desktopPlatformDirectory, hostBinaryName } fr
 import type { DesktopArtifactKind, DesktopTargetId } from "./targets.js"
 
 const REPO_ROOT = join(import.meta.dir, "../../..")
+const CLI_REPRO_TEST_TIMEOUT_MS = 20_000
+const CLI_DOCS_TIMEOUT_TEST_TIMEOUT_MS = 10_000
 
 const testEnv: Record<string, string | undefined> = globalThis.process.env
 
@@ -1757,219 +1759,235 @@ test("desktop doctor fails when package manager state is not Bun-pinned", () =>
     })
   ))
 
-test("desktop check --repro exits zero for byte-identical staged and packaged outputs", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const directory = yield* Effect.promise(() =>
-        mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
-      )
-      try {
-        yield* writePlaygroundFixture(directory)
-        const commandRunner = deterministicBuildRunner()
-        const packageRunner = deterministicPackageRunner(() => "deb")
-        const stdout: string[] = []
-
-        const exitCode = yield* runCli({
-          argv: [
-            "check",
-            "--repro",
-            "--config",
-            "apps/inspector/desktop.config.ts",
-            "--platform",
-            "linux-x64",
-            "--artifact",
-            "deb"
-          ],
-          cwd: directory,
-          hostTarget: "linux-x64",
-          commandRunner,
-          packageCommandRunner: packageRunner,
-          writeStdout: (text) => {
-            stdout.push(text)
-          },
-          writeStderr: () => {}
-        })
-
-        expect(exitCode).toBe(0)
-        expect(stdout.join("")).toContain("byte-identical")
-        expect(stdout.join("")).toContain("target            linux-x64")
-      } finally {
-        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
-      }
-    })
-  ))
-
-test("desktop check --repro reports the differing file and byte offset", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const directory = yield* Effect.promise(() =>
-        mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
-      )
-      try {
-        yield* writePlaygroundFixture(directory)
-        const commandRunner = deterministicBuildRunner()
-        let packagePass = 0
-        const packageRunner = deterministicPackageRunner(() => {
-          packagePass += 1
-          return packagePass === 1 ? "deb-a" : "deb-b"
-        })
-        const stderr: string[] = []
-
-        const exitCode = yield* runCli({
-          argv: [
-            "check",
-            "--repro",
-            "--config",
-            "apps/inspector/desktop.config.ts",
-            "--platform",
-            "linux-x64",
-            "--artifact",
-            "deb"
-          ],
-          cwd: directory,
-          hostTarget: "linux-x64",
-          commandRunner,
-          packageCommandRunner: packageRunner,
-          writeStdout: () => {},
-          writeStderr: (text) => {
-            stderr.push(text)
-          }
-        })
-
-        const output = stderr.join("")
-        expect(exitCode).toBe(1)
-        expect(output).toContain("package-output")
-        expect(output).toContain(".deb")
-        expect(output).toContain("offset          4")
-      } finally {
-        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
-      }
-    })
-  ))
-
-test("desktop check --repro --json returns structured diff reports", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const directory = yield* Effect.promise(() =>
-        mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
-      )
-      try {
-        yield* writePlaygroundFixture(directory)
-        const commandRunner = deterministicBuildRunner()
-        let packagePass = 0
-        const packageRunner = deterministicPackageRunner(() => {
-          packagePass += 1
-          return packagePass === 1 ? "deb-a" : "deb-b"
-        })
-        const stderr: string[] = []
-
-        const exitCode = yield* runCli({
-          argv: [
-            "check",
-            "--repro",
-            "--config",
-            "apps/inspector/desktop.config.ts",
-            "--platform",
-            "linux-x64",
-            "--artifact",
-            "deb",
-            "--json"
-          ],
-          cwd: directory,
-          hostTarget: "linux-x64",
-          commandRunner,
-          packageCommandRunner: packageRunner,
-          writeStdout: () => {},
-          writeStderr: (text) => {
-            stderr.push(text)
-          }
-        })
-
-        const report = decodeReproDiffJsonError(stderr.join(""))
-        expect(exitCode).toBe(1)
-        expect(report.tag).toBe("ReproDiffError")
-        expect(report.report.differences[0]?.firstDifferenceOffset).toBe(4)
-      } finally {
-        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
-      }
-    })
-  ))
-
-test("desktop check --repro rejects target drift between passes", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const directory = yield* Effect.promise(() =>
-        mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-target-"))
-      )
-      try {
-        const buildRoot = join(directory, "build")
-        const packageRoot = join(directory, "package")
-        yield* Effect.promise(() => mkdir(buildRoot, { recursive: true }))
-        yield* Effect.promise(() => mkdir(packageRoot, { recursive: true }))
-        yield* Effect.promise(() => writeFile(join(buildRoot, "app.txt"), "identical\n"))
-        yield* Effect.promise(() => writeFile(join(packageRoot, "app.deb"), "identical\n"))
-        let pass = 0
-
-        const exit = yield* Effect.exit(
-          runDesktopReproCheck({
-            buildRunner: () =>
-              Effect.sync(() => {
-                pass += 1
-                return {
-                  target: pass === 1 ? "linux-x64" : "macos-arm64",
-                  layoutPath: buildRoot
-                }
-              }),
-            packageRunner: () =>
-              Effect.gen(function* () {
-                yield* Effect.tryPromise({
-                  try: () => mkdir(packageRoot, { recursive: true }),
-                  catch: toTryPromiseError
-                })
-                yield* Effect.tryPromise({
-                  try: () => writeFile(join(packageRoot, "app.deb"), "identical\n"),
-                  catch: toTryPromiseError
-                })
-                return {
-                  outputPath: packageRoot
-                }
-              })
-          })
+test(
+  "desktop check --repro exits zero for byte-identical staged and packaged outputs",
+  () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const directory = yield* Effect.promise(() =>
+          mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
         )
+        try {
+          yield* writePlaygroundFixture(directory)
+          const commandRunner = deterministicBuildRunner()
+          const packageRunner = deterministicPackageRunner(() => "deb")
+          const stdout: string[] = []
 
-        expect(Exit.isFailure(exit)).toBe(true)
-        if (Exit.isFailure(exit)) {
-          const failReason = exit.cause.reasons.find((reason) => reason._tag === "Fail")
-          const error = failReason?.error as
-            | {
-                readonly _tag?: string
-                readonly report?: {
-                  readonly passed: boolean
-                  readonly differences: readonly [
-                    {
-                      readonly kind: string
-                      readonly firstTarget?: string
-                      readonly secondTarget?: string
-                    }
-                  ]
-                }
-              }
-            | undefined
-          expect(error).toBeDefined()
-          if (error === undefined) {
-            throw new Error("expected repro diff error")
-          }
-          expect(error._tag).toBe("ReproDiffError")
-          expect(error.report?.passed).toBe(false)
-          expect(error.report?.differences[0]?.kind).toBe("target")
-          expect(error.report?.differences[0]?.firstTarget).toBe("linux-x64")
-          expect(error.report?.differences[0]?.secondTarget).toBe("macos-arm64")
+          const exitCode = yield* runCli({
+            argv: [
+              "check",
+              "--repro",
+              "--config",
+              "apps/inspector/desktop.config.ts",
+              "--platform",
+              "linux-x64",
+              "--artifact",
+              "deb"
+            ],
+            cwd: directory,
+            hostTarget: "linux-x64",
+            commandRunner,
+            packageCommandRunner: packageRunner,
+            writeStdout: (text) => {
+              stdout.push(text)
+            },
+            writeStderr: () => {}
+          })
+
+          expect(exitCode).toBe(0)
+          expect(stdout.join("")).toContain("byte-identical")
+          expect(stdout.join("")).toContain("target            linux-x64")
+        } finally {
+          yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
         }
-      } finally {
-        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
-      }
-    })
-  ))
+      })
+    ),
+  CLI_REPRO_TEST_TIMEOUT_MS
+)
+
+test(
+  "desktop check --repro reports the differing file and byte offset",
+  () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const directory = yield* Effect.promise(() =>
+          mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
+        )
+        try {
+          yield* writePlaygroundFixture(directory)
+          const commandRunner = deterministicBuildRunner()
+          let packagePass = 0
+          const packageRunner = deterministicPackageRunner(() => {
+            packagePass += 1
+            return packagePass === 1 ? "deb-a" : "deb-b"
+          })
+          const stderr: string[] = []
+
+          const exitCode = yield* runCli({
+            argv: [
+              "check",
+              "--repro",
+              "--config",
+              "apps/inspector/desktop.config.ts",
+              "--platform",
+              "linux-x64",
+              "--artifact",
+              "deb"
+            ],
+            cwd: directory,
+            hostTarget: "linux-x64",
+            commandRunner,
+            packageCommandRunner: packageRunner,
+            writeStdout: () => {},
+            writeStderr: (text) => {
+              stderr.push(text)
+            }
+          })
+
+          const output = stderr.join("")
+          expect(exitCode).toBe(1)
+          expect(output).toContain("package-output")
+          expect(output).toContain(".deb")
+          expect(output).toContain("offset          4")
+        } finally {
+          yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+        }
+      })
+    ),
+  CLI_REPRO_TEST_TIMEOUT_MS
+)
+
+test(
+  "desktop check --repro --json returns structured diff reports",
+  () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const directory = yield* Effect.promise(() =>
+          mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
+        )
+        try {
+          yield* writePlaygroundFixture(directory)
+          const commandRunner = deterministicBuildRunner()
+          let packagePass = 0
+          const packageRunner = deterministicPackageRunner(() => {
+            packagePass += 1
+            return packagePass === 1 ? "deb-a" : "deb-b"
+          })
+          const stderr: string[] = []
+
+          const exitCode = yield* runCli({
+            argv: [
+              "check",
+              "--repro",
+              "--config",
+              "apps/inspector/desktop.config.ts",
+              "--platform",
+              "linux-x64",
+              "--artifact",
+              "deb",
+              "--json"
+            ],
+            cwd: directory,
+            hostTarget: "linux-x64",
+            commandRunner,
+            packageCommandRunner: packageRunner,
+            writeStdout: () => {},
+            writeStderr: (text) => {
+              stderr.push(text)
+            }
+          })
+
+          const report = decodeReproDiffJsonError(stderr.join(""))
+          expect(exitCode).toBe(1)
+          expect(report.tag).toBe("ReproDiffError")
+          expect(report.report.differences[0]?.firstDifferenceOffset).toBe(4)
+        } finally {
+          yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+        }
+      })
+    ),
+  CLI_REPRO_TEST_TIMEOUT_MS
+)
+
+test(
+  "desktop check --repro rejects target drift between passes",
+  () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const directory = yield* Effect.promise(() =>
+          mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-target-"))
+        )
+        try {
+          const buildRoot = join(directory, "build")
+          const packageRoot = join(directory, "package")
+          yield* Effect.promise(() => mkdir(buildRoot, { recursive: true }))
+          yield* Effect.promise(() => mkdir(packageRoot, { recursive: true }))
+          yield* Effect.promise(() => writeFile(join(buildRoot, "app.txt"), "identical\n"))
+          yield* Effect.promise(() => writeFile(join(packageRoot, "app.deb"), "identical\n"))
+          let pass = 0
+
+          const exit = yield* Effect.exit(
+            runDesktopReproCheck({
+              buildRunner: () =>
+                Effect.sync(() => {
+                  pass += 1
+                  return {
+                    target: pass === 1 ? "linux-x64" : "macos-arm64",
+                    layoutPath: buildRoot
+                  }
+                }),
+              packageRunner: () =>
+                Effect.gen(function* () {
+                  yield* Effect.tryPromise({
+                    try: () => mkdir(packageRoot, { recursive: true }),
+                    catch: toTryPromiseError
+                  })
+                  yield* Effect.tryPromise({
+                    try: () => writeFile(join(packageRoot, "app.deb"), "identical\n"),
+                    catch: toTryPromiseError
+                  })
+                  return {
+                    outputPath: packageRoot
+                  }
+                })
+            })
+          )
+
+          expect(Exit.isFailure(exit)).toBe(true)
+          if (Exit.isFailure(exit)) {
+            const failReason = exit.cause.reasons.find((reason) => reason._tag === "Fail")
+            const error = failReason?.error as
+              | {
+                  readonly _tag?: string
+                  readonly report?: {
+                    readonly passed: boolean
+                    readonly differences: readonly [
+                      {
+                        readonly kind: string
+                        readonly firstTarget?: string
+                        readonly secondTarget?: string
+                      }
+                    ]
+                  }
+                }
+              | undefined
+            expect(error).toBeDefined()
+            if (error === undefined) {
+              throw new Error("expected repro diff error")
+            }
+            expect(error._tag).toBe("ReproDiffError")
+            expect(error.report?.passed).toBe(false)
+            expect(error.report?.differences[0]?.kind).toBe("target")
+            expect(error.report?.differences[0]?.firstTarget).toBe("linux-x64")
+            expect(error.report?.differences[0]?.secondTarget).toBe("macos-arm64")
+          }
+        } finally {
+          yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+        }
+      })
+    ),
+  CLI_REPRO_TEST_TIMEOUT_MS
+)
 
 const reproSymlinkTest = process.platform === "win32" ? test.skip : test
 
@@ -2026,256 +2044,272 @@ reproSymlinkTest(
           yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
         }
       })
-    )
+    ),
+  CLI_REPRO_TEST_TIMEOUT_MS
 )
 
-reproSymlinkTest("desktop check --repro reports symlink-target drift between two symlinks", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const directory = yield* Effect.promise(() =>
-        mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
-      )
-      try {
-        yield* writePlaygroundFixture(directory)
-        const commandRunner = deterministicBuildRunner()
-        let pass = 0
-        const packageRunner = symlinkDriftPackageRunner(() => {
-          pass += 1
-          return pass === 1 ? "symlink-a" : "symlink-b"
-        })
-        const stderr: string[] = []
-
-        const exitCode = yield* runCli({
-          argv: [
-            "check",
-            "--repro",
-            "--config",
-            "apps/inspector/desktop.config.ts",
-            "--platform",
-            "linux-x64",
-            "--artifact",
-            "deb",
-            "--json"
-          ],
-          cwd: directory,
-          hostTarget: "linux-x64",
-          commandRunner,
-          packageCommandRunner: packageRunner,
-          writeStdout: () => {},
-          writeStderr: (text) => {
-            stderr.push(text)
-          }
-        })
-
-        const report = decodeReproDiffJsonError(stderr.join(""))
-        expect(exitCode).toBe(1)
-        expect(report.tag).toBe("ReproDiffError")
-        const drift = report.report.differences.find((difference) =>
-          difference.relativePath.endsWith("app-link")
+reproSymlinkTest(
+  "desktop check --repro reports symlink-target drift between two symlinks",
+  () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const directory = yield* Effect.promise(() =>
+          mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
         )
-        expect(drift?.kind).toBe("symlink-target")
-        expect(drift?.firstSymlinkTarget).toBe("target-a.txt")
-        expect(drift?.secondSymlinkTarget).toBe("target-b.txt")
-      } finally {
-        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
-      }
-    })
-  )
+        try {
+          yield* writePlaygroundFixture(directory)
+          const commandRunner = deterministicBuildRunner()
+          let pass = 0
+          const packageRunner = symlinkDriftPackageRunner(() => {
+            pass += 1
+            return pass === 1 ? "symlink-a" : "symlink-b"
+          })
+          const stderr: string[] = []
+
+          const exitCode = yield* runCli({
+            argv: [
+              "check",
+              "--repro",
+              "--config",
+              "apps/inspector/desktop.config.ts",
+              "--platform",
+              "linux-x64",
+              "--artifact",
+              "deb",
+              "--json"
+            ],
+            cwd: directory,
+            hostTarget: "linux-x64",
+            commandRunner,
+            packageCommandRunner: packageRunner,
+            writeStdout: () => {},
+            writeStderr: (text) => {
+              stderr.push(text)
+            }
+          })
+
+          const report = decodeReproDiffJsonError(stderr.join(""))
+          expect(exitCode).toBe(1)
+          expect(report.tag).toBe("ReproDiffError")
+          const drift = report.report.differences.find((difference) =>
+            difference.relativePath.endsWith("app-link")
+          )
+          expect(drift?.kind).toBe("symlink-target")
+          expect(drift?.firstSymlinkTarget).toBe("target-a.txt")
+          expect(drift?.secondSymlinkTarget).toBe("target-b.txt")
+        } finally {
+          yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+        }
+      })
+    ),
+  CLI_REPRO_TEST_TIMEOUT_MS
 )
 
-reproSymlinkTest("desktop check --repro passes when both passes emit identical symlinks", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const directory = yield* Effect.promise(() =>
-        mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
-      )
-      try {
-        yield* writePlaygroundFixture(directory)
-        const commandRunner = deterministicBuildRunner()
-        const packageRunner = symlinkDriftPackageRunner(() => "symlink")
-        const stdout: string[] = []
+reproSymlinkTest(
+  "desktop check --repro passes when both passes emit identical symlinks",
+  () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const directory = yield* Effect.promise(() =>
+          mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
+        )
+        try {
+          yield* writePlaygroundFixture(directory)
+          const commandRunner = deterministicBuildRunner()
+          const packageRunner = symlinkDriftPackageRunner(() => "symlink")
+          const stdout: string[] = []
 
-        const exitCode = yield* runCli({
-          argv: [
-            "check",
-            "--repro",
-            "--config",
-            "apps/inspector/desktop.config.ts",
-            "--platform",
-            "linux-x64",
-            "--artifact",
-            "deb"
-          ],
-          cwd: directory,
-          hostTarget: "linux-x64",
-          commandRunner,
-          packageCommandRunner: packageRunner,
-          writeStdout: (text) => {
-            stdout.push(text)
-          },
-          writeStderr: () => {}
-        })
+          const exitCode = yield* runCli({
+            argv: [
+              "check",
+              "--repro",
+              "--config",
+              "apps/inspector/desktop.config.ts",
+              "--platform",
+              "linux-x64",
+              "--artifact",
+              "deb"
+            ],
+            cwd: directory,
+            hostTarget: "linux-x64",
+            commandRunner,
+            packageCommandRunner: packageRunner,
+            writeStdout: (text) => {
+              stdout.push(text)
+            },
+            writeStderr: () => {}
+          })
 
-        expect(exitCode).toBe(0)
-        expect(stdout.join("")).toContain("byte-identical")
-      } finally {
-        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
-      }
-    })
-  )
+          expect(exitCode).toBe(0)
+          expect(stdout.join("")).toContain("byte-identical")
+        } finally {
+          yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+        }
+      })
+    ),
+  CLI_REPRO_TEST_TIMEOUT_MS
 )
 
 const reproModeTest = process.platform === "win32" ? test.skip : test
 const packageModeTest = process.platform === "win32" ? test.skip : test
 
-reproModeTest("desktop check --repro reports mode drift between byte-identical files", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const directory = yield* Effect.promise(() =>
-        mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
-      )
-      try {
-        yield* writePlaygroundFixture(directory)
-        const commandRunner = deterministicBuildRunner()
-        let pass = 0
-        const packageRunner = modeDriftPackageRunner(() => {
-          pass += 1
-          return pass === 1 ? 0o755 : 0o644
-        })
-        const stderr: string[] = []
-
-        const exitCode = yield* runCli({
-          argv: [
-            "check",
-            "--repro",
-            "--config",
-            "apps/inspector/desktop.config.ts",
-            "--platform",
-            "linux-x64",
-            "--artifact",
-            "deb",
-            "--json"
-          ],
-          cwd: directory,
-          hostTarget: "linux-x64",
-          commandRunner,
-          packageCommandRunner: packageRunner,
-          writeStdout: () => {},
-          writeStderr: (text) => {
-            stderr.push(text)
-          }
-        })
-
-        const report = decodeReproDiffJsonError(stderr.join(""))
-        expect(exitCode).toBe(1)
-        expect(report.tag).toBe("ReproDiffError")
-        const drift = report.report.differences.find((difference) =>
-          difference.relativePath.endsWith("host")
+reproModeTest(
+  "desktop check --repro reports mode drift between byte-identical files",
+  () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const directory = yield* Effect.promise(() =>
+          mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
         )
-        expect(drift?.kind).toBe("mode")
-        expect((drift?.firstMode ?? 0) & 0o111).toBe(0o111)
-        expect((drift?.secondMode ?? 0) & 0o111).toBe(0)
-      } finally {
-        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
-      }
-    })
-  )
+        try {
+          yield* writePlaygroundFixture(directory)
+          const commandRunner = deterministicBuildRunner()
+          let pass = 0
+          const packageRunner = modeDriftPackageRunner(() => {
+            pass += 1
+            return pass === 1 ? 0o755 : 0o644
+          })
+          const stderr: string[] = []
+
+          const exitCode = yield* runCli({
+            argv: [
+              "check",
+              "--repro",
+              "--config",
+              "apps/inspector/desktop.config.ts",
+              "--platform",
+              "linux-x64",
+              "--artifact",
+              "deb",
+              "--json"
+            ],
+            cwd: directory,
+            hostTarget: "linux-x64",
+            commandRunner,
+            packageCommandRunner: packageRunner,
+            writeStdout: () => {},
+            writeStderr: (text) => {
+              stderr.push(text)
+            }
+          })
+
+          const report = decodeReproDiffJsonError(stderr.join(""))
+          expect(exitCode).toBe(1)
+          expect(report.tag).toBe("ReproDiffError")
+          const drift = report.report.differences.find((difference) =>
+            difference.relativePath.endsWith("host")
+          )
+          expect(drift?.kind).toBe("mode")
+          expect((drift?.firstMode ?? 0) & 0o111).toBe(0o111)
+          expect((drift?.secondMode ?? 0) & 0o111).toBe(0)
+        } finally {
+          yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+        }
+      })
+    ),
+  CLI_REPRO_TEST_TIMEOUT_MS
 )
 
-reproModeTest("desktop check --repro reports mode drift when only read/write bits differ", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const directory = yield* Effect.promise(() =>
-        mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
-      )
-      try {
-        yield* writePlaygroundFixture(directory)
-        const commandRunner = deterministicBuildRunner()
-        let pass = 0
-        const packageRunner = modeDriftPackageRunner(() => {
-          pass += 1
-          return pass === 1 ? 0o644 : 0o444
-        })
-        const stderr: string[] = []
-
-        const exitCode = yield* runCli({
-          argv: [
-            "check",
-            "--repro",
-            "--config",
-            "apps/inspector/desktop.config.ts",
-            "--platform",
-            "linux-x64",
-            "--artifact",
-            "deb",
-            "--json"
-          ],
-          cwd: directory,
-          hostTarget: "linux-x64",
-          commandRunner,
-          packageCommandRunner: packageRunner,
-          writeStdout: () => {},
-          writeStderr: (text) => {
-            stderr.push(text)
-          }
-        })
-
-        const report = decodeReproDiffJsonError(stderr.join(""))
-        expect(exitCode).toBe(1)
-        expect(report.tag).toBe("ReproDiffError")
-        const drift = report.report.differences.find((difference) =>
-          difference.relativePath.endsWith("host")
+reproModeTest(
+  "desktop check --repro reports mode drift when only read/write bits differ",
+  () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const directory = yield* Effect.promise(() =>
+          mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
         )
-        expect(drift?.kind).toBe("mode")
-        expect((drift?.firstMode ?? 0) & 0o777).toBe(0o644)
-        expect((drift?.secondMode ?? 0) & 0o777).toBe(0o444)
-      } finally {
-        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
-      }
-    })
-  )
+        try {
+          yield* writePlaygroundFixture(directory)
+          const commandRunner = deterministicBuildRunner()
+          let pass = 0
+          const packageRunner = modeDriftPackageRunner(() => {
+            pass += 1
+            return pass === 1 ? 0o644 : 0o444
+          })
+          const stderr: string[] = []
+
+          const exitCode = yield* runCli({
+            argv: [
+              "check",
+              "--repro",
+              "--config",
+              "apps/inspector/desktop.config.ts",
+              "--platform",
+              "linux-x64",
+              "--artifact",
+              "deb",
+              "--json"
+            ],
+            cwd: directory,
+            hostTarget: "linux-x64",
+            commandRunner,
+            packageCommandRunner: packageRunner,
+            writeStdout: () => {},
+            writeStderr: (text) => {
+              stderr.push(text)
+            }
+          })
+
+          const report = decodeReproDiffJsonError(stderr.join(""))
+          expect(exitCode).toBe(1)
+          expect(report.tag).toBe("ReproDiffError")
+          const drift = report.report.differences.find((difference) =>
+            difference.relativePath.endsWith("host")
+          )
+          expect(drift?.kind).toBe("mode")
+          expect((drift?.firstMode ?? 0) & 0o777).toBe(0o644)
+          expect((drift?.secondMode ?? 0) & 0o777).toBe(0o444)
+        } finally {
+          yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+        }
+      })
+    ),
+  CLI_REPRO_TEST_TIMEOUT_MS
 )
 
-reproModeTest("desktop check --repro passes when both passes set the same executable bits", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const directory = yield* Effect.promise(() =>
-        mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
-      )
-      try {
-        yield* writePlaygroundFixture(directory)
-        const commandRunner = deterministicBuildRunner()
-        const packageRunner = modeDriftPackageRunner(() => 0o755)
-        const stdout: string[] = []
+reproModeTest(
+  "desktop check --repro passes when both passes set the same executable bits",
+  () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const directory = yield* Effect.promise(() =>
+          mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-"))
+        )
+        try {
+          yield* writePlaygroundFixture(directory)
+          const commandRunner = deterministicBuildRunner()
+          const packageRunner = modeDriftPackageRunner(() => 0o755)
+          const stdout: string[] = []
 
-        const exitCode = yield* runCli({
-          argv: [
-            "check",
-            "--repro",
-            "--config",
-            "apps/inspector/desktop.config.ts",
-            "--platform",
-            "linux-x64",
-            "--artifact",
-            "deb"
-          ],
-          cwd: directory,
-          hostTarget: "linux-x64",
-          commandRunner,
-          packageCommandRunner: packageRunner,
-          writeStdout: (text) => {
-            stdout.push(text)
-          },
-          writeStderr: () => {}
-        })
+          const exitCode = yield* runCli({
+            argv: [
+              "check",
+              "--repro",
+              "--config",
+              "apps/inspector/desktop.config.ts",
+              "--platform",
+              "linux-x64",
+              "--artifact",
+              "deb"
+            ],
+            cwd: directory,
+            hostTarget: "linux-x64",
+            commandRunner,
+            packageCommandRunner: packageRunner,
+            writeStdout: (text) => {
+              stdout.push(text)
+            },
+            writeStderr: () => {}
+          })
 
-        expect(exitCode).toBe(0)
-        expect(stdout.join("")).toContain("byte-identical")
-      } finally {
-        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
-      }
-    })
-  )
+          expect(exitCode).toBe(0)
+          expect(stdout.join("")).toContain("byte-identical")
+        } finally {
+          yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+        }
+      })
+    ),
+  CLI_REPRO_TEST_TIMEOUT_MS
 )
 
 test("desktop check --api writes and verifies public API snapshots", () =>
@@ -2832,48 +2866,48 @@ test("desktop check --docs rejects placeholder examples on required pages", () =
     })
   ))
 
-test("desktop check --docs times out hanging runnable examples", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const directory = yield* Effect.promise(() =>
-        mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
-      )
-      try {
-        yield* writeDocsFixture(directory, {
-          "docs/installation.md": [
-            "# Installation",
-            "",
-            "```ts run",
-            "await new Promise(() => {})",
-            "```"
-          ].join("\n")
-        })
-        const hangingRunner: DocsExampleRunner = () => Effect.never
-
-        const result = yield* Effect.exit(
-          runDocsReleaseGate({
-            cwd: directory,
-            commandRunner: hangingRunner,
-            exampleTimeoutMillis: 10
+test(
+  "desktop check --docs times out hanging runnable examples",
+  () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const directory = yield* Effect.promise(() =>
+          mkdtemp(join(tmpdir(), "effect-desktop-cli-docs-"))
+        )
+        try {
+          yield* writeDocsFixture(directory, {
+            "docs/installation.md": [
+              "# Installation",
+              "",
+              "```ts run",
+              "await new Promise(() => {})",
+              "```"
+            ].join("\n")
           })
-        ).pipe(Effect.timeoutOption("50 millis"))
+          const hangingRunner: DocsExampleRunner = () => Effect.never
 
-        expect(Option.isSome(result)).toBe(true)
-        if (Option.isNone(result)) {
-          throw new Error("docs release gate did not complete before the outer timeout")
+          const exit = yield* Effect.exit(
+            runDocsReleaseGate({
+              cwd: directory,
+              commandRunner: hangingRunner,
+              exampleTimeoutMillis: 10
+            })
+          )
+
+          expect(Exit.isFailure(exit)).toBe(true)
+          if (Exit.isFailure(exit)) {
+            const failReason = exit.cause.reasons.find((reason) => reason._tag === "Fail")
+            expect(failReason?.error._tag).toBe("DocsGateExampleFailedError")
+            expect(failReason?.error.message).toContain("timed out")
+            expect(failReason?.error.message).toContain("installation.md#1")
+          }
+        } finally {
+          yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
         }
-        expect(Exit.isFailure(result.value)).toBe(true)
-        if (Exit.isFailure(result.value)) {
-          const failReason = result.value.cause.reasons.find((reason) => reason._tag === "Fail")
-          expect(failReason?.error._tag).toBe("DocsGateExampleFailedError")
-          expect(failReason?.error.message).toContain("timed out")
-          expect(failReason?.error.message).toContain("installation.md#1")
-        }
-      } finally {
-        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
-      }
-    })
-  ))
+      })
+    ),
+  CLI_DOCS_TIMEOUT_TEST_TIMEOUT_MS
+)
 
 test("desktop check --docs rejects manifest paths outside the repo", () =>
   Effect.runPromise(
@@ -7717,49 +7751,53 @@ test("desktop build preserves renderer stderr on command failure", () =>
     })
   ))
 
-test("desktop check --repro preserves nested build stderr", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const directory = yield* Effect.promise(() =>
-        mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-stderr-"))
-      )
-      try {
-        yield* writePlaygroundFixture(directory)
-        const appRoot = join(directory, "apps", "inspector")
-        yield* Effect.promise(() =>
-          writeFile(
-            join(appRoot, "package.json"),
-            '{"type":"module","scripts":{"build":"bun fail-renderer.ts"}}\n'
-          )
+test(
+  "desktop check --repro preserves nested build stderr",
+  () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const directory = yield* Effect.promise(() =>
+          mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-stderr-"))
         )
-        yield* Effect.promise(() =>
-          writeFile(
-            join(appRoot, "fail-renderer.ts"),
-            "console.error('renderer dependency missing: @types/node'); process.exit(1)\n"
+        try {
+          yield* writePlaygroundFixture(directory)
+          const appRoot = join(directory, "apps", "inspector")
+          yield* Effect.promise(() =>
+            writeFile(
+              join(appRoot, "package.json"),
+              '{"type":"module","scripts":{"build":"bun fail-renderer.ts"}}\n'
+            )
           )
-        )
-        const stderr: string[] = []
+          yield* Effect.promise(() =>
+            writeFile(
+              join(appRoot, "fail-renderer.ts"),
+              "console.error('renderer dependency missing: @types/node'); process.exit(1)\n"
+            )
+          )
+          const stderr: string[] = []
 
-        const exitCode = yield* runCli({
-          argv: ["check", "--repro", "--config", "apps/inspector/desktop.config.ts", "--json"],
-          cwd: directory,
-          hostTarget: "linux-x64",
-          writeStdout: () => {},
-          writeStderr: (text) => {
-            stderr.push(text)
-          }
-        })
+          const exitCode = yield* runCli({
+            argv: ["check", "--repro", "--config", "apps/inspector/desktop.config.ts", "--json"],
+            cwd: directory,
+            hostTarget: "linux-x64",
+            writeStdout: () => {},
+            writeStderr: (text) => {
+              stderr.push(text)
+            }
+          })
 
-        const payload = decodeCliJsonMessage(stderr.join(""))
-        expect(exitCode).toBe(1)
-        expect(payload.message).toContain("first build failed")
-        expect(payload.message).toContain("renderer command exited with 1")
-        expect(payload.message).toContain("renderer dependency missing: @types/node")
-      } finally {
-        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
-      }
-    })
-  ))
+          const payload = decodeCliJsonMessage(stderr.join(""))
+          expect(exitCode).toBe(1)
+          expect(payload.message).toContain("first build failed")
+          expect(payload.message).toContain("renderer command exited with 1")
+          expect(payload.message).toContain("renderer dependency missing: @types/node")
+        } finally {
+          yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+        }
+      })
+    ),
+  CLI_REPRO_TEST_TIMEOUT_MS
+)
 
 test("desktop build rejects missing runtime.entry", () =>
   Effect.runPromise(
