@@ -1113,7 +1113,7 @@ test("ProductionChecker flags source native capability method extraction", () =>
             path: "src/renderer/dock.ts",
             content: [
               "const setJumpList = Dock.setJumpList",
-              "const setJumpListComputed = Dock[\"setJumpList\"]",
+              'const setJumpListComputed = Dock["setJumpList"]',
               "setJumpList([])",
               "setJumpListComputed([])"
             ].join("\n")
