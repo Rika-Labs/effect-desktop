@@ -1,22 +1,23 @@
 import { expect, test } from "bun:test"
-import { Cause, Effect, Exit, Fiber, Layer, ManagedRuntime, Schedule, Schema } from "effect"
+import { Cause, Effect, Exit, Fiber, Layer, ManagedRuntime, Option, Schedule, Schema } from "effect"
 import { TestClock } from "effect/testing"
 import { EventJournal, EventLog as EL, EventLogEncryption } from "effect/unstable/eventlog"
 import { HttpClient, HttpClientResponse } from "effect/unstable/http"
 import { PersistedQueue } from "effect/unstable/persistence"
 import { WorkflowEngine } from "effect/unstable/workflow"
 
+import { CrashReporterBreadcrumbInput } from "./contracts/crash-reporter.js"
 import {
   CrashReport,
-  CrashSubmissionWorkflow,
   CrashReportDrainConfigError,
   CrashReportGroupLayer,
   CrashReportReactivityLayer,
+  CrashSubmissionWorkflow,
   crashReportRateLimitIntervalMs,
   makeCrashReportDrainLayer,
-  makeCrashSubmissionWorkflowLayer,
+  makeCrashReportQueue,
   makeCrashReportQueueUploadHandler,
-  makeCrashReportQueue
+  makeCrashSubmissionWorkflowLayer
 } from "./crash-report-workflow.js"
 
 class CrashReportWaitingError extends Schema.TaggedErrorClass<CrashReportWaitingError>(
@@ -60,6 +61,40 @@ test("CrashReport schema round-trips a report with breadcrumbs", () =>
       expect(decoded.id).toBe("test-id-1")
       expect(decoded.breadcrumbs).toHaveLength(2)
       expect(decoded.breadcrumbs[0]?.category).toBe("navigation")
+    })
+  ))
+
+test("CrashReport rejects invalid capture timestamps", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      for (const capturedAt of [Number.NaN, Number.POSITIVE_INFINITY, -1, 1.5]) {
+        const exit = yield* Effect.exit(
+          Schema.decodeUnknownEffect(CrashReport)({
+            id: "invalid-timestamp",
+            breadcrumbs: [],
+            capturedAt
+          })
+        )
+
+        expect(Exit.isFailure(exit)).toBe(true)
+      }
+    })
+  ))
+
+test("CrashReporterBreadcrumbInput rejects invalid breadcrumb timestamps", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      for (const timestamp of [Number.NaN, Number.POSITIVE_INFINITY, -1, 1.5]) {
+        const exit = yield* Effect.exit(
+          Schema.decodeUnknownEffect(CrashReporterBreadcrumbInput)({
+            category: "error",
+            message: "boom",
+            timestamp
+          })
+        )
+
+        expect(Exit.isFailure(exit)).toBe(true)
+      }
     })
   ))
 
@@ -111,6 +146,26 @@ test("CrashReport queue upload handler enqueues flushed breadcrumbs", () => {
       expect(report.platform).toBe("darwin")
       expect(report.breadcrumbs).toHaveLength(1)
       expect(report.breadcrumbs[0]?.message).toBe("boom")
+    })
+  )
+})
+
+test("CrashReport queue upload handler rejects invalid capture timestamps before queueing", () => {
+  const runtime = ManagedRuntime.make(queueLayer)
+  return runtime.runPromise(
+    Effect.gen(function* () {
+      const handler = yield* makeCrashReportQueueUploadHandler({
+        now: () => Number.NaN,
+        id: () => "invalid-timestamp-report"
+      })
+      const exit = yield* Effect.exit(handler([{ category: "error", message: "boom" }]))
+      const queue = yield* makeCrashReportQueue
+      const queuedReport = yield* queue
+        .take((report) => Effect.succeed(report))
+        .pipe(Effect.timeoutOption("5 millis"))
+
+      expect(Exit.isFailure(exit)).toBe(true)
+      expect(Option.isNone(queuedReport)).toBe(true)
     })
   )
 })

@@ -7462,6 +7462,47 @@ test("CrashReporter rejects control bytes in breadcrumb categories", () =>
     })
   ))
 
+test("CrashReporter rejects invalid breadcrumb timestamps before host transport", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const requests: HostProtocolRequestEnvelope[] = []
+      const permissions = yield* makeCrashReporterPermissions()
+      const exchange = crashReporterExchange(requests, (request) => ({
+        kind: "success",
+        payload: request.method === "CrashReporter.flush" ? { flushed: 0 } : undefined
+      }))
+
+      for (const timestamp of [-1, Number.NaN, Number.POSITIVE_INFINITY, 1.5]) {
+        const exit = yield* runScoped(
+          Effect.gen(function* () {
+            const reporter = yield* CrashReporter
+            yield* reporter.start()
+            return yield* Effect.exit(
+              reporter.recordBreadcrumb({
+                category: "system",
+                message: "invalid timestamp",
+                timestamp
+              })
+            )
+          }),
+          Layer.provide(
+            Layer.provide(CrashReporterLive, makeCrashReporterBridgeClientLayer(exchange)),
+            Layer.succeed(PermissionRegistry)(permissions)
+          )
+        )
+
+        expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidArgument"))
+      }
+
+      expect(requests.map((request) => request.method)).toEqual([
+        "CrashReporter.start",
+        "CrashReporter.start",
+        "CrashReporter.start",
+        "CrashReporter.start"
+      ])
+    })
+  ))
+
 test("CrashReporter rejects cyclic breadcrumb details", () =>
   Effect.runPromise(
     Effect.gen(function* () {

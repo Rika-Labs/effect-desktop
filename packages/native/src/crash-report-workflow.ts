@@ -1,4 +1,7 @@
-import { makeHostProtocolInvalidStateError } from "@orika/bridge"
+import {
+  makeHostProtocolInvalidArgumentError,
+  makeHostProtocolInvalidStateError
+} from "@orika/bridge"
 import { DesktopSchedules } from "@orika/core"
 import { Clock, Effect, Layer, Random, Schema } from "effect"
 import { EventGroup, EventJournal, EventLog } from "effect/unstable/eventlog"
@@ -13,12 +16,12 @@ import { PersistedQueue } from "effect/unstable/persistence"
 import { Activity, Workflow, WorkflowEngine } from "effect/unstable/workflow"
 
 import type { CrashReporterError } from "./crash-reporter.js"
-import { CrashReporterBreadcrumbInput } from "./contracts/crash-reporter.js"
+import { CrashReporterBreadcrumbInput, CrashReporterTimestamp } from "./contracts/crash-reporter.js"
 
 export class CrashReport extends Schema.Class<CrashReport>("CrashReport")({
   id: Schema.String,
   breadcrumbs: Schema.Array(CrashReporterBreadcrumbInput),
-  capturedAt: Schema.Number,
+  capturedAt: CrashReporterTimestamp,
   appVersion: Schema.optionalKey(Schema.String),
   platform: Schema.optionalKey(Schema.String)
 }) {}
@@ -139,13 +142,21 @@ export const makeCrashReportQueueUploadHandler = (
           options.id === undefined
             ? `crash-${String(capturedAt)}-${yield* Random.nextUUIDv4}`
             : options.id()
-        const report = new CrashReport({
+        const report = yield* Schema.decodeUnknownEffect(CrashReport)({
           id,
           breadcrumbs,
           capturedAt,
           ...(options.appVersion === undefined ? {} : { appVersion: options.appVersion }),
           ...(options.platform === undefined ? {} : { platform: options.platform })
-        })
+        }).pipe(
+          Effect.mapError(() =>
+            makeHostProtocolInvalidArgumentError(
+              "capturedAt",
+              "must be a finite non-negative integer",
+              "CrashReporter.flush"
+            )
+          )
+        )
         yield* queue.offer(report, { id }).pipe(
           Effect.asVoid,
           Effect.mapError((error) =>

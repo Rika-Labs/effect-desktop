@@ -4,7 +4,7 @@ import { PrintableNonEmptyString } from "./strings.js"
 const CrashReporterFlushCount = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 const CrashReporterReportId = PrintableNonEmptyString
 const CrashReporterArtifactPath = PrintableNonEmptyString
-const CrashReporterTimestamp = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
+export const CrashReporterTimestamp = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 const CrashReporterSizeBytes = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 const CrashReporterCategory = Schema.NonEmptyString.check(
   // eslint-disable-next-line no-control-regex
@@ -23,7 +23,7 @@ export class CrashReporterBreadcrumbInput extends Schema.Class<CrashReporterBrea
   category: CrashReporterCategory,
   message: Schema.String,
   details: Schema.optionalKey(Schema.Unknown),
-  timestamp: Schema.optionalKey(Schema.Number)
+  timestamp: Schema.optionalKey(CrashReporterTimestamp)
 }) {}
 
 export class CrashReporterFlushResult extends Schema.Class<CrashReporterFlushResult>(
