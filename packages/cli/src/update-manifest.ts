@@ -175,21 +175,6 @@ export const encodeUpdateManifest = (
 ): Effect.Effect<unknown, Schema.SchemaError, never> =>
   Schema.encodeUnknownEffect(UpdateManifest)(value, StrictParseOptions)
 
-const decodePackageArtifactMetadata = (
-  value: unknown,
-  path: string
-): Effect.Effect<PackageArtifactMetadata, PublishConfigError, never> =>
-  Schema.decodeUnknownEffect(PackageArtifactMetadata)(value, StrictParseOptions).pipe(
-    Effect.mapError(
-      (error) =>
-        new PublishConfigError({
-          field: path,
-          message: `package artifact metadata schema validation failed: ${error.message}`,
-          remediation: "Regenerate package metadata with `bun desktop package`."
-        })
-    )
-  )
-
 export const runDesktopPublish = (
   options: DesktopPublishOptions
 ): Effect.Effect<DesktopPublishReport, PublishPipelineError, never> =>
@@ -428,11 +413,7 @@ const readPackagedArtifacts = (
           continue
         }
         const metadataPath = join(rootPath, "artifact.json")
-        const rawMetadata = yield* readJson<unknown>(metadataPath)
-        const metadata = yield* decodePackageArtifactMetadata(
-          rawMetadata,
-          relative(plan.outputPath, metadataPath)
-        )
+        const metadata = yield* readJson(metadataPath, PackageArtifactMetadata)
         const appIdField = `${relative(plan.outputPath, metadataPath)}#appId`
         const appNameField = `${relative(plan.outputPath, metadataPath)}#appName`
         const appVersionField = `${relative(plan.outputPath, metadataPath)}#appVersion`
@@ -1076,14 +1057,14 @@ const loadConfig = (path: string): Effect.Effect<unknown, PublishConfigError, ne
     return module.default
   })
 
-const readJson = <A>(path: string): Effect.Effect<A, PublishFileError, never> =>
+const readJson = <S extends Schema.Top>(
+  path: string,
+  schema: S
+): Effect.Effect<S["Type"], PublishFileError, S["DecodingServices"]> =>
   runReleaseFileSystem(
     Effect.gen(function* () {
       const fs = yield* ReleaseFileSystem
-      const content = yield* fs.readFileString(path)
-      return yield* Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(content).pipe(
-        Effect.map((value) => value as A)
-      )
+      return yield* fs.readFileString(path)
     })
   ).pipe(
     Effect.mapError(
@@ -1094,6 +1075,19 @@ const readJson = <A>(path: string): Effect.Effect<A, PublishFileError, never> =>
           message: `failed to read JSON ${path}`,
           cause
         })
+    ),
+    Effect.flatMap((content) =>
+      Schema.decodeUnknownEffect(Schema.fromJsonString(schema))(content, StrictParseOptions).pipe(
+        Effect.mapError(
+          (cause) =>
+            new PublishFileError({
+              operation: "read-json",
+              path,
+              message: `failed to read JSON ${path}`,
+              cause
+            })
+        )
+      )
     )
   )
 

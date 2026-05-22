@@ -6557,6 +6557,65 @@ test("desktop publish rejects stale package metadata before signing the manifest
     })
   ))
 
+test("desktop publish rejects malformed artifact metadata as a file error", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-malformed-metadata-"))
+      )
+      const key = testEd25519Key()
+      const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
+      try {
+        yield* writePlaygroundFixture(directory, {
+          update: {
+            channel: "stable",
+            feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+            publicKey: key.publicKey,
+            privateKeyEnv,
+            keyVersion: 5
+          }
+        })
+        const artifactPath = yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+        const artifactJsonPath = join(dirname(artifactPath), "artifact.json")
+        yield* Effect.promise(() => writeFile(artifactJsonPath, '["not-metadata"]\n'))
+        const manifestPath = join(
+          directory,
+          "apps",
+          "inspector",
+          "dist",
+          "desktop",
+          "update-manifest.json"
+        )
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
+          cwd: directory,
+          now: () => 1_772_923_200_000,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const error = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(error.tag).toBe("PublishFileError")
+        expect(error.message).toContain("failed to read JSON")
+        yield* expectEffectPromiseRejects(stat(manifestPath))
+      } finally {
+        if (previousPrivateKey === undefined) {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
+        } else {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
+        }
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
 test("desktop publish rejects invalid app ids before writing manifests", () =>
   Effect.runPromise(
     Effect.gen(function* () {
