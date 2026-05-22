@@ -30,6 +30,16 @@ const NativeNetworkNonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqual
 const NativeNetworkLocalhostPath = BridgeSafeNonEmptyString.check(
   Schema.isPattern(/^\/(?!.*(?:^|\/)\.\.(?:\/|$))[^\s]*$/u)
 )
+const NativeNetworkByteProgress = Schema.makeFilter<{
+  readonly sentBytes?: number | undefined
+  readonly totalBytes?: number | undefined
+}>(
+  (value) =>
+    value.sentBytes === undefined ||
+    value.totalBytes === undefined ||
+    value.sentBytes <= value.totalBytes ||
+    "sentBytes must not exceed totalBytes"
+)
 
 export const NativeNetworkHttpMethod = Schema.Literals([
   "GET",
@@ -153,17 +163,19 @@ export class NativeNetworkSupportedResult extends Schema.Class<NativeNetworkSupp
   reason: Schema.optionalKey(BridgeSafeString)
 }) {}
 
-export class NativeNetworkEvent extends Schema.Class<NativeNetworkEvent>("NativeNetworkEvent")({
-  type: Schema.Literal("native-network-event"),
-  timestamp: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0)),
-  phase: NativeNetworkEventPhase,
-  request: Schema.optionalKey(NativeNetworkRequestResource),
-  socket: Schema.optionalKey(NativeNetworkWebSocketResource),
-  url: Schema.optionalKey(BridgeSafeNonEmptyString),
-  sentBytes: Schema.optionalKey(NativeNetworkNonNegativeInt),
-  totalBytes: Schema.optionalKey(NativeNetworkNonNegativeInt),
-  message: Schema.optionalKey(BridgeSafeString)
-}) {}
+export class NativeNetworkEvent extends Schema.Class<NativeNetworkEvent>("NativeNetworkEvent")(
+  Schema.Struct({
+    type: Schema.Literal("native-network-event"),
+    timestamp: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0)),
+    phase: NativeNetworkEventPhase,
+    request: Schema.optionalKey(NativeNetworkRequestResource),
+    socket: Schema.optionalKey(NativeNetworkWebSocketResource),
+    url: Schema.optionalKey(BridgeSafeNonEmptyString),
+    sentBytes: Schema.optionalKey(NativeNetworkNonNegativeInt),
+    totalBytes: Schema.optionalKey(NativeNetworkNonNegativeInt),
+    message: Schema.optionalKey(BridgeSafeString)
+  }).check(NativeNetworkByteProgress)
+) {}
 
 const isAbsoluteUrl = (value: string, protocols: readonly string[]): boolean => {
   try {

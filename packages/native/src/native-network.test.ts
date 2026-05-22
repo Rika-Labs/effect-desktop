@@ -1,13 +1,21 @@
 import { expect, test } from "bun:test"
-import { Effect, type Layer, ManagedRuntime } from "effect"
+import {
+  type BridgeClientExchange,
+  HostProtocolEventEnvelope,
+  HostProtocolInvalidOutputError
+} from "@orika/bridge"
+import { Cause, Effect, Exit, type Layer, ManagedRuntime, Option, Schema, Stream } from "effect"
 
 import { makeNativeCapabilityManifest } from "./capabilities.js"
+import { NativeNetworkEvent } from "./contracts/native-network.js"
 import {
   makeNativeNetworkMemoryClient,
+  makeNativeNetworkBridgeClientLayer,
   makeNativeNetworkServiceLayer,
   makeNativeNetworkUnsupportedClient,
   NativeNetwork,
   NativeNetworkCapabilityFacts,
+  NativeNetworkClient,
   NativeNetworkRpcs,
   NativeNetworkSurface
 } from "./native-network.js"
@@ -107,6 +115,71 @@ test("NativeNetwork capability facts surface in the manifest and stay non-callab
     })
   ))
 
+test("NativeNetwork contracts reject sent bytes greater than total bytes", () => {
+  const unknownTotalExit = Effect.runSyncExit(
+    Schema.decodeUnknownEffect(NativeNetworkEvent)({
+      type: "native-network-event",
+      timestamp: 1_710_000_000_000,
+      phase: "upload-progress",
+      request: requestHandle(),
+      url: "https://example.test/upload",
+      sentBytes: 20
+    })
+  )
+  const invalidExit = Effect.runSyncExit(
+    Schema.decodeUnknownEffect(NativeNetworkEvent)({
+      type: "native-network-event",
+      timestamp: 1_710_000_000_000,
+      phase: "upload-progress",
+      request: requestHandle(),
+      url: "https://example.test/upload",
+      sentBytes: 20,
+      totalBytes: 10
+    })
+  )
+
+  expect(unknownTotalExit._tag).toBe("Success")
+  expect(invalidExit._tag).toBe("Failure")
+})
+
+test("NativeNetwork bridge client rejects invalid byte progress events as InvalidOutput", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const exchange: BridgeClientExchange = {
+        request: () => Effect.die("NativeNetwork test does not issue bridge requests"),
+        subscribe: (method) =>
+          Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              method,
+              timestamp: 1_710_000_000_000,
+              traceId: "native-network-event-trace",
+              payload: {
+                type: "native-network-event",
+                timestamp: 1_710_000_000_000,
+                phase: "upload-progress",
+                request: requestHandle(),
+                url: "https://example.test/upload",
+                sentBytes: 20,
+                totalBytes: 10
+              }
+            })
+          )
+      }
+      const exit = yield* runScoped(
+        Effect.gen(function* () {
+          const client = yield* NativeNetworkClient
+          return yield* Effect.exit(
+            client.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+          )
+        }),
+        makeNativeNetworkBridgeClientLayer(exchange)
+      )
+
+      expectInvalidOutput(exit)
+    })
+  ))
+
 const runScoped = <A, E, R>(
   effect: Effect.Effect<A, E, R>,
   layer: Layer.Layer<R, never, never>
@@ -117,3 +190,21 @@ const runScoped = <A, E, R>(
     yield* Effect.promise(() => runtime.dispose())
     return result
   })
+
+const requestHandle = () =>
+  ({
+    kind: "native-network-request",
+    id: "request-1",
+    generation: 0,
+    ownerScope: "scope-1",
+    state: "open"
+  }) as const
+
+const expectInvalidOutput = <A, E>(exit: Exit.Exit<A, E>): void => {
+  expect(exit._tag).toBe("Failure")
+  if (exit._tag !== "Failure") {
+    return
+  }
+
+  expect(Cause.squash(exit.cause)).toBeInstanceOf(HostProtocolInvalidOutputError)
+}
