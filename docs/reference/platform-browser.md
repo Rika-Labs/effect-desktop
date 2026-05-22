@@ -33,14 +33,18 @@ import {
 `RendererSqliteWorkerLive(options)` — SQLite in a Web Worker, for heavier queries off the main thread.
 
 ```ts
-import { Effect, Layer } from "effect"
-import { SqlClient } from "@effect/sql-sqlite-wasm"
-import { RendererSqliteWorkerLive } from "@orika/platform-browser"
+import { Effect } from "effect"
+import { RendererSqliteWorkerLive, SqlClient } from "@orika/platform-browser"
 
-const SqliteLive = RendererSqliteWorkerLive({ filename: "renderer.sqlite" })
+const worker = Effect.acquireRelease(
+  Effect.sync(() => new Worker(new URL("./sqlite-worker.ts", import.meta.url), { type: "module" })),
+  (worker) => Effect.sync(() => worker.terminate())
+)
+
+const SqliteLive = RendererSqliteWorkerLive({ worker })
 
 const program = Effect.gen(function* () {
-  const sql = yield* SqlClient
+  const sql = yield* SqlClient.SqlClient
   yield* sql`CREATE TABLE IF NOT EXISTS notes (id TEXT, body TEXT)`
 })
 

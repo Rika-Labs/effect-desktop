@@ -36,6 +36,17 @@ test("RendererSqliteWorkerLive accepts a worker effect", () => {
   expect(layer).toBeInstanceOf(Object)
 })
 
+test("RendererSqliteWorkerLive accepts scoped worker acquisition", () => {
+  const options: RendererSqliteWorkerOptions = {
+    worker: Effect.acquireRelease(
+      Effect.sync(() => new MessageChannel().port1),
+      (port) => Effect.sync(() => port.close())
+    )
+  }
+  const layer = RendererSqliteWorkerLive(options)
+  expect(layer).toBeDefined()
+})
+
 test("SqliteWasmClient namespace is exported", () => {
   expect(SqliteWasmClient).toBeDefined()
   expect(typeof SqliteWasmClient.layerMemory).toBe("function")
