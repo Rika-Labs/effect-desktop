@@ -2037,6 +2037,28 @@ test("AppMetadataRpcs declares the Phase 8 AppMetadata method and event surface"
   expect(Object.keys(AppMetadataRpcEvents)).toEqual(["Event"])
 })
 
+test("AppMetadata contracts reject inconsistent event phase payloads", () => {
+  for (const payload of [
+    { phase: "info-read", reason: "host failed" },
+    { phase: "paths-read", reason: "host failed" },
+    { phase: "launch-context-read", reason: "host failed" },
+    { phase: "failed" }
+  ] as const) {
+    const exit = Effect.runSyncExit(Schema.decodeUnknownEffect(AppMetadataEvent)(payload))
+    expect(exit._tag).toBe("Failure")
+  }
+
+  for (const payload of [
+    { phase: "info-read" },
+    { phase: "paths-read" },
+    { phase: "launch-context-read" },
+    { phase: "failed", reason: "host failed" }
+  ] as const) {
+    const exit = Effect.runSyncExit(Schema.decodeUnknownEffect(AppMetadataEvent)(payload))
+    expect(exit._tag).toBe("Success")
+  }
+})
+
 test("AppMetadata service delegates through a substitutable AppMetadataClient port", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -2131,6 +2153,36 @@ test("AppMetadata bridge client sends typed host envelopes and decodes events an
         ["AppMetadata.getPaths", null],
         ["AppMetadata.getLaunchContext", null]
       ])
+    })
+  ))
+
+test("AppMetadata bridge client rejects inconsistent event phase payloads as InvalidOutput", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const exchange: BridgeClientExchange = {
+        request: () => Effect.succeed({ kind: "success", payload: undefined }),
+        subscribe: (method) =>
+          Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              timestamp: 1_710_000_000_100,
+              traceId: "app-metadata-event-trace",
+              method,
+              payload: { phase: "failed" }
+            })
+          )
+      }
+      const exit = yield* Effect.scoped(
+        runScoped(
+          Effect.gen(function* () {
+            const metadata = yield* AppMetadata
+            return yield* Effect.exit(metadata.events().pipe(Stream.take(1), Stream.runHead))
+          }),
+          Layer.provide(AppMetadataLive, makeAppMetadataBridgeClientLayer(exchange))
+        )
+      )
+
+      expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
     })
   ))
 

@@ -52,8 +52,28 @@ export const AppMetadataEventPhase = Schema.Literals([
   "launch-context-read",
   "failed"
 ])
+export type AppMetadataEventPhase = typeof AppMetadataEventPhase.Type
 
-export class AppMetadataEvent extends Schema.Class<AppMetadataEvent>("AppMetadataEvent")({
-  phase: AppMetadataEventPhase,
-  reason: Schema.optionalKey(BridgeSafeNonEmptyString)
-}) {}
+const AppMetadataEventPhaseReason = Schema.makeFilter<{
+  readonly phase: AppMetadataEventPhase
+  readonly reason?: string | undefined
+}>((value) => {
+  switch (value.phase) {
+    case "info-read":
+    case "paths-read":
+    case "launch-context-read":
+      return (
+        value.reason === undefined ||
+        "successful app metadata events must not include failure reason"
+      )
+    case "failed":
+      return value.reason !== undefined || "failed app metadata events require reason"
+  }
+})
+
+export class AppMetadataEvent extends Schema.Class<AppMetadataEvent>("AppMetadataEvent")(
+  Schema.Struct({
+    phase: AppMetadataEventPhase,
+    reason: Schema.optionalKey(BridgeSafeNonEmptyString)
+  }).check(AppMetadataEventPhaseReason)
+) {}

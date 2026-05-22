@@ -630,17 +630,128 @@ pub enum AppMetadataEventPhasePayload {
     Failed,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AppMetadataEventPayload {
     phase: AppMetadataEventPhasePayload,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     reason: Option<String>,
 }
 
 impl AppMetadataEventPayload {
-    pub fn new(phase: AppMetadataEventPhasePayload, reason: Option<String>) -> Self {
+    pub fn info_read() -> Self {
+        Self {
+            phase: AppMetadataEventPhasePayload::InfoRead,
+            reason: None,
+        }
+    }
+
+    pub fn paths_read() -> Self {
+        Self {
+            phase: AppMetadataEventPhasePayload::PathsRead,
+            reason: None,
+        }
+    }
+
+    pub fn launch_context_read() -> Self {
+        Self {
+            phase: AppMetadataEventPhasePayload::LaunchContextRead,
+            reason: None,
+        }
+    }
+
+    pub fn failed(reason: impl Into<String>) -> Self {
+        Self {
+            phase: AppMetadataEventPhasePayload::Failed,
+            reason: Some(reason.into()),
+        }
+    }
+
+    #[cfg(test)]
+    fn new_for_test(phase: AppMetadataEventPhasePayload, reason: Option<String>) -> Self {
         Self { phase, reason }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SerializableAppMetadataEventPayload<'a> {
+    phase: AppMetadataEventPhasePayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<&'a str>,
+}
+
+impl<'a> TryFrom<&'a AppMetadataEventPayload> for SerializableAppMetadataEventPayload<'a> {
+    type Error = &'static str;
+
+    fn try_from(payload: &'a AppMetadataEventPayload) -> Result<Self, Self::Error> {
+        validate_app_metadata_event_payload(payload.phase, &payload.reason)?;
+        Ok(Self {
+            phase: payload.phase,
+            reason: payload.reason.as_deref(),
+        })
+    }
+}
+
+impl Serialize for AppMetadataEventPayload {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        SerializableAppMetadataEventPayload::try_from(self)
+            .map_err(ser::Error::custom)?
+            .serialize(serializer)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawAppMetadataEventPayload {
+    phase: AppMetadataEventPhasePayload,
+    #[serde(default)]
+    reason: Option<String>,
+}
+
+impl TryFrom<RawAppMetadataEventPayload> for AppMetadataEventPayload {
+    type Error = &'static str;
+
+    fn try_from(raw: RawAppMetadataEventPayload) -> Result<Self, Self::Error> {
+        validate_app_metadata_event_payload(raw.phase, &raw.reason)?;
+        Ok(Self {
+            phase: raw.phase,
+            reason: raw.reason,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for AppMetadataEventPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        RawAppMetadataEventPayload::deserialize(deserializer)?
+            .try_into()
+            .map_err(de::Error::custom)
+    }
+}
+
+fn validate_app_metadata_event_payload(
+    phase: AppMetadataEventPhasePayload,
+    reason: &Option<String>,
+) -> Result<(), &'static str> {
+    match phase {
+        AppMetadataEventPhasePayload::InfoRead
+        | AppMetadataEventPhasePayload::PathsRead
+        | AppMetadataEventPhasePayload::LaunchContextRead
+            if reason.is_none() =>
+        {
+            Ok(())
+        }
+        AppMetadataEventPhasePayload::InfoRead
+        | AppMetadataEventPhasePayload::PathsRead
+        | AppMetadataEventPhasePayload::LaunchContextRead => {
+            Err("successful app metadata events must not include failure reason")
+        }
+        AppMetadataEventPhasePayload::Failed if reason.is_some() => Ok(()),
+        AppMetadataEventPhasePayload::Failed => Err("failed app metadata events require reason"),
     }
 }
 
@@ -17334,12 +17445,11 @@ mod tests {
             r#"{"argv":["test","--safe-mode"],"cwd":{"path":"/repo"},"reason":"launch","environment":{"variableNames":["PATH"]}}"#
         );
         assert_eq!(
-            serde_json::to_string(&AppMetadataEventPayload::new(
-                AppMetadataEventPhasePayload::LaunchContextRead,
-                Some("host-adapter-unimplemented".to_string())
+            serde_json::to_string(&AppMetadataEventPayload::failed(
+                "host-adapter-unimplemented"
             ))
             .expect("app metadata event should encode"),
-            r#"{"phase":"launch-context-read","reason":"host-adapter-unimplemented"}"#
+            r#"{"phase":"failed","reason":"host-adapter-unimplemented"}"#
         );
     }
 
@@ -17368,6 +17478,51 @@ mod tests {
         )
         .expect_err("unknown metadata event phase should be rejected");
         assert!(error.to_string().contains("unknown variant `changed`"));
+    }
+
+    #[test]
+    fn app_metadata_events_reject_inconsistent_phase_payloads() {
+        for payload in [
+            r#"{"phase":"info-read","reason":"host failed"}"#,
+            r#"{"phase":"paths-read","reason":"host failed"}"#,
+            r#"{"phase":"launch-context-read","reason":"host failed"}"#,
+            r#"{"phase":"failed"}"#,
+        ] {
+            serde_json::from_str::<AppMetadataEventPayload>(payload)
+                .expect_err("inconsistent app metadata event payload should be rejected");
+        }
+
+        for payload in [
+            r#"{"phase":"info-read"}"#,
+            r#"{"phase":"paths-read"}"#,
+            r#"{"phase":"launch-context-read"}"#,
+            r#"{"phase":"failed","reason":"host failed"}"#,
+        ] {
+            serde_json::from_str::<AppMetadataEventPayload>(payload)
+                .expect("consistent app metadata event payload should decode");
+        }
+    }
+
+    #[test]
+    fn app_metadata_events_reject_inconsistent_phase_payloads_before_serializing() {
+        for payload in [
+            AppMetadataEventPayload::new_for_test(
+                AppMetadataEventPhasePayload::InfoRead,
+                Some("host failed".to_string()),
+            ),
+            AppMetadataEventPayload::new_for_test(
+                AppMetadataEventPhasePayload::PathsRead,
+                Some("host failed".to_string()),
+            ),
+            AppMetadataEventPayload::new_for_test(
+                AppMetadataEventPhasePayload::LaunchContextRead,
+                Some("host failed".to_string()),
+            ),
+            AppMetadataEventPayload::new_for_test(AppMetadataEventPhasePayload::Failed, None),
+        ] {
+            serde_json::to_string(&payload)
+                .expect_err("inconsistent app metadata event payload should not encode");
+        }
     }
 
     #[test]
