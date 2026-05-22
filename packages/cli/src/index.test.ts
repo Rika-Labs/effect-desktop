@@ -41,6 +41,7 @@ import {
   type PublicApiSnapshotReport,
   type SignCommandRunner
 } from "./index.js"
+import { DesktopBuildReportJson, encodeDesktopBuildReport } from "./build-report.js"
 import { UpdateManifest } from "./update-manifest.js"
 import { PackageCommandFailedError, type PackageCommandRunner } from "./package-pipeline.js"
 import { SignCommandFailedError } from "./signing-pipeline.js"
@@ -103,6 +104,8 @@ const stringifyJson = (value: unknown, indent?: number): string => {
   return indent === undefined ? encoded : JSON.stringify(JSON.parse(encoded), null, indent)
 }
 const parseJsonObject = Schema.decodeUnknownSync(JsonObject)
+const BuildReportJson = Schema.fromJsonString(DesktopBuildReportJson)
+const decodeBuildReportJson = Schema.decodeUnknownSync(BuildReportJson)
 
 class ExpectedPromiseRejection extends Schema.TaggedErrorClass<ExpectedPromiseRejection>()(
   "ExpectedPromiseRejection",
@@ -7658,7 +7661,7 @@ test("desktop build stages renderer runtime host bridge manifests and report", (
         })
 
         const layout = join(directory, "apps", "inspector", "build", "effect-desktop", "linux-x64")
-        const report = decodeJsonObject(
+        const report = decodeBuildReportJson(
           yield* Effect.promise(() => readFile(join(layout, "build-report.json"), "utf8"))
         )
         const appManifest = decodeJsonObject(
@@ -9415,6 +9418,130 @@ test("desktop package rejects malformed build provider reports", () =>
     })
   ))
 
+test("desktop package rejects present build reports that contain only provider projections", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-package-build-report-projection-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        yield* writeBuildLayoutFixture(directory, "linux-x64")
+        const layout = join(directory, "apps", "inspector", "build", "effect-desktop", "linux-x64")
+        yield* Effect.promise(() =>
+          writeFile(
+            join(layout, "build-report.json"),
+            `${stringifyJson(
+              {
+                providers: {
+                  runtime: "bun",
+                  runtimePackaging: "source",
+                  webEngine: "system"
+                },
+                providerBudgets: [
+                  {
+                    id: "bun",
+                    kind: "runtime",
+                    package: "@effect/platform-bun",
+                    importPath: "@orika/core/providers/bun",
+                    startupBudgetMs: 25,
+                    bundleBudgetKb: 64
+                  }
+                ]
+              },
+              2
+            )}\n`
+          )
+        )
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: [
+            "package",
+            "--config",
+            "apps/inspector/desktop.config.ts",
+            "--artifact",
+            "appimage",
+            "--json"
+          ],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          packageCommandRunner: () =>
+            Effect.die("package commands should not run for an incomplete build report"),
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.tag).toBe("PackageFileError")
+        expect(payload.message).toContain("build-report.json")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop package accepts build layouts without build reports", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-package-no-build-report-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        yield* writeBuildLayoutFixture(directory, "linux-x64")
+        const layout = join(directory, "apps", "inspector", "build", "effect-desktop", "linux-x64")
+        yield* Effect.promise(() => rm(join(layout, "build-report.json"), { force: true }))
+        const runner: PackageCommandRunner = (invocation) =>
+          Effect.gen(function* () {
+            const output = invocation.args.at(-1)
+            if (output !== undefined) {
+              yield* runPackageFixtureIo(invocation, () => writeFile(output, invocation.step))
+            }
+          })
+
+        const exitCode = yield* runCli({
+          argv: [
+            "package",
+            "--config",
+            "apps/inspector/desktop.config.ts",
+            "--artifact",
+            "appimage"
+          ],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          packageCommandRunner: runner,
+          writeStdout: () => {},
+          writeStderr: () => {}
+        })
+        const packageReport = decodeJsonObject(
+          yield* Effect.promise(() =>
+            readFile(
+              join(
+                directory,
+                "apps",
+                "inspector",
+                "dist",
+                "desktop",
+                "linux",
+                "package-report.json"
+              ),
+              "utf8"
+            )
+          )
+        )
+
+        expect(exitCode).toBe(0)
+        expect(packageReport["providers"]).toBeUndefined()
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
 test("desktop package emits macOS app dmg zip artifacts with metadata", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -10432,35 +10559,34 @@ const writeBuildLayoutFixture = (
         )}\n`
       )
     )
+    const buildReport = yield* encodeDesktopBuildReport({
+      appId: "dev.effect-desktop.inspector",
+      appName: "ORIKA Playground",
+      appVersion: "0.0.0",
+      target,
+      providers: {
+        runtime: runtimeEngine,
+        runtimePackaging: "source",
+        webEngine: "system"
+      },
+      providerBudgets: [
+        {
+          id: runtimeEngine,
+          kind: "runtime",
+          package: runtimeEngine === "bun" ? "@effect/platform-bun" : "@effect/platform-node",
+          importPath: `@orika/core/providers/${runtimeEngine}`,
+          startupBudgetMs: 25,
+          bundleBudgetKb: 64
+        }
+      ],
+      providerMeasurements: [],
+      layoutPath: layout,
+      appManifestPath: join(layout, "app-manifest.json"),
+      bridgeManifestPath: join(layout, "bridge", "bridge-manifest.json"),
+      steps: []
+    }).pipe(Effect.orDie)
     yield* Effect.promise(() =>
-      writeFile(
-        join(layout, "build-report.json"),
-        `${stringifyJson(
-          {
-            appId: "dev.effect-desktop.inspector",
-            appName: "ORIKA Playground",
-            appVersion: "0.0.0",
-            target,
-            providers: {
-              runtime: runtimeEngine,
-              runtimePackaging: "source",
-              webEngine: "system"
-            },
-            providerBudgets: [
-              {
-                id: runtimeEngine,
-                kind: "runtime",
-                package: runtimeEngine === "bun" ? "@effect/platform-bun" : "@effect/platform-node",
-                importPath: `@orika/core/providers/${runtimeEngine}`,
-                startupBudgetMs: 25,
-                bundleBudgetKb: 64
-              }
-            ],
-            providerMeasurements: []
-          },
-          2
-        )}\n`
-      )
+      writeFile(join(layout, "build-report.json"), `${stringifyJson(buildReport, 2)}\n`)
     )
   })
 

@@ -74,6 +74,7 @@ import {
   PackageUnsupportedHostError,
   PackageUnsupportedTargetError
 } from "./package-pipeline.js"
+import { encodeDesktopBuildReport } from "./build-report.js"
 import {
   formatDoctorError,
   encodeDesktopDoctorReport,
@@ -1380,7 +1381,19 @@ export const runDesktopBuild = (
         : [renderer, runtime, nativeHost, webviewRuntime, bridge, manifest],
       [providerMeasurement]
     )
-    yield* writeJson(join(plan.layoutPath, "build-report.json"), report)
+    const reportPath = join(plan.layoutPath, "build-report.json")
+    const encodedReport = yield* encodeDesktopBuildReport(report).pipe(
+      Effect.mapError(
+        (cause) =>
+          new BuildFileError({
+            operation: "encode-build-report",
+            path: reportPath,
+            message: `failed to encode build-report.json ${reportPath}`,
+            cause
+          })
+      )
+    )
+    yield* writeJson(reportPath, encodedReport)
     yield* writeBuildCache(plan, report)
 
     return report

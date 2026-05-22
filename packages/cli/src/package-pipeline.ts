@@ -6,6 +6,7 @@ import { Data, Effect, Schema } from "effect"
 
 import type { DesktopProviderBudget } from "@orika/core"
 
+import { decodeBuildProviderProvenance } from "./build-report.js"
 import {
   ReleaseFileSystem,
   runReleaseFileSystem,
@@ -221,24 +222,6 @@ interface AppManifest {
 
 const RUNTIME_ENGINES = ["bun", "node"] as const
 
-const BuildProviderReportJson = Schema.Struct({
-  providers: Schema.Struct({
-    runtime: Schema.Literals(["bun", "node"]),
-    runtimePackaging: Schema.Literal("source"),
-    webEngine: Schema.Literals(["system", "chrome"])
-  }),
-  providerBudgets: Schema.Array(
-    Schema.Struct({
-      id: Schema.String,
-      kind: Schema.Literal("runtime"),
-      package: Schema.String,
-      importPath: Schema.String,
-      startupBudgetMs: Schema.Number,
-      bundleBudgetKb: Schema.Number
-    })
-  )
-})
-
 interface PlannedArtifact {
   readonly kind: PackageArtifactKind
   readonly rootPath: string
@@ -390,42 +373,27 @@ const readBuildProviderReport = (
       return undefined
     }
     const report = yield* readJson(reportPath).pipe(
-      Effect.flatMap((value) => decodeBuildProviderReport(value, reportPath))
+      Effect.flatMap((value) =>
+        decodeBuildProviderProvenance(value).pipe(
+          Effect.mapError(
+            (cause) =>
+              new PackageFileError({
+                operation: "decode-build-report",
+                path: reportPath,
+                message: `failed to decode build-report.json ${reportPath}`,
+                cause
+              })
+          )
+        )
+      )
     )
     return {
-      runtime: report.providers.runtime,
-      runtimePackaging: report.providers.runtimePackaging,
-      webEngine: report.providers.webEngine,
+      runtime: report.runtime,
+      runtimePackaging: report.runtimePackaging,
+      webEngine: report.webEngine,
       providerBudgets: report.providerBudgets
     }
   })
-
-const decodeBuildProviderReport = (
-  value: unknown,
-  path: string
-): Effect.Effect<
-  {
-    readonly providers: {
-      readonly runtime: "bun" | "node"
-      readonly runtimePackaging: "source"
-      readonly webEngine: "system" | "chrome"
-    }
-    readonly providerBudgets: readonly DesktopProviderBudget[]
-  },
-  PackageFileError,
-  never
-> =>
-  Schema.decodeUnknownEffect(BuildProviderReportJson)(value).pipe(
-    Effect.mapError(
-      (cause) =>
-        new PackageFileError({
-          operation: "decode-build-report",
-          path,
-          message: `failed to decode build-report.json ${path}`,
-          cause
-        })
-    )
-  )
 
 const validateBuildLayout = (
   plan: PackagePlan
