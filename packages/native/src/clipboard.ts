@@ -26,6 +26,8 @@ import { isSupportedImageHeader } from "./contracts/image.js"
 
 export type ClipboardError = HostProtocolError
 
+const ClipboardUnsupportedReason = "host-adapter-unimplemented"
+
 export const ClipboardReadText = NativeSurface.rpc("Clipboard", "readText", {
   payload: Schema.Void,
   success: ClipboardText,
@@ -236,7 +238,9 @@ export const ClipboardHandlersLive = ClipboardRpcGroup.toLayer({
     Effect.gen(function* () {
       const clipboard = yield* Clipboard
       const supported = yield* clipboard.isSupported(input.capability)
-      return new ClipboardSupportedResult({ supported })
+      return supported
+        ? new ClipboardSupportedResult({ supported: true })
+        : new ClipboardSupportedResult({ supported: false, reason: ClipboardUnsupportedReason })
     })
 })
 

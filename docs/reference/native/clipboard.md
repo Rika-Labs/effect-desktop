@@ -25,18 +25,21 @@ for text, HTML, image, clear, and capability checks on macOS, Windows, and Linux
 with reason `host-clipboard-unavailable` or `host-clipboard-busy` when the OS clipboard is unavailable.
 Linux primary-selection behavior is explicitly unsupported through the `selection` capability.
 
+`isSupported` results are strict: supported results do not include `reason`, and unsupported results
+must include `reason`. Malformed host output at this boundary is reported as `InvalidOutput`.
+
 ## Methods
 
-| Method        | Payload                                                                 | Success                                                    |
-| ------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------- |
-| `readText`    | —                                                                       | `{ text: string }`                                         |
-| `writeText`   | `{ text: string }`                                                      | `void`                                                     |
-| `readHtml`    | —                                                                       | `{ html: string }`                                         |
-| `writeHtml`   | `{ html: string }`                                                      | `void`                                                     |
-| `readImage`   | —                                                                       | `{ mime: "image/png" \| "image/jpeg", bytes: Uint8Array }` |
-| `writeImage`  | `{ mime: "image/png" \| "image/jpeg", bytes: Uint8Array }`              | `void`                                                     |
-| `clear`       | —                                                                       | `void`                                                     |
-| `isSupported` | `{ capability: "text" \| "html" \| "image" \| "clear" \| "selection" }` | `{ supported: boolean, reason?: string }`                  |
+| Method        | Payload                                                                 | Success                                                         |
+| ------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `readText`    | —                                                                       | `{ text: string }`                                              |
+| `writeText`   | `{ text: string }`                                                      | `void`                                                          |
+| `readHtml`    | —                                                                       | `{ html: string }`                                              |
+| `writeHtml`   | `{ html: string }`                                                      | `void`                                                          |
+| `readImage`   | —                                                                       | `{ mime: "image/png" \| "image/jpeg", bytes: Uint8Array }`      |
+| `writeImage`  | `{ mime: "image/png" \| "image/jpeg", bytes: Uint8Array }`              | `void`                                                          |
+| `clear`       | —                                                                       | `void`                                                          |
+| `isSupported` | `{ capability: "text" \| "html" \| "image" \| "clear" \| "selection" }` | `{ supported: true }` or `{ supported: false, reason: string }` |
 
 ## Errors
 

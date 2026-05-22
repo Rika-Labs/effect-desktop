@@ -35,7 +35,18 @@ export class ClipboardIsSupportedInput extends Schema.Class<ClipboardIsSupported
 
 export class ClipboardSupportedResult extends Schema.Class<ClipboardSupportedResult>(
   "ClipboardSupportedResult"
-)({
-  supported: Schema.Boolean,
-  reason: Schema.optionalKey(BridgeSafeString)
-}) {}
+)(
+  Schema.Struct({
+    supported: Schema.Boolean,
+    reason: Schema.optionalKey(BridgeSafeString)
+  }).check(
+    Schema.makeFilter<{
+      readonly supported: boolean
+      readonly reason?: string | undefined
+    }>((value) =>
+      value.supported
+        ? value.reason === undefined || "supported Clipboard result must not include reason"
+        : value.reason !== undefined || "unsupported Clipboard result requires reason"
+    )
+  )
+) {}

@@ -246,7 +246,7 @@
     {
       "name": "CommandInvocationRecord",
       "kind": "class",
-      "signature": "export class CommandInvocationRecord extends Schema.Class<CommandInvocationRecord>( \"CommandInvocationRecord\" )({ commandId: Schema.String, actor: Schema.Unknown, traceId: NonEmptyString, outcome: Schema.Literals([\"success\", \"failure\", \"committed-audit-failure\"]), timestamp: NonNegativeInt, durationMs: NonNegativeInt, errorTag: Schema.optionalKey(NonEmptyString) }) {}"
+      "signature": "export class CommandInvocationRecord extends Schema.Class<CommandInvocationRecord>( \"CommandInvocationRecord\" )({ commandId: Schema.String, actor: PermissionActor, traceId: NonEmptyString, outcome: Schema.Literals([\"success\", \"failure\", \"committed-audit-failure\"]), timestamp: NonNegativeInt, durationMs: NonNegativeInt, errorTag: Schema.optionalKey(NonEmptyString) }) {}"
     },
     {
       "name": "CommandRegistry",
@@ -306,7 +306,7 @@
     {
       "name": "CommandSnapshot",
       "kind": "class",
-      "signature": "export class CommandSnapshot extends Schema.Class<CommandSnapshot>(\"CommandSnapshot\")({ id: NonEmptyString, capability: Schema.Unknown, ownerScope: NonEmptyString, invocationCount: NonNegativeInt, lastInvocation: Schema.optionalKey(CommandInvocationRecord), lastError: Schema.optionalKey(CommandInvocationRecord) }) {}"
+      "signature": "export class CommandSnapshot extends Schema.Class<CommandSnapshot>(\"CommandSnapshot\")({ id: NonEmptyString, capability: NormalizedCapabilitySchema, ownerScope: NonEmptyString, invocationCount: NonNegativeInt, lastInvocation: Schema.optionalKey(CommandInvocationRecord), lastError: Schema.optionalKey(CommandInvocationRecord) }) {}"
     },
     {
       "name": "CspInspectorCollector",
@@ -2696,12 +2696,12 @@
     {
       "name": "WorkerSnapshot",
       "kind": "class",
-      "signature": "export class WorkerSnapshot extends Schema.Class<WorkerSnapshot>(\"WorkerSnapshot\")({ id: NonEmptyString, script: NonEmptyString, ownerScope: NonEmptyString, resourceId: NonEmptyString, status: Schema.Literals([\"running\"]), uptimeMs: NonNegativeInt, capabilities: Schema.Array(Schema.Unknown), lastError: Schema.optionalKey(Schema.Unknown) }) {}"
+      "signature": "export class WorkerSnapshot extends Schema.Class<WorkerSnapshot>(\"WorkerSnapshot\")({ id: NonEmptyString, script: NonEmptyString, ownerScope: NonEmptyString, resourceId: NonEmptyString, status: Schema.Literals([\"running\"]), uptimeMs: NonNegativeInt, capabilities: Schema.Array(NormalizedCapability), lastError: Schema.optionalKey(Schema.Unknown) }) {}"
     },
     {
       "name": "WorkerSpawnInput",
       "kind": "class",
-      "signature": "export class WorkerSpawnInput extends Schema.Class<WorkerSpawnInput>(\"WorkerSpawnInput\")({ script: NonEmptyString, ownerScope: NonEmptyString, capabilities: Schema.Array(Schema.Unknown) }) {}"
+      "signature": "export class WorkerSpawnInput extends Schema.Class<WorkerSpawnInput>(\"WorkerSpawnInput\")({ script: NonEmptyString, ownerScope: NonEmptyString, capabilities: Schema.Array(NormalizedCapability) }) {}"
     },
     {
       "name": "WorkerSpawnOptions",

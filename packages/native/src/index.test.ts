@@ -4774,6 +4774,49 @@ test("Clipboard bridge client preserves unsupported support reasons from host", 
     })
   ))
 
+test("Clipboard support results reject inconsistent reasons", () => {
+  for (const payload of [
+    { supported: true, reason: "unexpected" },
+    { supported: false }
+  ] as const) {
+    const exit = Effect.runSyncExit(Schema.decodeUnknownEffect(ClipboardSupportedResult)(payload))
+    expect(Exit.isFailure(exit)).toBe(true)
+  }
+
+  for (const payload of [
+    { supported: true },
+    { supported: false, reason: "host-adapter-unimplemented" }
+  ] as const) {
+    const exit = Effect.runSyncExit(Schema.decodeUnknownEffect(ClipboardSupportedResult)(payload))
+    expect(Exit.isSuccess(exit)).toBe(true)
+  }
+})
+
+test("Clipboard bridge client rejects inconsistent isSupported output as InvalidOutput", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      for (const payload of [
+        { supported: true, reason: "unexpected" },
+        { supported: false }
+      ] as const) {
+        const exit = yield* runScoped(
+          Effect.gen(function* () {
+            const client = yield* ClipboardClient
+            return yield* Effect.exit(client.isSupported("selection"))
+          }),
+          makeClipboardBridgeClientLayer(
+            clipboardExchange([], () => ({
+              kind: "success",
+              payload
+            }))
+          )
+        )
+
+        expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
+      }
+    })
+  ))
+
 test("Clipboard bridge client rejects mismatched image mime before transport", () =>
   Effect.runPromise(
     Effect.gen(function* () {

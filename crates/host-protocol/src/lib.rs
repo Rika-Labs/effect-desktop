@@ -3203,11 +3203,9 @@ impl ClipboardIsSupportedPayload {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClipboardSupportedPayload {
     supported: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
     reason: Option<String>,
 }
 
@@ -3233,6 +3231,80 @@ impl ClipboardSupportedPayload {
     pub fn reason(&self) -> Option<&str> {
         self.reason.as_deref()
     }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SerializableClipboardSupportedPayload<'a> {
+    supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<&'a str>,
+}
+
+impl<'a> TryFrom<&'a ClipboardSupportedPayload> for SerializableClipboardSupportedPayload<'a> {
+    type Error = &'static str;
+
+    fn try_from(payload: &'a ClipboardSupportedPayload) -> Result<Self, Self::Error> {
+        validate_clipboard_support(payload.supported, payload.reason.as_deref())?;
+        Ok(Self {
+            supported: payload.supported,
+            reason: payload.reason.as_deref(),
+        })
+    }
+}
+
+impl Serialize for ClipboardSupportedPayload {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        SerializableClipboardSupportedPayload::try_from(self)
+            .map_err(ser::Error::custom)?
+            .serialize(serializer)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawClipboardSupportedPayload {
+    supported: bool,
+    #[serde(default)]
+    reason: Option<String>,
+}
+
+impl TryFrom<RawClipboardSupportedPayload> for ClipboardSupportedPayload {
+    type Error = &'static str;
+
+    fn try_from(raw: RawClipboardSupportedPayload) -> Result<Self, Self::Error> {
+        validate_clipboard_support(raw.supported, raw.reason.as_deref())?;
+        Ok(Self {
+            supported: raw.supported,
+            reason: raw.reason,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for ClipboardSupportedPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        RawClipboardSupportedPayload::deserialize(deserializer)?
+            .try_into()
+            .map_err(de::Error::custom)
+    }
+}
+
+fn validate_clipboard_support(supported: bool, reason: Option<&str>) -> Result<(), &'static str> {
+    if supported && reason.is_some() {
+        return Err("supported Clipboard result must not include reason");
+    }
+
+    if !supported && reason.is_none() {
+        return Err("unsupported Clipboard result requires reason");
+    }
+
+    Ok(())
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -24049,6 +24121,40 @@ mod tests {
         for payload in [supported, unsupported] {
             serde_json::to_string(&payload)
                 .expect_err("inconsistent native network support should not encode");
+        }
+    }
+
+    #[test]
+    fn clipboard_support_rejects_inconsistent_reasons() {
+        for source in [
+            r#"{"supported":true,"reason":"unexpected"}"#,
+            r#"{"supported":false}"#,
+        ] {
+            serde_json::from_str::<ClipboardSupportedPayload>(source)
+                .expect_err("inconsistent clipboard support should be rejected");
+        }
+
+        for source in [
+            r#"{"supported":true}"#,
+            r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#,
+        ] {
+            serde_json::from_str::<ClipboardSupportedPayload>(source)
+                .expect("consistent clipboard support should decode");
+        }
+    }
+
+    #[test]
+    fn clipboard_support_rejects_inconsistent_reasons_before_serializing() {
+        let mut supported = ClipboardSupportedPayload::unsupported("unexpected");
+        supported.supported = true;
+        let unsupported = ClipboardSupportedPayload {
+            supported: false,
+            reason: None,
+        };
+
+        for payload in [supported, unsupported] {
+            serde_json::to_string(&payload)
+                .expect_err("inconsistent clipboard support should not encode");
         }
     }
 
