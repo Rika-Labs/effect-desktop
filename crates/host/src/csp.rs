@@ -9,6 +9,7 @@ use std::{
     path::{Path, PathBuf},
     sync::OnceLock,
 };
+use wry::http::HeaderValue;
 
 const CSP_NONCE_PLACEHOLDER: &str = "{N}";
 const APP_MANIFEST_FILE: &str = "app-manifest.json";
@@ -108,6 +109,19 @@ impl CspPolicy {
             })
             .collect::<Vec<_>>()
             .join("; ")
+    }
+
+    pub(crate) fn header_value(
+        &self,
+        nonce: &CspNonce,
+    ) -> Result<Option<HeaderValue>, CspPolicyError> {
+        let rendered = self.render(nonce);
+        if rendered.is_empty() {
+            return Ok(None);
+        }
+        HeaderValue::from_str(&rendered).map(Some).map_err(|error| {
+            CspPolicyError::new(format!("generated CSP header is invalid: {error}"))
+        })
     }
 
     fn from_current_exe_manifest() -> CspPolicyResult {

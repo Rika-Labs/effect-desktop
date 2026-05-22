@@ -390,18 +390,19 @@ fn app_response(
     nonce: &csp::CspNonce,
     trace_id: &HeaderValue,
 ) -> Response<Cow<'static, [u8]>> {
-    let rendered_policy = policy.render(nonce);
+    let csp_header = match policy.header_value(nonce) {
+        Ok(header) => header,
+        Err(error) => return app_policy_error_response(trace_id, &error),
+    };
     let mut response = Response::new(body);
     *response.status_mut() = status;
     response
         .headers_mut()
         .insert(CONTENT_TYPE, HeaderValue::from_static(content_type));
-    if !rendered_policy.is_empty() {
-        response.headers_mut().insert(
-            CONTENT_SECURITY_POLICY,
-            HeaderValue::from_str(&rendered_policy)
-                .expect("generated CSP should be a valid header"),
-        );
+    if let Some(csp_header) = csp_header {
+        response
+            .headers_mut()
+            .insert(CONTENT_SECURITY_POLICY, csp_header);
     }
     response
         .headers_mut()
@@ -911,6 +912,27 @@ mod tests {
         assert!(body.contains("trace-policy-control"));
     }
 
+    #[test]
+    fn unsafe_rendered_csp_returns_policy_error_response() {
+        let request = Request::builder()
+            .uri(APP_URL)
+            .header(TRACE_ID_HEADER, "trace-policy-render")
+            .body(Vec::new())
+            .expect("test request should build");
+        let response =
+            app_scheme_response_with_policy(&request, rewrite_with_nonce, unsafe_rendered_policy);
+
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(response.headers().get(CONTENT_SECURITY_POLICY), None);
+        assert_eq!(
+            response.headers().get(TRACE_ID_HEADER),
+            Some(&HeaderValue::from_static("trace-policy-render"))
+        );
+        let body = std::str::from_utf8(response.body()).expect("error body should be utf-8");
+        assert!(body.starts_with(POLICY_FAILED_BODY_PREFIX));
+        assert!(body.contains("trace-policy-render"));
+    }
+
     fn faulty_rewriter(_: &[u8], _: &CspNonce) -> Result<RewriteOutcome, RewriteError> {
         Err(RewriteError::Parse(RewritingError::ContentHandlerError(
             Box::<dyn std::error::Error + Send + Sync>::from("synthetic-rewrite-failure"),
@@ -938,6 +960,13 @@ mod tests {
         CspPolicy::from_manifest_str(
             r#"{"rendererManifest":{"csp":{"directives":[{"name":"script-src","values":["'self'\nobject-src *"]}]}}}"#,
         )
+    }
+
+    fn unsafe_rendered_policy() -> Result<CspPolicy, CspPolicyError> {
+        Ok(CspPolicy::from_test_directives(&[(
+            "script-src",
+            &["'self'\nobject-src *"],
+        )]))
     }
 
     fn expected_csp(nonce: &str) -> String {
