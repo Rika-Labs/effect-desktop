@@ -27,6 +27,15 @@ export type WebRequestAction = typeof WebRequestAction.Type
 
 const WebRequestEventPhase = Schema.Literals(["registered", "removed", "matched", "failed"])
 export type WebRequestEventPhase = typeof WebRequestEventPhase.Type
+const WebRequestBeforeRequestRedirect = Schema.makeFilter<{
+  readonly action: "allow" | "block" | "redirect"
+  readonly redirectUrl?: string | undefined
+}>((value) => {
+  if (value.action === "redirect") {
+    return value.redirectUrl !== undefined || "redirect action requires redirectUrl"
+  }
+  return value.redirectUrl === undefined || "redirectUrl requires redirect action"
+})
 
 export class WebRequestHeader extends Schema.Class<WebRequestHeader>("WebRequestHeader")({
   name: WebRequestHeaderName,
@@ -35,14 +44,16 @@ export class WebRequestHeader extends Schema.Class<WebRequestHeader>("WebRequest
 
 export class WebRequestBeforeRequestInput extends Schema.Class<WebRequestBeforeRequestInput>(
   "WebRequestBeforeRequestInput"
-)({
-  profile: SessionProfileResource,
-  urlPattern: WebRequestUrlPattern,
-  action: Schema.Literals(["allow", "block", "redirect"]),
-  redirectUrl: Schema.optionalKey(WebRequestRedirectUrl),
-  ownerScope: Schema.optionalKey(BridgeSafeNonEmptyString),
-  traceId: Schema.optionalKey(BridgeSafeNonEmptyString)
-}) {}
+)(
+  Schema.Struct({
+    profile: SessionProfileResource,
+    urlPattern: WebRequestUrlPattern,
+    action: Schema.Literals(["allow", "block", "redirect"]),
+    redirectUrl: Schema.optionalKey(WebRequestRedirectUrl),
+    ownerScope: Schema.optionalKey(BridgeSafeNonEmptyString),
+    traceId: Schema.optionalKey(BridgeSafeNonEmptyString)
+  }).check(WebRequestBeforeRequestRedirect)
+) {}
 
 export class WebRequestHeadersReceivedInput extends Schema.Class<WebRequestHeadersReceivedInput>(
   "WebRequestHeadersReceivedInput"

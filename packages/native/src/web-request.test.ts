@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test"
 import { type BridgeClientExchange } from "@orika/bridge"
-import { Cause, Effect, Exit, type Layer, ManagedRuntime, Stream } from "effect"
+import { Cause, Effect, Exit, type Layer, ManagedRuntime, Schema, Stream } from "effect"
 
 import { makeNativeCapabilityManifest } from "./capabilities.js"
+import { WebRequestBeforeRequestInput } from "./contracts/web-request.js"
 import {
   makeWebRequestBridgeClientLayer,
   makeWebRequestMemoryClient,
@@ -25,6 +26,53 @@ const UnsupportedSupport = {
     { platform: "linux", status: "unsupported", reason: "host-web-request-unavailable" }
   ]
 } as const
+const sessionProfileHandle = {
+  kind: "session-profile",
+  id: "profile-1",
+  generation: 0,
+  ownerScope: "test",
+  state: "open"
+} as const
+const beforeRequestInput = {
+  profile: sessionProfileHandle,
+  urlPattern: "https://example.test/*"
+} as const
+
+test("WebRequest before-request redirect action requires a matching redirect URL", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const redirectWithoutUrl = yield* Effect.exit(
+        Schema.decodeUnknownEffect(WebRequestBeforeRequestInput)({
+          ...beforeRequestInput,
+          action: "redirect"
+        })
+      )
+      const allowWithRedirectUrl = yield* Effect.exit(
+        Schema.decodeUnknownEffect(WebRequestBeforeRequestInput)({
+          ...beforeRequestInput,
+          action: "allow",
+          redirectUrl: "https://redirect.example.test/"
+        })
+      )
+      const blockWithRedirectUrl = yield* Effect.exit(
+        Schema.decodeUnknownEffect(WebRequestBeforeRequestInput)({
+          ...beforeRequestInput,
+          action: "block",
+          redirectUrl: "https://redirect.example.test/"
+        })
+      )
+      const validRedirect = yield* Schema.decodeUnknownEffect(WebRequestBeforeRequestInput)({
+        ...beforeRequestInput,
+        action: "redirect",
+        redirectUrl: "https://redirect.example.test/"
+      })
+
+      expect(Exit.isFailure(redirectWithoutUrl)).toBe(true)
+      expect(Exit.isFailure(allowWithRedirectUrl)).toBe(true)
+      expect(Exit.isFailure(blockWithRedirectUrl)).toBe(true)
+      expect(validRedirect.redirectUrl).toBe("https://redirect.example.test/")
+    })
+  ))
 
 test("WebRequest exposes only isSupported as a callable RPC", () => {
   const callableTags = Array.from(WebRequestRpcs.requests.keys()).toSorted()
