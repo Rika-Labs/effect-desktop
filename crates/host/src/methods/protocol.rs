@@ -428,7 +428,8 @@ impl ProtocolRegistry {
     fn is_denied(&self, scheme: &str, path: &str) -> bool {
         self.denied_paths.get(scheme).is_some_and(|paths| {
             paths.iter().any(|denied| {
-                path == denied
+                denied == "/"
+                    || path == denied
                     || path
                         .strip_prefix(denied)
                         .is_some_and(|rest| rest.starts_with('/'))
@@ -588,6 +589,33 @@ mod tests {
 
         assert!(registry.is_route("encodedroutetest", "/settings/profile"));
         assert!(!registry.is_route("encodedroutetest", "/settings%2fprofile"));
+    }
+
+    #[test]
+    fn root_deny_policy_blocks_child_assets() {
+        let root = std::env::temp_dir().join(format!(
+            "effect-desktop-protocol-root-deny-{}",
+            uuid::Uuid::now_v7()
+        ));
+        std::fs::create_dir_all(&root).expect("asset root should be created");
+        std::fs::write(root.join("file.txt"), b"secret").expect("asset file should be written");
+        let scheme = format!("rootdeny{}", uuid::Uuid::now_v7().simple());
+
+        serve_asset(Some(serde_json::json!({
+            "scheme": scheme,
+            "root": root
+        })))
+        .expect("asset policy should register");
+        deny(Some(serde_json::json!({
+            "scheme": scheme,
+            "path": "/"
+        })))
+        .expect("root deny should register");
+
+        let response = resolve_custom_protocol_request(&scheme, "/file.txt");
+        std::fs::remove_dir_all(root).expect("asset root should be removed");
+
+        assert!(matches!(response, ProtocolResponse::Denied));
     }
 
     #[test]
