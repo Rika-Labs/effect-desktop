@@ -121,6 +121,11 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
         release: { status: "complete" },
         support: { status: "supported" }
       })
+      expect(result.rows.find((row) => row.tag === "WebView.setZoom")).toMatchObject({
+        hostStatus: "routed",
+        release: { status: "complete" },
+        support: { status: "supported" }
+      })
       expect(result.rows.find((row) => row.tag === "WebView.getNavigationState")).toMatchObject({
         hostStatus: "routed",
         support: {

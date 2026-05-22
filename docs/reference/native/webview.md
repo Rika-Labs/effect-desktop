@@ -88,9 +88,8 @@ Keeping the permission response capability explicit documents the intended
 permission-decision path before native prompt routing exists.
 
 Document controls are host-backed for child WebViews where the provider owns a
-portable operation. `print` is supported through the retained Wry WebView
-resource. `setZoom` remains partial until its provider-backed behavior is
-resolved separately. `captureScreenshot`, `printToPdf`, `findInPage`, and
+portable operation. `print` and `setZoom` are supported through the retained Wry WebView
+resource. `captureScreenshot`, `printToPdf`, `findInPage`, and
 `setUserAgent` are non-callable capability facts because Wry exposes no portable
 public screenshot, PDF export, find-in-page, or runtime user-agent setter on
 desktop targets. A platform-specific snapshot hook would need a host-owned
@@ -257,8 +256,7 @@ Create-time preload isolation is host-backed through Wry initialization-script
 and IPC hooks, and reports through the typed `WebView.ApiCall` stream.
 Runtime events are partially host-backed through Wry page-load and drag/drop
 callbacks and report through `WebView.RuntimeEvent`.
-`print` is supported through Wry. `setZoom` remains partial through the retained
-Wry WebView resource.
+`print` and `setZoom` are supported through Wry's retained WebView resource.
 `openDevTools` is host-backed in debug builds or host builds compiled with the
 `devtools` feature. `closeDevTools` uses the same build gate on macOS and Linux,
 and is unsupported on Windows because Wry's WebView2 adapter has no close

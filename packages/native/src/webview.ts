@@ -93,7 +93,6 @@ const WebViewRuntimeUserAgentUnsupportedReason = "host-user-agent-runtime-unavai
 const WebViewRuntimeMediaControlUnsupportedReason = "host-runtime-media-control-unavailable"
 const WebViewRuntimePermissionUnsupportedReason = "host-permission-request-routing-unavailable"
 const WebViewFrameRoutingUnsupportedReason = "host-frame-routing-unavailable"
-const WebViewSetZoomPartialReason = "host-print-zoom-provider-backed"
 const WebViewDocumentUnsupportedSupport = NativeSurface.support.unsupported(
   WebViewDocumentUnsupportedReason,
   {
@@ -132,13 +131,6 @@ const WebViewRuntimeUserAgentSupport = NativeSurface.support.unsupported(
     ]
   }
 )
-const WebViewSetZoomSupport = NativeSurface.support.partial(WebViewSetZoomPartialReason, {
-  platforms: [
-    { platform: "macos", status: "partial", reason: WebViewSetZoomPartialReason },
-    { platform: "windows", status: "partial", reason: WebViewSetZoomPartialReason },
-    { platform: "linux", status: "partial", reason: WebViewSetZoomPartialReason }
-  ]
-})
 const WebViewRuntimeMediaControlSupport = NativeSurface.support.unsupported(
   WebViewRuntimeMediaControlUnsupportedReason,
   {
@@ -282,7 +274,7 @@ export const WebViewSetZoom = NativeSurface.rpc("WebView", "setZoom", {
     P.nativeInvoke({ primitive: "WebView", methods: ["setZoom"] })
   ),
   endpoint: "mutation",
-  support: WebViewSetZoomSupport
+  support: NativeSurface.support.supported
 })
 export const WebViewOpenDevTools = NativeSurface.rpc("WebView", "openDevTools", {
   payload: WebViewHandleInput,

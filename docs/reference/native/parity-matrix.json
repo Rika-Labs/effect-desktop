@@ -5026,31 +5026,11 @@
       "method": "setZoom",
       "capability": "native",
       "support": {
-        "status": "partial",
-        "reason": "host-print-zoom-provider-backed",
-        "platforms": [
-          {
-            "platform": "macos",
-            "status": "partial",
-            "reason": "host-print-zoom-provider-backed"
-          },
-          {
-            "platform": "windows",
-            "status": "partial",
-            "reason": "host-print-zoom-provider-backed"
-          },
-          {
-            "platform": "linux",
-            "status": "partial",
-            "reason": "host-print-zoom-provider-backed"
-          }
-        ]
+        "status": "supported"
       },
       "hostStatus": "routed",
       "release": {
-        "status": "tracked",
-        "issue": 1439,
-        "url": "https://github.com/Rika-Labs/effect-desktop/issues/1439"
+        "status": "complete"
       }
     },
     {
@@ -5809,11 +5789,11 @@
     "total": 287,
     "routed": 239,
     "missing": 0,
-    "supported": 181,
-    "partial": 58,
+    "supported": 182,
+    "partial": 57,
     "unsupported": 48,
-    "releaseComplete": 181,
-    "releaseTracked": 106,
+    "releaseComplete": 182,
+    "releaseTracked": 105,
     "releaseUntracked": 0
   }
 }
