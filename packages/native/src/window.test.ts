@@ -21,10 +21,11 @@ test("WindowRpcs exposes only host-implemented methods through RpcGroup lowering
   expect(request("Window.setDecorations").pipe(rpcSupport)).toEqual({ status: "supported" })
   expect(request("Window.setTrafficLights").pipe(rpcSupport)).toMatchObject({
     status: "partial",
+    reason: "traffic-light-placement-macos-only",
     platforms: [
       { platform: "macos", status: "supported" },
-      { platform: "windows", status: "unsupported" },
-      { platform: "linux", status: "unsupported" }
+      { platform: "windows", status: "unsupported", reason: "traffic-light-placement-macos-only" },
+      { platform: "linux", status: "unsupported", reason: "traffic-light-placement-macos-only" }
     ]
   })
   expect(request("Window.setVibrancy").pipe(rpcSupport)).toMatchObject({

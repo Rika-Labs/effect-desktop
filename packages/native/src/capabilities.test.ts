@@ -113,6 +113,16 @@ const WindowShadowMacosOnlySupport = {
   ]
 } as const
 
+const WindowTrafficLightsMacosOnlySupport = {
+  status: "partial",
+  reason: "traffic-light-placement-macos-only",
+  platforms: [
+    { platform: "macos", status: "supported" },
+    { platform: "windows", status: "unsupported", reason: "traffic-light-placement-macos-only" },
+    { platform: "linux", status: "unsupported", reason: "traffic-light-placement-macos-only" }
+  ]
+} as const
+
 const WindowSimpleFullscreenMacosOnlySupport = {
   status: "partial",
   reason: "simple-fullscreen-macos-only",
@@ -424,6 +434,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       const windowSetTitleBarTransparent = yield* capabilities.support(
         "Window.setTitleBarTransparent"
       )
+      const windowSetTrafficLights = yield* capabilities.support("Window.setTrafficLights")
       const networkAuthHandleAuth = yield* capabilities.support("NetworkAuth.handleAuth")
       const networkAuthHandleCertificate = yield* capabilities.support(
         "NetworkAuth.handleCertificate"
@@ -538,6 +549,7 @@ test("NativeCapabilities exposes support metadata from native surfaces", () => {
       expect(windowSetSkipTaskbar).toEqual(WindowSkipTaskbarSupport)
       expect(windowSetTitleBarStyle).toEqual(WindowTitleBarStyleMacosOnlySupport)
       expect(windowSetTitleBarTransparent).toEqual(WindowTitleBarTransparentMacosOnlySupport)
+      expect(windowSetTrafficLights).toEqual(WindowTrafficLightsMacosOnlySupport)
       expect(networkAuthHandleAuth).toEqual(NetworkAuthUnavailableSupport)
       expect(networkAuthHandleCertificate).toEqual(NetworkAuthUnavailableSupport)
       expect(networkAuthSetProxy).toEqual(NetworkAuthProxySupport)

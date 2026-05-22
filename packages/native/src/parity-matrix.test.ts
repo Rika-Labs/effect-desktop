@@ -1148,6 +1148,26 @@ test("NativeParityMatrix reports declared TypeScript methods against the Rust ho
           ]
         }
       })
+      expect(result.rows.find((row) => row.tag === "Window.setTrafficLights")).toMatchObject({
+        hostStatus: "routed",
+        support: {
+          status: "partial",
+          reason: "traffic-light-placement-macos-only",
+          platforms: [
+            { platform: "macos", status: "supported" },
+            {
+              platform: "windows",
+              status: "unsupported",
+              reason: "traffic-light-placement-macos-only"
+            },
+            {
+              platform: "linux",
+              status: "unsupported",
+              reason: "traffic-light-placement-macos-only"
+            }
+          ]
+        }
+      })
       expect(result.rows.find((row) => row.tag === "EgressPolicy.decide")).toMatchObject({
         hostStatus: "routed",
         support: {

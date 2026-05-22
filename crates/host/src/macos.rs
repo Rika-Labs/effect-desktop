@@ -725,7 +725,7 @@ mod platform {
         _traffic_lights: super::MacosTrafficLights,
     ) -> std::result::Result<(), HostProtocolError> {
         Err(HostProtocolError::unsupported(
-            "traffic-light placement is only supported on macOS",
+            "traffic-light-placement-macos-only",
             host_protocol::WINDOW_SET_TRAFFIC_LIGHTS_METHOD,
         ))
     }
