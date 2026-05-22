@@ -2594,6 +2594,146 @@ test("desktop check --api --json reports missing snapshots as typed values", () 
     })
   ))
 
+test("desktop check --api rejects malformed snapshot files as typed parse errors", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-api-"))
+      )
+      try {
+        yield* writeApiFixturePackage(directory, "export const present = true\n")
+        yield* runCli({
+          argv: ["check", "--api", "--write"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: () => {}
+        })
+
+        yield* Effect.promise(() =>
+          writeFile(
+            join(directory, "api", "snapshots", "@orika__fixture.snapshot.json"),
+            `${stringifyJson(
+              {
+                schemaVersion: 1,
+                packageName: "@orika/fixture",
+                entrypoint: "src/index.ts",
+                symbols: "not-an-array"
+              },
+              2
+            )}\n`
+          )
+        )
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--api", "--json"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.tag).toBe("PublicApiFileError")
+        expect(payload.message).toContain("failed to parse")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --api rejects invalid snapshot versions and symbol kinds", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-api-"))
+      )
+      try {
+        yield* writeApiFixturePackage(directory, "export const present = true\n")
+        yield* runCli({
+          argv: ["check", "--api", "--write"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: () => {}
+        })
+
+        const snapshotPath = join(directory, "api", "snapshots", "@orika__fixture.snapshot.json")
+        const snapshot = decodeJsonObject(
+          yield* Effect.promise(() => readFile(snapshotPath, "utf8"))
+        )
+
+        for (const malformedSnapshot of [
+          { ...snapshot, schemaVersion: 2 },
+          {
+            ...snapshot,
+            symbols: [
+              {
+                kind: "not-a-kind",
+                name: "present",
+                signature: "const present: true"
+              }
+            ]
+          }
+        ]) {
+          yield* Effect.promise(() =>
+            writeFile(snapshotPath, `${stringifyJson(malformedSnapshot, 2)}\n`)
+          )
+          const stderr: string[] = []
+
+          const exitCode = yield* runCli({
+            argv: ["check", "--api", "--json"],
+            cwd: directory,
+            writeStdout: () => {},
+            writeStderr: (text) => {
+              stderr.push(text)
+            }
+          })
+
+          const payload = decodeCliJsonError(stderr.join(""))
+          expect(exitCode).toBe(1)
+          expect(payload.tag).toBe("PublicApiFileError")
+          expect(payload.message).toContain("failed to parse")
+        }
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --api rejects malformed package metadata as typed parse errors", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-api-"))
+      )
+      try {
+        yield* writeApiFixturePackage(directory, "export const present = true\n")
+        yield* Effect.promise(() =>
+          writeFile(join(directory, "packages", "fixture", "package.json"), "[]\n")
+        )
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--api", "--write", "--json"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.tag).toBe("PublicApiFileError")
+        expect(payload.message).toContain("failed to parse")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
 test("desktop check --docs verifies manifest pages and runnable examples", () =>
   Effect.runPromise(
     Effect.gen(function* () {

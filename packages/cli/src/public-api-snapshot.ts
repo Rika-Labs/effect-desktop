@@ -89,6 +89,28 @@ interface PackageJson {
   readonly exports?: unknown
 }
 
+const PackageJsonSchema = Schema.Struct({
+  name: Schema.optionalKey(Schema.Unknown),
+  exports: Schema.optionalKey(Schema.Unknown)
+})
+const PublicApiSymbolKindSchema = Schema.Literals([
+  "class",
+  "function",
+  "interface",
+  "type",
+  "value"
+])
+const PublicApiSymbolSnapshotSchema = Schema.Struct({
+  name: Schema.String,
+  kind: PublicApiSymbolKindSchema,
+  signature: Schema.String
+})
+const PublicApiSnapshotFileSchema = Schema.Struct({
+  schemaVersion: Schema.Literal(1),
+  packageName: Schema.String,
+  entrypoint: Schema.String,
+  symbols: Schema.Array(PublicApiSymbolSnapshotSchema)
+})
 const SNAPSHOT_ROOT = "api/snapshots"
 const PACKAGE_NAME_PATTERN = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/u
 
@@ -186,7 +208,7 @@ const discoverPublicPackages = (
       if (!(yield* fileExists(packageJsonPath))) {
         continue
       }
-      const packageJson = yield* readJson<PackageJson>(packageJsonPath)
+      const packageJson = yield* readJson(packageJsonPath, PackageJsonSchema)
       const packageName = yield* readPackageName(packageJson, packageJsonPath)
       const entrypoint = readRootExportEntrypoint(packageJson)
       if (entrypoint !== undefined) {
@@ -429,7 +451,8 @@ const toSnapshotFile = (snapshot: PublicApiPackageSnapshot): PublicApiSnapshotFi
 
 const readSnapshot = (
   path: string
-): Effect.Effect<PublicApiSnapshotFile, PublicApiFileError, never> => readJson(path)
+): Effect.Effect<PublicApiSnapshotFile, PublicApiFileError, never> =>
+  readJson(path, PublicApiSnapshotFileSchema)
 
 const validateSnapshotIdentity = (
   path: string,
@@ -482,7 +505,10 @@ const writeSnapshot = (
     })
   })
 
-const readJson = <A>(path: string): Effect.Effect<A, PublicApiFileError, never> =>
+const readJson = <S extends Schema.Top>(
+  path: string,
+  schema: S
+): Effect.Effect<S["Type"], PublicApiFileError, S["DecodingServices"]> =>
   Effect.gen(function* () {
     const body = yield* Effect.tryPromise({
       try: () => readFile(path, "utf8"),
@@ -494,8 +520,7 @@ const readJson = <A>(path: string): Effect.Effect<A, PublicApiFileError, never> 
           cause
         })
     })
-    return yield* Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(body).pipe(
-      Effect.map((value) => value as A),
+    return yield* Schema.decodeUnknownEffect(Schema.fromJsonString(schema))(body).pipe(
       Effect.mapError(
         (cause) =>
           new PublicApiFileError({
