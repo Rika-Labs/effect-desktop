@@ -1,10 +1,12 @@
 import { expect, test } from "bun:test"
-import { Deferred, Effect, Layer, ManagedRuntime } from "effect"
+import { Deferred, Effect, Fiber, Layer, ManagedRuntime, Option } from "effect"
 import { Socket } from "effect/unstable/socket"
 import { layerPostMessageSocket } from "./postmessage-socket.js"
 
 class FakeWindow {
-  readonly posted: unknown[] = []
+  readonly location = { origin: "https://app.example" }
+  readonly posted: Array<{ readonly message: unknown; readonly targetOrigin: string | undefined }> =
+    []
   private readonly listeners = new Set<(event: MessageEvent) => void>()
 
   addEventListener(_type: "message", handler: (event: MessageEvent) => void): void {
@@ -15,13 +17,17 @@ class FakeWindow {
     this.listeners.delete(handler)
   }
 
-  postMessage(message: unknown): void {
-    this.posted.push(message)
+  postMessage(message: unknown, targetOrigin?: string): void {
+    this.posted.push({ message, targetOrigin })
   }
 
-  dispatch(data: unknown): void {
+  dispatch(data: unknown, options?: { readonly origin?: string }): void {
     for (const listener of this.listeners) {
-      listener({ data } as MessageEvent)
+      listener({
+        data,
+        origin: options?.origin ?? this.location.origin,
+        source: this
+      } as unknown as MessageEvent)
     }
   }
 
@@ -100,6 +106,27 @@ test("layerPostMessageSocket write emits nothing when window is absent", () =>
     })
   ))
 
+test("layerPostMessageSocket writes to the current window origin", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const window = new FakeWindow()
+      yield* withFakeWindow(
+        window,
+        runScoped(
+          Effect.gen(function* () {
+            const socket = yield* Socket.Socket.asEffect()
+            const write = yield* socket.writer
+            yield* write(new Uint8Array([0x68, 0x69]))
+          }).pipe(Effect.scoped),
+          layerPostMessageSocket
+        )
+      )
+
+      expect(window.posted).toHaveLength(1)
+      expect(window.posted[0]?.targetOrigin).toBe(window.location.origin)
+    })
+  ))
+
 test("layerPostMessageSocket delivers window messages and unregisters listener", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -126,6 +153,46 @@ test("layerPostMessageSocket delivers window messages and unregisters listener",
       )
 
       expect([...received]).toEqual([0x68, 0x69])
+      expect(window.listenerCount).toBe(0)
+    })
+  ))
+
+test("layerPostMessageSocket ignores cross-origin window messages", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const window = new FakeWindow()
+      const received = yield* withFakeWindow(
+        window,
+        runScoped(
+          Effect.gen(function* () {
+            const socket = yield* Socket.Socket.asEffect()
+            const opened = yield* Deferred.make<void>()
+            const receivedChunk = yield* Deferred.make<Uint8Array>()
+            const fiber = yield* Effect.forkScoped(
+              socket.run((chunk) => Deferred.succeed(receivedChunk, chunk).pipe(Effect.asVoid), {
+                onOpen: Deferred.succeed(opened, undefined).pipe(Effect.asVoid)
+              })
+            )
+            yield* Deferred.await(opened)
+            window.dispatch(new Uint8Array([0x65, 0x76, 0x69, 0x6c]), {
+              origin: "https://evil.example"
+            })
+            const crossOrigin = yield* Deferred.await(receivedChunk).pipe(
+              Effect.timeoutOption("20 millis")
+            )
+            window.dispatch(new Uint8Array([0x68, 0x69]), {
+              origin: window.location.origin
+            })
+            const sameOrigin = yield* Deferred.await(receivedChunk)
+            yield* Fiber.interrupt(fiber)
+            return { crossOrigin, sameOrigin }
+          }).pipe(Effect.scoped),
+          layerPostMessageSocket
+        )
+      )
+
+      expect(Option.isNone(received.crossOrigin)).toBe(true)
+      expect([...received.sameOrigin]).toEqual([0x68, 0x69])
       expect(window.listenerCount).toBe(0)
     })
   ))

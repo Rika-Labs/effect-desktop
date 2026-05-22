@@ -5,6 +5,7 @@ interface WindowLike {
   readonly addEventListener: (type: "message", handler: (event: MessageEvent) => void) => void
   readonly removeEventListener: (type: "message", handler: (event: MessageEvent) => void) => void
   readonly postMessage: (message: unknown, targetOrigin: string) => void
+  readonly location?: { readonly origin?: string }
 }
 
 const getWindow = (): WindowLike | undefined => {
@@ -20,6 +21,10 @@ const makePostMessageSocket: Effect.Effect<Socket.Socket> = Effect.gen(function*
       Effect.acquireRelease(
         Effect.gen(function* () {
           const listener = (event: MessageEvent) => {
+            const win = getWindow()
+            if (!isAllowedMessageOrigin(win, event)) {
+              return
+            }
             const data: unknown = event.data
             if (data instanceof Uint8Array) {
               Queue.offerUnsafe(queue, data)
@@ -76,7 +81,8 @@ const makePostMessageSocket: Effect.Effect<Socket.Socket> = Effect.gen(function*
     }
     return Effect.sync(() => {
       const data = chunk instanceof Uint8Array ? chunk : new TextEncoder().encode(chunk)
-      getWindow()?.postMessage(data, "*")
+      const win = getWindow()
+      win?.postMessage(data, targetOriginForWindow(win))
     })
   }
 
@@ -89,3 +95,10 @@ export const layerPostMessageSocket: Layer.Layer<Socket.Socket> = Layer.effect(
   Socket.Socket,
   makePostMessageSocket
 )
+
+const targetOriginForWindow = (win: WindowLike): string => win.location?.origin ?? "*"
+
+const isAllowedMessageOrigin = (win: WindowLike | undefined, event: MessageEvent): boolean => {
+  const expectedOrigin = win?.location?.origin
+  return expectedOrigin === undefined || event.origin === expectedOrigin
+}
