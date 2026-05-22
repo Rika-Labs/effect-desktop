@@ -1,13 +1,27 @@
 import { expect, test } from "bun:test"
-import { Effect, Exit, Schema } from "effect"
+import {
+  type BridgeClientExchange,
+  HostProtocolEventEnvelope,
+  HostProtocolInvalidOutputError
+} from "@orika/bridge"
+import { Cause, Effect, Exit, Schema, Stream } from "effect"
 
-import { WebViewRuntimeEvent } from "./contracts/webview.js"
+import { WebViewFrameEvent, WebViewRuntimeEvent } from "./contracts/webview.js"
+import { makeWebViewBridgeClientLayer, WebViewClient } from "./webview.js"
 
 const webviewHandle = {
   kind: "webview",
   id: "webview-1",
   generation: 0,
   ownerScope: "window:window-1",
+  state: "open"
+} as const
+
+const webviewFrameHandle = {
+  kind: "webview-frame",
+  id: "frame-1",
+  generation: 0,
+  ownerScope: "webview:webview-1",
   state: "open"
 } as const
 
@@ -105,3 +119,119 @@ test("WebView runtime events require phase-specific payload fields", () =>
       }
     })
   ))
+
+test("WebView frame events require phase-specific payload fields", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const malformedEvents = [
+        {
+          ...frameEventBase(),
+          phase: "created",
+          url: "https://example.test/frame",
+          payload: "unexpected"
+        },
+        {
+          ...frameEventBase(),
+          phase: "navigated",
+          reason: "unexpected"
+        },
+        {
+          ...frameEventBase(),
+          phase: "destroyed",
+          url: "https://example.test/frame"
+        },
+        {
+          ...frameEventBase(),
+          phase: "message"
+        },
+        {
+          ...frameEventBase(),
+          phase: "message",
+          payload: "hello",
+          reason: "unexpected"
+        },
+        {
+          ...frameEventBase(),
+          phase: "failed"
+        },
+        {
+          ...frameEventBase(),
+          phase: "failed",
+          reason: "host failed",
+          url: "https://example.test/frame"
+        }
+      ] as const
+
+      for (const event of malformedEvents) {
+        const exit = yield* Effect.exit(Schema.decodeUnknownEffect(WebViewFrameEvent)(event))
+        expect(Exit.isFailure(exit)).toBe(true)
+      }
+
+      const validEvents = [
+        {
+          ...frameEventBase(),
+          phase: "created",
+          url: "https://example.test/frame"
+        },
+        {
+          ...frameEventBase(),
+          phase: "navigated",
+          url: "https://example.test/frame"
+        },
+        {
+          ...frameEventBase(),
+          phase: "destroyed"
+        },
+        {
+          ...frameEventBase(),
+          phase: "message",
+          payload: "hello"
+        },
+        {
+          ...frameEventBase(),
+          phase: "failed",
+          reason: "host failed"
+        }
+      ] as const
+
+      for (const event of validEvents) {
+        const decoded = yield* Schema.decodeUnknownEffect(WebViewFrameEvent)(event)
+        expect(decoded.phase).toBe(event.phase)
+      }
+    })
+  ))
+
+test("WebView frame bridge events reject inconsistent payloads as InvalidOutput", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const event = new HostProtocolEventEnvelope({
+        kind: "event",
+        method: "WebView.FrameEvent",
+        timestamp: 1,
+        traceId: "trace-frame",
+        payload: {
+          ...frameEventBase(),
+          phase: "failed"
+        }
+      })
+      const exchange: BridgeClientExchange = {
+        request: () => Effect.die("unexpected request"),
+        subscribe: () => Stream.fromIterable([event])
+      }
+
+      const exit = yield* Effect.gen(function* () {
+        const client = yield* WebViewClient
+        return yield* Effect.exit(client.onFrameEvent().pipe(Stream.take(1), Stream.runCollect))
+      }).pipe(Effect.provide(makeWebViewBridgeClientLayer(exchange)))
+
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        expect(Cause.squash(exit.cause)).toBeInstanceOf(HostProtocolInvalidOutputError)
+      }
+    })
+  ))
+
+const frameEventBase = () => ({
+  webview: webviewHandle,
+  frame: webviewFrameHandle
+})

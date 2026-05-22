@@ -345,15 +345,57 @@ export class WebViewRuntimeEvent extends Schema.Class<WebViewRuntimeEvent>("WebV
   }).check(WebViewRuntimeEventShape)
 ) {}
 
-export class WebViewFrameEvent extends Schema.Class<WebViewFrameEvent>("WebViewFrameEvent")({
-  webview: WebViewResource,
-  frame: WebViewFrameResource,
-  parentFrame: Schema.optionalKey(WebViewFrameResource),
-  phase: WebViewFrameEventPhase,
-  url: Schema.optionalKey(WebViewFrameUrl),
-  payload: Schema.optionalKey(WebViewFrameMessagePayload),
-  reason: Schema.optionalKey(WebViewFrameEventReason)
-}) {}
+const WebViewFrameEventShape = Schema.makeFilter<{
+  readonly phase: WebViewFrameEventPhase
+  readonly url?: string | undefined
+  readonly payload?: string | undefined
+  readonly reason?: string | undefined
+}>((value) => {
+  switch (value.phase) {
+    case "created":
+    case "navigated":
+      if (value.url === undefined) {
+        return `${value.phase} frame events require url`
+      }
+      if (value.payload !== undefined || value.reason !== undefined) {
+        return `${value.phase} frame events must not carry payload or reason`
+      }
+      return true
+    case "destroyed":
+      return (
+        (value.url === undefined && value.payload === undefined && value.reason === undefined) ||
+        "destroyed frame events must not carry url, payload, or reason"
+      )
+    case "message":
+      if (value.payload === undefined) {
+        return "message frame events require payload"
+      }
+      if (value.url !== undefined || value.reason !== undefined) {
+        return "message frame events must not carry url or reason"
+      }
+      return true
+    case "failed":
+      if (value.reason === undefined) {
+        return "failed frame events require reason"
+      }
+      if (value.url !== undefined || value.payload !== undefined) {
+        return "failed frame events must not carry url or payload"
+      }
+      return true
+  }
+})
+
+export class WebViewFrameEvent extends Schema.Class<WebViewFrameEvent>("WebViewFrameEvent")(
+  Schema.Struct({
+    webview: WebViewResource,
+    frame: WebViewFrameResource,
+    parentFrame: Schema.optionalKey(WebViewFrameResource),
+    phase: WebViewFrameEventPhase,
+    url: Schema.optionalKey(WebViewFrameUrl),
+    payload: Schema.optionalKey(WebViewFrameMessagePayload),
+    reason: Schema.optionalKey(WebViewFrameEventReason)
+  }).check(WebViewFrameEventShape)
+) {}
 
 const isAbsoluteUrl = (value: string): boolean => {
   try {
