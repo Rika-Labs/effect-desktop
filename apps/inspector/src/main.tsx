@@ -2,7 +2,6 @@ import { makeInspectorTransport } from "@orika/core/inspector-transport"
 import { makeReplayTransport } from "@orika/devtools/testing"
 import { Cause, Effect, Exit } from "effect"
 import { StrictMode, useState } from "react"
-import { createRoot } from "react-dom/client"
 
 import { App } from "./App.js"
 import {
@@ -10,9 +9,10 @@ import {
   recordedInspectorSession,
   type InspectorAppSnapshot
 } from "./inspector-app.js"
+import { getOrCreateInspectorRoot } from "./react-root-registry.js"
 import "./styles.css"
 
-const root = document.querySelector("#root")
+const root = typeof document === "undefined" ? null : document.querySelector("#root")
 
 const boot = Effect.gen(function* () {
   const live = yield* makeInspectorTransport({
@@ -43,7 +43,7 @@ const boot = Effect.gen(function* () {
 })
 
 if (root !== null) {
-  const inspectorRoot = createRoot(root)
+  const inspectorRoot = getOrCreateInspectorRoot(root)
   void Effect.runCallback(boot, {
     onExit: (exit) => {
       inspectorRoot.render(
