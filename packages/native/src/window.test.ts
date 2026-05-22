@@ -37,10 +37,11 @@ test("WindowRpcs exposes only host-implemented methods through RpcGroup lowering
   })
   expect(request("Window.clearVibrancy").pipe(rpcSupport)).toMatchObject({
     status: "partial",
+    reason: "vibrancy-macos-only",
     platforms: [
       { platform: "macos", status: "supported" },
-      { platform: "windows", status: "unsupported" },
-      { platform: "linux", status: "unsupported" }
+      { platform: "windows", status: "unsupported", reason: "vibrancy-macos-only" },
+      { platform: "linux", status: "unsupported", reason: "vibrancy-macos-only" }
     ]
   })
   expect(request("Window.setShadow").pipe(rpcSupport)).toMatchObject({
