@@ -1,7 +1,9 @@
 import { expect, test } from "bun:test"
 import {
   type BridgeClientExchange,
+  HostProtocolEventEnvelope,
   HostProtocolInternalError,
+  HostProtocolInvalidOutputError,
   type HostProtocolRequestEnvelope
 } from "@orika/bridge"
 import {
@@ -11,7 +13,7 @@ import {
   type NormalizedCapability,
   P
 } from "@orika/core"
-import { Cause, Effect, Exit, type Layer, ManagedRuntime, Stream } from "effect"
+import { Cause, Effect, Exit, type Layer, ManagedRuntime, Option, Schema, Stream } from "effect"
 
 import {
   DistributionParity,
@@ -24,6 +26,7 @@ import {
 } from "./distribution-parity.js"
 import {
   DistributionParityEvidence,
+  DistributionParityEvent,
   DistributionParityVerifyRequest
 } from "./contracts/distribution-parity.js"
 
@@ -55,6 +58,100 @@ test("DistributionParity verifies package, plugin, template, and docs evidence",
       })
       expect(result.event._tag).toBe("Some")
       expect(rows.some((row) => row.kind === "permission-used")).toBe(true)
+    })
+  ))
+
+test("DistributionParity contracts reject inconsistent event phase payloads", () => {
+  for (const payload of [
+    {
+      type: "distribution-parity-event",
+      timestamp: 1_710_000_000_000,
+      phase: "verified",
+      packageId: "extension-1"
+    },
+    {
+      type: "distribution-parity-event",
+      timestamp: 1_710_000_000_000,
+      phase: "verified",
+      packageId: "extension-1",
+      version: "1.0.0",
+      reason: "host failed"
+    },
+    {
+      type: "distribution-parity-event",
+      timestamp: 1_710_000_000_000,
+      phase: "failed",
+      packageId: "extension-1",
+      version: "1.0.0"
+    }
+  ] as const) {
+    const exit = Effect.runSyncExit(Schema.decodeUnknownEffect(DistributionParityEvent)(payload))
+    expect(exit._tag).toBe("Failure")
+  }
+
+  for (const payload of [
+    {
+      type: "distribution-parity-event",
+      timestamp: 1_710_000_000_000,
+      phase: "verified",
+      packageId: "extension-1",
+      version: "1.0.0"
+    },
+    {
+      type: "distribution-parity-event",
+      timestamp: 1_710_000_000_000,
+      phase: "failed",
+      packageId: "extension-1",
+      version: "1.0.0",
+      reason: "host failed"
+    }
+  ] as const) {
+    const exit = Effect.runSyncExit(Schema.decodeUnknownEffect(DistributionParityEvent)(payload))
+    expect(exit._tag).toBe("Success")
+  }
+})
+
+test("DistributionParity bridge client rejects inconsistent event phase payloads as InvalidOutput", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const exchange: BridgeClientExchange = {
+        request: () => Effect.die("DistributionParity event test does not issue bridge requests"),
+        subscribe: (method) =>
+          Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              method,
+              timestamp: 1_710_000_000_000,
+              traceId: "distribution-parity-event-trace",
+              payload: {
+                type: "distribution-parity-event",
+                timestamp: 1_710_000_000_000,
+                phase: "verified",
+                packageId: "extension-1",
+                reason: "bad shape"
+              }
+            })
+          )
+      }
+      const permissions = yield* configuredPermissions()
+      const client = yield* runScoped(
+        Effect.gen(function* () {
+          return yield* DistributionParityClient
+        }),
+        makeDistributionParityBridgeClientLayer(exchange)
+      )
+
+      const exit = yield* runScoped(
+        Effect.gen(function* () {
+          const parity = yield* DistributionParity
+          return yield* Effect.exit(
+            parity.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+          )
+        }),
+        makeDistributionParityServiceLayer(client, { permissions })
+      )
+
+      expectInvalidOutput(exit)
     })
   ))
 
@@ -254,4 +351,13 @@ const expectExitFailure = <A>(exit: Exit.Exit<A, unknown>, assert: (error: unkno
   if (Exit.isFailure(exit)) {
     assert(Cause.squash(exit.cause))
   }
+}
+
+const expectInvalidOutput = <A, E>(exit: Exit.Exit<A, E>): void => {
+  expect(exit._tag).toBe("Failure")
+  if (exit._tag !== "Failure") {
+    return
+  }
+
+  expect(Cause.squash(exit.cause)).toBeInstanceOf(HostProtocolInvalidOutputError)
 }

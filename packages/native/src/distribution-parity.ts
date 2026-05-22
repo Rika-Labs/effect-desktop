@@ -8,7 +8,6 @@ import {
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   type HostProtocolError,
-  type RpcCapabilityMetadata,
   RpcGroup
 } from "@orika/bridge"
 import {
@@ -44,12 +43,15 @@ const UnsupportedReason = "host-adapter-unimplemented"
 
 export type DistributionParityError = HostProtocolError
 
-export const DistributionParityVerify = distributionParityRpc(
-  "verify",
-  DistributionParityVerifyRequest,
-  DistributionParityVerifyResult,
-  P.nativeInvoke({ primitive: Surface, methods: ["verify"] })
-)
+export const DistributionParityVerify = NativeSurface.rpc(Surface, "verify", {
+  payload: DistributionParityVerifyRequest,
+  success: DistributionParityVerifyResult,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: Surface, methods: ["verify"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
 export const DistributionParityIsSupported = NativeSurface.rpc(Surface, "isSupported", {
   payload: Schema.Void,
   success: DistributionParitySupportedResult,
@@ -247,20 +249,6 @@ const distributionParityClientFromRpcClient = (
       ),
     events: () => subscribeNativeEvent(exchange, EventMethod, DistributionParityEvent)
   } satisfies DistributionParityClientApi)
-
-function distributionParityRpc<
-  const Method extends string,
-  Payload extends Schema.Codec<unknown, unknown, never, never>,
-  Success extends Schema.Codec<unknown, unknown, never, never>
->(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
-  return NativeSurface.rpc(Surface, method, {
-    payload,
-    success,
-    authority: NativeSurface.authority.custom(capability),
-    endpoint: "mutation",
-    support: NativeSurface.support.supported
-  })
-}
 
 const validateVerify = (
   input: unknown

@@ -15281,17 +15281,13 @@ pub enum DistributionParityEventPhase {
     Failed,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct DistributionParityEventPayload {
-    #[serde(rename = "type")]
     event_type: String,
     timestamp: u64,
     phase: DistributionParityEventPhase,
     package_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     version: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     reason: Option<String>,
 }
 
@@ -15310,6 +15306,115 @@ impl DistributionParityEventPayload {
             package_id: package_id.into(),
             version,
             reason,
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SerializableDistributionParityEventPayload<'a> {
+    #[serde(rename = "type")]
+    event_type: &'a str,
+    timestamp: u64,
+    phase: DistributionParityEventPhase,
+    package_id: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    version: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<&'a str>,
+}
+
+impl<'a> TryFrom<&'a DistributionParityEventPayload>
+    for SerializableDistributionParityEventPayload<'a>
+{
+    type Error = &'static str;
+
+    fn try_from(payload: &'a DistributionParityEventPayload) -> Result<Self, Self::Error> {
+        if payload.event_type != "distribution-parity-event" {
+            return Err("distribution parity event type must be distribution-parity-event");
+        }
+        validate_distribution_parity_event_payload(
+            payload.phase.clone(),
+            &payload.version,
+            &payload.reason,
+        )?;
+        Ok(Self {
+            event_type: &payload.event_type,
+            timestamp: payload.timestamp,
+            phase: payload.phase.clone(),
+            package_id: &payload.package_id,
+            version: payload.version.as_deref(),
+            reason: payload.reason.as_deref(),
+        })
+    }
+}
+
+impl Serialize for DistributionParityEventPayload {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        SerializableDistributionParityEventPayload::try_from(self)
+            .map_err(ser::Error::custom)?
+            .serialize(serializer)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawDistributionParityEventPayload {
+    #[serde(rename = "type")]
+    event_type: String,
+    timestamp: u64,
+    phase: DistributionParityEventPhase,
+    package_id: String,
+    version: Option<String>,
+    reason: Option<String>,
+}
+
+impl TryFrom<RawDistributionParityEventPayload> for DistributionParityEventPayload {
+    type Error = &'static str;
+
+    fn try_from(raw: RawDistributionParityEventPayload) -> Result<Self, Self::Error> {
+        if raw.event_type != "distribution-parity-event" {
+            return Err("distribution parity event type must be distribution-parity-event");
+        }
+        validate_distribution_parity_event_payload(raw.phase.clone(), &raw.version, &raw.reason)?;
+        Ok(Self {
+            event_type: raw.event_type,
+            timestamp: raw.timestamp,
+            phase: raw.phase,
+            package_id: raw.package_id,
+            version: raw.version,
+            reason: raw.reason,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for DistributionParityEventPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        RawDistributionParityEventPayload::deserialize(deserializer)?
+            .try_into()
+            .map_err(de::Error::custom)
+    }
+}
+
+fn validate_distribution_parity_event_payload(
+    phase: DistributionParityEventPhase,
+    version: &Option<String>,
+    reason: &Option<String>,
+) -> Result<(), &'static str> {
+    match phase {
+        DistributionParityEventPhase::Verified if version.is_some() && reason.is_none() => Ok(()),
+        DistributionParityEventPhase::Verified => {
+            Err("verified distribution parity events require version only")
+        }
+        DistributionParityEventPhase::Failed if version.is_some() && reason.is_some() => Ok(()),
+        DistributionParityEventPhase::Failed => {
+            Err("failed distribution parity events require version and reason")
         }
     }
 }
@@ -19472,6 +19577,56 @@ mod tests {
             serde_json::to_string(&supported).expect("distribution support should encode"),
             r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#
         );
+    }
+
+    #[test]
+    fn distribution_parity_events_reject_inconsistent_phase_payloads() {
+        for payload in [
+            r#"{"type":"distribution-parity-event","timestamp":1710000000000,"phase":"verified","packageId":"extension-1"}"#,
+            r#"{"type":"distribution-parity-event","timestamp":1710000000000,"phase":"verified","packageId":"extension-1","version":"1.0.0","reason":"host failed"}"#,
+            r#"{"type":"distribution-parity-event","timestamp":1710000000000,"phase":"failed","packageId":"extension-1","version":"1.0.0"}"#,
+        ] {
+            serde_json::from_str::<DistributionParityEventPayload>(payload)
+                .expect_err("inconsistent distribution parity event payload should be rejected");
+        }
+
+        for payload in [
+            r#"{"type":"distribution-parity-event","timestamp":1710000000000,"phase":"verified","packageId":"extension-1","version":"1.0.0"}"#,
+            r#"{"type":"distribution-parity-event","timestamp":1710000000000,"phase":"failed","packageId":"extension-1","version":"1.0.0","reason":"host failed"}"#,
+        ] {
+            serde_json::from_str::<DistributionParityEventPayload>(payload)
+                .expect("consistent distribution parity event payload should decode");
+        }
+    }
+
+    #[test]
+    fn distribution_parity_events_reject_inconsistent_phase_payloads_before_serializing() {
+        for payload in [
+            DistributionParityEventPayload::new(
+                1_710_000_000_000,
+                DistributionParityEventPhase::Verified,
+                "extension-1",
+                None,
+                None,
+            ),
+            DistributionParityEventPayload::new(
+                1_710_000_000_000,
+                DistributionParityEventPhase::Verified,
+                "extension-1",
+                Some("1.0.0".to_string()),
+                Some("host failed".to_string()),
+            ),
+            DistributionParityEventPayload::new(
+                1_710_000_000_000,
+                DistributionParityEventPhase::Failed,
+                "extension-1",
+                Some("1.0.0".to_string()),
+                None,
+            ),
+        ] {
+            serde_json::to_string(&payload)
+                .expect_err("inconsistent distribution parity event payload should not encode");
+        }
     }
 
     #[test]

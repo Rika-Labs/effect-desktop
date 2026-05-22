@@ -58,13 +58,34 @@ export class DistributionParitySupportedResult extends Schema.Class<Distribution
   reason: Schema.optionalKey(BridgeSafeString)
 }) {}
 
+const DistributionParityEventPhasePayload = Schema.makeFilter<{
+  readonly phase: DistributionParityEventPhase
+  readonly version?: string | undefined
+  readonly reason?: string | undefined
+}>((value) => {
+  switch (value.phase) {
+    case "verified":
+      return (
+        (value.version !== undefined && value.reason === undefined) ||
+        "verified distribution parity events require version only"
+      )
+    case "failed":
+      return (
+        (value.version !== undefined && value.reason !== undefined) ||
+        "failed distribution parity events require version and reason"
+      )
+  }
+})
+
 export class DistributionParityEvent extends Schema.Class<DistributionParityEvent>(
   "DistributionParityEvent"
-)({
-  type: DistributionParityEventType,
-  timestamp: DistributionParityTimestamp,
-  phase: DistributionParityEventPhase,
-  packageId: PrintableNonEmptyString,
-  version: Schema.optionalKey(BridgeSafeNonEmptyString),
-  reason: Schema.optionalKey(BridgeSafeString)
-}) {}
+)(
+  Schema.Struct({
+    type: DistributionParityEventType,
+    timestamp: DistributionParityTimestamp,
+    phase: DistributionParityEventPhase,
+    packageId: PrintableNonEmptyString,
+    version: Schema.optionalKey(BridgeSafeNonEmptyString),
+    reason: Schema.optionalKey(BridgeSafeString)
+  }).check(DistributionParityEventPhasePayload)
+) {}
