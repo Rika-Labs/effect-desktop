@@ -23,7 +23,20 @@ test("WebView runtime events require phase-specific payload fields", () =>
           url: "https://example.test/",
           position: { x: 12, y: 24 }
         },
+        {
+          webview: webviewHandle,
+          phase: "page-load-finished",
+          url: "https://example.test/",
+          reason: "unexpected"
+        },
         { webview: webviewHandle, phase: "drag-enter", paths: ["/tmp/report.txt"] },
+        {
+          webview: webviewHandle,
+          phase: "drag-enter",
+          paths: ["/tmp/report.txt"],
+          position: { x: 12, y: 24 },
+          permission: "camera"
+        },
         { webview: webviewHandle, phase: "drag-drop", position: { x: 12, y: 24 } },
         {
           webview: webviewHandle,
@@ -34,10 +47,24 @@ test("WebView runtime events require phase-specific payload fields", () =>
         },
         {
           webview: webviewHandle,
+          phase: "drag-drop",
+          paths: ["/tmp/report.txt"],
+          position: { x: 12, y: 24 },
+          reason: "unexpected"
+        },
+        {
+          webview: webviewHandle,
           phase: "drag-over",
           paths: ["/tmp/report.txt"],
           position: { x: 12, y: 24 }
         },
+        {
+          webview: webviewHandle,
+          phase: "drag-over",
+          position: { x: 12, y: 24 },
+          requestId: "permission-request-1"
+        },
+        { webview: webviewHandle, phase: "drag-leave", decision: "grant" },
         { webview: webviewHandle, phase: "drag-leave", position: { x: 12, y: 24 } }
       ] as const
       for (const event of malformedEvents) {

@@ -274,6 +274,10 @@ export class WebViewRuntimePoint extends Schema.Class<WebViewRuntimePoint>("WebV
 const WebViewRuntimeEventShape = Schema.makeFilter<{
   readonly phase: WebViewRuntimeEventPhase
   readonly url?: string | undefined
+  readonly reason?: string | undefined
+  readonly requestId?: string | undefined
+  readonly permission?: WebViewRuntimePermissionKind | undefined
+  readonly decision?: WebViewPermissionDecision | undefined
   readonly paths?: readonly string[] | undefined
   readonly position?: { readonly x: number; readonly y: number } | undefined
 }>((value) => {
@@ -281,7 +285,11 @@ const WebViewRuntimeEventShape = Schema.makeFilter<{
     if (value.url === undefined) {
       return "page-load events require url"
     }
-    return noDragPayload(value, "page-load events")
+    const dragPayload = noDragPayload(value, "page-load events")
+    if (dragPayload !== true) {
+      return dragPayload
+    }
+    return noRuntimeMetadata(value, "page-load events")
   }
 
   if (value.phase === "drag-enter" || value.phase === "drag-drop") {
@@ -291,7 +299,10 @@ const WebViewRuntimeEventShape = Schema.makeFilter<{
     if (value.position === undefined) {
       return `${value.phase} events require position`
     }
-    return value.url === undefined || `${value.phase} events must not carry url`
+    if (value.url !== undefined) {
+      return `${value.phase} events must not carry url`
+    }
+    return noRuntimeMetadata(value, `${value.phase} events`)
   }
 
   if (value.phase === "drag-over") {
@@ -301,14 +312,20 @@ const WebViewRuntimeEventShape = Schema.makeFilter<{
     if (value.paths !== undefined) {
       return "drag-over events must not carry paths"
     }
-    return value.url === undefined || "drag-over events must not carry url"
+    if (value.url !== undefined) {
+      return "drag-over events must not carry url"
+    }
+    return noRuntimeMetadata(value, "drag-over events")
   }
 
   if (value.phase === "drag-leave") {
     if (value.paths !== undefined || value.position !== undefined) {
       return "drag-leave events must not carry drag payload"
     }
-    return value.url === undefined || "drag-leave events must not carry url"
+    if (value.url !== undefined) {
+      return "drag-leave events must not carry url"
+    }
+    return noRuntimeMetadata(value, "drag-leave events")
   }
 
   return true
@@ -357,3 +374,19 @@ const noDragPayload = (
   value.paths === undefined && value.position === undefined
     ? true
     : `${label} must not carry drag payload`
+
+const noRuntimeMetadata = (
+  value: {
+    readonly reason?: string | undefined
+    readonly requestId?: string | undefined
+    readonly permission?: WebViewRuntimePermissionKind | undefined
+    readonly decision?: WebViewPermissionDecision | undefined
+  },
+  label: string
+): true | string =>
+  value.reason === undefined &&
+  value.requestId === undefined &&
+  value.permission === undefined &&
+  value.decision === undefined
+    ? true
+    : `${label} must not carry runtime metadata`
