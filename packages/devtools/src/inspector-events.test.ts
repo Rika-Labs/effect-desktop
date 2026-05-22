@@ -179,6 +179,81 @@ test("InspectorEvent rejects control characters in identity fields", () =>
     })
   ))
 
+test("InspectorEvent rejects control characters in payload identity fields", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const base = {
+        id: "event-valid",
+        occurredAt: "2026-05-13T12:00:00.000Z",
+        traceId: null,
+        spanId: null,
+        layerId: null,
+        providerId: null,
+        severity: "Info",
+        redaction: {
+          evidenceCount: 0,
+          omitted: false,
+          redacted: false
+        }
+      } as const
+      const invalidPayloads = [
+        {
+          source: "runtime",
+          payload: {
+            tag: "layer-graph",
+            layerId: "layer\nforged",
+            label: "Layer",
+            state: "registered",
+            dependencies: []
+          }
+        },
+        {
+          source: "rpc",
+          payload: {
+            tag: "rpc",
+            service: "Notes",
+            method: "load",
+            requestId: "request\nforged",
+            state: "requested"
+          }
+        },
+        {
+          source: "resource",
+          payload: {
+            tag: "resource",
+            resourceId: "resource\nforged",
+            resourceKind: "window",
+            ownerScope: "scope-main",
+            state: "opened"
+          }
+        },
+        {
+          source: "renderer",
+          payload: {
+            tag: "renderer",
+            windowId: "window\nforged",
+            event: "navigation"
+          }
+        },
+        {
+          source: "workflow",
+          payload: {
+            tag: "workflow",
+            executionId: "execution\nforged",
+            workflowName: "Backup",
+            state: "started"
+          }
+        }
+      ] as const
+
+      for (const invalid of invalidPayloads) {
+        const exit = yield* Effect.exit(decodeUnknownInspectorEvent({ ...base, ...invalid }))
+
+        expect(Exit.isFailure(exit)).toBe(true)
+      }
+    })
+  ))
+
 test("InspectorEvent encoded fixtures replay without live runtime dependencies", () =>
   Effect.runPromise(
     Effect.gen(function* () {

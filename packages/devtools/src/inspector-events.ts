@@ -69,7 +69,7 @@ export class InspectorLogPayload extends Schema.Class<InspectorLogPayload>("Insp
   tag: Schema.Literal("log"),
   level: InspectorEventSeverity,
   message: Schema.String,
-  fiberId: Schema.optionalKey(NonEmptyString)
+  fiberId: Schema.optionalKey(InspectorIdentityString)
 }) {}
 
 export class InspectorMetricPayload extends Schema.Class<InspectorMetricPayload>(
@@ -87,10 +87,10 @@ export class InspectorLayerGraphPayload extends Schema.Class<InspectorLayerGraph
 )({
   ...InspectorPayloadBase,
   tag: Schema.Literal("layer-graph"),
-  layerId: NonEmptyString,
+  layerId: InspectorIdentityString,
   label: NonEmptyString,
   state: Schema.Literals(["registered", "acquired", "released", "failed"]),
-  dependencies: Schema.Array(NonEmptyString)
+  dependencies: Schema.Array(InspectorIdentityString)
 }) {}
 
 export class InspectorProviderPayload extends Schema.Class<InspectorProviderPayload>(
@@ -98,8 +98,8 @@ export class InspectorProviderPayload extends Schema.Class<InspectorProviderPayl
 )({
   ...InspectorPayloadBase,
   tag: Schema.Literal("provider"),
-  providerId: NonEmptyString,
-  capability: NonEmptyString,
+  providerId: InspectorIdentityString,
+  capability: InspectorIdentityString,
   state: Schema.Literals(["available", "unavailable", "degraded"])
 }) {}
 
@@ -108,7 +108,7 @@ export class InspectorRpcPayload extends Schema.Class<InspectorRpcPayload>("Insp
   tag: Schema.Literal("rpc"),
   service: NonEmptyString,
   method: NonEmptyString,
-  requestId: NonEmptyString,
+  requestId: InspectorIdentityString,
   state: Schema.Literals(["requested", "completed", "failed", "interrupted"]),
   latencyMs: Schema.optionalKey(NonNegativeNumber)
 }) {}
@@ -120,7 +120,7 @@ export class InspectorBridgeFramePayload extends Schema.Class<InspectorBridgeFra
   tag: Schema.Literal("bridge-frame"),
   direction: Schema.Literals(["renderer-to-host", "host-to-renderer"]),
   frameKind: NonEmptyString,
-  requestId: Schema.optionalKey(NonEmptyString),
+  requestId: Schema.optionalKey(InspectorIdentityString),
   payloadBytes: NonNegativeNumber
 }) {}
 
@@ -129,8 +129,8 @@ export class InspectorPermissionPayload extends Schema.Class<InspectorPermission
 )({
   ...InspectorPayloadBase,
   tag: Schema.Literal("permission"),
-  actor: NonEmptyString,
-  capability: NonEmptyString,
+  actor: InspectorIdentityString,
+  capability: InspectorIdentityString,
   decision: Schema.Literals(["granted", "denied", "revoked", "expired", "used"]),
   reason: Schema.optionalKey(Schema.String)
 }) {}
@@ -140,9 +140,9 @@ export class InspectorResourcePayload extends Schema.Class<InspectorResourcePayl
 )({
   ...InspectorPayloadBase,
   tag: Schema.Literal("resource"),
-  resourceId: NonEmptyString,
+  resourceId: InspectorIdentityString,
   resourceKind: NonEmptyString,
-  ownerScope: NonEmptyString,
+  ownerScope: InspectorIdentityString,
   state: Schema.Literals(["opened", "closed", "failed", "leaked"])
 }) {}
 
@@ -151,7 +151,7 @@ export class InspectorFiberPayload extends Schema.Class<InspectorFiberPayload>(
 )({
   ...InspectorPayloadBase,
   tag: Schema.Literal("fiber"),
-  fiberId: NonEmptyString,
+  fiberId: InspectorIdentityString,
   name: Schema.optionalKey(NonEmptyString),
   state: Schema.Literals(["started", "suspended", "resumed", "completed", "failed", "interrupted"])
 }) {}
@@ -171,7 +171,7 @@ export class InspectorRendererPayload extends Schema.Class<InspectorRendererPayl
 )({
   ...InspectorPayloadBase,
   tag: Schema.Literal("renderer"),
-  windowId: NonEmptyString,
+  windowId: InspectorIdentityString,
   event: NonEmptyString,
   url: Schema.optionalKey(Schema.String)
 }) {}
@@ -183,7 +183,7 @@ export class InspectorPersistencePayload extends Schema.Class<InspectorPersisten
   tag: Schema.Literal("persistence"),
   store: NonEmptyString,
   operation: NonEmptyString,
-  key: Schema.optionalKey(NonEmptyString),
+  key: Schema.optionalKey(InspectorIdentityString),
   state: Schema.Literals(["started", "completed", "failed", "recovered"])
 }) {}
 
@@ -192,7 +192,7 @@ export class InspectorWorkflowPayload extends Schema.Class<InspectorWorkflowPayl
 )({
   ...InspectorPayloadBase,
   tag: Schema.Literal("workflow"),
-  executionId: NonEmptyString,
+  executionId: InspectorIdentityString,
   workflowName: NonEmptyString,
   state: Schema.Literals(["started", "completed", "failed", "retrying", "compensating"])
 }) {}
