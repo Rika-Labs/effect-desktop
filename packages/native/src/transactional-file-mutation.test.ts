@@ -1,7 +1,9 @@
 import { expect, test } from "bun:test"
 import {
   type BridgeClientExchange,
+  HostProtocolEventEnvelope,
   type HostProtocolError,
+  HostProtocolInvalidOutputError,
   type HostProtocolRequestEnvelope,
   makeHostProtocolInvalidArgumentError
 } from "@orika/bridge"
@@ -13,7 +15,17 @@ import {
   makeResourceRegistry,
   P
 } from "@orika/core"
-import { Cause, Deferred, Effect, Exit, Fiber, type Layer, ManagedRuntime, Stream } from "effect"
+import {
+  Cause,
+  Deferred,
+  Effect,
+  Exit,
+  Fiber,
+  type Layer,
+  ManagedRuntime,
+  Schema,
+  Stream
+} from "effect"
 import { EventJournal } from "effect/unstable/eventlog"
 
 import {
@@ -30,6 +42,7 @@ import {
   TransactionalFileMutationCommitInput,
   TransactionalFileMutationCommitRequest,
   TransactionalFileMutationDiff,
+  TransactionalFileMutationEvent,
   TransactionalFileMutationPrepareInput,
   TransactionalFileMutationPrepareRequest,
   TransactionalFileMutationPrepareResult,
@@ -46,6 +59,55 @@ const testPath = (...segments: string[]): string => {
 const WORKSPACE_ROOT = testPath("workspace", "app")
 const WORKSPACE_FILE = testPath("workspace", "app", "src", "main.ts")
 const initialFiles = (): Record<string, string> => ({ [WORKSPACE_FILE]: "old\n" })
+
+test("TransactionalFileMutation events reject phases that contradict state", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      for (const event of [
+        mutationEventPayload("committed", "prepared"),
+        mutationEventPayload("rollback-started", "committed")
+      ]) {
+        const exit = yield* Effect.exit(
+          Schema.decodeUnknownEffect(TransactionalFileMutationEvent)(event)
+        )
+        expect(Exit.isFailure(exit)).toBe(true)
+      }
+
+      for (const event of [
+        mutationEventPayload("prepared", "prepared"),
+        mutationEventPayload("commit-started", "committing"),
+        mutationEventPayload("committed", "committed"),
+        mutationEventPayload("rollback-started", "rolling-back"),
+        mutationEventPayload("rolled-back", "rolled-back"),
+        mutationEventPayload("conflicted", "conflicted"),
+        mutationEventPayload("prepared")
+      ]) {
+        const decoded = yield* Schema.decodeUnknownEffect(TransactionalFileMutationEvent)(event)
+        expect(decoded.phase).toBe(event.phase)
+      }
+
+      const exchange: BridgeClientExchange = {
+        request: () =>
+          Effect.die("TransactionalFileMutation event mismatch test does not issue requests"),
+        subscribe: (method) =>
+          Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              method,
+              timestamp: 1_710_000_000_000,
+              traceId: "trace-file-mutation-event",
+              payload: mutationEventPayload("committed", "prepared")
+            })
+          )
+      }
+      const bridgeExit = yield* Effect.gen(function* () {
+        const client = yield* TransactionalFileMutationClient
+        return yield* Effect.exit(client.events().pipe(Stream.runHead))
+      }).pipe(provideScopedLayer(makeTransactionalFileMutationBridgeClientLayer(exchange)))
+
+      expectInvalidOutput(bridgeExit)
+    })
+  ))
 
 test("TransactionalFileMutation prepares diffs, commits atomically, detects conflicts, emits events, and audits use", () =>
   Effect.runPromise(
@@ -1098,6 +1160,19 @@ const nextIdFactory = (ids: readonly string[]): (() => string) => {
   }
 }
 
+const mutationEventPayload = (
+  phase: TransactionalFileMutationEvent["phase"],
+  state?: TransactionalFileMutationEvent["state"]
+) =>
+  ({
+    type: "transactional-file-mutation-event",
+    timestamp: 1_710_000_000_000,
+    mutationId: "file-mutation-1",
+    path: WORKSPACE_FILE,
+    phase,
+    ...(state === undefined ? {} : { state })
+  }) as const
+
 const memoryAudit = (rows: AuditEvent[]): AuditEventsApi => ({
   emit: (event: AuditEvent) =>
     Effect.sync(() => {
@@ -1133,6 +1208,13 @@ const failingAuditFor = (source: string): AuditEventsApi => ({
 
 const isCapabilityKind = (value: unknown, kind: string): boolean =>
   typeof value === "object" && value !== null && "kind" in value && value.kind === kind
+
+const expectInvalidOutput = (exit: Exit.Exit<unknown, unknown>): void => {
+  expect(Exit.isFailure(exit)).toBe(true)
+  if (Exit.isFailure(exit)) {
+    expect(Cause.squash(exit.cause)).toBeInstanceOf(HostProtocolInvalidOutputError)
+  }
+}
 
 const expectExitFailure = (
   exit: Exit.Exit<unknown, HostProtocolError>,

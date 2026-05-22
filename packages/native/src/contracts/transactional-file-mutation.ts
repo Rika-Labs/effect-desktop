@@ -155,16 +155,49 @@ export class TransactionalFileMutationSupportedResult extends Schema.Class<Trans
   reason: Schema.optionalKey(BridgeSafeString)
 }) {}
 
+const stateForTransactionalFileMutationPhase = (
+  phase: TransactionalFileMutationEventPhase
+): TransactionalFileMutationState => {
+  switch (phase) {
+    case "prepared":
+      return "prepared"
+    case "commit-started":
+      return "committing"
+    case "committed":
+      return "committed"
+    case "rollback-started":
+      return "rolling-back"
+    case "rolled-back":
+      return "rolled-back"
+    case "conflicted":
+      return "conflicted"
+  }
+}
+
+const TransactionalFileMutationEventState = Schema.makeFilter<{
+  readonly phase: TransactionalFileMutationEventPhase
+  readonly state?: TransactionalFileMutationState | undefined
+}>((value) => {
+  const state = stateForTransactionalFileMutationPhase(value.phase)
+  return (
+    value.state === undefined ||
+    value.state === state ||
+    `${value.phase} events require ${state} state`
+  )
+})
+
 export class TransactionalFileMutationEvent extends Schema.Class<TransactionalFileMutationEvent>(
   "TransactionalFileMutationEvent"
-)({
-  type: TransactionalFileMutationEventType,
-  timestamp: TransactionalFileMutationTimestamp,
-  mutationId: BridgeSafeNonEmptyString,
-  path: Schema.optionalKey(PrintableNonEmptyString),
-  phase: TransactionalFileMutationEventPhase,
-  state: Schema.optionalKey(TransactionalFileMutationState),
-  sourceHash: Schema.optionalKey(BridgeSafeNonEmptyString),
-  replacementHash: Schema.optionalKey(BridgeSafeNonEmptyString),
-  diff: Schema.optionalKey(TransactionalFileMutationDiff)
-}) {}
+)(
+  Schema.Struct({
+    type: TransactionalFileMutationEventType,
+    timestamp: TransactionalFileMutationTimestamp,
+    mutationId: BridgeSafeNonEmptyString,
+    path: Schema.optionalKey(PrintableNonEmptyString),
+    phase: TransactionalFileMutationEventPhase,
+    state: Schema.optionalKey(TransactionalFileMutationState),
+    sourceHash: Schema.optionalKey(BridgeSafeNonEmptyString),
+    replacementHash: Schema.optionalKey(BridgeSafeNonEmptyString),
+    diff: Schema.optionalKey(TransactionalFileMutationDiff)
+  }).check(TransactionalFileMutationEventState)
+) {}
