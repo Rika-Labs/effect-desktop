@@ -36,6 +36,35 @@ const WebRequestBeforeRequestRedirect = Schema.makeFilter<{
   }
   return value.redirectUrl === undefined || "redirectUrl requires redirect action"
 })
+const WebRequestInterceptorSnapshotShape = Schema.makeFilter<{
+  readonly phase: "before-request" | "headers-received"
+  readonly action: "allow" | "block" | "redirect" | "modify-headers"
+  readonly redirectUrl?: string | undefined
+  readonly responseHeaders?: readonly WebRequestHeader[] | undefined
+}>((value) => {
+  if (value.phase === "headers-received") {
+    if (value.action !== "modify-headers") {
+      return "headers-received snapshots require modify-headers action"
+    }
+    if (value.redirectUrl !== undefined) {
+      return "headers-received snapshots must not carry redirectUrl"
+    }
+    return (
+      value.responseHeaders !== undefined || "headers-received snapshots require responseHeaders"
+    )
+  }
+
+  if (value.action === "modify-headers") {
+    return "before-request snapshots must not carry modify-headers action"
+  }
+  if (value.responseHeaders !== undefined) {
+    return "before-request snapshots must not carry responseHeaders"
+  }
+  if (value.action === "redirect") {
+    return value.redirectUrl !== undefined || "redirect snapshots require redirectUrl"
+  }
+  return value.redirectUrl === undefined || "redirectUrl requires redirect action"
+})
 
 export class WebRequestHeader extends Schema.Class<WebRequestHeader>("WebRequestHeader")({
   name: WebRequestHeaderName,
@@ -74,16 +103,18 @@ export class WebRequestRemoveListenerInput extends Schema.Class<WebRequestRemove
 
 export class WebRequestInterceptorSnapshot extends Schema.Class<WebRequestInterceptorSnapshot>(
   "WebRequestInterceptorSnapshot"
-)({
-  interceptor: WebRequestInterceptorResource,
-  profile: SessionProfileResource,
-  phase: WebRequestPhase,
-  urlPattern: WebRequestUrlPattern,
-  action: WebRequestAction,
-  order: WebRequestOrder,
-  redirectUrl: Schema.optionalKey(WebRequestRedirectUrl),
-  responseHeaders: Schema.optionalKey(Schema.Array(WebRequestHeader))
-}) {}
+)(
+  Schema.Struct({
+    interceptor: WebRequestInterceptorResource,
+    profile: SessionProfileResource,
+    phase: WebRequestPhase,
+    urlPattern: WebRequestUrlPattern,
+    action: WebRequestAction,
+    order: WebRequestOrder,
+    redirectUrl: Schema.optionalKey(WebRequestRedirectUrl),
+    responseHeaders: Schema.optionalKey(Schema.Array(WebRequestHeader))
+  }).check(WebRequestInterceptorSnapshotShape)
+) {}
 
 export class WebRequestSupportedResult extends Schema.Class<WebRequestSupportedResult>(
   "WebRequestSupportedResult"

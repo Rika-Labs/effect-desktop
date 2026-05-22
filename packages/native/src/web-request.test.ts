@@ -3,7 +3,10 @@ import { type BridgeClientExchange } from "@orika/bridge"
 import { Cause, Effect, Exit, type Layer, ManagedRuntime, Schema, Stream } from "effect"
 
 import { makeNativeCapabilityManifest } from "./capabilities.js"
-import { WebRequestBeforeRequestInput } from "./contracts/web-request.js"
+import {
+  WebRequestBeforeRequestInput,
+  WebRequestInterceptorSnapshot
+} from "./contracts/web-request.js"
 import {
   makeWebRequestBridgeClientLayer,
   makeWebRequestMemoryClient,
@@ -36,6 +39,19 @@ const sessionProfileHandle = {
 const beforeRequestInput = {
   profile: sessionProfileHandle,
   urlPattern: "https://example.test/*"
+} as const
+const webRequestInterceptor = {
+  kind: "web-request-interceptor",
+  id: "interceptor-1",
+  generation: 0,
+  ownerScope: "test",
+  state: "open"
+} as const
+const interceptorSnapshot = {
+  interceptor: webRequestInterceptor,
+  profile: sessionProfileHandle,
+  urlPattern: "https://example.test/*",
+  order: 0
 } as const
 
 test("WebRequest before-request redirect action requires a matching redirect URL", () =>
@@ -71,6 +87,63 @@ test("WebRequest before-request redirect action requires a matching redirect URL
       expect(Exit.isFailure(allowWithRedirectUrl)).toBe(true)
       expect(Exit.isFailure(blockWithRedirectUrl)).toBe(true)
       expect(validRedirect.redirectUrl).toBe("https://redirect.example.test/")
+    })
+  ))
+
+test("WebRequest interceptor snapshots require phase action fields to match", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const beforeRequestModifyHeaders = yield* Effect.exit(
+        Schema.decodeUnknownEffect(WebRequestInterceptorSnapshot)({
+          ...interceptorSnapshot,
+          phase: "before-request",
+          action: "modify-headers",
+          responseHeaders: [{ name: "x-test", value: "1" }]
+        })
+      )
+      const headersReceivedRedirect = yield* Effect.exit(
+        Schema.decodeUnknownEffect(WebRequestInterceptorSnapshot)({
+          ...interceptorSnapshot,
+          phase: "headers-received",
+          action: "redirect",
+          redirectUrl: "https://redirect.example.test/"
+        })
+      )
+      const headersReceivedMissingHeaders = yield* Effect.exit(
+        Schema.decodeUnknownEffect(WebRequestInterceptorSnapshot)({
+          ...interceptorSnapshot,
+          phase: "headers-received",
+          action: "modify-headers"
+        })
+      )
+      const beforeRequestRedirectWithoutUrl = yield* Effect.exit(
+        Schema.decodeUnknownEffect(WebRequestInterceptorSnapshot)({
+          ...interceptorSnapshot,
+          phase: "before-request",
+          action: "redirect"
+        })
+      )
+      const validRedirect = yield* Schema.decodeUnknownEffect(WebRequestInterceptorSnapshot)({
+        ...interceptorSnapshot,
+        phase: "before-request",
+        action: "redirect",
+        redirectUrl: "https://redirect.example.test/"
+      })
+      const validHeadersReceived = yield* Schema.decodeUnknownEffect(WebRequestInterceptorSnapshot)(
+        {
+          ...interceptorSnapshot,
+          phase: "headers-received",
+          action: "modify-headers",
+          responseHeaders: [{ name: "x-test", value: "1" }]
+        }
+      )
+
+      expect(Exit.isFailure(beforeRequestModifyHeaders)).toBe(true)
+      expect(Exit.isFailure(headersReceivedRedirect)).toBe(true)
+      expect(Exit.isFailure(headersReceivedMissingHeaders)).toBe(true)
+      expect(Exit.isFailure(beforeRequestRedirectWithoutUrl)).toBe(true)
+      expect(validRedirect.redirectUrl).toBe("https://redirect.example.test/")
+      expect(validHeadersReceived.responseHeaders).toEqual([{ name: "x-test", value: "1" }])
     })
   ))
 
