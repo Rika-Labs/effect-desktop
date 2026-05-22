@@ -768,6 +768,8 @@ const produceMacosApp = (
   Effect.gen(function* () {
     const start = options.now()
     const appBundle = artifact.artifactPath
+    yield* removePath(artifact.rootPath)
+    yield* removePath(legacyMacosAppWrapperPath(plan))
     const contents = join(appBundle, "Contents")
     const macos = join(contents, "MacOS")
     const resources = join(contents, "Resources", "effect-desktop")
@@ -961,7 +963,8 @@ const packageProviderBudgetChecks = (
 const plannedArtifact = (plan: PackagePlan, kind: PackageArtifactKind): PlannedArtifact => {
   const extension = desktopArtifactExtension(kind)
   const name = `${plan.safeAppName}-${plan.appVersion}-${plan.target}.${extension}`
-  const rootPath = join(plan.outputPath, name)
+  const rootName = kind === "app" ? `${plan.safeAppName}-${plan.appVersion}-${plan.target}` : name
+  const rootPath = join(plan.outputPath, rootName)
   return {
     kind,
     rootPath,
@@ -1047,6 +1050,9 @@ const linuxPackageName = (appId: string, appName: string): string => {
 }
 
 const macosAppBundlePath = (plan: PackagePlan): string => plannedArtifact(plan, "app").artifactPath
+
+const legacyMacosAppWrapperPath = (plan: PackagePlan): string =>
+  join(plan.outputPath, `${plan.safeAppName}-${plan.appVersion}-${plan.target}.app`)
 
 const appUpgradeCode = (appId: string): string => {
   const bytes = createHash("sha256").update(`effect-desktop:msi-upgrade:${appId}`).digest()

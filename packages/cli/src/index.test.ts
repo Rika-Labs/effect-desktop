@@ -4603,7 +4603,7 @@ test("desktop sign signs macOS app bundle with hardened runtime entitlements", (
         })
 
         const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "macos")
-        const artifactRoot = join(outputRoot, "ORIKA-Playground-0.0.0-macos-arm64.app")
+        const artifactRoot = join(outputRoot, "ORIKA-Playground-0.0.0-macos-arm64")
         const entitlements = yield* Effect.promise(() =>
           readFile(join(artifactRoot, "effect-desktop-entitlements.plist"), "utf8")
         )
@@ -8881,7 +8881,7 @@ test("desktop package emits macOS app dmg zip artifacts with metadata", () =>
           writeStderr: () => {}
         })
 
-        const appRoot = join(outputRoot, "ORIKA-Playground-0.0.0-macos-arm64.app")
+        const appRoot = join(outputRoot, "ORIKA-Playground-0.0.0-macos-arm64")
         const dmgRoot = join(outputRoot, "ORIKA-Playground-0.0.0-macos-arm64.dmg")
         const zipRoot = join(outputRoot, "ORIKA-Playground-0.0.0-macos-arm64.zip")
         const appMetadata = decodePackageAppMetadataJson(
@@ -8930,6 +8930,93 @@ test("desktop package emits macOS app dmg zip artifacts with metadata", () =>
     })
   ))
 
+test("desktop package does not wrap macOS app artifact in a fake app bundle", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-package-app-root-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        yield* writeBuildLayoutFixture(directory, "macos-arm64")
+        const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "macos")
+        const artifactRoot = join(outputRoot, "ORIKA-Playground-0.0.0-macos-arm64")
+        const appBundle = join(artifactRoot, "ORIKA-Playground.app")
+
+        const exitCode = yield* runCli({
+          argv: ["package", "--config", "apps/inspector/desktop.config.ts", "--artifact", "app"],
+          cwd: directory,
+          hostTarget: "macos-arm64",
+          now: fixedClock([100, 120, 200]),
+          writeStdout: () => {},
+          writeStderr: () => {}
+        })
+
+        const artifactRootStat = yield* Effect.promise(() => lstat(artifactRoot))
+        const packageReport = decodeJsonObject(
+          yield* Effect.promise(() => readFile(join(outputRoot, "package-report.json"), "utf8"))
+        )
+
+        expect(exitCode).toBe(0)
+        expect(artifactRootStat.isDirectory()).toBe(true)
+        expect(basename(artifactRoot).endsWith(".app")).toBe(false)
+        expect(
+          yield* Effect.promise(() => readFile(join(appBundle, "Contents", "Info.plist"), "utf8"))
+        ).toContain("dev.effect-desktop.inspector")
+        expect(packageReport).toMatchObject({
+          artifacts: [
+            {
+              kind: "app",
+              artifactPath: appBundle
+            }
+          ]
+        })
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop package removes stale fake macOS app wrapper artifacts", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-package-stale-app-root-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        yield* writeBuildLayoutFixture(directory, "macos-arm64")
+        const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "macos")
+        const staleRoot = join(outputRoot, "ORIKA-Playground-0.0.0-macos-arm64.app")
+        const artifactRoot = join(outputRoot, "ORIKA-Playground-0.0.0-macos-arm64")
+
+        yield* Effect.promise(() => mkdir(staleRoot, { recursive: true }))
+        yield* Effect.promise(() => writeFile(join(staleRoot, "artifact.json"), "{}\n"))
+
+        const exitCode = yield* runCli({
+          argv: ["package", "--config", "apps/inspector/desktop.config.ts", "--artifact", "app"],
+          cwd: directory,
+          hostTarget: "macos-arm64",
+          now: fixedClock([100, 120, 200]),
+          writeStdout: () => {},
+          writeStderr: () => {}
+        })
+
+        const staleRootExit = yield* Effect.exit(Effect.promise(() => lstat(staleRoot)))
+
+        expect(exitCode).toBe(0)
+        expect(staleRootExit).toMatchObject({ _tag: "Failure" })
+        expect(
+          yield* Effect.promise(() =>
+            readFile(join(artifactRoot, "ORIKA-Playground.app", "Contents", "Info.plist"), "utf8")
+          )
+        ).toContain("dev.effect-desktop.inspector")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
 packageModeTest("desktop package metadata digest includes directory file modes", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -8940,7 +9027,7 @@ packageModeTest("desktop package metadata digest includes directory file modes",
         yield* writePlaygroundFixture(directory)
         yield* writeBuildLayoutFixture(directory, "macos-arm64")
         const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "macos")
-        const appRoot = join(outputRoot, "ORIKA-Playground-0.0.0-macos-arm64.app")
+        const appRoot = join(outputRoot, "ORIKA-Playground-0.0.0-macos-arm64")
         const runtimeMain = join(
           directory,
           "apps",
@@ -9000,7 +9087,7 @@ test("desktop package stages macOS app bundle before explicit dmg artifact", () 
         yield* writePlaygroundFixture(directory)
         yield* writeBuildLayoutFixture(directory, "macos-arm64")
         const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "macos")
-        const appRoot = join(outputRoot, "ORIKA-Playground-0.0.0-macos-arm64.app")
+        const appRoot = join(outputRoot, "ORIKA-Playground-0.0.0-macos-arm64")
         const appBundle = join(appRoot, "ORIKA-Playground.app")
         const dmgRoot = join(outputRoot, "ORIKA-Playground-0.0.0-macos-arm64.dmg")
         const dmgPath = join(dmgRoot, "ORIKA-Playground-0.0.0-macos-arm64.dmg")
@@ -9047,7 +9134,7 @@ test("desktop package stages macOS app bundle before explicit zip artifact", () 
         yield* writePlaygroundFixture(directory)
         yield* writeBuildLayoutFixture(directory, "macos-arm64")
         const outputRoot = join(directory, "apps", "inspector", "dist", "desktop", "macos")
-        const appRoot = join(outputRoot, "ORIKA-Playground-0.0.0-macos-arm64.app")
+        const appRoot = join(outputRoot, "ORIKA-Playground-0.0.0-macos-arm64")
         const appBundle = join(appRoot, "ORIKA-Playground.app")
         const zipRoot = join(outputRoot, "ORIKA-Playground-0.0.0-macos-arm64.zip")
         const zipPath = join(zipRoot, "ORIKA-Playground-0.0.0-macos-arm64.zip")
@@ -9857,7 +9944,9 @@ const writePackagedArtifactFixture = (
       "dist",
       "desktop",
       platform,
-      `ORIKA-Playground-0.0.0-${target}.${extension}`
+      kind === "app"
+        ? `ORIKA-Playground-0.0.0-${target}`
+        : `ORIKA-Playground-0.0.0-${target}.${extension}`
     )
     const fileName =
       kind === "app" ? "ORIKA-Playground.app" : `ORIKA-Playground-0.0.0-${target}.${extension}`
