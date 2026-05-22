@@ -149,6 +149,36 @@ test("InspectorEvent rejects untyped or unknown payload shapes", () =>
     })
   ))
 
+test("InspectorEvent rejects control characters in identity fields", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const valid = {
+        id: "event-valid",
+        source: "runtime",
+        occurredAt: "2026-05-13T12:00:00.000Z",
+        traceId: null,
+        spanId: null,
+        layerId: null,
+        providerId: null,
+        severity: "Info",
+        redaction: {
+          evidenceCount: 0,
+          omitted: false,
+          redacted: false
+        },
+        payload: { tag: "log", level: "Info", message: "ok" }
+      }
+
+      for (const field of ["id", "traceId", "spanId", "layerId", "providerId"] as const) {
+        const exit = yield* Effect.exit(
+          decodeUnknownInspectorEvent({ ...valid, [field]: `${field}\nforged` })
+        )
+
+        expect(Exit.isFailure(exit)).toBe(true)
+      }
+    })
+  ))
+
 test("InspectorEvent encoded fixtures replay without live runtime dependencies", () =>
   Effect.runPromise(
     Effect.gen(function* () {

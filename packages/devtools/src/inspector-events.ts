@@ -1,6 +1,15 @@
 import { Effect, Option, Schema } from "effect"
 
 const NonEmptyString = Schema.NonEmptyString
+const NulByte = String.fromCharCode(0)
+const UnitSeparatorByte = String.fromCharCode(31)
+const DeleteByte = String.fromCharCode(127)
+const NoControlTextPattern = new RegExp(`^[^${NulByte}-${UnitSeparatorByte}${DeleteByte}]+$`, "u")
+const InspectorIdentityString = NonEmptyString.check(
+  Schema.isPattern(NoControlTextPattern, {
+    description: "a non-empty string without control characters"
+  })
+)
 const NonNegativeNumber = Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0))
 const PositiveInteger = Schema.Int.check(Schema.isGreaterThan(0))
 const JsonRecord = Schema.Record(Schema.String, Schema.Json)
@@ -218,13 +227,13 @@ export const InspectorPayload = Schema.Union([
 export type InspectorPayload = typeof InspectorPayload.Type
 
 export class InspectorEvent extends Schema.Class<InspectorEvent>("InspectorEvent")({
-  id: NonEmptyString,
+  id: InspectorIdentityString,
   source: InspectorEventSource,
   occurredAt: Schema.DateTimeUtcFromString,
-  traceId: Schema.OptionFromNullishOr(NonEmptyString),
-  spanId: Schema.OptionFromNullishOr(NonEmptyString),
-  layerId: Schema.OptionFromNullishOr(NonEmptyString),
-  providerId: Schema.OptionFromNullishOr(NonEmptyString),
+  traceId: Schema.OptionFromNullishOr(InspectorIdentityString),
+  spanId: Schema.OptionFromNullishOr(InspectorIdentityString),
+  layerId: Schema.OptionFromNullishOr(InspectorIdentityString),
+  providerId: Schema.OptionFromNullishOr(InspectorIdentityString),
   severity: InspectorEventSeverity,
   redaction: InspectorRedactionState,
   payload: InspectorPayload
