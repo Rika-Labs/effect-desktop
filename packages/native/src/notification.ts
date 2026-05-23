@@ -3,13 +3,10 @@ import {
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
-  type RpcCapabilityMetadata,
-  type RpcSupportMetadata,
-  RpcGroup,
+  type RpcGroup,
   type HostProtocolError
 } from "@orika/bridge"
 import {
-  P,
   type DesktopRpcClient,
   ResourceRegistry,
   type ResourceRegistryApi,
@@ -21,12 +18,16 @@ import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
 import { subscribeNativeEvent } from "./event-stream.js"
 import {
+  NotificationCapabilityMethods,
+  NotificationRpcEvents as NotificationRpcEventsValue,
+  NotificationRpcs
+} from "./notification-rpc.js"
+import {
   NotificationActionEvent,
   NotificationClickEvent,
   NotificationCloseInput,
   type NotificationHandle,
   NotificationPermissionResult,
-  NotificationResource,
   NotificationShowInput,
   type NotificationShowOptions,
   NotificationSupportedResult,
@@ -34,82 +35,26 @@ import {
 } from "./contracts/notification.js"
 import type { WindowHandle } from "./window.js"
 
+export {
+  NotificationClose,
+  NotificationGetPermissionStatus,
+  NotificationIsSupported,
+  NotificationMethodNames,
+  NotificationPlatformSupport,
+  NotificationRequestPermission,
+  NotificationRpcs,
+  NotificationShow
+} from "./notification-rpc.js"
+
+export const NotificationRpcEvents = NotificationRpcEventsValue
+export type NotificationRpcEvents = typeof NotificationRpcEvents
+
 const StrictParseOptions = { onExcessProperty: "error" } as const
-const NotificationPlatformSupport = NativeSurface.support.partial("host-notification-unavailable", {
-  platforms: [
-    { platform: "macos", status: "unsupported", reason: "host-notification-unavailable" },
-    { platform: "windows", status: "unsupported", reason: "host-notification-unavailable" },
-    { platform: "linux", status: "supported" }
-  ]
-}) satisfies RpcSupportMetadata
 
 export type NotificationError = HostProtocolError
 
-export const NotificationShow = notificationRpc(
-  "show",
-  NotificationShowInput,
-  NotificationResource,
-  P.nativeInvoke({ primitive: "Notification", methods: ["show"] }),
-  NotificationPlatformSupport
-)
-export const NotificationClose = notificationRpc(
-  "close",
-  NotificationCloseInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Notification", methods: ["close"] }),
-  NotificationPlatformSupport
-)
-export const NotificationIsSupported = notificationRpc(
-  "isSupported",
-  Schema.Void,
-  NotificationSupportedResult,
-  { kind: "none" }
-)
-export const NotificationRequestPermission = notificationRpc(
-  "requestPermission",
-  Schema.Void,
-  NotificationPermissionResult,
-  P.nativeInvoke({ primitive: "Notification", methods: ["requestPermission"] }),
-  NotificationPlatformSupport
-)
-export const NotificationGetPermissionStatus = notificationRpc(
-  "getPermissionStatus",
-  Schema.Void,
-  NotificationPermissionResult,
-  { kind: "none" },
-  NotificationPlatformSupport
-)
-
-export const NotificationRpcEvents = Object.freeze({
-  Click: { payload: NotificationClickEvent },
-  Action: { payload: NotificationActionEvent }
-})
-
-export type NotificationRpcEvents = typeof NotificationRpcEvents
-
-const NotificationRpcGroup = RpcGroup.make(
-  NotificationShow,
-  NotificationClose,
-  NotificationIsSupported,
-  NotificationRequestPermission,
-  NotificationGetPermissionStatus
-)
-
-export const NotificationRpcs: RpcGroup.RpcGroup<NotificationRpc> = NotificationRpcGroup
-
-export const NotificationMethodNames = Object.freeze([
-  "show",
-  "close",
-  "isSupported",
-  "requestPermission",
-  "getPermissionStatus"
-] as const)
-
-const NotificationCapabilityMethods = Object.freeze([
-  "show",
-  "close",
-  "requestPermission"
-] as const satisfies readonly (typeof NotificationMethodNames)[number][])
+const NotificationRpcGroup = NotificationRpcs
+export type NotificationRpc = RpcGroup.Rpcs<typeof NotificationRpcGroup>
 
 export interface NotificationClientApi {
   readonly show: (
@@ -180,8 +125,6 @@ export const makeNotificationServiceLayer = (
   options === undefined
     ? Layer.provide(NotificationLive, Layer.succeed(NotificationClient)(client))
     : Layer.succeed(Notification, makeNotificationService(client, options))
-
-export type NotificationRpc = RpcGroup.Rpcs<typeof NotificationRpcGroup>
 
 export type NotificationRpcHandlers<R = never> = NativeRpcHandlers<typeof NotificationRpcGroup, R>
 
@@ -374,26 +317,6 @@ const decodeInput = <A>(
       makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
     )
   )
-
-function notificationRpc<
-  const Method extends string,
-  Payload extends Schema.Codec<unknown, unknown, never, never>,
-  Success extends Schema.Codec<unknown, unknown, never, never>
->(
-  method: Method,
-  payload: Payload,
-  success: Success,
-  capability: RpcCapabilityMetadata,
-  support: RpcSupportMetadata = NativeSurface.support.supported
-) {
-  return NativeSurface.rpc("Notification", method, {
-    payload,
-    success,
-    authority: NativeSurface.authority.custom(capability),
-    endpoint: "mutation",
-    support
-  })
-}
 
 const runNotificationRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,

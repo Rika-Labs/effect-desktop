@@ -69,7 +69,7 @@ test("NativeSurface.event records stream payload and public authority", () => {
   expect(event.pipe(rpcSupport)).toEqual({ status: "supported" })
 })
 
-test("native service files construct RPCs through NativeSurface", () =>
+test("native service files construct RPCs through shared descriptor helpers", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const sourceDir = import.meta.dir
@@ -77,9 +77,12 @@ test("native service files construct RPCs through NativeSurface", () =>
       const offenders: string[] = []
       for (const entry of glob.scanSync({ cwd: sourceDir, onlyFiles: true })) {
         // The renderer client owns a browser-safe boundary group and cannot import NativeSurface.
+        // The descriptor helper is the one shared construction point behind NativeSurface and
+        // browser-safe renderer exports.
         if (
           entry.endsWith(".test.ts") ||
           entry === "desktop-http-api.ts" ||
+          entry === "native-rpc-descriptor.ts" ||
           entry === "window-renderer-client.ts" ||
           entry === "native-surface.ts"
         ) {

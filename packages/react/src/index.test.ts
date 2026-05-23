@@ -85,6 +85,7 @@ const reactWindowsSourceUrl = new URL("windows.ts", import.meta.url)
 const workspaceRootUrl = new URL("../../../", import.meta.url)
 const reactRootBundleEntryUrl = new URL(".tmp-react-root-bundle-entry.tsx", workspaceRootUrl)
 const reactWindowBundleEntryUrl = new URL(".tmp-react-window-bundle-entry.tsx", reactPackageRootUrl)
+const reactNativeBundleEntryUrl = new URL(".tmp-react-native-bundle-entry.tsx", reactPackageRootUrl)
 
 const urlToPath = (url: URL): string => fileURLToPath(url)
 
@@ -169,12 +170,13 @@ test("ReactDesktop delegates native Window helpers to the native renderer client
     })
   ))
 
-test("React package browser-bundles root hooks and renderer-safe Window RPCs", () =>
+test("React package browser-bundles root hooks and renderer-safe native RPCs", () =>
   PlatformRuntime.runPromise(
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
       const rootEntryPath = urlToPath(reactRootBundleEntryUrl)
       const windowEntryPath = urlToPath(reactWindowBundleEntryUrl)
+      const nativeEntryPath = urlToPath(reactNativeBundleEntryUrl)
       const outdir = yield* fs.makeTempDirectory({ prefix: "orika-react-browser-bundle-" })
 
       try {
@@ -196,10 +198,28 @@ test("React package browser-bundles root hooks and renderer-safe Window RPCs", (
             "globalThis.__orikaReactWindowBundleSmoke = ReactDesktop.from(Manifest)"
           ].join("\n")
         )
+        yield* fs.writeFileString(
+          nativeEntryPath,
+          [
+            'import { ReactDesktop } from "@orika/react"',
+            'import { ClipboardRpcs, DialogRpcs, NotificationRpcs } from "@orika/native/renderer"',
+            "const Manifest = {",
+            '  _tag: "DesktopAppManifest",',
+            '  id: "dev.orika.react-native-renderer-bundle",',
+            "  windows: {},",
+            "  rpcGroups: [",
+            '    { _tag: "DesktopRpcGroup", group: ClipboardRpcs },',
+            '    { _tag: "DesktopRpcGroup", group: DialogRpcs },',
+            '    { _tag: "DesktopRpcGroup", group: NotificationRpcs }',
+            "  ]",
+            "}",
+            "globalThis.__orikaReactNativeBundleSmoke = ReactDesktop.from(Manifest)"
+          ].join("\n")
+        )
 
         const result = yield* Effect.promise(() =>
           Bun.build({
-            entrypoints: [rootEntryPath, windowEntryPath],
+            entrypoints: [rootEntryPath, windowEntryPath, nativeEntryPath],
             format: "esm",
             outdir,
             target: "browser"
@@ -211,6 +231,7 @@ test("React package browser-bundles root hooks and renderer-safe Window RPCs", (
       } finally {
         yield* fs.remove(rootEntryPath, { force: true })
         yield* fs.remove(windowEntryPath, { force: true })
+        yield* fs.remove(nativeEntryPath, { force: true })
         yield* fs.remove(outdir, { recursive: true, force: true })
       }
     })

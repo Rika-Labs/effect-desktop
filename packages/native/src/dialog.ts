@@ -1,15 +1,15 @@
-import {
-  type RpcCapabilityMetadata,
-  type RpcSupportMetadata,
-  RpcGroup,
-  type HostProtocolError
-} from "@orika/bridge"
-import { P, type DesktopRpcClient } from "@orika/core"
-import { Context, Effect, Layer, Schema } from "effect"
+import { type HostProtocolError, type RpcGroup } from "@orika/bridge"
+import { type DesktopRpcClient } from "@orika/core"
+import { Context, Effect, Layer } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
+import {
+  DialogMethodNames,
+  DialogRpcEvents as DialogRpcEventsValue,
+  DialogRpcs
+} from "./dialog-rpc.js"
 import {
   DialogConfirmInput,
   type DialogConfirmOptions,
@@ -26,73 +26,23 @@ import {
   DialogSaveResult
 } from "./contracts/dialog.js"
 
-export type DialogError = HostProtocolError
-
-const DialogLinuxMultiSelectionReason = "linux-zenity-multi-selection-unavailable"
-const DialogSelectionSupport = NativeSurface.support.partial(DialogLinuxMultiSelectionReason, {
-  platforms: [
-    { platform: "macos", status: "supported" },
-    { platform: "windows", status: "supported" },
-    { platform: "linux", status: "partial", reason: DialogLinuxMultiSelectionReason }
-  ]
-}) satisfies RpcSupportMetadata
-
-export const DialogOpenFile = dialogRpc(
-  "openFile",
-  DialogOpenFileInput,
-  DialogOpenResult,
-  P.nativeInvoke({ primitive: "Dialog", methods: ["openFile"] }),
-  DialogSelectionSupport
-)
-export const DialogOpenDirectory = dialogRpc(
-  "openDirectory",
-  DialogOpenDirectoryInput,
-  DialogOpenResult,
-  P.nativeInvoke({ primitive: "Dialog", methods: ["openDirectory"] }),
-  DialogSelectionSupport
-)
-export const DialogSaveFile = dialogRpc(
-  "saveFile",
-  DialogSaveFileInput,
-  DialogSaveResult,
-  P.nativeInvoke({ primitive: "Dialog", methods: ["saveFile"] })
-)
-export const DialogMessage = dialogRpc(
-  "message",
-  DialogMessageInput,
-  Schema.Void,
-  P.nativeInvoke({ primitive: "Dialog", methods: ["message"] })
-)
-export const DialogConfirm = dialogRpc(
-  "confirm",
-  DialogConfirmInput,
-  DialogConfirmResult,
-  P.nativeInvoke({ primitive: "Dialog", methods: ["confirm"] })
-)
-
-export const DialogRpcEvents = Object.freeze({})
-
-export type DialogRpcEvents = typeof DialogRpcEvents
-
-const DialogRpcGroup = RpcGroup.make(
+export {
+  DialogConfirm,
+  DialogMethodNames,
+  DialogMessage,
   DialogOpenFile,
   DialogOpenDirectory,
   DialogSaveFile,
-  DialogMessage,
-  DialogConfirm
-)
+  DialogRpcs
+} from "./dialog-rpc.js"
 
-export const DialogRpcs: RpcGroup.RpcGroup<DialogRpc> = DialogRpcGroup
+export const DialogRpcEvents = DialogRpcEventsValue
+export type DialogRpcEvents = typeof DialogRpcEvents
 
+export type DialogError = HostProtocolError
+
+const DialogRpcGroup = DialogRpcs
 export type DialogRpc = RpcGroup.Rpcs<typeof DialogRpcGroup>
-
-export const DialogMethodNames = Object.freeze([
-  "openFile",
-  "openDirectory",
-  "saveFile",
-  "message",
-  "confirm"
-] as const)
 
 export interface DialogClientApi {
   readonly openFile: (
@@ -259,23 +209,3 @@ const runDialogRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
   operation: string
 ): Effect.Effect<A, DialogError, never> => runNativeRpc(effect, operation, "Dialog")
-
-function dialogRpc<
-  const Method extends string,
-  Payload extends Schema.Codec<unknown, unknown, never, never>,
-  Success extends Schema.Codec<unknown, unknown, never, never>
->(
-  method: Method,
-  payload: Payload,
-  success: Success,
-  capability: RpcCapabilityMetadata,
-  support: RpcSupportMetadata = NativeSurface.support.supported
-) {
-  return NativeSurface.rpc("Dialog", method, {
-    payload,
-    success,
-    authority: NativeSurface.authority.custom(capability),
-    endpoint: "mutation",
-    support
-  })
-}

@@ -56,6 +56,8 @@ Native modules keep one source of truth for service, RPC, client, host, support,
 permission facts:
 
 - `<Name>Rpcs` — canonical RPC group.
+- `@orika/native/renderer` — browser-safe renderer exports for native `RpcGroup`
+  descriptors used with React `useDesktop(...)`.
 - `<Name>Surface` — generated surface metadata.
 - `<Name>` — runtime Effect service.
 - `<Name>Client` — client service.

@@ -1,3 +1,6 @@
+export { ClipboardRpcs, type ClipboardRpc } from "./clipboard-rpc.js"
+export { DialogRpcs, type DialogRpc } from "./dialog-rpc.js"
+export { NotificationRpcs, type NotificationRpc } from "./notification-rpc.js"
 export {
   makeWindowRendererClient,
   WindowRendererRpcs,

@@ -8,7 +8,7 @@ effect_version: 4
 
 # How to integrate native services
 
-Native services live under `@orika/native`. Each one ships with an `RpcGroup` you call through `useDesktop(...)` after the runtime entry selects the matching native layer.
+Native services live under `@orika/native`. Runtime code imports native layers from the package root; renderer code imports browser-safe `RpcGroup` descriptors from `@orika/native/renderer` and calls them through `useDesktop(...)`.
 
 ## Runtime setup
 
@@ -35,7 +35,7 @@ export const App = Desktop.make({
 
 For any native module `<Name>` (Window, Clipboard, Dialog, Screen, …):
 
-1. The renderer calls `useDesktop(<Name>Rpcs)` to get a typed client.
+1. The renderer imports `<Name>Rpcs` from `@orika/native/renderer` and calls `useDesktop(<Name>Rpcs)` to get a typed client.
 2. The framework dispatches to a runtime handler.
 3. The handler talks to the Rust host through the bridge.
 4. A typed result or `<Name>Error` returns.
@@ -46,7 +46,7 @@ You never construct the host call directly. (See [boundary rule](../explanation/
 
 ```tsx
 import { ReactDesktop } from "@orika/react"
-import { ClipboardRpcs } from "@orika/native"
+import { ClipboardRpcs } from "@orika/native/renderer"
 import { Manifest } from "./manifest.js"
 
 const DesktopApp = ReactDesktop.from(Manifest)
@@ -68,19 +68,18 @@ function CopyButton({ text }: { text: string }) {
 ## Example: dialog
 
 ```tsx
-import { DialogRpcs } from "@orika/native"
+import { DialogRpcs } from "@orika/native/renderer"
 
 function OpenButton() {
   const dialog = DesktopApp.useDesktop(DialogRpcs)
-  const open = dialog.open.useMutation()
+  const openFile = dialog.openFile.useMutation()
 
   const onClick = async () => {
-    const result = await open.run({
-      properties: ["openFile"],
+    const result = await openFile.run({
       filters: [{ name: "Markdown", extensions: ["md"] }]
     })
-    if (!result.canceled) {
-      // result.filePaths is string[]
+    if (result.paths.length > 0) {
+      // result.paths is string[]
     }
   }
 
@@ -91,7 +90,7 @@ function OpenButton() {
 ## Example: notification
 
 ```tsx
-import { NotificationRpcs } from "@orika/native"
+import { NotificationRpcs } from "@orika/native/renderer"
 
 const notification = DesktopApp.useDesktop(NotificationRpcs)
 const show = notification.show.useMutation()

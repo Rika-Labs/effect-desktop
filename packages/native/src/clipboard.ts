@@ -1,15 +1,20 @@
 import {
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
-  RpcGroup,
+  type RpcGroup,
   type HostProtocolError
 } from "@orika/bridge"
-import { P, type DesktopRpcClient } from "@orika/core"
-import { Context, Effect, Layer, Schema } from "effect"
+import { type DesktopRpcClient } from "@orika/core"
+import { Context, Effect, Layer } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
+import {
+  ClipboardCapabilityMethods,
+  ClipboardRpcEvents as ClipboardRpcEventsValue,
+  ClipboardRpcs
+} from "./clipboard-rpc.js"
 import {
   type ClipboardCapability,
   ClipboardHtml,
@@ -21,118 +26,26 @@ import {
 } from "./contracts/clipboard.js"
 import { isSupportedImageHeader } from "./contracts/image.js"
 
-export type ClipboardError = HostProtocolError
+export {
+  ClipboardClear,
+  ClipboardIsSupported,
+  ClipboardMethodNames,
+  ClipboardReadHtml,
+  ClipboardReadImage,
+  ClipboardReadText,
+  ClipboardRpcs,
+  ClipboardWriteHtml,
+  ClipboardWriteImage,
+  ClipboardWriteText
+} from "./clipboard-rpc.js"
 
-export const ClipboardReadText = NativeSurface.rpc("Clipboard", "readText", {
-  payload: Schema.Void,
-  success: ClipboardText,
-  authority: NativeSurface.authority.custom(
-    P.nativeInvoke({ primitive: "Clipboard", methods: ["readText"] })
-  ),
-  endpoint: "query",
-  support: NativeSurface.support.supported
-})
-export const ClipboardWriteText = NativeSurface.rpc("Clipboard", "writeText", {
-  payload: ClipboardText,
-  success: Schema.Void,
-  authority: NativeSurface.authority.custom(
-    P.nativeInvoke({ primitive: "Clipboard", methods: ["writeText"] })
-  ),
-  endpoint: "mutation",
-  support: NativeSurface.support.supported
-})
-export const ClipboardReadHtml = NativeSurface.rpc("Clipboard", "readHtml", {
-  payload: Schema.Void,
-  success: ClipboardHtml,
-  authority: NativeSurface.authority.custom(
-    P.nativeInvoke({ primitive: "Clipboard", methods: ["readHtml"] })
-  ),
-  endpoint: "query",
-  support: NativeSurface.support.supported
-})
-export const ClipboardWriteHtml = NativeSurface.rpc("Clipboard", "writeHtml", {
-  payload: ClipboardHtml,
-  success: Schema.Void,
-  authority: NativeSurface.authority.custom(
-    P.nativeInvoke({ primitive: "Clipboard", methods: ["writeHtml"] })
-  ),
-  endpoint: "mutation",
-  support: NativeSurface.support.supported
-})
-export const ClipboardReadImage = NativeSurface.rpc("Clipboard", "readImage", {
-  payload: Schema.Void,
-  success: ClipboardImage,
-  authority: NativeSurface.authority.custom(
-    P.nativeInvoke({ primitive: "Clipboard", methods: ["readImage"] })
-  ),
-  endpoint: "query",
-  support: NativeSurface.support.supported
-})
-export const ClipboardWriteImage = NativeSurface.rpc("Clipboard", "writeImage", {
-  payload: ClipboardImage,
-  success: Schema.Void,
-  authority: NativeSurface.authority.custom(
-    P.nativeInvoke({ primitive: "Clipboard", methods: ["writeImage"] })
-  ),
-  endpoint: "mutation",
-  support: NativeSurface.support.supported
-})
-export const ClipboardClear = NativeSurface.rpc("Clipboard", "clear", {
-  payload: Schema.Void,
-  success: Schema.Void,
-  authority: NativeSurface.authority.custom(
-    P.nativeInvoke({ primitive: "Clipboard", methods: ["clear"] })
-  ),
-  endpoint: "mutation",
-  support: NativeSurface.support.supported
-})
-export const ClipboardIsSupported = NativeSurface.rpc("Clipboard", "isSupported", {
-  payload: ClipboardIsSupportedInput,
-  success: ClipboardSupportedResult,
-  authority: NativeSurface.authority.custom({ kind: "none" }),
-  endpoint: "query",
-  support: NativeSurface.support.supported
-})
-
-export const ClipboardRpcEvents = Object.freeze({})
-
+export const ClipboardRpcEvents = ClipboardRpcEventsValue
 export type ClipboardRpcEvents = typeof ClipboardRpcEvents
 
-const ClipboardRpcGroup = RpcGroup.make(
-  ClipboardReadText,
-  ClipboardWriteText,
-  ClipboardReadHtml,
-  ClipboardWriteHtml,
-  ClipboardReadImage,
-  ClipboardWriteImage,
-  ClipboardClear,
-  ClipboardIsSupported
-)
+export type ClipboardError = HostProtocolError
 
-export const ClipboardRpcs: RpcGroup.RpcGroup<ClipboardRpc> = ClipboardRpcGroup
-
+const ClipboardRpcGroup = ClipboardRpcs
 export type ClipboardRpc = RpcGroup.Rpcs<typeof ClipboardRpcGroup>
-
-export const ClipboardMethodNames = Object.freeze([
-  "readText",
-  "writeText",
-  "readHtml",
-  "writeHtml",
-  "readImage",
-  "writeImage",
-  "clear",
-  "isSupported"
-] as const)
-
-const ClipboardCapabilityMethods = Object.freeze([
-  "readText",
-  "writeText",
-  "readHtml",
-  "writeHtml",
-  "readImage",
-  "writeImage",
-  "clear"
-] as const satisfies readonly (typeof ClipboardMethodNames)[number][])
 
 export interface ClipboardClientApi {
   readonly readText: () => Effect.Effect<ClipboardText, ClipboardError, never>

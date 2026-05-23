@@ -4,16 +4,9 @@ import {
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
-  HostProtocolError as HostProtocolErrorSchema,
   makeDesktopClientProtocol,
   makeUnaryDesktopTransportFromBridgeClientExchange,
-  RpcCapability,
-  type RpcCapabilityMetadata,
-  RpcEndpoint,
-  type RpcEndpointKind,
-  type RpcPlatformSupportMetadata,
-  RpcSupport,
-  type RpcSupportMetadata
+  type RpcCapabilityMetadata
 } from "@orika/bridge"
 import {
   type AnyDesktopNativeRegistration,
@@ -27,14 +20,23 @@ import {
   type DesktopRpcSurfaceMappedOptions,
   NormalizedCapability as NormalizedCapabilitySchema,
   type NormalizedCapability,
-  P,
   PermissionInterceptor
 } from "@orika/core"
 import { Context, Effect, Layer, Option, Schema, SchemaAST, Stream } from "effect"
 import type { Scope } from "effect"
-import { Rpc, RpcClient, RpcGroup, RpcSchema } from "effect/unstable/rpc"
+import { Rpc, RpcClient, RpcGroup } from "effect/unstable/rpc"
 
 import { subscribeNativeEvent } from "./event-stream.js"
+import {
+  nativeAuthority,
+  nativeCapabilityFact,
+  nativeEvent,
+  type NativeCapabilityFactOptions,
+  type NativeEventOptions,
+  type NativeEventRpc as NativeDescriptorEventRpc,
+  nativeRpc as rpc,
+  NativeRpcSupport
+} from "./native-rpc-descriptor.js"
 import {
   makeNativeHostRpcRuntime,
   type NativeHostRpcRuntimeEnvironment
@@ -80,51 +82,6 @@ export type NativePermissionsApi<Method extends string = never> = Readonly<
   }
 >
 
-export type NativeRpcAuthority =
-  | {
-      readonly kind: "native"
-      readonly primitive?: string
-    }
-  | {
-      readonly kind: "none"
-    }
-  | {
-      readonly kind: "custom"
-      readonly capability: Parameters<typeof RpcCapability>[0]
-    }
-
-export interface NativeRpcOptions<
-  Payload extends Schema.Codec<unknown, unknown, never, never>,
-  Success extends Schema.Codec<unknown, unknown, never, never>
-> {
-  readonly payload: Payload
-  readonly success: Success
-  readonly authority: NativeRpcAuthority
-  readonly endpoint: RpcEndpointKind
-  readonly support: RpcSupportMetadata
-}
-
-export interface NativeEventOptions<Payload extends Schema.Codec<unknown, unknown, never, never>> {
-  readonly payload: Payload
-  readonly support: RpcSupportMetadata
-}
-
-export type NativeEventRpc<
-  Surface extends string = string,
-  EventName extends string = string,
-  Payload extends Schema.Codec<unknown, unknown, never, never> = Schema.Codec<
-    unknown,
-    unknown,
-    never,
-    never
-  >
-> = Rpc.Rpc<
-  `${Surface}.events.${EventName}`,
-  typeof Schema.Void,
-  RpcSchema.Stream<Payload, typeof HostProtocolErrorSchema>,
-  typeof Schema.Never
->
-
 export interface NativeRpcSurfaceSelectionOptions<Method extends string = never> {
   readonly capabilities?: readonly Method[]
 }
@@ -163,49 +120,22 @@ export interface NativeRpcSurface<
   >
 }
 
-export const nativeAuthority = Object.freeze({
-  native: (primitive?: string): NativeRpcAuthority =>
-    primitive === undefined
-      ? Object.freeze({ kind: "native" })
-      : Object.freeze({ kind: "native", primitive }),
-  none: Object.freeze({ kind: "none" } satisfies NativeRpcAuthority),
-  custom: (capability: Parameters<typeof RpcCapability>[0]): NativeRpcAuthority =>
-    Object.freeze({ kind: "custom", capability })
-})
+export type NativeEventRpc<
+  Surface extends string = string,
+  EventName extends string = string,
+  Payload extends Schema.Codec<unknown, unknown, never, never> = Schema.Codec<
+    unknown,
+    unknown,
+    never,
+    never
+  >
+> = NativeDescriptorEventRpc<Surface, EventName, Payload>
 
-export const NativeRpcSupport = Object.freeze({
-  supported: Object.freeze({ status: "supported" } satisfies RpcSupportMetadata),
-  partial: (
-    reason: string,
-    options: { readonly platforms?: readonly RpcPlatformSupportMetadata[] } = {}
-  ): RpcSupportMetadata => Object.freeze({ status: "partial", reason, ...options }),
-  unsupported: (
-    reason: string,
-    options: { readonly platforms?: readonly RpcPlatformSupportMetadata[] } = {}
-  ): RpcSupportMetadata => Object.freeze({ status: "unsupported", reason, ...options })
-})
-
-const rpc = <
-  const Surface extends string,
-  const Method extends string,
-  Payload extends Schema.Codec<unknown, unknown, never, never>,
-  Success extends Schema.Codec<unknown, unknown, never, never>
->(
+const capabilityFact = <const Surface extends string, const Method extends string>(
   surface: Surface,
   method: Method,
-  options: NativeRpcOptions<Payload, Success>
-) => {
-  const base = Rpc.make(`${surface}.${method}` as const, {
-    payload: options.payload,
-    success: options.success,
-    error: HostProtocolErrorSchema
-  })
-
-  return applySupport(
-    applyCapability(applyEndpoint(base, options.endpoint), surface, method, options.authority),
-    options.support
-  )
-}
+  options: NativeCapabilityFactOptions
+): DesktopRpcCapabilityFact => nativeCapabilityFact(surface, method, options)
 
 const event = <
   const Surface extends string,
@@ -215,34 +145,7 @@ const event = <
   surface: Surface,
   eventName: EventName,
   options: NativeEventOptions<Payload>
-): NativeEventRpc<Surface, EventName, Payload> => {
-  const base = Rpc.make(`${surface}.events.${eventName}` as const, {
-    success: options.payload,
-    error: HostProtocolErrorSchema,
-    stream: true
-  })
-
-  return applySupport(
-    applyCapability(base, surface, `events.${eventName}`, nativeAuthority.none),
-    options.support
-  )
-}
-
-export interface NativeCapabilityFactOptions {
-  readonly authority: NativeRpcAuthority
-  readonly support: RpcSupportMetadata
-}
-
-const capabilityFact = <const Surface extends string, const Method extends string>(
-  surface: Surface,
-  method: Method,
-  options: NativeCapabilityFactOptions
-): DesktopRpcCapabilityFact =>
-  Object.freeze({
-    tag: `${surface}.${method}` as const,
-    capability: capabilityFor(surface, method, options.authority),
-    support: options.support
-  })
+): NativeEventRpc<Surface, EventName, Payload> => nativeEvent(surface, eventName, options)
 
 function make<
   const Tag extends string,
@@ -497,47 +400,6 @@ const permissionCapabilitiesByMethod = (
 const methodNameFromTag = (surfaceTag: string, tag: string): string => {
   const prefix = `${surfaceTag}.`
   return tag.startsWith(prefix) ? tag.slice(prefix.length) : tag
-}
-
-const applyEndpoint = <R extends Rpc.Any>(rpc: R, endpoint: RpcEndpointKind): R =>
-  endpoint === "query" ? RpcEndpoint.query(rpc) : RpcEndpoint.mutation(rpc)
-
-const applyCapability = <R extends Rpc.Any>(
-  rpc: R,
-  surface: string,
-  method: string,
-  authority: NativeRpcAuthority
-): R => RpcCapability(capabilityFor(surface, method, authority))(rpc)
-
-const applySupport = <R extends Rpc.Any>(rpc: R, support: RpcSupportMetadata): R =>
-  support.status === "supported"
-    ? RpcSupport.supported(
-        rpc,
-        support.platforms === undefined ? {} : { platforms: support.platforms }
-      )
-    : support.status === "partial"
-      ? RpcSupport.partial(
-          support.reason,
-          support.platforms === undefined ? {} : { platforms: support.platforms }
-        )(rpc)
-      : RpcSupport.unsupported(
-          support.reason,
-          support.platforms === undefined ? {} : { platforms: support.platforms }
-        )(rpc)
-
-const capabilityFor = (
-  surface: string,
-  method: string,
-  authority: NativeRpcAuthority
-): Parameters<typeof RpcCapability>[0] => {
-  switch (authority.kind) {
-    case "custom":
-      return authority.capability
-    case "native":
-      return P.nativeInvoke({ primitive: authority.primitive ?? surface, methods: [method] })
-    case "none":
-      return { kind: "none" }
-  }
 }
 
 export const NativeSurface = Object.freeze({
