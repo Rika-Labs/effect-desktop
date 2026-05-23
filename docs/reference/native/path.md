@@ -12,6 +12,16 @@ Platform-specific base-directory lookups. Each method returns a canonical absolu
 
 `Path.downloads` only resolves the user's downloads directory. It does not start downloads, choose per-download destinations, own sessions, emit progress, or cancel transfers.
 
+## Import
+
+```ts
+import { Path, PathRpcs, Native } from "@orika/native"
+import { PathRpcs as RendererPathRpcs } from "@orika/native/renderer"
+```
+
+Runtime and service code import from `@orika/native`. Browser renderer
+manifests import the renderer-safe RPC group from `@orika/native/renderer`.
+
 ## Methods
 
 | Method      | Success            |

@@ -12,6 +12,17 @@ Operations that hand off to the OS shell: open a file in its default app, reveal
 
 `Shell` is permissioned as `P.nativeInvoke({ primitive: "Shell", methods: [...] })`. The TypeScript client validates dangerous inputs before transport, and the Rust host repeats the same validation before any OS handoff.
 
+## Import
+
+```ts
+import { Shell, ShellRpcs, Native } from "@orika/native"
+import { ShellRpcs as RendererShellRpcs } from "@orika/native/renderer"
+```
+
+Runtime and service code import from `@orika/native`. Browser renderer
+manifests import the renderer-safe RPC group from `@orika/native/renderer`.
+Keep Shell calls behind explicit user actions; each method hands off to the OS.
+
 ## Methods
 
 | Method             | Payload                      | Success |

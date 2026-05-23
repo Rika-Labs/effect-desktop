@@ -4,8 +4,7 @@ import {
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
   type RpcCapabilityMetadata,
-  type RpcSupportMetadata,
-  RpcGroup,
+  type RpcGroup,
   type HostProtocolError
 } from "@orika/bridge"
 import { P, type DesktopRpcClient } from "@orika/core"
@@ -21,6 +20,16 @@ import {
   ShellShowItemInFolderInput,
   ShellTrashItemInput
 } from "./contracts/shell.js"
+import { ShellMethodNames, ShellRpcEvents as ShellRpcEventsValue, ShellRpcs } from "./shell-rpc.js"
+
+export {
+  ShellMethodNames,
+  ShellOpenExternal,
+  ShellOpenPath,
+  ShellRpcs,
+  ShellShowItemInFolder,
+  ShellTrashItem
+} from "./shell-rpc.js"
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
 const DefaultExternalSchemes = Object.freeze(["http", "https", "mailto", "tel"])
@@ -51,46 +60,11 @@ const ShellPathControlCharacters = /[\u0000-\u001f\u007f]/u
 
 export type ShellError = HostProtocolError
 
-export const ShellOpenExternal = shellRpc(
-  "openExternal",
-  ShellOpenExternalInput,
-  P.nativeInvoke({ primitive: "Shell", methods: ["openExternal"] })
-)
-export const ShellShowItemInFolder = shellRpc(
-  "showItemInFolder",
-  ShellShowItemInFolderInput,
-  P.nativeInvoke({ primitive: "Shell", methods: ["showItemInFolder"] })
-)
-export const ShellOpenPath = shellRpc(
-  "openPath",
-  ShellOpenPathInput,
-  P.nativeInvoke({ primitive: "Shell", methods: ["openPath"] })
-)
-export const ShellTrashItem = shellRpc(
-  "trashItem",
-  ShellTrashItemInput,
-  P.nativeInvoke({ primitive: "Shell", methods: ["trashItem"] })
-)
-
-export const ShellRpcEvents = Object.freeze({})
+export const ShellRpcEvents = ShellRpcEventsValue
 
 export type ShellRpcEvents = typeof ShellRpcEvents
 
-const ShellRpcGroup = RpcGroup.make(
-  ShellOpenExternal,
-  ShellShowItemInFolder,
-  ShellOpenPath,
-  ShellTrashItem
-)
-
-export const ShellRpcs: RpcGroup.RpcGroup<ShellRpc> = ShellRpcGroup
-
-export const ShellMethodNames = Object.freeze([
-  "openExternal",
-  "showItemInFolder",
-  "openPath",
-  "trashItem"
-] as const)
+const ShellRpcGroup = ShellRpcs
 
 export interface ShellClientApi {
   readonly openExternal: (
@@ -375,24 +349,6 @@ const decodeInput = <A>(
       makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
     )
   )
-
-function shellRpc<
-  const Method extends string,
-  Payload extends Schema.Codec<unknown, unknown, never, never>
->(
-  method: Method,
-  payload: Payload,
-  capability: RpcCapabilityMetadata,
-  support: RpcSupportMetadata = NativeSurface.support.supported
-) {
-  return NativeSurface.rpc("Shell", method, {
-    payload,
-    success: Schema.Void,
-    authority: NativeSurface.authority.custom(capability),
-    endpoint: "mutation",
-    support
-  })
-}
 
 const runShellRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,

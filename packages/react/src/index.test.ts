@@ -203,7 +203,7 @@ test("React package browser-bundles root hooks and renderer-safe native RPCs", (
           nativeEntryPath,
           [
             'import { ReactDesktop } from "@orika/react"',
-            'import { ClipboardRpcs, DialogRpcs, NotificationRpcs, ScreenRpcs, SystemAppearanceRpcs } from "@orika/native/renderer"',
+            'import { ClipboardRpcs, DialogRpcs, NotificationRpcs, PathRpcs, ScreenRpcs, ShellRpcs, SystemAppearanceRpcs } from "@orika/native/renderer"',
             "const Manifest = {",
             '  _tag: "DesktopAppManifest",',
             '  id: "dev.orika.react-native-renderer-bundle",',
@@ -212,7 +212,9 @@ test("React package browser-bundles root hooks and renderer-safe native RPCs", (
             '    { _tag: "DesktopRpcGroup", group: ClipboardRpcs },',
             '    { _tag: "DesktopRpcGroup", group: DialogRpcs },',
             '    { _tag: "DesktopRpcGroup", group: NotificationRpcs },',
+            '    { _tag: "DesktopRpcGroup", group: PathRpcs },',
             '    { _tag: "DesktopRpcGroup", group: ScreenRpcs },',
+            '    { _tag: "DesktopRpcGroup", group: ShellRpcs },',
             '    { _tag: "DesktopRpcGroup", group: SystemAppearanceRpcs }',
             "  ]",
             "}",

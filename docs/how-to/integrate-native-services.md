@@ -1,6 +1,6 @@
 ---
 title: How to integrate native services
-description: Call clipboard, dialog, screen, notification, and other native services from a renderer.
+description: Call clipboard, dialog, path, screen, shell, notification, and other native services from a renderer.
 kind: how-to
 audience: app-developers
 effect_version: 4
@@ -33,7 +33,8 @@ export const App = Desktop.make({
 
 ## The pattern
 
-For any native module `<Name>` (Window, Clipboard, Dialog, Screen, …):
+For any renderer-safe native module exported from `@orika/native/renderer`
+(`Window`, `Clipboard`, `Dialog`, `Path`, `Screen`, `Shell`, …):
 
 1. The renderer imports `<Name>Rpcs` from `@orika/native/renderer` and calls `useDesktop(<Name>Rpcs)` to get a typed client.
 2. The framework dispatches to a runtime handler.

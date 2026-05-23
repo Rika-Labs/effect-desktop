@@ -1,55 +1,35 @@
 import {
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
-  type RpcCapabilityMetadata,
-  RpcGroup,
+  type RpcGroup,
   type HostProtocolError
 } from "@orika/bridge"
-import { P, type DesktopRpcClient } from "@orika/core"
-import { Context, Effect, Layer, Schema } from "effect"
+import { type DesktopRpcClient } from "@orika/core"
+import { Context, Effect, Layer } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
 import { CanonicalPath } from "./contracts/path.js"
+import { PathMethodNames, PathRpcEvents as PathRpcEventsValue, PathRpcs } from "./path-rpc.js"
+
+export {
+  PathAppData,
+  PathCache,
+  PathDownloads,
+  PathHome,
+  PathLogs,
+  PathMethodNames,
+  PathRpcs,
+  PathTemp
+} from "./path-rpc.js"
 
 export type PathError = HostProtocolError
 
-export const PathAppData = pathRpc(
-  "appData",
-  P.nativeInvoke({ primitive: "Path", methods: ["appData"] })
-)
-export const PathCache = pathRpc("cache", P.nativeInvoke({ primitive: "Path", methods: ["cache"] }))
-export const PathLogs = pathRpc("logs", P.nativeInvoke({ primitive: "Path", methods: ["logs"] }))
-export const PathTemp = pathRpc("temp", P.nativeInvoke({ primitive: "Path", methods: ["temp"] }))
-export const PathHome = pathRpc("home", P.nativeInvoke({ primitive: "Path", methods: ["home"] }))
-export const PathDownloads = pathRpc(
-  "downloads",
-  P.nativeInvoke({ primitive: "Path", methods: ["downloads"] })
-)
-
-export const PathRpcEvents = Object.freeze({})
+export const PathRpcEvents = PathRpcEventsValue
 
 export type PathRpcEvents = typeof PathRpcEvents
 
-const PathRpcGroup = RpcGroup.make(
-  PathAppData,
-  PathCache,
-  PathLogs,
-  PathTemp,
-  PathHome,
-  PathDownloads
-)
-
-export const PathRpcs: RpcGroup.RpcGroup<PathRpc> = PathRpcGroup
-
-export const PathMethodNames = Object.freeze([
-  "appData",
-  "cache",
-  "logs",
-  "temp",
-  "home",
-  "downloads"
-] as const)
+const PathRpcGroup = PathRpcs
 
 export interface PathClientApi {
   readonly appData: () => Effect.Effect<CanonicalPath, PathError, never>
@@ -161,19 +141,6 @@ const pathClientFromRpcClient = (client: DesktopRpcClient<PathRpc>): PathClientA
   }
 
   return Object.freeze(pathClient)
-}
-
-function pathRpc<const Method extends (typeof PathMethodNames)[number]>(
-  method: Method,
-  permission: RpcCapabilityMetadata
-) {
-  return NativeSurface.rpc("Path", method, {
-    payload: Schema.Void,
-    success: CanonicalPath,
-    authority: NativeSurface.authority.custom(permission),
-    endpoint: "mutation",
-    support: NativeSurface.support.supported
-  })
 }
 
 const runPathRpc = <A, E>(
