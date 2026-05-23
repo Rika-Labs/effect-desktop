@@ -125,6 +125,7 @@ const matrixFromManifest = (
   hostMethods: ReadonlySet<string>
 ): NativeParityMatrixResultType => {
   const rows = manifest
+    .filter((fact) => !isEventContractTag(fact.tag))
     .map((fact) => rowFromFact(fact, hostMethods))
     .toSorted((left, right) => left.tag.localeCompare(right.tag))
   const summary = rows.reduce(
@@ -157,6 +158,8 @@ const matrixFromManifest = (
     summary: new NativeParityMatrixSummary(summary)
   })
 }
+
+const isEventContractTag = (tag: string): boolean => tag.includes(".events.")
 
 const rowFromFact = (
   fact: NativeCapabilityFact,

@@ -1514,6 +1514,20 @@ test("NativeParityMatrix does not mark missing host methods as supported", () =>
     })
   ))
 
+test("NativeParityMatrix excludes event stream contracts from host method routing", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const result = yield* makeNativeParityMatrixResult(
+        [testSurface("Example.events.Changed")],
+        new Set()
+      )
+
+      expect(result.rows).toEqual([])
+      expect(result.summary.total).toBe(0)
+      expect(result.summary.missing).toBe(0)
+    })
+  ))
+
 test("NativeParityMatrix tracks every partial or unsupported release row", () =>
   Effect.runPromise(
     Effect.gen(function* () {

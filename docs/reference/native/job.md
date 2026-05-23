@@ -38,7 +38,7 @@ Jobs start in `running`. They can move to `paused`, back to `running` through `r
 
 State transitions publish a `Job.Event` frame before the matching mutation response frame on the host router. `started`, `paused`, `resumed`, `retried`, `progress`, `interrupted`, `succeeded`, and `failed` are the ordered event phases. `interrupted`, `succeeded`, and `failed` are terminal lifecycle events; `JobRuntime.interrupt` first cancels the live fiber, then records `interrupted`.
 
-Renderer event subscriptions receive typed `Job.Event` frames from the native event stream. The memory test client uses a bounded buffer (`capacity: 512`, `replay: 128`) so local tests can assert event ordering without a real host transport.
+Renderer event subscriptions receive typed `Job.Event` frames from the native event stream. The payload schema is owned by the canonical `Job.events.Event` RPC stream contract; the native bridge lowers that event contract to the existing `Job.Event` wire method. The memory test client uses a bounded buffer (`capacity: 512`, `replay: 128`) so local tests can assert event ordering without a real host transport.
 
 The public service registers running jobs with `ResourceRegistry` as `job:<jobId>` resources. Terminal transitions dispose that resource through the registry, so active jobs are visible to leak inspection and cleanup remains idempotent.
 

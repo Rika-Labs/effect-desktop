@@ -10,9 +10,8 @@ import {
 } from "@orika/bridge"
 import { P } from "@orika/core"
 import { Context, Effect, type Layer, ManagedRuntime, Option, Schema, Stream } from "effect"
-import { RpcGroup } from "effect/unstable/rpc"
+import { RpcGroup, RpcSchema } from "effect/unstable/rpc"
 
-import { subscribeNativeEvent } from "./event-stream.js"
 import { NativeSurface } from "./native-surface.js"
 
 const runScoped = <A, E, R>(
@@ -55,6 +54,21 @@ test("NativeSurface.rpc records explicit public authority", () => {
   expect(Option.getOrUndefined(rpcCapability(rpc))).toEqual({ kind: "none" })
 })
 
+test("NativeSurface.event records stream payload and public authority", () => {
+  const event = NativeSurface.event("Example", "Changed", {
+    payload: Schema.String,
+    support: NativeSurface.support.supported
+  })
+
+  expect(event._tag).toBe("Example.events.Changed")
+  expect(RpcSchema.isStreamSchema(event.successSchema)).toBe(true)
+  if (RpcSchema.isStreamSchema(event.successSchema)) {
+    expect(event.successSchema.success).toBe(Schema.String)
+  }
+  expect(Option.getOrUndefined(rpcCapability(event))).toEqual({ kind: "none" })
+  expect(event.pipe(rpcSupport)).toEqual({ status: "supported" })
+})
+
 test("native service files construct RPCs through NativeSurface", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -90,7 +104,11 @@ test("NativeSurface bridgeClientLayer passes exchange to event-aware mapped clie
         endpoint: "query",
         support: NativeSurface.support.supported
       })
-      const ExampleGroup = RpcGroup.make(ExamplePing)
+      const ExampleEvent = NativeSurface.event("Example", "Event", {
+        payload: Schema.String,
+        support: NativeSurface.support.supported
+      })
+      const ExampleGroup = RpcGroup.make(ExamplePing, ExampleEvent)
 
       interface ExampleClientApi {
         readonly ping: () => Effect.Effect<typeof PingResult.Type, HostProtocolError, never>
@@ -104,17 +122,18 @@ test("NativeSurface bridgeClientLayer passes exchange to event-aware mapped clie
       const ExampleSurface = NativeSurface.make("Example", ExampleGroup, {
         service: ExampleClient,
         handlers: ExampleGroup.toLayer({
-          "Example.ping": () => Effect.succeed({ value: "handler" })
+          "Example.ping": () => Effect.succeed({ value: "handler" }),
+          "Example.events.Event": () => Stream.make("handler-event")
         }),
         client: (client) =>
           ({
             ping: () => client["Example.ping"](undefined) as never,
-            events: () => Stream.empty
+            events: () => client["Example.events.Event"](undefined) as never
           }) satisfies ExampleClientApi,
         bridgeClient: (client, exchange) =>
           ({
             ping: () => client["Example.ping"](undefined) as never,
-            events: () => subscribeNativeEvent(exchange, "Example.Event", Schema.String)
+            events: () => NativeSurface.subscribeEvent(exchange, ExampleEvent)
           }) satisfies ExampleClientApi
       })
 
@@ -158,5 +177,8 @@ test("NativeSurface bridgeClientLayer passes exchange to event-aware mapped clie
       expect(result).toEqual({ ping: { value: "bridge" }, event: "event-value" })
       expect(requests.map((request) => request.method)).toEqual(["Example.ping"])
       expect(eventMethods).toEqual(["Example.Event"])
+      const eventDoc = ExampleSurface.schemaDocs.find((doc) => doc.tag === "Example.events.Event")
+      expect(eventDoc?.kind).toBe("stream")
+      expect(eventDoc?.callable).toBe(true)
     })
   ))

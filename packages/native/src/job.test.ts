@@ -20,6 +20,7 @@ import {
 } from "@orika/core"
 import { Cause, Effect, Exit, Layer, Option, Schema, Stream } from "effect"
 import * as EventJournal from "effect/unstable/eventlog/EventJournal"
+import { RpcSchema } from "effect/unstable/rpc"
 
 import {
   Job,
@@ -32,6 +33,7 @@ import {
   JobRuntimeLive,
   JobSupportedResult,
   type JobClientApi,
+  JobRpcs,
   makeHostJobRpcRuntime,
   makeJobMemoryClient,
   makeJobServiceLayer,
@@ -135,6 +137,55 @@ test("Job contracts reject event phases that contradict job state", async () => 
     }).pipe(Effect.provide(JobSurface.bridgeClientLayer(exchange)))
   )
   expectInvalidOutput(bridgeExit)
+})
+
+test("Job event schema is owned by the RPC stream contract", async () => {
+  const jobModule = await import("./job.js")
+  const eventRpc = JobRpcs.requests.get("Job.events.Event")
+
+  expect("JobRpcEvents" in jobModule).toBe(false)
+  expect(eventRpc).toBeDefined()
+  expect(eventRpc === undefined ? false : RpcSchema.isStreamSchema(eventRpc.successSchema)).toBe(
+    true
+  )
+  if (eventRpc !== undefined && RpcSchema.isStreamSchema(eventRpc.successSchema)) {
+    expect(eventRpc.successSchema.success).toBe(JobEvent)
+  }
+
+  const eventDoc = JobSurface.schemaDocs.find((doc) => doc.tag === "Job.events.Event")
+  expect(eventDoc?.kind).toBe("stream")
+  expect(eventDoc?.callable).toBe(true)
+})
+
+test("Job bridge client validates event payloads through the RPC stream contract", async () => {
+  const exchange: BridgeClientExchange = {
+    request: () => Effect.die("Job event contract test does not issue bridge requests"),
+    subscribe: (method) =>
+      Stream.make(
+        new HostProtocolEventEnvelope({
+          kind: "event",
+          method,
+          timestamp: 1_710_000_000_000,
+          traceId: "job-event-trace",
+          payload: {
+            type: "job-event",
+            timestamp: 1_710_000_000_000,
+            phase: "started",
+            job: jobSnapshotStatePayload("running"),
+            unexpected: "must be rejected by strict contract decode"
+          }
+        })
+      )
+  }
+
+  const eventExit = await Effect.runPromise(
+    Effect.gen(function* () {
+      const client = yield* JobClient
+      return yield* Effect.exit(client.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow)))
+    }).pipe(Effect.provide(JobSurface.bridgeClientLayer(exchange)))
+  )
+
+  expectInvalidOutput(eventExit)
 })
 
 test("Job bridge client rejects invalid progress from host output and events", async () => {
@@ -417,7 +468,8 @@ test("Job host RPC runtime denies protected calls before handlers run", async ()
       "Job.fail": () => handler("fail"),
       "Job.reportProgress": () => handler("reportProgress"),
       "Job.get": () => handler("get"),
-      "Job.isSupported": () => Effect.succeed(new JobSupportedResult({ supported: true }))
+      "Job.isSupported": () => Effect.succeed(new JobSupportedResult({ supported: true })),
+      "Job.events.Event": () => Stream.empty
     },
     { originAuth: RendererOriginAuth.unsafeDisabledForTests }
   )

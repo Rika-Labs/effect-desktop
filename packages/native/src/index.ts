@@ -332,7 +332,6 @@ export {
   JobHandlersLive,
   JobLive,
   JobMethodNames,
-  JobRpcEvents,
   JobRpcs,
   JobRuntime,
   JobRuntimeLive,

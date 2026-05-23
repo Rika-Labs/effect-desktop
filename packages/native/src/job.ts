@@ -56,14 +56,12 @@ import {
   type JobEventPhase,
   type JobState
 } from "./contracts/job.js"
-import { subscribeNativeEvent } from "./event-stream.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 
 export * from "./contracts/job.js"
 
 const Surface = "Job"
-const EventMethod = "Job.Event"
 const UnsupportedReason = "host-adapter-unimplemented"
 const OwnerScope = "native-job"
 
@@ -131,8 +129,9 @@ export const JobIsSupported = NativeSurface.rpc(Surface, "isSupported", {
   support: NativeSurface.support.supported
 })
 
-export const JobRpcEvents = Object.freeze({
-  Event: { payload: JobEvent }
+const JobEventStream = NativeSurface.event(Surface, "Event", {
+  payload: JobEvent,
+  support: NativeSurface.support.supported
 })
 
 const JobRpcGroup = RpcGroup.make(
@@ -145,7 +144,8 @@ const JobRpcGroup = RpcGroup.make(
   JobFail,
   JobReportProgress,
   JobGet,
-  JobIsSupported
+  JobIsSupported,
+  JobEventStream
 )
 
 export type JobRpc = RpcGroup.Rpcs<typeof JobRpcGroup>
@@ -292,7 +292,14 @@ export const JobHandlersLive = JobRpcGroup.toLayer({
     Effect.gen(function* () {
       const job = yield* Job
       return yield* job.isSupported()
-    })
+    }),
+  "Job.events.Event": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const job = yield* Job
+        return job.events()
+      })
+    )
 })
 
 export const JobSurface = NativeSurface.make(Surface, JobRpcGroup, {
@@ -574,7 +581,7 @@ const jobClientFromRpcClient = (
         Effect.flatMap((valid) => runJobRpc(client["Job.get"](valid), "Job.get"))
       ),
     isSupported: () => runJobRpc(client["Job.isSupported"](undefined), "Job.isSupported"),
-    events: () => subscribeNativeEvent(exchange, EventMethod, JobEvent)
+    events: () => NativeSurface.subscribeEvent(exchange, JobEventStream)
   } satisfies JobClientApi)
 
 function makeJobRuntime() {

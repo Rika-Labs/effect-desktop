@@ -3,6 +3,7 @@ import {
   type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
+  type HostProtocolError,
   HostProtocolError as HostProtocolErrorSchema,
   makeDesktopClientProtocol,
   makeUnaryDesktopTransportFromBridgeClientExchange,
@@ -28,9 +29,10 @@ import {
   P,
   type PermissionRegistry
 } from "@orika/core"
-import { Context, Effect, Layer, Option, Schema } from "effect"
-import { Rpc, RpcClient, RpcGroup } from "effect/unstable/rpc"
+import { Context, Effect, Layer, Option, Schema, SchemaAST, Stream } from "effect"
+import { Rpc, RpcClient, RpcGroup, RpcSchema } from "effect/unstable/rpc"
 
+import { subscribeNativeEvent } from "./event-stream.js"
 import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
 
 type NativeRpcGroup<Rpcs extends Rpc.Any> = RpcGroup.RpcGroup<Rpcs> & {
@@ -72,6 +74,27 @@ export interface NativeRpcOptions<
   readonly endpoint: RpcEndpointKind
   readonly support: RpcSupportMetadata
 }
+
+export interface NativeEventOptions<Payload extends Schema.Codec<unknown, unknown, never, never>> {
+  readonly payload: Payload
+  readonly support: RpcSupportMetadata
+}
+
+export type NativeEventRpc<
+  Surface extends string = string,
+  EventName extends string = string,
+  Payload extends Schema.Codec<unknown, unknown, never, never> = Schema.Codec<
+    unknown,
+    unknown,
+    never,
+    never
+  >
+> = Rpc.Rpc<
+  `${Surface}.events.${EventName}`,
+  typeof Schema.Void,
+  RpcSchema.Stream<Payload, typeof HostProtocolErrorSchema>,
+  typeof Schema.Never
+>
 
 export interface NativeRpcSurfaceSelectionOptions<Method extends string = never> {
   readonly capabilities?: readonly Method[]
@@ -145,6 +168,27 @@ const rpc = <
 
   return applySupport(
     applyCapability(applyEndpoint(base, options.endpoint), surface, method, options.authority),
+    options.support
+  )
+}
+
+const event = <
+  const Surface extends string,
+  const EventName extends string,
+  Payload extends Schema.Codec<unknown, unknown, never, never>
+>(
+  surface: Surface,
+  eventName: EventName,
+  options: NativeEventOptions<Payload>
+): NativeEventRpc<Surface, EventName, Payload> => {
+  const base = Rpc.make(`${surface}.events.${eventName}` as const, {
+    success: options.payload,
+    error: HostProtocolErrorSchema,
+    stream: true
+  })
+
+  return applySupport(
+    applyCapability(base, surface, `events.${eventName}`, nativeAuthority.none),
     options.support
   )
 }
@@ -262,6 +306,30 @@ const makeBridgeProtocolLayer = (
       Effect.flatMap((transport) => makeDesktopClientProtocol(transport, options))
     )
   )
+
+const EventTagSeparator = ".events."
+const StrictEventParseOptions = { onExcessProperty: "error" } as const
+
+const subscribeEvent = <
+  const Surface extends string,
+  const EventName extends string,
+  Payload extends Schema.Codec<unknown, unknown, never, never>
+>(
+  exchange: BridgeClientExchange | undefined,
+  eventRpc: NativeEventRpc<Surface, EventName, Payload>,
+  parseOptions: SchemaAST.ParseOptions = StrictEventParseOptions
+): Stream.Stream<Payload["Type"], HostProtocolError, never> =>
+  subscribeNativeEvent(
+    exchange,
+    eventMethodFromRpcTag(eventRpc._tag),
+    eventRpc.successSchema.success,
+    parseOptions
+  )
+
+const eventMethodFromRpcTag = (tag: `${string}.events.${string}`): string => {
+  const separatorIndex = tag.indexOf(EventTagSeparator)
+  return `${tag.slice(0, separatorIndex)}.${tag.slice(separatorIndex + EventTagSeparator.length)}`
+}
 
 const nativeSurfacePermissions = <const Method extends string>(
   registration: AnyDesktopNativeRegistration,
@@ -434,7 +502,9 @@ const capabilityFor = (
 export const NativeSurface = Object.freeze({
   authority: nativeAuthority,
   capabilityFact,
+  event,
   make,
   rpc,
+  subscribeEvent,
   support: NativeRpcSupport
 })
