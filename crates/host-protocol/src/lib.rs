@@ -12994,45 +12994,6 @@ impl BrowsingDataClearPayload {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct BrowsingDataEstimatePayload {
-    profile: SessionProfileResourcePayload,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    types: Option<Vec<BrowsingDataTypePayload>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    trace_id: Option<String>,
-}
-
-impl BrowsingDataEstimatePayload {
-    pub fn new(profile: SessionProfileResourcePayload) -> Self {
-        Self {
-            profile,
-            types: None,
-            trace_id: None,
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct BrowsingDataTypeEstimatePayload {
-    r#type: BrowsingDataTypePayload,
-    supported: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    bytes: Option<u64>,
-}
-
-impl BrowsingDataTypeEstimatePayload {
-    pub fn new(r#type: BrowsingDataTypePayload, supported: bool, bytes: Option<u64>) -> Self {
-        Self {
-            r#type,
-            supported,
-            bytes,
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BrowsingDataClearResultPayload {
     cleared: Vec<BrowsingDataTypePayload>,
     unsupported: Vec<BrowsingDataTypePayload>,
@@ -13047,18 +13008,6 @@ impl BrowsingDataClearResultPayload {
             cleared,
             unsupported,
         }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct BrowsingDataEstimateResultPayload {
-    estimates: Vec<BrowsingDataTypeEstimatePayload>,
-}
-
-impl BrowsingDataEstimateResultPayload {
-    pub fn new(estimates: Vec<BrowsingDataTypeEstimatePayload>) -> Self {
-        Self { estimates }
     }
 }
 
@@ -18581,30 +18530,28 @@ mod tests {
         AttachmentIntakeEventPhase, AttachmentIntakeState, AutostartEnablePayload,
         AutostartEventPayload, AutostartEventPhasePayload, AutostartMechanismPayload,
         AutostartStatusPayload, BrowsingDataClearPayload, BrowsingDataClearResultPayload,
-        BrowsingDataEstimatePayload, BrowsingDataEstimateResultPayload,
-        BrowsingDataListTypesPayload, BrowsingDataSupportedPayload,
-        BrowsingDataTypeEstimatePayload, BrowsingDataTypePayload, CanonicalPathPayload,
-        ClipboardCapabilityPayload, ClipboardHtmlPayload, ClipboardImagePayload,
-        ClipboardIsSupportedPayload, ClipboardSupportedPayload, ClipboardTextPayload,
-        ContextMenuActivatedEventPayload, CookieStoreCookiePayload, CookieStoreEventPayload,
-        CookieStoreEventPhasePayload, CookieStoreGetPayload, CookieStoreGetResultPayload,
-        CookieStoreRemovePayload, CookieStoreSetPayload, CookieStoreSupportedPayload,
-        CrashReporterBreadcrumbPayload, CrashReporterFlushPayload, CrashReporterGetReportsPayload,
-        CrashReporterReportPayload, CrashReporterStartPayload, DiagnosticsBundleCollectPayload,
-        DiagnosticsBundleCollectResultPayload, DiagnosticsBundleRedactPayload,
-        DiagnosticsBundleRedactResultPayload, DiagnosticsBundleRedactionEvidencePayload,
-        DiagnosticsBundleRedactionPolicyPayload, DiagnosticsBundleSourceKind,
-        DiagnosticsBundleSourceSummaryPayload, DiagnosticsBundleSupportedPayload,
-        DiagnosticsBundleWritePayload, DiagnosticsBundleWriteResultPayload, DialogConfirmPayload,
-        DialogConfirmResultPayload, DialogFileFilterPayload, DialogLevelPayload,
-        DialogMessagePayload, DialogOpenDirectoryPayload, DialogOpenFilePayload,
-        DialogOpenResultPayload, DialogSaveFilePayload, DialogSaveResultPayload,
-        DisplayCaptureActorKind, DisplayCaptureActorPayload, DisplayCaptureEventPayload,
-        DisplayCaptureEventPhase, DisplayCaptureGrantKind, DisplayCaptureGrantPayload,
-        DisplayCaptureImagePayload, DisplayCaptureMetadataPayload, DisplayCaptureRegionPayload,
-        DisplayCaptureRequestPayload, DisplayCaptureResultPayload, DisplayCaptureSource,
-        DisplayCaptureSupportedPayload, DisplayCaptureTargetPayload,
-        DistributionParityEventPayload, DistributionParityEventPhase,
+        BrowsingDataListTypesPayload, BrowsingDataSupportedPayload, BrowsingDataTypePayload,
+        CanonicalPathPayload, ClipboardCapabilityPayload, ClipboardHtmlPayload,
+        ClipboardImagePayload, ClipboardIsSupportedPayload, ClipboardSupportedPayload,
+        ClipboardTextPayload, ContextMenuActivatedEventPayload, CookieStoreCookiePayload,
+        CookieStoreEventPayload, CookieStoreEventPhasePayload, CookieStoreGetPayload,
+        CookieStoreGetResultPayload, CookieStoreRemovePayload, CookieStoreSetPayload,
+        CookieStoreSupportedPayload, CrashReporterBreadcrumbPayload, CrashReporterFlushPayload,
+        CrashReporterGetReportsPayload, CrashReporterReportPayload, CrashReporterStartPayload,
+        DiagnosticsBundleCollectPayload, DiagnosticsBundleCollectResultPayload,
+        DiagnosticsBundleRedactPayload, DiagnosticsBundleRedactResultPayload,
+        DiagnosticsBundleRedactionEvidencePayload, DiagnosticsBundleRedactionPolicyPayload,
+        DiagnosticsBundleSourceKind, DiagnosticsBundleSourceSummaryPayload,
+        DiagnosticsBundleSupportedPayload, DiagnosticsBundleWritePayload,
+        DiagnosticsBundleWriteResultPayload, DialogConfirmPayload, DialogConfirmResultPayload,
+        DialogFileFilterPayload, DialogLevelPayload, DialogMessagePayload,
+        DialogOpenDirectoryPayload, DialogOpenFilePayload, DialogOpenResultPayload,
+        DialogSaveFilePayload, DialogSaveResultPayload, DisplayCaptureActorKind,
+        DisplayCaptureActorPayload, DisplayCaptureEventPayload, DisplayCaptureEventPhase,
+        DisplayCaptureGrantKind, DisplayCaptureGrantPayload, DisplayCaptureImagePayload,
+        DisplayCaptureMetadataPayload, DisplayCaptureRegionPayload, DisplayCaptureRequestPayload,
+        DisplayCaptureResultPayload, DisplayCaptureSource, DisplayCaptureSupportedPayload,
+        DisplayCaptureTargetPayload, DistributionParityEventPayload, DistributionParityEventPhase,
         DistributionParityEvidenceKind, DistributionParityEvidencePayload,
         DistributionParitySupportedPayload, DistributionParityVerifyPayload,
         DistributionParityVerifyResultPayload, DockJumpListItemPayload, DockProgressState,
@@ -23162,28 +23109,12 @@ mod tests {
             r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"types":["cache","cookies","localStorage"]}"#
         );
         assert_eq!(
-            serde_json::to_string(&BrowsingDataEstimatePayload::new(profile.clone()))
-                .expect("estimate payload should encode"),
-            r#"{"profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"}}"#
-        );
-        assert_eq!(
             serde_json::to_string(&BrowsingDataClearResultPayload::new(
                 vec![BrowsingDataTypePayload::Cache],
                 vec![BrowsingDataTypePayload::ServiceWorkers]
             ))
             .expect("clear result should encode"),
             r#"{"cleared":["cache"],"unsupported":["serviceWorkers"]}"#
-        );
-        assert_eq!(
-            serde_json::to_string(&BrowsingDataEstimateResultPayload::new(vec![
-                BrowsingDataTypeEstimatePayload::new(
-                    BrowsingDataTypePayload::IndexedDb,
-                    true,
-                    Some(1024)
-                )
-            ]))
-            .expect("estimate result should encode"),
-            r#"{"estimates":[{"type":"indexedDb","supported":true,"bytes":1024}]}"#
         );
         assert_eq!(
             serde_json::to_string(&BrowsingDataListTypesPayload::new(vec![

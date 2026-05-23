@@ -25,33 +25,11 @@ export class BrowsingDataClearInput extends Schema.Class<BrowsingDataClearInput>
 }) {}
 export type BrowsingDataClearOptions = Schema.Schema.Type<typeof BrowsingDataClearInput>
 
-export class BrowsingDataEstimateInput extends Schema.Class<BrowsingDataEstimateInput>(
-  "BrowsingDataEstimateInput"
-)({
-  profile: SessionProfileResource,
-  types: Schema.optionalKey(Schema.NonEmptyArray(BrowsingDataType)),
-  traceId: Schema.optionalKey(BridgeSafeNonEmptyString)
-}) {}
-
-export class BrowsingDataTypeEstimate extends Schema.Class<BrowsingDataTypeEstimate>(
-  "BrowsingDataTypeEstimate"
-)({
-  type: BrowsingDataType,
-  supported: Schema.Boolean,
-  bytes: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)))
-}) {}
-
 export class BrowsingDataClearResult extends Schema.Class<BrowsingDataClearResult>(
   "BrowsingDataClearResult"
 )({
   cleared: Schema.Array(BrowsingDataType),
   unsupported: Schema.Array(BrowsingDataType)
-}) {}
-
-export class BrowsingDataEstimateResult extends Schema.Class<BrowsingDataEstimateResult>(
-  "BrowsingDataEstimateResult"
-)({
-  estimates: Schema.Array(BrowsingDataTypeEstimate)
 }) {}
 
 export class BrowsingDataListTypesResult extends Schema.Class<BrowsingDataListTypesResult>(

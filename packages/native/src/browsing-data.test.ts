@@ -47,6 +47,13 @@ test("BrowsingData exposes clear, listTypes, and isSupported as callable RPCs", 
   ])
 })
 
+test("BrowsingData contract module does not export unsupported estimate payload schemas", async () => {
+  const contractExports = Object.keys(await import("./contracts/browsing-data.js"))
+  expect(contractExports).not.toContain("BrowsingDataEstimateInput")
+  expect(contractExports).not.toContain("BrowsingDataTypeEstimate")
+  expect(contractExports).not.toContain("BrowsingDataEstimateResult")
+})
+
 test("BrowsingData isSupported reports supported result through the service", () =>
   Effect.runPromise(
     Effect.gen(function* () {

@@ -143,7 +143,7 @@ cookies, local storage, IndexedDB, and history cannot be cleared by profile,
 session, or data type because the current host WebView attachment has no
 partitioned browser data store contract.
 
-`BrowsingData` now exposes typed clear, estimate, list, and event contracts
+`BrowsingData` now exposes typed clear, list, support, and event contracts
 scoped to `SessionProfileHandle`, but the host adapter is still
 validation-first unsupported until WebView creation binds profile handles to
 Wry contexts. The installed WebView provider exposes a coarse clear-all
