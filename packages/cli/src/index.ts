@@ -2408,6 +2408,48 @@ const decodeBuildConfig = (
     )
   )
 
+interface ProductionCheckConfig {
+  readonly desktopConfig: DesktopConfig
+  readonly productionConfig: ProductionSecurityConfig
+}
+
+const decodeProductionCheckConfig = (
+  rawConfig: unknown,
+  path: string
+): Effect.Effect<ProductionCheckConfig, BuildConfigError, never> =>
+  decodeDesktopConfig(rawConfig, `desktop production check config ${path}`).pipe(
+    Effect.map((desktopConfig) => ({
+      desktopConfig,
+      productionConfig: toProductionSecurityConfig(desktopConfig)
+    })),
+    Effect.mapError(
+      (error) =>
+        new BuildConfigError({
+          field: "default",
+          message: formatBuildConfigDecodeMessage(error.message)
+        })
+    )
+  )
+
+const toProductionSecurityConfig = (config: DesktopConfig): ProductionSecurityConfig => {
+  const permissions = isProductionPermissionsConfig(config.permissions)
+    ? config.permissions
+    : undefined
+  return {
+    ...(config.security === undefined ? {} : { security: config.security }),
+    ...(permissions === undefined ? {} : { permissions }),
+    ...(config.update === undefined ? {} : { update: config.update }),
+    ...(config.appProtocol === undefined ? {} : { appProtocol: config.appProtocol }),
+    ...(config.resources === undefined ? {} : { resources: config.resources }),
+    ...(config.contracts === undefined ? {} : { contracts: config.contracts })
+  }
+}
+
+const isProductionPermissionsConfig = (
+  permissions: DesktopConfig["permissions"]
+): permissions is ProductionSecurityConfig["permissions"] =>
+  permissions !== undefined && !Array.isArray(permissions)
+
 const formatBuildConfigDecodeMessage = (message: string): string => {
   if (message.includes('["runtime"]["engine"]')) {
     return `runtime.engine must be one of ${RUNTIME_ENGINES.join(", ")}`
@@ -3651,7 +3693,7 @@ const runProductionCheckHandler = (
     const configPath = Option.getOrElse(flags.config, () => "desktop.config.ts")
     const absoluteConfigPath = resolvePath(options.cwd, configPath)
     const config = yield* loadConfig(absoluteConfigPath).pipe(
-      Effect.map((value) => value as DesktopConfig & ProductionSecurityConfig),
+      Effect.flatMap((value) => decodeProductionCheckConfig(value, absoluteConfigPath)),
       Effect.catch((error) =>
         Effect.sync(() => {
           const output = flags.json
@@ -3667,7 +3709,7 @@ const runProductionCheckHandler = (
       return
     }
 
-    const baselinePassed = yield* validateProductionConfigBaseline(config).pipe(
+    const baselinePassed = yield* validateProductionConfigBaseline(config.desktopConfig).pipe(
       Effect.as(true),
       Effect.catch((error) =>
         Effect.sync(() => {
@@ -3704,7 +3746,7 @@ const runProductionCheckHandler = (
     }
 
     const report = yield* runProductionCheck({
-      config,
+      config: config.productionConfig,
       configPath,
       rendererFiles
     }).pipe(

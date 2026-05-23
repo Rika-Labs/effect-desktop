@@ -642,6 +642,17 @@ test("desktop value-flag usage errors honor --json", () =>
     })
   ))
 
+test("desktop check --production does not assert decoded config as production config", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        Bun.file(new URL("./index.ts", import.meta.url)).text()
+      )
+
+      expect(source).not.toContain("value as DesktopConfig & ProductionSecurityConfig")
+    })
+  ))
+
 test("desktop check --production exits non-zero for unacknowledged CSP weakening", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -677,6 +688,102 @@ test("desktop check --production exits non-zero for unacknowledged CSP weakening
 
         expect(exitCode).toBe(1)
         expect(stderr.join("")).toContain("weakened-csp")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --production preserves structured permission policy checks", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() => mkdtemp(join(tmpdir(), "effect-desktop-cli-")))
+      try {
+        yield* Effect.promise(() =>
+          writeFile(
+            join(directory, "desktop.config.ts"),
+            [
+              "export default {",
+              "  app: {",
+              "    id: 'dev.effect-desktop.production-check',",
+              "    name: 'Production Check',",
+              "    version: '1.0.0'",
+              "  },",
+              "  permissions: {",
+              "    filesystem: { write: { enabled: true } }",
+              "  }",
+              "}"
+            ].join("\n")
+          )
+        )
+
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["check", "--production", "--config", "desktop.config.ts"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        expect(stderr.join("")).toContain("filesystem-write-without-scope")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop check --production does not treat permission arrays as production policy", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        Bun.file(new URL("./index.ts", import.meta.url)).text()
+      )
+      expect(source).toContain("!Array.isArray(permissions)")
+
+      const directory = yield* Effect.promise(() => mkdtemp(join(tmpdir(), "effect-desktop-cli-")))
+      try {
+        yield* Effect.promise(() =>
+          writeFile(
+            join(directory, "desktop.config.ts"),
+            [
+              "export default {",
+              "  app: {",
+              "    id: 'dev.effect-desktop.production-check',",
+              "    name: 'Production Check',",
+              "    version: '1.0.0'",
+              "  },",
+              "  permissions: [",
+              "    { kind: 'filesystem.write', roots: [] }",
+              "  ]",
+              "}"
+            ].join("\n")
+          )
+        )
+
+        const stdout: string[] = []
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["check", "--production", "--config", "desktop.config.ts", "--json"],
+          cwd: directory,
+          writeStdout: (text) => {
+            stdout.push(text)
+          },
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const report = decodeProductionCheckJsonReport(stdout.join(""))
+        expect(exitCode).toBe(0)
+        expect(stderr.join("")).toBe("")
+        expect(report).toEqual({
+          passed: true,
+          failures: [],
+          acknowledgements: []
+        })
       } finally {
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
