@@ -14,7 +14,6 @@ import {
   type DownloadHandle,
   DownloadSupportedResult
 } from "./contracts/download.js"
-import { subscribeNativeEvent } from "./event-stream.js"
 import { runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 
@@ -57,11 +56,12 @@ export const DownloadCapabilityFacts = Object.freeze([
   downloadCapabilityFact("list")
 ])
 
-export const DownloadRpcEvents = Object.freeze({
-  Event: { payload: DownloadEvent }
+const DownloadEventStream = NativeSurface.event(Surface, "Event", {
+  payload: DownloadEvent,
+  support: NativeSurface.support.supported
 })
 
-const DownloadRpcGroup = RpcGroup.make(DownloadIsSupported)
+const DownloadRpcGroup = RpcGroup.make(DownloadIsSupported, DownloadEventStream)
 
 export const DownloadRpcs: RpcGroup.RpcGroup<DownloadRpc> = DownloadRpcGroup
 
@@ -84,7 +84,14 @@ export const DownloadHandlersLive = DownloadRpcGroup.toLayer({
     Effect.gen(function* () {
       const download = yield* Download
       return yield* download.isSupported()
-    })
+    }),
+  "Download.events.Event": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const download = yield* Download
+        return download.events()
+      })
+    )
 })
 
 export const DownloadSurface = NativeSurface.make(Surface, DownloadRpcGroup, {
@@ -123,7 +130,7 @@ const downloadClientFromRpcClient = (
     isSupported: () =>
       runDownloadRpc(client["Download.isSupported"](undefined), "Download.isSupported"),
     events: (download) =>
-      subscribeNativeEvent(exchange, EventMethod, DownloadEvent).pipe(
+      NativeSurface.subscribeEvent(exchange, DownloadEventStream).pipe(
         Stream.filter((event) => download === undefined || event.download.id === download.id)
       )
   } satisfies DownloadClientApi)

@@ -10,7 +10,7 @@ effect_version: 4
 
 `Download` describes profile-owned download lifecycle and event operations. The download start, pause, resume, cancel, and list operations are declared as capability facts but are not callable in this build; `isSupported` and the `Download.Event` stream are the genuinely callable surface.
 
-The public service is Layer-first and test-substitutable. The TypeScript service exposes `Download.Event` as a typed stream. The memory client is intentionally minimal in this build: `isSupported()` returns `{ supported: true }` and `events()` returns an empty stream. It does not record download snapshots, replay lifecycle events, or synthesize cancellation events.
+The public service is Layer-first and test-substitutable. The TypeScript service exposes `Download.Event` as a typed stream. The payload schema is owned by the canonical `Download.events.Event` RPC stream contract; the native bridge lowers that event contract to the existing `Download.Event` wire method. The memory client is intentionally minimal in this build: `isSupported()` returns `{ supported: true }` and `events()` returns an empty stream. It does not record download snapshots, replay lifecycle events, or synthesize cancellation events.
 
 ## Methods
 

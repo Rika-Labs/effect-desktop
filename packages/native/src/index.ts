@@ -380,7 +380,6 @@ export {
   DownloadCapabilityFacts,
   DownloadHandlersLive,
   DownloadMethodNames,
-  DownloadRpcEvents,
   DownloadRpcs,
   DownloadSurface,
   makeDownloadMemoryClient,

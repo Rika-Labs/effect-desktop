@@ -7,6 +7,7 @@ import {
 } from "@orika/bridge"
 import { makeResourceId } from "@orika/core"
 import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Schema, Stream } from "effect"
+import { RpcSchema } from "effect/unstable/rpc"
 
 import { makeNativeCapabilityManifest } from "./capabilities.js"
 import { DownloadEvent, DownloadProgressedEvent, DownloadSnapshot } from "./contracts/download.js"
@@ -36,10 +37,12 @@ test("Download public surface omits shallow service and layer helpers", () =>
         "DownloadServiceApi",
         "class DownloadClient",
         "DownloadLive",
+        "DownloadRpcEvents",
         "makeDownloadClientLayer",
         "makeDownloadServiceLayer",
         "makeDownloadBridgeClientLayer",
-        "makeDownloadService"
+        "makeDownloadService",
+        "subscribeNativeEvent"
       ]) {
         expect(source).not.toContain(removedName)
         expect(indexSource).not.toContain(removedName)
@@ -47,12 +50,30 @@ test("Download public surface omits shallow service and layer helpers", () =>
     })
   ))
 
-test("Download exposes only isSupported as a callable RPC", () => {
+test("Download exposes isSupported and its event stream as callable RPCs", () => {
   const callableTags = Array.from(DownloadRpcs.requests.keys()).toSorted()
-  expect(callableTags).toEqual(["Download.isSupported"])
+  expect(callableTags).toEqual(["Download.events.Event", "Download.isSupported"])
   for (const method of UnsupportedMethods) {
     expect(callableTags).not.toContain(`Download.${method}`)
   }
+})
+
+test("Download event schema is owned by the RPC stream contract", async () => {
+  const downloadModule = await import("./download.js")
+  const eventRpc = DownloadRpcs.requests.get("Download.events.Event")
+
+  expect("DownloadRpcEvents" in downloadModule).toBe(false)
+  expect(eventRpc).toBeDefined()
+  expect(eventRpc === undefined ? false : RpcSchema.isStreamSchema(eventRpc.successSchema)).toBe(
+    true
+  )
+  if (eventRpc !== undefined && RpcSchema.isStreamSchema(eventRpc.successSchema)) {
+    expect(eventRpc.successSchema.success).toBe(DownloadEvent)
+  }
+
+  const eventDoc = DownloadSurface.schemaDocs.find((doc) => doc.tag === "Download.events.Event")
+  expect(eventDoc?.kind).toBe("stream")
+  expect(eventDoc?.callable).toBe(true)
 })
 
 test("Download isSupported reports supported result through the service", () =>
@@ -111,7 +132,9 @@ test("Download capability facts surface in the manifest and stay non-callable", 
       const callableFactTags = DownloadSurface.schemaDocs
         .filter((doc) => doc.callable)
         .map((doc) => doc.tag)
-      expect(callableFactTags).toEqual(["Download.isSupported"])
+      expect(callableFactTags).toEqual(["Download.isSupported", "Download.events.Event"])
+      expect(byTag.get("Download.events.Event")?.capability.kind).toBe("none")
+      expect(byTag.get("Download.events.Event")?.support).toEqual({ status: "supported" })
 
       const nonCallableTags = DownloadSurface.schemaDocs
         .filter((doc) => !doc.callable)
@@ -351,6 +374,49 @@ test("Download bridge client rejects inconsistent failure messages as InvalidOut
 
         expectInvalidOutput(exit)
       }
+    })
+  ))
+
+test("Download bridge client validates event payloads through the RPC stream contract", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const subscriptions: string[] = []
+      const exchange: BridgeClientExchange = {
+        request: () => Effect.die("Download event contract test does not issue bridge requests"),
+        subscribe: (method) => {
+          subscriptions.push(method)
+          return Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              method,
+              timestamp: 1_710_000_000_000,
+              traceId: "download-event-trace",
+              payload: {
+                type: "download-event",
+                timestamp: 1_710_000_000_000,
+                phase: "progressed",
+                download: downloadHandle(),
+                profile: profileHandle(),
+                url: "https://example.test/file.zip",
+                receivedBytes: 1,
+                unexpected: "must be rejected by strict contract decode"
+              }
+            })
+          )
+        }
+      }
+      const exit = yield* runScoped(
+        Effect.gen(function* () {
+          const client = yield* Download
+          return yield* Effect.exit(
+            client.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+          )
+        }),
+        DownloadSurface.bridgeClientLayer(exchange)
+      )
+
+      expectInvalidOutput(exit)
+      expect(subscriptions).toEqual(["Download.Event"])
     })
   ))
 
