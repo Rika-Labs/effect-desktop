@@ -97,6 +97,21 @@ describe("workspaces", () => {
   })
 })
 
+describe("root README", () => {
+  const readme = readFileSync(join(REPO_ROOT, "README.md"), "utf8")
+
+  test("repository map only links package directories with manifests", () => {
+    const packageLinks = readme.matchAll(/\]\(packages\/([^)]+)\)/g)
+    for (const match of packageLinks) {
+      const packageName = match[1]
+      if (packageName === undefined) {
+        throw new Error("README package link regex produced no package name")
+      }
+      expect(existsSync(join(REPO_ROOT, "packages", packageName, "package.json"))).toBe(true)
+    }
+  })
+})
+
 describe("@orika/cli package manifest", () => {
   const cli = readPackageJson(join(REPO_ROOT, "packages", "cli", "package.json"))
 

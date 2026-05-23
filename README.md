@@ -13,7 +13,7 @@ Effect owns correctness.
 
 - A **Rust host** that owns the native shell, WebViews, app-protocol routing, and OS adapters.
 - A **Bun runtime** that owns application services, RPC handlers, jobs, storage, and telemetry.
-- A **renderer adapter** for React (Solid, Vue, Next, Astro also available) that consumes typed RPC clients.
+- **Renderer adapters** for React, Solid, Vue, and Next that consume typed RPC clients.
 - **Permissions are deny-by-default.** Every privileged call crosses `PermissionRegistry`, emits an audit event, and has a deterministic test double.
 - **Failures are tagged values**, not thrown exceptions. The renderer narrows on `_tag`.
 - **Resources are scoped.** Windows, watchers, processes, PTYs, workers, jobs — all close with their owner scope.
@@ -69,25 +69,25 @@ If any of those fail on a clean clone, file an issue — it is not your machine.
 
 ## Repository map
 
-| Path                                                                                                                                        | Purpose                                                                            |
-| ------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| [`docs/`](docs)                                                                                                                             | External documentation (Diátaxis-organized).                                       |
-| [`engineering/`](engineering)                                                                                                               | Internal specifications, ADRs, plans, run logs, release evidence, roadmap records. |
-| [`crates/host/`](crates/host)                                                                                                               | Rust native host and WebView shell.                                                |
-| [`crates/host-protocol/`](crates/host-protocol)                                                                                             | Wire protocol shared with the runtime.                                             |
-| [`crates/native-pty/`](crates/native-pty)                                                                                                   | PTY adapter.                                                                       |
-| [`crates/native-updater/`](crates/native-updater)                                                                                           | Updater adapter.                                                                   |
-| [`packages/core/`](packages/core)                                                                                                           | Runtime services, public framework entry.                                          |
-| [`packages/native/`](packages/native)                                                                                                       | Native capability service definitions and RPC surfaces.                            |
-| [`packages/bridge/`](packages/bridge)                                                                                                       | Host protocol, framing, RPC helpers, redaction.                                    |
-| [`packages/react/`](packages/react)                                                                                                         | React provider and hooks.                                                          |
-| [`packages/solid/`](packages/solid), [`vue/`](packages/vue), [`next/`](packages/next), [`astro/`](packages/astro), [`vite/`](packages/vite) | Framework adapters.                                                                |
-| [`packages/platform-browser/`](packages/platform-browser)                                                                                   | Renderer-side IndexedDB, SQLite WASM, PGlite.                                      |
-| [`packages/cli/`](packages/cli)                                                                                                             | Build, package, release, doctor commands.                                          |
-| [`packages/config/`](packages/config)                                                                                                       | Configuration schema and production checks.                                        |
-| [`packages/test/`](packages/test)                                                                                                           | Test layers and headless harnesses.                                                |
-| [`packages/devtools/`](packages/devtools)                                                                                                   | Inspector shell and panels.                                                        |
-| [`apps/inspector/`](apps/inspector)                                                                                                         | Vite + React inspector for live and recorded sessions.                             |
+| Path                                                                                                            | Purpose                                                                            |
+| --------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| [`docs/`](docs)                                                                                                 | External documentation (Diátaxis-organized).                                       |
+| [`engineering/`](engineering)                                                                                   | Internal specifications, ADRs, plans, run logs, release evidence, roadmap records. |
+| [`crates/host/`](crates/host)                                                                                   | Rust native host and WebView shell.                                                |
+| [`crates/host-protocol/`](crates/host-protocol)                                                                 | Wire protocol shared with the runtime.                                             |
+| [`crates/native-pty/`](crates/native-pty)                                                                       | PTY adapter.                                                                       |
+| [`crates/native-updater/`](crates/native-updater)                                                               | Updater adapter.                                                                   |
+| [`packages/core/`](packages/core)                                                                               | Runtime services, public framework entry.                                          |
+| [`packages/native/`](packages/native)                                                                           | Native capability service definitions and RPC surfaces.                            |
+| [`packages/bridge/`](packages/bridge)                                                                           | Host protocol, framing, RPC helpers, redaction.                                    |
+| [`packages/react/`](packages/react)                                                                             | React provider and hooks.                                                          |
+| [`packages/solid/`](packages/solid), [`vue/`](packages/vue), [`next/`](packages/next), [`vite/`](packages/vite) | Framework adapters and Vite integration.                                           |
+| [`packages/platform-browser/`](packages/platform-browser)                                                       | Renderer-side IndexedDB, SQLite WASM, PGlite.                                      |
+| [`packages/cli/`](packages/cli)                                                                                 | Build, package, release, doctor commands.                                          |
+| [`packages/config/`](packages/config)                                                                           | Configuration schema and production checks.                                        |
+| [`packages/test/`](packages/test)                                                                               | Test layers and headless harnesses.                                                |
+| [`packages/devtools/`](packages/devtools)                                                                       | Inspector shell and panels.                                                        |
+| [`apps/inspector/`](apps/inspector)                                                                             | Vite + React inspector for live and recorded sessions.                             |
 
 ## Mental model in one diagram
 
