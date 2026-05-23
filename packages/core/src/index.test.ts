@@ -172,6 +172,17 @@ test("Desktop.workflowEngine does not assert the empty workflow Layer", () =>
     })
   ))
 
+test("Desktop runtime layer array merge does not assert the empty Layer", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        Bun.file(new URL("./runtime/desktop-app.ts", import.meta.url)).text()
+      )
+
+      expect(source).not.toContain("(Layer.empty as Layer.Layer<never, E, R>)")
+    })
+  ))
+
 test("public barrel exports the ResourceRegistry factory", () => {
   expect(runtimeProviderServicesContracts).toEqual([true, true, true])
   expect(core.makeResourceRegistry).toBeFunction()

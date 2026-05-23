@@ -1382,9 +1382,7 @@ const mergeLayerArray = <E, R>(
   layers: ReadonlyArray<Layer.Layer<never, E, R>>
 ): Layer.Layer<never, E, R> => {
   const [firstLayer, ...remainingLayers] = layers
-  return firstLayer === undefined
-    ? (Layer.empty as Layer.Layer<never, E, R>)
-    : Layer.mergeAll(firstLayer, ...remainingLayers)
+  return firstLayer === undefined ? Layer.empty : Layer.mergeAll(firstLayer, ...remainingLayers)
 }
 
 const bindRpcGroup = <Rpcs extends Rpc.Any, E, R>(
