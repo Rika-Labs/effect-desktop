@@ -67,12 +67,23 @@ export class UnsupportedDesktopTargetError extends Data.TaggedError(
 
 export const DesktopTargetIds: readonly DesktopTargetId[] = DesktopTargetIdLiterals
 
+const DesktopTargetPartsById = {
+  "linux-arm64": { arch: "arm64", os: "linux" },
+  "linux-x64": { arch: "x64", os: "linux" },
+  "macos-arm64": { arch: "arm64", os: "macos" },
+  "macos-x64": { arch: "x64", os: "macos" },
+  "windows-arm64": { arch: "arm64", os: "windows" },
+  "windows-x64": { arch: "x64", os: "windows" }
+} satisfies Record<
+  DesktopTargetId,
+  {
+    readonly arch: DesktopArch
+    readonly os: DesktopOs
+  }
+>
+
 export const parseDesktopTargetId = (id: DesktopTargetId): DesktopTarget => {
-  const separator = id.indexOf("-")
-  return new DesktopTarget({
-    arch: id.slice(separator + 1) as DesktopArch,
-    os: id.slice(0, separator) as DesktopOs
-  })
+  return new DesktopTarget(DesktopTargetPartsById[id])
 }
 
 export const decodeDesktopTarget = (

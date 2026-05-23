@@ -25,6 +25,18 @@ import {
   wixArch
 } from "./targets.js"
 
+test("release target parser does not assert target id segments", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        Bun.file(new URL("./targets.ts", import.meta.url)).text()
+      )
+
+      expect(source).not.toContain("as DesktopArch")
+      expect(source).not.toContain("as DesktopOs")
+    })
+  ))
+
 test("release targets decode every supported target id", () => {
   for (const id of DesktopTargetIds) {
     const target = parseDesktopTargetId(id)
