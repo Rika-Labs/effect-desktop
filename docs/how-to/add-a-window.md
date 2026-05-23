@@ -55,7 +55,7 @@ import { useCloseCurrentWindowMutation } from "@orika/react"
 
 function CloseButton() {
   const close = useCloseCurrentWindowMutation()
-  return <button onClick={() => close.run({})}>Close</button>
+  return <button onClick={() => close.run()}>Close</button>
 }
 ```
 

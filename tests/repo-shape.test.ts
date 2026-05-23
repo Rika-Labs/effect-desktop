@@ -28,6 +28,8 @@ const PHASE_0_RUST_TEST_MARKER = "fn it_compiles"
 const NATIVE_LAYER_HELPER_NAME_PATTERN =
   /\b(make[A-Za-z0-9]+(?:ClientLayer|ServiceLayer|BridgeClientLayer))\b/g
 const NATIVE_PACKAGE_EXPORT_BLOCK_PATTERN = /export\s*\{([\s\S]*?)\}\s*from\s+"\.[^"]+\.js"/g
+const CURRENT_WINDOW_VOID_MUTATION_PAYLOAD_PATTERN =
+  /use(?:Close|Destroy)CurrentWindowMutation[\s\S]{0,500}\.run\(\s*\{\s*\}\s*\)/m
 const STALE_PACKAGE_README_PHRASES = [
   "public API remains reserved for Phase 4+",
   "Public renderer-facing APIs",
@@ -348,6 +350,9 @@ describe("React window docs", () => {
         )
       ) {
         violations.push(`${relativePath}: do not compare the Option result directly`)
+      }
+      if (CURRENT_WINDOW_VOID_MUTATION_PAYLOAD_PATTERN.test(markdown)) {
+        violations.push(`${relativePath}: call current-window close/destroy mutations with run()`)
       }
     }
 

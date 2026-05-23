@@ -133,7 +133,7 @@ export function ComposePanel() {
   const onSave = async () => {
     if (!draft.trim()) return
     await save.run({ id: crypto.randomUUID(), body: draft })
-    await closeWindow.run({})
+    await closeWindow.run()
   }
 
   return (
@@ -146,7 +146,7 @@ export function ComposePanel() {
         autoFocus
       />
       <div>
-        <button type="button" onClick={() => closeWindow.run({})}>
+        <button type="button" onClick={() => closeWindow.run()}>
           Cancel
         </button>
         <button type="submit" onClick={onSave} disabled={save.status === "running"}>

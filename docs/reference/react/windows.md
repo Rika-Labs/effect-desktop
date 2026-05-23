@@ -58,7 +58,7 @@ Close by handle, or close the current window:
 
 ```tsx
 const close = useCloseCurrentWindowMutation()
-<button onClick={() => close.run({})}>Close</button>
+<button onClick={() => close.run()}>Close</button>
 ```
 
 ## `useDestroyWindowMutation()` / `useDestroyCurrentWindowMutation()`
