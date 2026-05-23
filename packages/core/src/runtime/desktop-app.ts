@@ -853,18 +853,13 @@ export const layer = <RIn = never, E = never, RpcHandlerR = unknown>(
   Exclude<RIn, DesktopRuntimeProvidedServices>
 > => runtime(descriptor)
 
-// `buildSpine` genuinely provides a superset of `DesktopRuntimeServices` and
-// requires a subset of `Exclude<RIn, DesktopRuntimeProvidedServices>`
-// (it also satisfies the core services it composes internally). TypeScript cannot
-// reduce the nested `Exclude<Exclude<RIn, ...>, ...>` conditional against a generic
-// `RIn`, so the public contract is asserted here once.
 export const runtime = <RIn = never, E = never, RpcHandlerR = unknown>(
   config: DesktopConfig<RIn, E, RpcHandlerR>
 ): Layer.Layer<
   DesktopRuntimeServices,
   DesktopConfigError | E,
   Exclude<RIn, DesktopRuntimeProvidedServices>
-> => buildSpine(config) as never
+> => buildSpine(config)
 
 export const DesktopRuntimeLive = runtime
 
@@ -1132,7 +1127,13 @@ const decodeRpcCapability = (
   )
 }
 
-const buildSpine = <RIn, E, RpcHandlerR>(config: DesktopConfig<RIn, E, RpcHandlerR>) =>
+const buildSpine = <RIn, E, RpcHandlerR>(
+  config: DesktopConfig<RIn, E, RpcHandlerR>
+): Layer.Layer<
+  DesktopRuntimeServices,
+  DesktopConfigError | E,
+  Exclude<RIn, DesktopRuntimeProvidedServices>
+> =>
   Layer.unwrap(
     Effect.gen(function* () {
       const providers = yield* buildProviders(config)
@@ -1162,12 +1163,13 @@ const buildSpine = <RIn, E, RpcHandlerR>(config: DesktopConfig<RIn, E, RpcHandle
       )
       const rpcLayers = registrations.map((registration) => bindRegistration(registration))
 
-      const workflowLayer = mergeLayerArray(workflowLayers)
+      const workflowLayer: Layer.Layer<never, E, RIn> = mergeLayerArray(workflowLayers).pipe(
+        Layer.provide(coreServicesLayer)
+      )
       const rpcLayer = mergeLayerArray(rpcLayers)
       const runtimeProviderLayer = (yield* providers.runtime.layer).pipe(Layer.orDie)
       const runtimeBase = Layer.mergeAll(
         runtimeProviderLayer,
-        coreServicesLayer,
         makePermissionServicesLayer(config, permissions),
         makeAppResourceOwnerLayer(config.id)
       )
@@ -1193,12 +1195,10 @@ const buildSpine = <RIn, E, RpcHandlerR>(config: DesktopConfig<RIn, E, RpcHandle
       )
 
       const desktopContextLayer = Layer.merge(desktopAppLayer, desktopRuntimeLayer)
+      const runtimeProvidedLayer = Layer.merge(runtimeBase, desktopContextLayer)
+      const dependentLayer = Layer.mergeAll(workflowLayer, rpcLayer)
 
-      const dependentLayer = Layer.mergeAll(workflowLayer, rpcLayer).pipe(
-        Layer.provideMerge(desktopContextLayer)
-      )
-
-      return Layer.provideMerge(dependentLayer, runtimeBase)
+      return Layer.provideMerge(dependentLayer, runtimeProvidedLayer)
     })
   )
 

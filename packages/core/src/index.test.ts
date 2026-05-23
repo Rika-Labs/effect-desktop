@@ -109,6 +109,17 @@ test("Desktop.rpc server binding does not erase Effect RPC requirements", () =>
     })
   ))
 
+test("Desktop.runtime does not erase the runtime spine Layer type", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        Bun.file(new URL("./runtime/desktop-app.ts", import.meta.url)).text()
+      )
+
+      expect(source).not.toContain("buildSpine(config) as never")
+    })
+  ))
+
 test("public barrel exports the ResourceRegistry factory", () => {
   expect(runtimeProviderServicesContracts).toEqual([true, true])
   expect(core.makeResourceRegistry).toBeFunction()
@@ -532,6 +543,35 @@ test("Desktop runtime accepts handler services provided around Desktop.layer(App
       )
       expect(desktopRuntimeRequiresGreetingAndProtocol).toBe(true)
       expect(Exit.isSuccess(exit)).toBe(true)
+    })
+  )
+})
+
+test("Desktop.runtime provides the core workflow engine to workflow layers", () => {
+  let acquiredWorkflowEngine = false
+  const workflowLayer: DesktopWorkflowLayer = Layer.effectDiscard(
+    Effect.gen(function* () {
+      yield* WorkflowEngine.WorkflowEngine.asEffect()
+      acquiredWorkflowEngine = true
+    })
+  )
+  const runtime = ManagedRuntime.make(
+    core.Desktop.runtime({
+      id: "workflow-runtime",
+      windows: core.Desktop.window("main", { title: "Workflow Runtime" }),
+      providers: core.Desktop.provider(core.Desktop.Provider.Runtime.test),
+      workflows: core.Desktop.workflow(workflowLayer)
+    })
+  )
+
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const exit = yield* Effect.promise(() =>
+        runtime.runPromiseExit(Effect.scoped(core.DesktopApp.asEffect()))
+      )
+
+      expect(Exit.isSuccess(exit)).toBe(true)
+      expect(acquiredWorkflowEngine).toBe(true)
     })
   )
 })
