@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
@@ -9,7 +8,7 @@ import {
   RpcGroup
 } from "@orika/bridge"
 import { type DesktopRpcClient, type PermissionRegistry, P } from "@orika/core"
-import { Context, Effect, Layer, Schema, Stream } from "effect"
+import { Context, Effect, Schema, Stream } from "effect"
 
 import {
   AppMetadataEvent,
@@ -69,42 +68,9 @@ export interface AppMetadataClientApi {
   readonly events: () => Stream.Stream<AppMetadataEvent, AppMetadataError>
 }
 
-export class AppMetadataClient extends Context.Service<AppMetadataClient, AppMetadataClientApi>()(
-  "@orika/native/app-metadata/AppMetadataClient"
-) {}
-
-export type AppMetadataServiceApi = AppMetadataClientApi
-
-export class AppMetadata extends Context.Service<AppMetadata, AppMetadataServiceApi>()(
+export class AppMetadata extends Context.Service<AppMetadata, AppMetadataClientApi>()(
   "@orika/native/app-metadata/AppMetadata"
-) {
-  static readonly layer = Layer.effect(AppMetadata)(
-    Effect.gen(function* () {
-      const client = yield* AppMetadataClient
-      return AppMetadata.of({
-        getInfo: () => client.getInfo(),
-        getPaths: () => client.getPaths(),
-        getLaunchContext: () => client.getLaunchContext(),
-        events: () => client.events()
-      } satisfies AppMetadataServiceApi)
-    })
-  )
-}
-
-export const AppMetadataLive = AppMetadata.layer
-
-export const makeAppMetadataClientLayer = (
-  client: AppMetadataClientApi
-): Layer.Layer<AppMetadataClient> => Layer.succeed(AppMetadataClient)(client)
-
-export const makeAppMetadataServiceLayer = (
-  client: AppMetadataClientApi
-): Layer.Layer<AppMetadata> => Layer.provide(AppMetadataLive, makeAppMetadataClientLayer(client))
-
-export const makeAppMetadataBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<AppMetadataClient> => AppMetadataSurface.bridgeClientLayer(exchange, options)
+) {}
 
 export type AppMetadataRpc = RpcGroup.Rpcs<typeof AppMetadataRpcGroup>
 export type AppMetadataRpcHandlers = RpcGroup.HandlersFrom<AppMetadataRpc>
@@ -128,7 +94,7 @@ export const AppMetadataHandlersLive = AppMetadataRpcGroup.toLayer({
 })
 
 export const AppMetadataSurface = NativeSurface.make("AppMetadata", AppMetadataRpcGroup, {
-  service: AppMetadataClient,
+  service: AppMetadata,
   capabilities: AppMetadataMethodNames,
   handlers: AppMetadataHandlersLive,
   client: (client) => appMetadataClientFromRpcClient(client),

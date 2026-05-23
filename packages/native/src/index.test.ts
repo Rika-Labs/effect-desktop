@@ -107,10 +107,10 @@ import {
   AppMethodNames,
   AppSurface,
   AppMetadata,
-  AppMetadataLive,
   AppMetadataMethodNames,
   AppMetadataRpcEvents,
   AppMetadataRpcs,
+  AppMetadataSurface,
   Association,
   AssociationLive,
   AssociationMethodNames,
@@ -283,7 +283,6 @@ import {
   WindowMethodNames,
   makeAssociationServiceLayer,
   makeAppServiceLayer,
-  makeAppMetadataServiceLayer,
   makeAutostartServiceLayer,
   makeClipboardServiceLayer,
   makeContextMenuServiceLayer,
@@ -337,7 +336,7 @@ import {
   type WebViewClientApi,
   type WindowClientApi
 } from "./index.js"
-import { makeAppMetadataBridgeClientLayer, makeHostAppMetadataRpcRuntime } from "./app-metadata.js"
+import { makeHostAppMetadataRpcRuntime } from "./app-metadata.js"
 import { makeAppBridgeClientLayer, makeHostAppRpcRuntime } from "./app.js"
 import { makeAssociationBridgeClientLayer, makeHostAssociationRpcRuntime } from "./association.js"
 import { makeAutostartBridgeClientLayer, makeHostAutostartRpcRuntime } from "./autostart.js"
@@ -2059,7 +2058,7 @@ test("AppMetadata contracts reject inconsistent event phase payloads", () => {
   }
 })
 
-test("AppMetadata service delegates through a substitutable AppMetadataClient port", () =>
+test("AppMetadata delegates through a substitutable service value", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
@@ -2074,7 +2073,7 @@ test("AppMetadata service delegates through a substitutable AppMetadataClient po
 
             return { events, info, launchContext, paths }
           }),
-          makeAppMetadataServiceLayer(appMetadataClient(calls))
+          appMetadataLayer(appMetadataClient(calls))
         )
       )
 
@@ -2138,7 +2137,7 @@ test("AppMetadata bridge client sends typed host envelopes and decodes events an
 
             return { events, info, launchContext, paths }
           }),
-          Layer.provide(AppMetadataLive, makeAppMetadataBridgeClientLayer(exchange))
+          AppMetadataSurface.bridgeClientLayer(exchange)
         )
       )
 
@@ -2178,7 +2177,7 @@ test("AppMetadata bridge client rejects inconsistent event phase payloads as Inv
             const metadata = yield* AppMetadata
             return yield* Effect.exit(metadata.events().pipe(Stream.take(1), Stream.runHead))
           }),
-          Layer.provide(AppMetadataLive, makeAppMetadataBridgeClientLayer(exchange))
+          AppMetadataSurface.bridgeClientLayer(exchange)
         )
       )
 
@@ -2198,37 +2197,34 @@ test("AppMetadata bridge client rejects malformed host output as InvalidOutput",
           const launchContextExit = yield* Effect.exit(metadata.getLaunchContext())
           return { infoExit, launchContextExit, pathsExit }
         }),
-        Layer.provide(
-          AppMetadataLive,
-          makeAppMetadataBridgeClientLayer(
-            appMetadataExchange(requests, (request) => {
-              if (request.method === "AppMetadata.getInfo") {
-                return {
-                  kind: "success",
-                  payload: { id: "", name: "ORIKA Test", version: "not-semver" }
-                }
+        AppMetadataSurface.bridgeClientLayer(
+          appMetadataExchange(requests, (request) => {
+            if (request.method === "AppMetadata.getInfo") {
+              return {
+                kind: "success",
+                payload: { id: "", name: "ORIKA Test", version: "not-semver" }
               }
-              if (request.method === "AppMetadata.getPaths") {
-                return {
-                  kind: "success",
-                  payload: {
-                    executable: { path: "relative" },
-                    resources: { path: "/resources" },
-                    cwd: { path: "/repo" }
-                  }
-                }
-              }
+            }
+            if (request.method === "AppMetadata.getPaths") {
               return {
                 kind: "success",
                 payload: {
-                  argv: ["test", "bad\u0000arg"],
-                  cwd: { path: "/repo" },
-                  reason: "scheduled",
-                  environment: { variableNames: ["PATH"] }
+                  executable: { path: "relative" },
+                  resources: { path: "/resources" },
+                  cwd: { path: "/repo" }
                 }
               }
-            })
-          )
+            }
+            return {
+              kind: "success",
+              payload: {
+                argv: ["test", "bad\u0000arg"],
+                cwd: { path: "/repo" },
+                reason: "scheduled",
+                environment: { variableNames: ["PATH"] }
+              }
+            }
+          })
         )
       )
 
@@ -2328,7 +2324,7 @@ test("native host RPC runtime allows declared AppMetadata permissions", () =>
     })
   ))
 
-test("AppMetadata service propagates unsupported platform and host failure", () =>
+test("AppMetadata propagates unsupported platform and host failure", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const unsupported = new HostProtocolUnsupportedError({
@@ -2352,14 +2348,14 @@ test("AppMetadata service propagates unsupported platform and host failure", () 
           const metadata = yield* AppMetadata
           return yield* Effect.exit(metadata.getInfo())
         }),
-        makeAppMetadataServiceLayer(unsupportedClient)
+        appMetadataLayer(unsupportedClient)
       )
       const hostFailureExit = yield* runScoped(
         Effect.gen(function* () {
           const metadata = yield* AppMetadata
           return yield* Effect.exit(metadata.getInfo())
         }),
-        makeAppMetadataServiceLayer(hostFailureClient)
+        appMetadataLayer(hostFailureClient)
       )
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
@@ -14208,6 +14204,9 @@ const appMetadataClient = (calls: string[]): AppMetadataClientApi => ({
       return new AppMetadataEvent({ phase: "failed", reason: "host-adapter-unimplemented" })
     })
 })
+
+const appMetadataLayer = (client: AppMetadataClientApi): Layer.Layer<AppMetadata> =>
+  Layer.succeed(AppMetadata)(client)
 
 const associationClient = (calls: string[]): AssociationClientApi => ({
   isDefaultProtocolClient: (input) =>
