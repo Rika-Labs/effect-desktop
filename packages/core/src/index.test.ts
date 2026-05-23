@@ -115,6 +115,17 @@ test("Desktop.rpc server binding does not erase Effect RPC requirements", () =>
     })
   ))
 
+test("Desktop.rpc registration storage does not erase handler services", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        Bun.file(new URL("./runtime/desktop-app.ts", import.meta.url)).text()
+      )
+
+      expect(source).not.toContain("handlers: handlers as Layer.Layer<never, E, R>")
+    })
+  ))
+
 test("Desktop.runtime does not erase the runtime spine Layer type", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -1093,12 +1104,16 @@ test("Desktop.layer binds RpcGroups into the runtime RpcServer protocol", () => 
     )
   )
   const rpcLayer = core.Desktop.rpc(NotesRpcs, NotesLive)
+  type RpcHandlerStorageContract = Assert<
+    IsEqual<Layer.Success<(typeof rpcLayer)[number]["handlers"]>, Rpc.ToHandler<typeof Ping>>
+  >
   type RpcServerLayerRequirementsContract = Assert<
     IsEqual<
       Layer.Services<(typeof rpcLayer)[number]["serverLayer"]>,
       RpcServer.Protocol | PermissionInterceptor
     >
   >
+  const rpcHandlerStorageContract: RpcHandlerStorageContract = true
   const rpcServerLayerRequirementsContract: RpcServerLayerRequirementsContract = true
   const definition = core.Desktop.make({
     id: "notes",
@@ -1122,6 +1137,7 @@ test("Desktop.layer binds RpcGroups into the runtime RpcServer protocol", () => 
         Effect.scoped(Layer.build(appLayer.pipe(Layer.provide(protocolLayer))))
       )
 
+      expect(rpcHandlerStorageContract).toBe(true)
       expect(rpcServerLayerRequirementsContract).toBe(true)
       expect(desktopLayerRequirementsContract).toBe(true)
       expect(Exit.isSuccess(exit)).toBe(true)

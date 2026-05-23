@@ -30,16 +30,24 @@ export interface DesktopRpcRegistration<
   readonly serverLayer: Layer.Layer<never, E, ServerR>
 }
 
-export interface AnyDesktopRpcRegistration<E = unknown, ServerR = unknown, HandlerR = unknown> {
+export interface AnyDesktopRpcRegistration<
+  E = unknown,
+  ServerR = unknown,
+  HandlerR = unknown,
+  HandlerServices = never
+> {
   readonly _tag: "DesktopRpcRegistration"
   readonly group: DesktopRpcRegistrationGroup
-  readonly handlers: Layer.Layer<never, E, HandlerR>
+  readonly handlers: Layer.Layer<HandlerServices, E, HandlerR>
   readonly serverLayer: Layer.Layer<never, E, ServerR>
 }
 
-export type DesktopRpcsLayer<E = never, ServerR = never, HandlerR = ServerR> = ReadonlyArray<
-  AnyDesktopRpcRegistration<E, ServerR, HandlerR>
->
+export type DesktopRpcsLayer<
+  E = never,
+  ServerR = never,
+  HandlerR = ServerR,
+  HandlerServices = never
+> = ReadonlyArray<AnyDesktopRpcRegistration<E, ServerR, HandlerR, HandlerServices>>
 
 export interface DesktopRpcGroupDescriptor {
   readonly _tag: "DesktopRpcGroup"

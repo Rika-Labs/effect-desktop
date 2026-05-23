@@ -700,12 +700,12 @@ export const manifest = <RIn = never, E = never, RpcHandlerR = unknown>(
 export const rpc = <Rpcs extends Rpc.Any, E, R>(
   group: RpcGroup.RpcGroup<Rpcs>,
   handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>
-): DesktopRpcsLayer<E, DesktopRpcBoundServerRequirements<Rpcs, R>, R> =>
+): DesktopRpcsLayer<E, DesktopRpcBoundServerRequirements<Rpcs, R>, R, Rpc.ToHandler<Rpcs>> =>
   Object.freeze([
     Object.freeze({
       _tag: "DesktopRpcRegistration" as const,
       group: group as TypedDesktopRpcRegistrationGroup<Rpcs>,
-      handlers: handlers as Layer.Layer<never, E, R>,
+      handlers,
       serverLayer: bindRpcGroup(group, handlers)
     })
   ])
