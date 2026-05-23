@@ -79,7 +79,7 @@ export type ReactDesktopClientMap = DesktopRendererRpcClientMap
 
 export interface ReactDesktopRootProps {
   readonly transport?: DesktopRendererRpcTransport | undefined
-  readonly rpcs?: DesktopRpcsLayer<never, never> | undefined
+  readonly rpcs?: DesktopRpcsLayer<never, unknown, never> | undefined
   readonly children?: ReactNode | undefined
 }
 
@@ -201,7 +201,7 @@ export const ReactDesktop = Object.freeze({
 const makeReactDesktopRuntime = (
   app: DesktopAppManifest,
   transport: DesktopRendererRpcTransport | undefined,
-  rpcs: DesktopRpcsLayer<never, never> | undefined
+  rpcs: DesktopRpcsLayer<never, unknown, never> | undefined
 ): ReactDesktopRuntime => {
   const runtime = ManagedRuntime.make(
     makeDesktopRendererRpcLayer(app, {

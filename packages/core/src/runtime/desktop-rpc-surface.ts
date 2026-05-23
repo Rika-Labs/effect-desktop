@@ -10,7 +10,11 @@ import {
 import { Context, Data, Effect, Layer, Option, Schema } from "effect"
 import { Rpc, RpcClient, RpcClientError, RpcGroup, RpcSchema, RpcTest } from "effect/unstable/rpc"
 
-import { rpc as desktopRpc, type DesktopRpcsLayer } from "./desktop-app.js"
+import {
+  rpc as desktopRpc,
+  type DesktopRpcBoundServerRequirements,
+  type DesktopRpcsLayer
+} from "./desktop-app.js"
 
 export type DesktopRpcClient<Rpcs extends Rpc.Any> = RpcClient.RpcClient<
   Rpcs,
@@ -104,7 +108,11 @@ export interface DesktopRpcSurface<
   readonly _tag: "DesktopRpcSurface"
   readonly tag: Tag
   readonly group: Group
-  readonly serverLayer: DesktopRpcsLayer<ServerE, ServerR>
+  readonly serverLayer: DesktopRpcsLayer<
+    ServerE,
+    DesktopRpcBoundServerRequirements<Rpcs, ServerR>,
+    ServerR
+  >
   readonly clientLayer: Layer.Layer<
     ServiceId,
     never,

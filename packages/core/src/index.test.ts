@@ -41,6 +41,7 @@ import type {
   DesktopWorkflowLayer
 } from "./runtime/desktop-app.js"
 import type { DesktopRpcClient, SupportedDesktopRpcClient } from "./runtime/desktop-rpc-surface.js"
+import { PermissionInterceptor } from "./runtime/permission-interceptor.js"
 
 type IsEqual<A, B> =
   (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false
@@ -87,6 +88,26 @@ const DurableWorkflowRuntime = ManagedRuntime.make(
     Layer.merge(SqliteClient.layer({ filename: ":memory:" }), Reactivity.layer)
   )
 )
+const makeNoopRpcServerProtocolLayer = (): Layer.Layer<RpcServer.Protocol> =>
+  Layer.effect(RpcServer.Protocol)(
+    makeDesktopServerProtocol({
+      send: () => Effect.void,
+      run: () => Effect.never
+    })
+  )
+
+test("Desktop.rpc server binding does not erase Effect RPC requirements", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        Bun.file(new URL("./runtime/desktop-app.ts", import.meta.url)).text()
+      )
+
+      expect(source).not.toContain(
+        "Layer.provide(RpcServer.layer(group.middleware(PermissionInterceptor)), handlers) as never"
+      )
+    })
+  ))
 
 test("public barrel exports the ResourceRegistry factory", () => {
   expect(runtimeProviderServicesContracts).toEqual([true, true])
@@ -492,12 +513,24 @@ test("Desktop runtime accepts handler services provided around Desktop.layer(App
     providers: core.Desktop.provider(core.Desktop.Provider.Runtime.test),
     rpcs: core.Desktop.rpc(NotesRpcs, NotesLive)
   })
+  const appLayer = core.Desktop.runtime(app)
+  type DesktopRuntimeRequiresGreetingAndProtocol = Assert<
+    IsEqual<Layer.Services<typeof appLayer>, Greeting | RpcServer.Protocol>
+  >
+  const desktopRuntimeRequiresGreetingAndProtocol: DesktopRuntimeRequiresGreetingAndProtocol = true
 
   return Effect.runPromise(
     Effect.gen(function* () {
       const exit = yield* Effect.exit(
-        Effect.scoped(Layer.build(core.Desktop.runtime(app).pipe(Layer.provide(GreetingLayer))))
+        Effect.scoped(
+          Layer.build(
+            appLayer.pipe(
+              Layer.provide(Layer.merge(GreetingLayer, makeNoopRpcServerProtocolLayer()))
+            )
+          )
+        )
       )
+      expect(desktopRuntimeRequiresGreetingAndProtocol).toBe(true)
       expect(Exit.isSuccess(exit)).toBe(true)
     })
   )
@@ -956,11 +989,24 @@ test("Desktop.layer binds RpcGroups into the runtime RpcServer protocol", () => 
       })
     )
   )
+  const rpcLayer = core.Desktop.rpc(NotesRpcs, NotesLive)
+  type RpcServerLayerRequirementsContract = Assert<
+    IsEqual<
+      Layer.Services<(typeof rpcLayer)[number]["serverLayer"]>,
+      RpcServer.Protocol | PermissionInterceptor
+    >
+  >
+  const rpcServerLayerRequirementsContract: RpcServerLayerRequirementsContract = true
   const definition = core.Desktop.make({
     id: "notes",
     windows: core.Desktop.window("main", { title: "Notes" }),
-    rpcs: core.Desktop.rpc(NotesRpcs, NotesLive)
+    rpcs: rpcLayer
   })
+  const appLayer = core.Desktop.layer(definition)
+  type DesktopLayerRequirementsContract = Assert<
+    IsEqual<Layer.Services<typeof appLayer>, RpcServer.Protocol>
+  >
+  const desktopLayerRequirementsContract: DesktopLayerRequirementsContract = true
   const transport = {
     send: () => Effect.void,
     run: () => Effect.never
@@ -970,11 +1016,11 @@ test("Desktop.layer binds RpcGroups into the runtime RpcServer protocol", () => 
   return Effect.runPromise(
     Effect.gen(function* () {
       const exit = yield* Effect.exit(
-        Effect.scoped(
-          Layer.build(core.Desktop.layer(definition).pipe(Layer.provide(protocolLayer)))
-        )
+        Effect.scoped(Layer.build(appLayer.pipe(Layer.provide(protocolLayer))))
       )
 
+      expect(rpcServerLayerRequirementsContract).toBe(true)
+      expect(desktopLayerRequirementsContract).toBe(true)
       expect(Exit.isSuccess(exit)).toBe(true)
       expect(acquired).toBe(1)
     })
@@ -1001,7 +1047,13 @@ test("Desktop.layer rejects RpcGroup methods that declare known capability kinds
 
   return Effect.runPromise(
     Effect.gen(function* () {
-      const exit = yield* Effect.exit(Effect.scoped(Layer.build(core.Desktop.layer(definition))))
+      const exit = yield* Effect.exit(
+        Effect.scoped(
+          Layer.build(
+            core.Desktop.layer(definition).pipe(Layer.provide(makeNoopRpcServerProtocolLayer()))
+          )
+        )
+      )
 
       expect(Exit.isFailure(exit)).toBe(true)
       if (Exit.isFailure(exit)) {
@@ -1040,7 +1092,13 @@ test("Desktop.layer rejects RpcGroup methods that require undeclared capabilitie
 
   return Effect.runPromise(
     Effect.gen(function* () {
-      const exit = yield* Effect.exit(Effect.scoped(Layer.build(core.Desktop.layer(definition))))
+      const exit = yield* Effect.exit(
+        Effect.scoped(
+          Layer.build(
+            core.Desktop.layer(definition).pipe(Layer.provide(makeNoopRpcServerProtocolLayer()))
+          )
+        )
+      )
 
       expect(Exit.isFailure(exit)).toBe(true)
       if (Exit.isFailure(exit)) {
@@ -1095,7 +1153,11 @@ test("Desktop.layer validates RpcGroup capability scope coverage", () => {
   return Effect.runPromise(
     Effect.gen(function* () {
       const rejected = yield* Effect.exit(
-        Effect.scoped(Layer.build(core.Desktop.layer(wrongScope)))
+        Effect.scoped(
+          Layer.build(
+            core.Desktop.layer(wrongScope).pipe(Layer.provide(makeNoopRpcServerProtocolLayer()))
+          )
+        )
       )
       const accepted = yield* Effect.exit(
         Effect.scoped(

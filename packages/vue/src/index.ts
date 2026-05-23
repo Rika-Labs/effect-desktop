@@ -123,7 +123,7 @@ type VueEndpoint =
 
 export interface VueDesktopOptions {
   readonly transport?: DesktopRendererRpcTransport | undefined
-  readonly rpcs?: DesktopRpcsLayer<never, never> | undefined
+  readonly rpcs?: DesktopRpcsLayer<never, unknown, never> | undefined
 }
 
 export interface VueDesktopAdapter<App extends DesktopAppManifest> {
@@ -227,7 +227,7 @@ export const VueDesktop = Object.freeze({
 const makeVueDesktopRuntime = (
   app: DesktopAppManifest,
   transport: DesktopRendererRpcTransport | undefined,
-  rpcs: DesktopRpcsLayer<never, never> | undefined
+  rpcs: DesktopRpcsLayer<never, unknown, never> | undefined
 ): VueDesktopRuntime => {
   const runtime = ManagedRuntime.make(
     makeDesktopRendererRpcLayer(app, {

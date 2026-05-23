@@ -63,7 +63,7 @@ export interface DesktopRendererRpcClientLayerOptions extends DesktopProtocolOpt
 
 export interface DesktopRendererRpcLayerOptions extends DesktopRendererRpcClientLayerOptions {
   readonly transport?: DesktopRendererRpcTransport | undefined
-  readonly rpcs?: DesktopRpcsLayer<never, never> | undefined
+  readonly rpcs?: DesktopRpcsLayer<never, unknown, never> | undefined
 }
 
 const GlobalTransportKey = "__EFFECT_DESKTOP_RPC_TRANSPORT__"
@@ -132,7 +132,7 @@ export const makeDesktopRendererRpcTransportLayer = (
 ): Layer.Layer<RendererRpcTransport, never, never> => Layer.succeed(RendererRpcTransport)(transport)
 
 export const makeDesktopRendererRpcTestLayer = (
-  rpcs: DesktopRpcsLayer<never, never>,
+  rpcs: DesktopRpcsLayer<never, unknown, never>,
   options: {
     readonly framework?: DesktopFramework | undefined
     readonly inspector?: RendererInspectorCollectorApi | undefined
@@ -176,7 +176,7 @@ const acquireDesktopRendererRpcClients = (
   })
 
 const acquireDesktopRendererRpcTestClients = (
-  rpcs: DesktopRpcsLayer<never, never>,
+  rpcs: DesktopRpcsLayer<never, unknown, never>,
   framework: DesktopFramework,
   inspector: RendererInspectorCollectorApi | undefined
 ): Effect.Effect<RendererRpcClientsApi, never, Scope.Scope> =>
@@ -204,8 +204,8 @@ const acquireDesktopRendererRpcTestClients = (
   })
 
 const snapshotRegistrations = (
-  rpcs: DesktopRpcsLayer<never, never>
-): Effect.Effect<ReadonlyArray<AnyDesktopRpcRegistration<never, never>>, never, never> =>
+  rpcs: DesktopRpcsLayer<never, unknown, never>
+): Effect.Effect<ReadonlyArray<AnyDesktopRpcRegistration<never, unknown, never>>, never, never> =>
   Effect.succeed(rpcs)
 
 const makeGroupClient = (

@@ -113,22 +113,36 @@ export type DesktopWorkflowsLayer<RIn = never, E = never> = ReadonlyArray<
   DesktopWorkflowRegistration<E, RIn>
 >
 
-export interface DesktopConfig<RIn = never, E = never> {
+type PermissionedDesktopRpcs<Rpcs extends Rpc.Any> = Rpc.AddMiddleware<
+  Rpcs,
+  typeof PermissionInterceptor
+>
+export type DesktopRpcServerRequirements<Rpcs extends Rpc.Any> =
+  | RpcServer.Protocol
+  | Rpc.Middleware<Rpcs>
+  | Rpc.ServicesServer<Rpcs>
+
+export type DesktopRpcBoundServerRequirements<Rpcs extends Rpc.Any, R> =
+  | R
+  | DesktopRpcServerRequirements<PermissionedDesktopRpcs<Rpcs>>
+  | Exclude<Rpc.ToHandler<PermissionedDesktopRpcs<Rpcs>>, Rpc.ToHandler<Rpcs>>
+
+export interface DesktopConfig<RIn = never, E = never, RpcHandlerR = unknown> {
   readonly id: string
   readonly windows: DesktopWindowsLayer<RIn>
   readonly providers?: DesktopProvidersLayer
   readonly native?: DesktopNativeLayer
-  readonly rpcs?: DesktopRpcsLayer<E, RIn>
+  readonly rpcs?: DesktopRpcsLayer<E, RIn, RpcHandlerR>
   readonly permissions?: DesktopPermissionsLayer
   readonly workflows?: DesktopWorkflowsLayer<RIn, E>
 }
 
-export interface DesktopMakeConfig<RIn = never, E = never> {
+export interface DesktopMakeConfig<RIn = never, E = never, RpcHandlerR = unknown> {
   readonly id?: string
   readonly windows: DesktopWindowsLayer<RIn>
   readonly providers?: DesktopProvidersLayer
   readonly native?: DesktopNativeLayer
-  readonly rpcs?: DesktopRpcsLayer<E, RIn>
+  readonly rpcs?: DesktopRpcsLayer<E, RIn, RpcHandlerR>
   readonly permissions?: DesktopPermissionsLayer
   readonly workflows?: DesktopWorkflowsLayer<RIn, E>
 }
@@ -141,10 +155,14 @@ export type DesktopWorkflowEngineLayer<RIn = never, E = never> = Layer.Layer<
   RIn
 >
 
-export interface DesktopAppDescriptor<RIn = never, E = never> extends DesktopConfig<RIn, E> {
+export interface DesktopAppDescriptor<
+  RIn = never,
+  E = never,
+  RpcHandlerR = unknown
+> extends DesktopConfig<RIn, E, RpcHandlerR> {
   readonly _tag: "DesktopAppDescriptor"
   readonly native: DesktopNativeLayer
-  readonly rpcs: DesktopRpcsLayer<E, RIn>
+  readonly rpcs: DesktopRpcsLayer<E, RIn, RpcHandlerR>
   readonly permissions: DesktopPermissionsLayer
   readonly workflows: DesktopWorkflowsLayer<RIn, E>
   readonly windowRegistrations: ReadonlyArray<DesktopWindowRegistration<RIn>>
@@ -155,8 +173,8 @@ interface DesktopNativeSelectionSnapshot {
   readonly permissions: ReadonlyArray<NormalizedCapability>
 }
 
-export type DesktopManifestSource<RIn = never, E = never> = Pick<
-  DesktopConfig<RIn, E>,
+export type DesktopManifestSource<RIn = never, E = never, RpcHandlerR = unknown> = Pick<
+  DesktopConfig<RIn, E, RpcHandlerR>,
   "id" | "windows" | "native" | "rpcs"
 >
 
@@ -261,6 +279,11 @@ export type DesktopRuntimeServices =
   | DesktopRuntime
   | DesktopRuntimeProviderServices
   | ResourceOwner
+
+type DesktopRuntimeProvidedServices =
+  | DesktopRuntimeServices
+  | PermissionRegistry
+  | PermissionInterceptor
 
 export interface DesktopProviderBudget {
   readonly id: DesktopRuntimeProviderId
@@ -604,9 +627,9 @@ const DefaultProviders = Object.freeze({
 
 const providerLabel = (id: string): string => `${id.slice(0, 1).toUpperCase()}${id.slice(1)}`
 
-export const make = <RIn = never, E = never>(
-  config: DesktopMakeConfig<RIn, E>
-): DesktopAppDescriptor<RIn, E> => {
+export const make = <RIn = never, E = never, RpcHandlerR = unknown>(
+  config: DesktopMakeConfig<RIn, E, RpcHandlerR>
+): DesktopAppDescriptor<RIn, E, RpcHandlerR> => {
   const windowRegistrations = config.windows
   failOnDuplicateWindowIds(config.id ?? "app", windowRegistrations)
   return Object.freeze({
@@ -622,8 +645,8 @@ export const make = <RIn = never, E = never>(
   })
 }
 
-export const manifest = <RIn = never, E = never>(
-  config: DesktopManifestSource<RIn, E>
+export const manifest = <RIn = never, E = never, RpcHandlerR = unknown>(
+  config: DesktopManifestSource<RIn, E, RpcHandlerR>
 ): DesktopAppManifest => {
   const registrations = [...(config.rpcs ?? []), ...nativeRpcRegistrationsSync(config.native ?? [])]
   const windowRegistrations = config.windows
@@ -645,7 +668,7 @@ export const manifest = <RIn = never, E = never>(
 export const rpc = <Rpcs extends Rpc.Any, E, R>(
   group: RpcGroup.RpcGroup<Rpcs>,
   handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>
-): DesktopRpcsLayer<E, R> =>
+): DesktopRpcsLayer<E, DesktopRpcBoundServerRequirements<Rpcs, R>, R> =>
   Object.freeze([
     Object.freeze({
       _tag: "DesktopRpcRegistration" as const,
@@ -757,9 +780,9 @@ const checkWindowRegistrations = (
   return dup === undefined ? Effect.void : Effect.fail(duplicateWindowError(appId, dup))
 }
 
-const buildRegistrations = <RIn, E>(
-  rpcs: DesktopConfig<RIn, E>["rpcs"]
-): Effect.Effect<ReadonlyArray<AnyDesktopRpcRegistration<E, RIn>>, never, never> =>
+const buildRegistrations = <RIn, E, RpcHandlerR>(
+  rpcs: DesktopConfig<RIn, E, RpcHandlerR>["rpcs"]
+): Effect.Effect<ReadonlyArray<AnyDesktopRpcRegistration<E, RIn, RpcHandlerR>>, never, never> =>
   Effect.succeed(rpcs ?? [])
 
 const buildNativeSelection = <RIn, E>(
@@ -780,41 +803,41 @@ const buildWorkflows = <RIn, E>(
 ): Effect.Effect<ReadonlyArray<DesktopWorkflowRegistration<E, RIn>>, never, never> =>
   Effect.succeed(workflows ?? [])
 
-const buildProviders = <RIn, E>(
-  config: DesktopConfig<RIn, E>
+const buildProviders = <RIn, E, RpcHandlerR>(
+  config: DesktopConfig<RIn, E, RpcHandlerR>
 ): Effect.Effect<SelectedProviderDescriptors, DesktopConfigError, never> =>
   selectProviderDescriptors(config.id, config.providers ?? [])
 
 const nativeRpcRegistrationsSync = (
   registrations: ReadonlyArray<AnyDesktopNativeRegistration>
-): ReadonlyArray<AnyDesktopRpcRegistration<unknown, unknown>> =>
+): ReadonlyArray<AnyDesktopRpcRegistration<unknown, unknown, unknown>> =>
   Object.freeze(registrations.flatMap((registration) => registration.serverLayer))
 
-export const layer = <RIn = never, E = never>(
-  descriptor: DesktopAppDescriptor<RIn, E>
+export const layer = <RIn = never, E = never, RpcHandlerR = unknown>(
+  descriptor: DesktopAppDescriptor<RIn, E, RpcHandlerR>
 ): Layer.Layer<
   DesktopRuntimeServices,
   DesktopConfigError | E,
-  Exclude<RIn, DesktopRuntimeProviderServices | ResourceOwner>
+  Exclude<RIn, DesktopRuntimeProvidedServices>
 > => runtime(descriptor)
 
 // `buildSpine` genuinely provides a superset of `DesktopRuntimeServices` and
-// requires a subset of `Exclude<RIn, DesktopRuntimeProviderServices | ResourceOwner>`
+// requires a subset of `Exclude<RIn, DesktopRuntimeProvidedServices>`
 // (it also satisfies the core services it composes internally). TypeScript cannot
 // reduce the nested `Exclude<Exclude<RIn, ...>, ...>` conditional against a generic
 // `RIn`, so the public contract is asserted here once.
-export const runtime = <RIn = never, E = never>(
-  config: DesktopConfig<RIn, E>
+export const runtime = <RIn = never, E = never, RpcHandlerR = unknown>(
+  config: DesktopConfig<RIn, E, RpcHandlerR>
 ): Layer.Layer<
   DesktopRuntimeServices,
   DesktopConfigError | E,
-  Exclude<RIn, DesktopRuntimeProviderServices | ResourceOwner>
+  Exclude<RIn, DesktopRuntimeProvidedServices>
 > => buildSpine(config) as never
 
 export const DesktopRuntimeLive = runtime
 
-export const runtimeGraph = <RIn, E>(
-  config: DesktopConfig<RIn, E>
+export const runtimeGraph = <RIn, E, RpcHandlerR>(
+  config: DesktopConfig<RIn, E, RpcHandlerR>
 ): Effect.Effect<DesktopRuntimeGraph, DesktopConfigError, never> =>
   Effect.gen(function* () {
     const providers = yield* buildProviders(config)
@@ -838,8 +861,8 @@ export const runtimeGraph = <RIn, E>(
     )
   })
 
-export const runtimeGraphSnapshot = <RIn, E>(
-  config: DesktopConfig<RIn, E>
+export const runtimeGraphSnapshot = <RIn, E, RpcHandlerR>(
+  config: DesktopConfig<RIn, E, RpcHandlerR>
 ): Effect.Effect<LayerGraphSnapshot, never, never> =>
   Effect.match(runtimeGraph(config), {
     onFailure: (error) =>
@@ -889,11 +912,11 @@ export const layerGraphSnapshotFromGraph = (graph: DesktopRuntimeGraph): LayerGr
   })
 
 const makeRuntimeGraph = <RIn, E>(
-  config: DesktopConfig<RIn, E>,
+  config: DesktopConfig<RIn, E, unknown>,
   provider: DesktopRuntimeProviderDescriptor,
   webviewProvider: DesktopWebViewProviderDescriptor,
   nativeRegistrations: ReadonlyArray<AnyDesktopNativeRegistration>,
-  registrations: ReadonlyArray<AnyDesktopRpcRegistration<unknown, unknown>>,
+  registrations: ReadonlyArray<AnyDesktopRpcRegistration<unknown, unknown, unknown>>,
   workflows: ReadonlyArray<unknown>
 ): DesktopRuntimeGraph => {
   const selected = Object.freeze({
@@ -962,7 +985,7 @@ export const launch = (
 ): Effect.Effect<never, DesktopConfigError, never> => Layer.launch(layer)
 
 const checkPermissions = <RIn, E>(
-  config: DesktopConfig<RIn, E>,
+  config: DesktopConfig<RIn, E, unknown>,
   registrations: ReadonlyArray<AnyDesktopRpcRegistration>,
   declared: ReadonlyArray<NormalizedCapability>
 ): Effect.Effect<void, DesktopConfigError, never> => {
@@ -996,8 +1019,8 @@ const checkPermissions = <RIn, E>(
   return Effect.void
 }
 
-const checkDuplicateRpcRegistrations = <RIn, E>(
-  config: DesktopConfig<RIn, E>,
+const checkDuplicateRpcRegistrations = <RIn, E, RpcHandlerR>(
+  config: DesktopConfig<RIn, E, RpcHandlerR>,
   registrations: ReadonlyArray<AnyDesktopRpcRegistration>
 ): Effect.Effect<void, DesktopConfigError, never> =>
   Effect.suspend(() => {
@@ -1077,7 +1100,7 @@ const decodeRpcCapability = (
   )
 }
 
-const buildSpine = <RIn, E>(config: DesktopConfig<RIn, E>) =>
+const buildSpine = <RIn, E, RpcHandlerR>(config: DesktopConfig<RIn, E, RpcHandlerR>) =>
   Layer.unwrap(
     Effect.gen(function* () {
       const providers = yield* buildProviders(config)
@@ -1085,9 +1108,9 @@ const buildSpine = <RIn, E>(config: DesktopConfig<RIn, E>) =>
       const nativeSelection = yield* buildNativeSelection(config.native)
       const nativeRegistrations = nativeSelection.registrations
       const nativeRpcRegistrations = nativeRpcRegistrationsSync(nativeRegistrations)
-      const registrations: ReadonlyArray<AnyDesktopRpcRegistration<E, RIn>> = [
+      const registrations: ReadonlyArray<AnyDesktopRpcRegistration<E, RIn, RpcHandlerR>> = [
         ...appRegistrations,
-        ...(nativeRpcRegistrations as ReadonlyArray<AnyDesktopRpcRegistration<E, RIn>>)
+        ...(nativeRpcRegistrations as ReadonlyArray<AnyDesktopRpcRegistration<E, RIn, RpcHandlerR>>)
       ]
       const explicitPermissions = yield* buildPermissions(config.permissions)
       const permissions = [...nativeSelection.permissions, ...explicitPermissions]
@@ -1256,8 +1279,8 @@ const providerRegistryErrorToConfigError = (
     providerKind: error.kind
   })
 
-const makePermissionServicesLayer = <RIn, E>(
-  config: DesktopConfig<RIn, E>,
+const makePermissionServicesLayer = <RIn, E, RpcHandlerR>(
+  config: DesktopConfig<RIn, E, RpcHandlerR>,
   permissions: ReadonlyArray<NormalizedCapability>
 ): Layer.Layer<PermissionRegistry | PermissionInterceptor, never, never> => {
   const registryLayer = Layer.effect(
@@ -1335,11 +1358,11 @@ const mergeLayerArray = <E, R>(
 const bindRpcGroup = <Rpcs extends Rpc.Any, E, R>(
   group: RpcGroup.RpcGroup<Rpcs>,
   handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>
-): Layer.Layer<never, E, R> =>
-  Layer.provide(RpcServer.layer(group.middleware(PermissionInterceptor)), handlers) as never
+): Layer.Layer<never, E, DesktopRpcBoundServerRequirements<Rpcs, R>> =>
+  Layer.provide(RpcServer.layer(group.middleware(PermissionInterceptor)), handlers)
 
 const bindRegistration = <E, R>(
-  registration: AnyDesktopRpcRegistration<E, R>
+  registration: AnyDesktopRpcRegistration<E, R, unknown>
 ): Layer.Layer<never, E, R> => registration.serverLayer
 
 function graphNode(

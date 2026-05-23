@@ -125,7 +125,7 @@ type SolidEndpoint =
 
 export interface SolidDesktopRootProps {
   readonly transport?: DesktopRendererRpcTransport | undefined
-  readonly rpcs?: DesktopRpcsLayer<never, never> | undefined
+  readonly rpcs?: DesktopRpcsLayer<never, unknown, never> | undefined
   readonly children?: JSX.Element
 }
 
@@ -254,7 +254,7 @@ export const SolidDesktop = Object.freeze({
 const makeSolidDesktopRuntime = (
   app: DesktopAppManifest,
   transport: DesktopRendererRpcTransport | undefined,
-  rpcs: DesktopRpcsLayer<never, never> | undefined
+  rpcs: DesktopRpcsLayer<never, unknown, never> | undefined
 ): SolidDesktopRuntime => {
   const runtime = ManagedRuntime.make(
     makeDesktopRendererRpcLayer(app, {
