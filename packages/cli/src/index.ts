@@ -51,7 +51,6 @@ import {
   formatProductionCheckReport,
   mergeDesktopConfig,
   runProductionCheck,
-  type CspConfig,
   type CspPolicy,
   type DesktopConfig,
   type ProductionCheckFile,
@@ -708,57 +707,6 @@ interface BuildNodePlan {
   readonly provider?: string
   readonly cacheKey: string
   readonly outputPath: string
-}
-
-interface AppConfig {
-  readonly app?: {
-    readonly id?: unknown
-    readonly name?: unknown
-    readonly version?: unknown
-  }
-  readonly runtime?: {
-    readonly engine?: unknown
-    readonly entry?: unknown
-  }
-  readonly renderer?: {
-    readonly framework?: unknown
-    readonly styling?: unknown
-    readonly entry?: unknown
-    readonly dist?: unknown
-  }
-  readonly web?: {
-    readonly engine?: unknown
-  }
-  readonly build?: {
-    readonly targets?: unknown
-  }
-  readonly security?: {
-    readonly externalNavigation?: unknown
-    readonly devtoolsInProd?: unknown
-    readonly csp?: CspConfig
-  }
-  readonly env?: unknown
-  readonly protocol?: {
-    readonly limits?: unknown
-  }
-  readonly protocols?: unknown
-  readonly native?: {
-    readonly host?: unknown
-    readonly renderer?: unknown
-  }
-  readonly workspace?: {
-    readonly sharedConfigPath?: unknown
-  }
-  readonly update?: {
-    readonly channel?: unknown
-    readonly publicKey?: unknown
-    readonly feedUrl?: unknown
-    readonly minVersion?: unknown
-    readonly maxVersion?: unknown
-    readonly keyVersion?: unknown
-    readonly rollback?: unknown
-  }
-  readonly windows?: unknown
 }
 
 export const runCli = (options: CliRunOptions): Effect.Effect<number, never, never> =>
@@ -1454,7 +1402,7 @@ const runBuildNode = (
   })
 
 const normalizeBuildPlan = (
-  config: AppConfig,
+  config: DesktopConfig,
   options: {
     readonly configPath: string
     readonly hostTarget: BuildTarget
@@ -2356,7 +2304,7 @@ const readSemverString = (
   )
 
 const validateProductionConfigBaseline = (
-  config: AppConfig
+  config: DesktopConfig
 ): Effect.Effect<void, BuildConfigError, never> =>
   Effect.gen(function* () {
     yield* readSafeAppId(config.app?.id, "app.id")
@@ -2426,7 +2374,9 @@ const readOptionalSemver = (
   )
 }
 
-const loadAndMergeBuildConfig = (path: string): Effect.Effect<AppConfig, BuildConfigError, never> =>
+const loadAndMergeBuildConfig = (
+  path: string
+): Effect.Effect<DesktopConfig, BuildConfigError, never> =>
   Effect.gen(function* () {
     const rawConfig = yield* loadConfig(path)
     const appConfig = yield* decodeBuildConfig(rawConfig, path)
@@ -2441,18 +2391,14 @@ const loadAndMergeBuildConfig = (path: string): Effect.Effect<AppConfig, BuildCo
     const resolvedSharedConfigPath = resolvePath(workspaceRoot, sharedConfigPath)
     const rawSharedConfig = yield* loadConfig(resolvedSharedConfigPath)
     const sharedConfig = yield* decodeBuildConfig(rawSharedConfig, resolvedSharedConfigPath)
-    return mergeDesktopConfig(
-      sharedConfig as DesktopConfig,
-      appConfig as DesktopConfig
-    ) as AppConfig
+    return mergeDesktopConfig(sharedConfig, appConfig)
   })
 
 const decodeBuildConfig = (
   rawConfig: unknown,
   path: string
-): Effect.Effect<AppConfig, BuildConfigError, never> =>
+): Effect.Effect<DesktopConfig, BuildConfigError, never> =>
   decodeDesktopConfig(rawConfig, `desktop build config ${path}`).pipe(
-    Effect.map((config) => config as AppConfig),
     Effect.mapError(
       (error) =>
         new BuildConfigError({
@@ -2756,7 +2702,7 @@ const readProtocolLimit = (
 }
 
 const readBuildSecurity = (
-  value: AppConfig["security"]
+  value: DesktopConfig["security"]
 ): Effect.Effect<
   {
     readonly externalNavigation: BuildExternalNavigationPolicy
@@ -3705,7 +3651,7 @@ const runProductionCheckHandler = (
     const configPath = Option.getOrElse(flags.config, () => "desktop.config.ts")
     const absoluteConfigPath = resolvePath(options.cwd, configPath)
     const config = yield* loadConfig(absoluteConfigPath).pipe(
-      Effect.map((value) => value as AppConfig & ProductionSecurityConfig),
+      Effect.map((value) => value as DesktopConfig & ProductionSecurityConfig),
       Effect.catch((error) =>
         Effect.sync(() => {
           const output = flags.json

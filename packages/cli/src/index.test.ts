@@ -9093,6 +9093,76 @@ test("desktop package --help exits zero with usage", () =>
     })
   ))
 
+test("CLI build and package planning rely on the canonical desktop config shape", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const cliSource = yield* Effect.promise(() =>
+        readFile(join(import.meta.dir, "index.ts"), "utf8")
+      )
+      const packageSource = yield* Effect.promise(() =>
+        readFile(join(import.meta.dir, "package-pipeline.ts"), "utf8")
+      )
+
+      expect(cliSource).not.toContain("interface AppConfig")
+      expect(cliSource).not.toContain("as AppConfig")
+      expect(packageSource).not.toContain("interface AppConfig")
+      expect(packageSource).not.toContain("readConfigObject")
+      expect(packageSource).not.toContain("rawConfig as AppConfig")
+    })
+  ))
+
+test("desktop package decodes canonical config before reading package metadata", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-package-canonical-config-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, {
+          renderer: {
+            framework: "vue",
+            entry: "src/renderer/main.tsx",
+            dist: "dist"
+          }
+        })
+        yield* writeBuildLayoutFixture(directory, "linux-x64")
+        const stderr: string[] = []
+        const runner: PackageCommandRunner = (invocation) =>
+          Effect.gen(function* () {
+            const output = invocation.args.at(-1)
+            if (output !== undefined) {
+              yield* runPackageFixtureIo(invocation, () => writeFile(output, invocation.step))
+            }
+          })
+
+        const exitCode = yield* runCli({
+          argv: [
+            "package",
+            "--config",
+            "apps/inspector/desktop.config.ts",
+            "--artifact",
+            "appimage",
+            "--json"
+          ],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          packageCommandRunner: runner,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonConfigError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.tag).toBe("PackageConfigError")
+        expect(payload.message).toContain("renderer")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
 test("desktop package reports missing build output before reading manifests", () =>
   Effect.runPromise(
     Effect.gen(function* () {

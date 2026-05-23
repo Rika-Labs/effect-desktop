@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url"
 import { Data, Effect, Schema } from "effect"
 
 import type { DesktopProviderBudget } from "@orika/core"
+import { decodeDesktopConfig, type DesktopConfig } from "@orika/config"
 
 import { decodeBuildProviderProvenance } from "./build-report.js"
 import type { PackageArtifactMetadata } from "./package-artifact-metadata.js"
@@ -197,14 +198,6 @@ interface PackagePlan {
   readonly providers: PackageProviderReport | undefined
 }
 
-interface AppConfig {
-  readonly app?: {
-    readonly id?: unknown
-    readonly name?: unknown
-    readonly version?: unknown
-  }
-}
-
 interface AppManifest {
   readonly id: string
   readonly name: string
@@ -239,9 +232,10 @@ export const runDesktopPackage = (
   Effect.gen(function* () {
     const absoluteConfigPath = resolvePath(options.cwd, options.configPath)
     const rawConfig = yield* loadConfig(absoluteConfigPath)
+    const config = yield* decodePackageConfig(rawConfig, absoluteConfigPath)
     const hostTarget = yield* resolveHostTarget(options.hostTarget)
     const target = yield* resolvePackageTarget(options.platform, hostTarget)
-    const plan = yield* normalizePackagePlan(rawConfig, {
+    const plan = yield* normalizePackagePlan(config, {
       configPath: absoluteConfigPath,
       target,
       artifact: options.artifact
@@ -319,7 +313,7 @@ const packageCommandError = (
 }
 
 const normalizePackagePlan = (
-  rawConfig: unknown,
+  config: DesktopConfig,
   options: {
     readonly configPath: string
     readonly target: PackageTarget
@@ -331,7 +325,6 @@ const normalizePackagePlan = (
   never
 > =>
   Effect.gen(function* () {
-    const config = yield* readConfigObject(rawConfig)
     const appRoot = dirname(options.configPath)
     const appId = yield* readSafeAppId(config.app?.id, "app.id")
     const appName = yield* readLineSafeString(config.app?.name, "app.name")
@@ -1249,18 +1242,6 @@ const linuxSnapHint = (plan: PackagePlan): string =>
     ""
   ].join("\n")
 
-const readConfigObject = (
-  rawConfig: unknown
-): Effect.Effect<AppConfig, PackageConfigError, never> =>
-  isRecord(rawConfig)
-    ? Effect.succeed(rawConfig as AppConfig)
-    : Effect.fail(
-        new PackageConfigError({
-          field: "default",
-          message: "desktop config must export an object"
-        })
-      )
-
 const readRequiredString = (
   value: unknown,
   field: string
@@ -1373,6 +1354,20 @@ const loadConfig = (path: string): Effect.Effect<unknown, PackageConfigError, ne
     }
     return module.default
   })
+
+const decodePackageConfig = (
+  rawConfig: unknown,
+  path: string
+): Effect.Effect<DesktopConfig, PackageConfigError, never> =>
+  decodeDesktopConfig(rawConfig, `desktop package config ${path}`).pipe(
+    Effect.mapError(
+      (error) =>
+        new PackageConfigError({
+          field: "default",
+          message: error.message
+        })
+    )
+  )
 
 const readJson = (path: string): Effect.Effect<unknown, PackageFileError, never> =>
   runReleaseFileSystem(
