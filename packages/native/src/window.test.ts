@@ -1,9 +1,22 @@
 import { expect, test } from "bun:test"
 import { rpcSupport, type Rpc } from "@orika/bridge"
-import { Effect, Exit, Schema } from "effect"
+import { Desktop, makeResourceId } from "@orika/core"
+import {
+  makeDesktopRendererRpcTestLayer,
+  RendererRpcClients
+} from "@orika/core/runtime/renderer-rpc-client"
+import { Effect, Exit, Layer, Option, Schema, Stream } from "effect"
 
 import { WindowRegistryEvent } from "./contracts/window.js"
-import { WindowRpcs } from "./window.js"
+import {
+  makeWindowServiceLayer,
+  WindowHandlersLive,
+  WindowRpcs,
+  type WindowClientApi
+} from "./window.js"
+import { makeWindowRendererClient } from "./window-renderer-client.js"
+
+import type { WindowHandle } from "./contracts/window.js"
 
 test("WindowRegistryEvent terminal flag must match phase", () => {
   for (const payload of [
@@ -179,6 +192,36 @@ test("WindowRpcs exposes only host-implemented methods through RpcGroup lowering
   })
 })
 
+test("Window renderer client constructor derives service from renderer RPC client map", () => {
+  const calls: string[] = []
+  const window = makeTestWindowHandle("window-main")
+  const rpcs = Desktop.rpc(
+    WindowRpcs,
+    Layer.provide(WindowHandlersLive, makeWindowServiceLayer(makeTestWindowClient(window, calls)))
+  )
+
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const rendererClients = yield* RendererRpcClients
+      const client = Option.getOrThrow(makeWindowRendererClient(rendererClients.clients))
+
+      const created = yield* client.create({ title: "Child" })
+      const current = yield* client.getCurrent()
+      yield* client.close(current)
+      yield* client.destroy(created)
+
+      expect(String(created.id)).toBe("window-main")
+      expect(String(current.id)).toBe("window-main")
+      expect(calls).toEqual([
+        "create:Child",
+        "getCurrent",
+        "close:window-main",
+        "destroy:window-main"
+      ])
+    }).pipe(Effect.provide(makeDesktopRendererRpcTestLayer(rpcs)))
+  )
+})
+
 const request = (tag: string): Rpc.Any => {
   const rpc = WindowRpcs.requests.get(tag)
 
@@ -189,3 +232,74 @@ const request = (tag: string): Rpc.Any => {
 
   return rpc
 }
+
+const makeTestWindowHandle = (id: string): WindowHandle => ({
+  kind: "window",
+  id: makeResourceId(id),
+  generation: 0,
+  ownerScope: `window:${id}`,
+  state: "open"
+})
+
+const testWindowBounds = { x: 0, y: 0, width: 100, height: 100 } as const
+const testWindowState = {
+  fullscreen: false,
+  maximized: false,
+  minimized: false,
+  simpleFullscreen: false
+} as const
+
+const makeTestWindowClient = (current: WindowHandle, calls: string[]): WindowClientApi => ({
+  create: (input) =>
+    Effect.sync(() => {
+      calls.push(`create:${input.title ?? ""}`)
+      return current
+    }),
+  close: (window) =>
+    Effect.sync(() => {
+      calls.push(`close:${window.id}`)
+    }),
+  destroy: (window) =>
+    Effect.sync(() => {
+      calls.push(`destroy:${window.id}`)
+    }),
+  show: () => Effect.void,
+  hide: () => Effect.void,
+  focus: () => Effect.void,
+  getCurrent: () =>
+    Effect.sync(() => {
+      calls.push("getCurrent")
+      return current
+    }),
+  getById: (windowId) => Effect.succeed(makeTestWindowHandle(windowId)),
+  list: () => Effect.succeed([current]),
+  getParent: () => Effect.succeed(undefined),
+  getChildren: () => Effect.succeed([]),
+  getBounds: () => Effect.succeed(testWindowBounds),
+  setBounds: (_window, bounds) => Effect.succeed(bounds),
+  setBoundsOnDisplay: (_window, _displayId, bounds) => Effect.succeed(bounds),
+  center: () => Effect.succeed(testWindowBounds),
+  centerOnDisplay: () => Effect.succeed(testWindowBounds),
+  setTitle: () => Effect.void,
+  setResizable: () => Effect.void,
+  setDecorations: () => Effect.void,
+  setTrafficLights: () => Effect.void,
+  setVibrancy: () => Effect.void,
+  clearVibrancy: () => Effect.void,
+  setShadow: () => Effect.void,
+  setTitleBarStyle: () => Effect.void,
+  setTitleBarTransparent: () => Effect.void,
+  setTransparent: () => Effect.void,
+  setAlwaysOnTop: () => Effect.void,
+  setSkipTaskbar: () => Effect.void,
+  setProgress: () => Effect.void,
+  requestAttention: () => Effect.void,
+  cancelAttention: () => Effect.void,
+  minimize: () => Effect.succeed(testWindowState),
+  maximize: () => Effect.succeed(testWindowState),
+  restore: () => Effect.succeed(testWindowState),
+  setFullscreen: () => Effect.succeed(testWindowState),
+  setSimpleFullscreen: () => Effect.succeed(testWindowState),
+  getState: () => Effect.succeed(testWindowState),
+  events: () => Stream.empty
+})

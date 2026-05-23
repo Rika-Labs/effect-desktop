@@ -30,6 +30,10 @@
       "types": "./src/contracts/*.ts",
       "default": "./src/contracts/*.ts"
     },
+    "./renderer": {
+      "types": "./src/renderer.ts",
+      "default": "./src/renderer.ts"
+    },
     "./protocol": {
       "types": "./src/protocol.ts",
       "default": "./src/protocol.ts"

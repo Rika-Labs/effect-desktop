@@ -42,6 +42,7 @@ import {
   type DesktopClient,
   type DesktopWindowClient,
   windows,
+  type WindowCreateMutation,
   type PermissionState,
   useDesktop,
   useDesktopAction,
@@ -73,6 +74,7 @@ const decodeReactPackageJson = Schema.decodeUnknownSync(Schema.fromJsonString(Re
 const reactPackageJsonUrl = new URL("../package.json", import.meta.url)
 const reactPackageRootUrl = new URL("../", import.meta.url)
 const reactPackageIndexUrl = new URL("index.ts", import.meta.url)
+const reactDesktopSourceUrl = new URL("desktop.tsx", import.meta.url)
 const workspaceRootUrl = new URL("../../../", import.meta.url)
 const reactRootBundleEntryUrl = new URL(".tmp-react-root-bundle-entry.tsx", workspaceRootUrl)
 
@@ -122,6 +124,20 @@ test("React package root does not export browser storage services", () =>
       expect(source).not.toContain("RendererSqlite")
       expect(source).not.toContain("indexedDbStorage")
       expect(source).not.toContain("keyValueStorage")
+    })
+  ))
+
+test("ReactDesktop delegates native Window helpers to the native renderer client", () =>
+  PlatformRuntime.runPromise(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const source = yield* fs.readFileString(urlToPath(reactDesktopSourceUrl))
+
+      expect(source).toContain("makeWindowRendererClient")
+      expect(source).toContain('@orika/native/renderer"')
+      expect(source).not.toContain('from "@orika/native"')
+      expect(source).not.toContain("WindowResource")
+      expect(source).not.toContain("RequiredWindowRpcTags")
     })
   ))
 
@@ -204,23 +220,28 @@ const testWindowState = {
   simpleFullscreen: false
 } as const
 
-const makeTestWindowClient = (
-  current: WindowHandle,
-  closedWindowIds: string[]
-): WindowClientApi => ({
-  create: () => Effect.succeed(current),
+const makeTestWindowClient = (current: WindowHandle, calls: string[]): WindowClientApi => ({
+  create: (input) =>
+    Effect.sync(() => {
+      calls.push(`create:${input.title ?? ""}`)
+      return current
+    }),
   close: (window) =>
     Effect.sync(() => {
-      closedWindowIds.push(window.id)
+      calls.push(`close:${window.id}`)
     }),
   destroy: (window) =>
     Effect.sync(() => {
-      closedWindowIds.push(window.id)
+      calls.push(`destroy:${window.id}`)
     }),
   show: () => testNoop,
   hide: () => testNoop,
   focus: () => testNoop,
-  getCurrent: () => Effect.succeed(current),
+  getCurrent: () =>
+    Effect.sync(() => {
+      calls.push("getCurrent")
+      return current
+    }),
   getById: (windowId) => Effect.succeed(makeTestWindowHandle(windowId)),
   list: () => Effect.succeed([current]),
   getParent: () => Effect.sync((): WindowHandle | undefined => undefined),
@@ -513,14 +534,12 @@ test("ReactDesktop.from exposes app-scoped RPC hooks from provided groups", () =
 
 test("ReactDesktop root exposes native Window helpers when the app declares Native.Window", () => {
   let closeCurrentWindow: CurrentWindowCloseMutation | undefined
-  const closedWindowIds: string[] = []
+  let createWindow: WindowCreateMutation | undefined
+  const calls: string[] = []
   const window = makeTestWindowHandle("window-main")
   const WindowLayer = Desktop.rpc(
     WindowRpcs,
-    Layer.provide(
-      WindowHandlersLive,
-      makeWindowServiceLayer(makeTestWindowClient(window, closedWindowIds))
-    )
+    Layer.provide(WindowHandlersLive, makeWindowServiceLayer(makeTestWindowClient(window, calls)))
   )
   const NotesApp = Desktop.make({
     windows: Desktop.window("main", { title: "Notes" }),
@@ -529,25 +548,29 @@ test("ReactDesktop root exposes native Window helpers when the app declares Nati
   const NotesReact = ReactDesktop.from(Desktop.manifest(NotesApp))
   const Probe = () => {
     closeCurrentWindow = currentWindow.close.useMutation()
-    return createElement("span", null, closeCurrentWindow.status)
+    createWindow = windows.create.useMutation()
+    return createElement("span", null, `${closeCurrentWindow.status}:${createWindow.status}`)
   }
 
   expect(
     renderToStaticMarkup(
       createElement(NotesReact.DesktopRoot, { rpcs: WindowLayer }, createElement(Probe))
     )
-  ).toBe("<span>idle</span>")
+  ).toBe("<span>idle:idle</span>")
 
-  if (closeCurrentWindow === undefined) {
-    throw new Error("close current window mutation was not captured")
+  if (closeCurrentWindow === undefined || createWindow === undefined) {
+    throw new Error("window mutations were not captured")
   }
-  const mutation = closeCurrentWindow
+  const closeMutation = closeCurrentWindow
+  const createMutation = createWindow
 
   return Effect.runPromise(
     Effect.gen(function* () {
-      const exit = yield* Effect.promise(() => mutation.runPromise())
-      expect(Exit.isSuccess(exit)).toBe(true)
-      expect(closedWindowIds).toEqual(["window-main"])
+      const createExit = yield* Effect.promise(() => createMutation.runPromise({ title: "Child" }))
+      const closeExit = yield* Effect.promise(() => closeMutation.runPromise())
+      expect(Exit.isSuccess(createExit)).toBe(true)
+      expect(Exit.isSuccess(closeExit)).toBe(true)
+      expect(calls).toEqual(["create:Child", "getCurrent", "close:window-main"])
     })
   )
 })

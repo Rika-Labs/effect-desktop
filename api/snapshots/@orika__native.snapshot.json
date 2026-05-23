@@ -3059,6 +3059,11 @@
       "signature": "const makeWindowPersistenceLayer: (options?: WindowPersistenceOptions) => Layer.Layer<WindowPersistence, never, Window | Screen | KeyValueStore.KeyValueStore>"
     },
     {
+      "name": "makeWindowRendererClient",
+      "kind": "value",
+      "signature": "const makeWindowRendererClient: (clients: DesktopRendererRpcClientMap) => Option.Option<WindowRendererClientApi>"
+    },
+    {
       "name": "makeWindowServiceLayer",
       "kind": "value",
       "signature": "const makeWindowServiceLayer: (client: WindowClientApi) => Layer.Layer<Window>"
@@ -5152,6 +5157,11 @@
       "name": "WindowPosition",
       "kind": "interface",
       "signature": "export interface WindowPosition { readonly x: number readonly y: number }"
+    },
+    {
+      "name": "WindowRendererClientApi",
+      "kind": "interface",
+      "signature": "export interface WindowRendererClientApi { readonly create: ( input?: WindowCreateOptions ) => Effect.Effect<WindowHandle, HostProtocolError, never> readonly close: (window: WindowHandle) => Effect.Effect<void, HostProtocolError, never> readonly destroy: (window: WindowHandle) => Effect.Effect<void, HostProtocolError, never> readonly getCurrent: () => Effect.Effect<WindowHandle, HostProtocolError, never> }"
     },
     {
       "name": "WindowRpcEvents",

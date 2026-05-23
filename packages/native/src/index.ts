@@ -1167,3 +1167,4 @@ export {
   type WindowPersistenceOptions,
   type WindowPersistenceSaveOptionsInput
 } from "./window-persistence.js"
+export { makeWindowRendererClient, type WindowRendererClientApi } from "./window-renderer-client.js"

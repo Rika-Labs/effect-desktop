@@ -1,10 +1,4 @@
-import {
-  makeHostProtocolInvalidOutputError,
-  makeHostProtocolInvalidStateError,
-  makeHostProtocolInternalError,
-  type HostProtocolError,
-  type WithRpcEndpointKind
-} from "@orika/bridge"
+import type { WithRpcEndpointKind } from "@orika/bridge"
 import {
   bindRendererEndpoints,
   type DesktopEndpointSupport
@@ -30,10 +24,10 @@ import type {
   DesktopRpcRegistrationGroup as RpcGroupWithRequests,
   DesktopRpcsLayer
 } from "@orika/core/runtime/renderer-types"
-import type { WindowCreateOptions, WindowHandle } from "@orika/native/contracts/window"
-import { WindowResource } from "@orika/native/contracts/window"
-import { Effect, Exit, ManagedRuntime, Schema, Stream } from "effect"
-import { Rpc, RpcGroup } from "effect/unstable/rpc"
+import { makeWindowRendererClient } from "@orika/native/renderer"
+import type { WindowHandle } from "@orika/native/contracts/window"
+import { Effect, Exit, ManagedRuntime, Option, Stream } from "effect"
+import { RpcGroup, type Rpc } from "effect/unstable/rpc"
 import {
   createContext,
   createElement,
@@ -233,91 +227,12 @@ const makeReactDesktopRuntime = (
 }
 
 const makeReactDesktopClient = (clients: ReactDesktopClientMap): DesktopClient => {
-  const windowClient = findWindowClient(clients)
-  if (windowClient === undefined) {
+  const windowClient = makeWindowRendererClient(clients)
+  if (Option.isNone(windowClient)) {
     return createUnavailableDesktopClient("Native.Window is not declared for this app")
   }
 
   return Object.freeze({
-    window: Object.freeze({
-      create: (input?: WindowCreateOptions) =>
-        runWindowEffect(windowClient, "Window.create", input ?? {}).pipe(
-          Effect.flatMap(decodeWindowHandle("Window.create"))
-        ),
-      close: (window: WindowHandle) =>
-        runWindowEffect(windowClient, "Window.close", { window }).pipe(Effect.asVoid),
-      destroy: (window: WindowHandle) =>
-        runWindowEffect(windowClient, "Window.destroy", { window }).pipe(Effect.asVoid),
-      getCurrent: () =>
-        runWindowEffect(windowClient, "Window.getCurrent", undefined).pipe(
-          Effect.flatMap(decodeWindowHandle("Window.getCurrent"))
-        )
-    })
+    window: windowClient.value
   })
 }
-
-const RequiredWindowRpcTags = Object.freeze([
-  "Window.create",
-  "Window.close",
-  "Window.destroy",
-  "Window.getCurrent"
-] as const)
-
-const findWindowClient = (clients: ReactDesktopClientMap): DesktopRendererRpcClient | undefined => {
-  for (const [group, client] of clients) {
-    if (hasRequiredWindowRpcs(group)) {
-      return client
-    }
-  }
-  return undefined
-}
-
-const hasRequiredWindowRpcs = (group: RpcGroup.Any): boolean => {
-  if (!("requests" in group)) {
-    return false
-  }
-  const requests = group.requests
-  if (!(requests instanceof Map)) {
-    return false
-  }
-  return RequiredWindowRpcTags.every((tag) => requests.has(tag))
-}
-
-const runWindowEffect = (
-  client: DesktopRendererRpcClient,
-  operation: string,
-  input: unknown
-): Effect.Effect<unknown, HostProtocolError, never> => {
-  const method = client[operation]
-  if (method === undefined) {
-    return Effect.fail(
-      makeHostProtocolInvalidStateError(
-        `missing renderer RPC client method ${operation}`,
-        "call",
-        operation
-      )
-    )
-  }
-
-  const result = method(input)
-  return Effect.isEffect(result)
-    ? Effect.mapError(result, (error) => rendererRpcErrorToHostProtocolError(error, operation))
-    : Effect.fail(makeHostProtocolInvalidStateError("received Stream", "call", operation))
-}
-
-const decodeWindowHandle =
-  (operation: string) =>
-  (value: unknown): Effect.Effect<WindowHandle, HostProtocolError, never> =>
-    Schema.decodeUnknownEffect(WindowResource)(value).pipe(
-      Effect.mapError((error) =>
-        makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
-      )
-    )
-
-const formatUnknownError = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error)
-
-const rendererRpcErrorToHostProtocolError = (
-  error: unknown,
-  operation: string
-): HostProtocolError => makeHostProtocolInternalError(formatUnknownError(error), operation)
