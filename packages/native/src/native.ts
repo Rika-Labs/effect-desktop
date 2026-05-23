@@ -1,4 +1,4 @@
-import { Desktop, type DesktopNativeLayer, type AnyDesktopNativeRegistration } from "@orika/core"
+import { Desktop, type AnyDesktopNativeRegistration } from "@orika/core"
 
 import { ActivationRegistrySurface } from "./activation-registry.js"
 import { AppMetadataSurface } from "./app-metadata.js"
@@ -113,8 +113,11 @@ const BuiltInRegistrations = Object.freeze([
   ...BuiltInSurfaces
 ]) satisfies readonly AnyDesktopNativeRegistration[]
 
-export const available = (...selections: readonly NativeSurfaceSelection[]): DesktopNativeLayer =>
-  Desktop.native(...selections)
+export const available = <
+  const Selections extends readonly NativeSurfaceSelection<unknown, unknown, unknown>[]
+>(
+  ...selections: Selections
+) => Desktop.native(...selections)
 
 const App = AppSurface.selection
 const AppMetadata = AppMetadataSurface.selection

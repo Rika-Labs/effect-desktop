@@ -103,6 +103,7 @@ export {
   type DesktopConfig,
   type DesktopMakeConfig,
   type DesktopManifestSource,
+  type DesktopRpcBoundServerRequirements,
   type DesktopProviderDescriptor,
   type DesktopProviderBudget,
   type DesktopProvidersLayer,

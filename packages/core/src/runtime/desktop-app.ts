@@ -83,23 +83,40 @@ export type DesktopPermissionsLayer = ReadonlyArray<NormalizedCapability>
 
 export type DesktopProvidersLayer = ReadonlyArray<DesktopProviderDescriptor>
 
-export interface DesktopNativeRegistration<E = unknown, R = unknown> {
+export interface DesktopNativeRegistration<E = unknown, ServerR = unknown, HandlerR = unknown> {
   readonly tag: string
-  readonly serverLayer: DesktopRpcsLayer<E, R>
+  readonly serverLayer: DesktopRpcsLayer<E, ServerR, HandlerR>
   readonly schemaDocs: readonly DesktopRpcSchemaDoc[]
   readonly contractLaws: readonly DesktopRpcContractLaw[]
 }
 
-export type AnyDesktopNativeRegistration = DesktopNativeRegistration<unknown, unknown>
+export type AnyDesktopNativeRegistration<
+  E = unknown,
+  ServerR = unknown,
+  HandlerR = unknown
+> = DesktopNativeRegistration<E, ServerR, HandlerR>
 
-export type DesktopNativeLayer = ReadonlyArray<AnyDesktopNativeRegistration>
+export type DesktopNativeLayer<E = unknown, ServerR = unknown, HandlerR = unknown> = ReadonlyArray<
+  DesktopNativeRegistration<E, ServerR, HandlerR>
+>
 
-export interface DesktopNativeSurfaceSelection {
+export interface DesktopNativeSurfaceSelection<E = unknown, ServerR = unknown, HandlerR = unknown> {
   readonly _tag: "NativeSurfaceSelection"
-  readonly surfaces: readonly AnyDesktopNativeRegistration[]
+  readonly surfaces: readonly DesktopNativeRegistration<E, ServerR, HandlerR>[]
 }
 
-export type DesktopNativeDeclaration = DesktopNativeLayer | DesktopNativeSurfaceSelection
+export type DesktopNativeDeclaration<E = unknown, ServerR = unknown, HandlerR = unknown> =
+  | DesktopNativeLayer<E, ServerR, HandlerR>
+  | DesktopNativeSurfaceSelection<E, ServerR, HandlerR>
+
+type DesktopNativeDeclarationError<Declaration> =
+  Declaration extends DesktopNativeDeclaration<infer E, unknown, unknown> ? E : never
+
+type DesktopNativeDeclarationServerR<Declaration> =
+  Declaration extends DesktopNativeDeclaration<unknown, infer ServerR, unknown> ? ServerR : never
+
+type DesktopNativeDeclarationHandlerR<Declaration> =
+  Declaration extends DesktopNativeDeclaration<unknown, unknown, infer HandlerR> ? HandlerR : never
 
 export type DesktopWorkflowRegistration<E = unknown, R = unknown> = Layer.Layer<
   never,
@@ -131,7 +148,7 @@ export interface DesktopConfig<RIn = never, E = never, RpcHandlerR = unknown> {
   readonly id: string
   readonly windows: DesktopWindowsLayer<RIn>
   readonly providers?: DesktopProvidersLayer
-  readonly native?: DesktopNativeLayer
+  readonly native?: DesktopNativeLayer<E, RIn, RpcHandlerR>
   readonly rpcs?: DesktopRpcsLayer<E, RIn, RpcHandlerR>
   readonly permissions?: DesktopPermissionsLayer
   readonly workflows?: DesktopWorkflowsLayer<RIn, E>
@@ -141,7 +158,7 @@ export interface DesktopMakeConfig<RIn = never, E = never, RpcHandlerR = unknown
   readonly id?: string
   readonly windows: DesktopWindowsLayer<RIn>
   readonly providers?: DesktopProvidersLayer
-  readonly native?: DesktopNativeLayer
+  readonly native?: DesktopNativeLayer<E, RIn, RpcHandlerR>
   readonly rpcs?: DesktopRpcsLayer<E, RIn, RpcHandlerR>
   readonly permissions?: DesktopPermissionsLayer
   readonly workflows?: DesktopWorkflowsLayer<RIn, E>
@@ -161,15 +178,15 @@ export interface DesktopAppDescriptor<
   RpcHandlerR = unknown
 > extends DesktopConfig<RIn, E, RpcHandlerR> {
   readonly _tag: "DesktopAppDescriptor"
-  readonly native: DesktopNativeLayer
+  readonly native: DesktopNativeLayer<E, RIn, RpcHandlerR>
   readonly rpcs: DesktopRpcsLayer<E, RIn, RpcHandlerR>
   readonly permissions: DesktopPermissionsLayer
   readonly workflows: DesktopWorkflowsLayer<RIn, E>
   readonly windowRegistrations: ReadonlyArray<DesktopWindowRegistration<RIn>>
 }
 
-interface DesktopNativeSelectionSnapshot {
-  readonly registrations: ReadonlyArray<AnyDesktopNativeRegistration>
+interface DesktopNativeSelectionSnapshot<E, ServerR, HandlerR> {
+  readonly registrations: ReadonlyArray<DesktopNativeRegistration<E, ServerR, HandlerR>>
   readonly permissions: ReadonlyArray<NormalizedCapability>
 }
 
@@ -609,16 +626,31 @@ export const provider = (descriptor: DesktopProviderDescriptor): DesktopProvider
 export const providers = (...layers: readonly DesktopProvidersLayer[]): DesktopProvidersLayer =>
   Object.freeze(layers.flat())
 
-export const native = (...declarations: readonly DesktopNativeDeclaration[]): DesktopNativeLayer =>
+export const native = <
+  const Declarations extends readonly DesktopNativeDeclaration<unknown, unknown, unknown>[]
+>(
+  ...declarations: Declarations
+): DesktopNativeLayer<
+  DesktopNativeDeclarationError<Declarations[number]>,
+  DesktopNativeDeclarationServerR<Declarations[number]>,
+  DesktopNativeDeclarationHandlerR<Declarations[number]>
+> =>
+  // The runtime flattening preserves the exact registrations passed in by each
+  // declaration; TypeScript widens the variadic union to unknown when `flatMap`
+  // crosses the layer/selection union, so keep that proof at this constructor.
   Object.freeze(
     declarations.flatMap((declaration) =>
       isDesktopNativeLayer(declaration) ? declaration : declaration.surfaces
     )
-  )
+  ) as DesktopNativeLayer<
+    DesktopNativeDeclarationError<Declarations[number]>,
+    DesktopNativeDeclarationServerR<Declarations[number]>,
+    DesktopNativeDeclarationHandlerR<Declarations[number]>
+  >
 
-const isDesktopNativeLayer = (
-  declaration: DesktopNativeDeclaration
-): declaration is DesktopNativeLayer => Array.isArray(declaration)
+const isDesktopNativeLayer = <E, ServerR, HandlerR>(
+  declaration: DesktopNativeDeclaration<E, ServerR, HandlerR>
+): declaration is DesktopNativeLayer<E, ServerR, HandlerR> => Array.isArray(declaration)
 
 const DefaultProviders = Object.freeze({
   runtime: Provider.Runtime.bun,
@@ -785,9 +817,9 @@ const buildRegistrations = <RIn, E, RpcHandlerR>(
 ): Effect.Effect<ReadonlyArray<AnyDesktopRpcRegistration<E, RIn, RpcHandlerR>>, never, never> =>
   Effect.succeed(rpcs ?? [])
 
-const buildNativeSelection = <RIn, E>(
-  nativeLayer: DesktopConfig<RIn, E>["native"]
-): Effect.Effect<DesktopNativeSelectionSnapshot, never, never> =>
+const buildNativeSelection = <RIn, E, RpcHandlerR>(
+  nativeLayer: DesktopConfig<RIn, E, RpcHandlerR>["native"]
+): Effect.Effect<DesktopNativeSelectionSnapshot<E, RIn, RpcHandlerR>, never, never> =>
   Effect.succeed({
     registrations: nativeLayer ?? [],
     permissions: Object.freeze([])
@@ -808,9 +840,9 @@ const buildProviders = <RIn, E, RpcHandlerR>(
 ): Effect.Effect<SelectedProviderDescriptors, DesktopConfigError, never> =>
   selectProviderDescriptors(config.id, config.providers ?? [])
 
-const nativeRpcRegistrationsSync = (
-  registrations: ReadonlyArray<AnyDesktopNativeRegistration>
-): ReadonlyArray<AnyDesktopRpcRegistration<unknown, unknown, unknown>> =>
+const nativeRpcRegistrationsSync = <E, ServerR, HandlerR>(
+  registrations: ReadonlyArray<DesktopNativeRegistration<E, ServerR, HandlerR>>
+): ReadonlyArray<AnyDesktopRpcRegistration<E, ServerR, HandlerR>> =>
   Object.freeze(registrations.flatMap((registration) => registration.serverLayer))
 
 export const layer = <RIn = never, E = never, RpcHandlerR = unknown>(
@@ -1110,7 +1142,7 @@ const buildSpine = <RIn, E, RpcHandlerR>(config: DesktopConfig<RIn, E, RpcHandle
       const nativeRpcRegistrations = nativeRpcRegistrationsSync(nativeRegistrations)
       const registrations: ReadonlyArray<AnyDesktopRpcRegistration<E, RIn, RpcHandlerR>> = [
         ...appRegistrations,
-        ...(nativeRpcRegistrations as ReadonlyArray<AnyDesktopRpcRegistration<E, RIn, RpcHandlerR>>)
+        ...nativeRpcRegistrations
       ]
       const explicitPermissions = yield* buildPermissions(config.permissions)
       const permissions = [...nativeSelection.permissions, ...explicitPermissions]

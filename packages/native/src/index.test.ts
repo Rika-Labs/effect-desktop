@@ -59,7 +59,8 @@ import {
   HostProtocolRequestEnvelope,
   HostProtocolEventEnvelope,
   type HostWindowClientOptions,
-  type HostWindowExchange
+  type HostWindowExchange,
+  makeDesktopServerProtocol
 } from "@orika/bridge"
 import {
   AuditEvent,
@@ -96,7 +97,7 @@ import {
   Schema,
   Stream
 } from "effect"
-import { Rpc, RpcGroup } from "effect/unstable/rpc"
+import { Rpc, RpcGroup, RpcServer } from "effect/unstable/rpc"
 
 import {
   App,
@@ -461,6 +462,10 @@ const appEventOpenFilePaths = (
 ): readonly string[] =>
   Array.from(events, (event) => decodeAppEventOpenFilePayload(event.payload).path)
 
+type IsEqual<A, B> =
+  (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false
+type Assert<T extends true> = T
+
 const runScoped = <A, E, R>(
   effect: Effect.Effect<A, E, R>,
   layer: Layer.Layer<R, never, never>
@@ -647,11 +652,60 @@ test("Desktop.native registers selected native surfaces into app manifests", () 
   const tags = Desktop.manifest(app).rpcGroups.flatMap((group) =>
     Array.from(group.group.requests.keys())
   )
+  const appLayer = Desktop.layer(app)
+  type SelectedNativeRuntimeRequirements = Assert<
+    IsEqual<Layer.Services<typeof appLayer>, Clipboard | Dialog | RpcServer.Protocol>
+  >
+  const selectedNativeRuntimeRequirements: SelectedNativeRuntimeRequirements = true
 
   expect(tags).toContain("Clipboard.readText")
   expect(tags).toContain("Dialog.openFile")
   expect(tags).not.toContain("Window.create")
+  expect(selectedNativeRuntimeRequirements).toBe(true)
 })
+
+test("Desktop.native preserves native server requirements on the app runtime layer", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const app = Desktop.make({
+        id: "native-window-requirements",
+        windows: Desktop.window("main", { title: "Native Window Requirements" }),
+        native: Desktop.native(Native.Window)
+      })
+      const appLayer = Desktop.layer(app)
+      type NativeWindowRuntimeRequirements = Assert<
+        IsEqual<Layer.Services<typeof appLayer>, Window | RpcServer.Protocol>
+      >
+      const nativeWindowRuntimeRequirements: NativeWindowRuntimeRequirements = true
+      const availableApp = Desktop.make({
+        id: "native-available-window-requirements",
+        windows: Desktop.window("main", { title: "Native Available Window Requirements" }),
+        native: Native.available(Native.Window)
+      })
+      const availableAppLayer = Desktop.layer(availableApp)
+      type NativeAvailableWindowRuntimeRequirements = Assert<
+        IsEqual<Layer.Services<typeof availableAppLayer>, Window | RpcServer.Protocol>
+      >
+      const nativeAvailableWindowRuntimeRequirements: NativeAvailableWindowRuntimeRequirements = true
+      const protocolLayer = Layer.effect(RpcServer.Protocol)(
+        makeDesktopServerProtocol({
+          send: () => Effect.void,
+          run: () => Effect.never
+        })
+      )
+      const windowLayer = Layer.provide(WindowLive, Layer.succeed(WindowClient)(noopWindowClient))
+
+      const exit = yield* Effect.exit(
+        Effect.scoped(
+          Layer.build(appLayer.pipe(Layer.provide(Layer.merge(protocolLayer, windowLayer))))
+        )
+      )
+
+      expect(nativeWindowRuntimeRequirements).toBe(true)
+      expect(nativeAvailableWindowRuntimeRequirements).toBe(true)
+      expect(Exit.isSuccess(exit)).toBe(true)
+    })
+  ))
 
 test("Desktop.native availability does not require matching permissions during graph build", () =>
   Effect.runPromise(

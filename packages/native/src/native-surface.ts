@@ -18,6 +18,7 @@ import {
 import {
   type AnyDesktopNativeRegistration,
   DesktopRpc,
+  type DesktopRpcBoundServerRequirements,
   type DesktopRpcCapabilityFact,
   type DesktopRpcClient,
   type DesktopNativeSurfaceSelection,
@@ -41,9 +42,17 @@ type NativeRpcGroup<Rpcs extends Rpc.Any> = RpcGroup.RpcGroup<Rpcs> & {
 
 type NativeRpcHandlers<Group extends RpcGroup.Any> = RpcGroup.HandlersFrom<RpcGroup.Rpcs<Group>>
 
-export type NativeSurfaceSelection = DesktopNativeSurfaceSelection
+export type NativeSurfaceSelection<
+  E = unknown,
+  ServerR = unknown,
+  HandlerR = unknown
+> = DesktopNativeSurfaceSelection<E, ServerR, HandlerR>
 
-export type NativeSurfaceApi = NativeSurfaceSelection
+export type NativeSurfaceApi<
+  E = unknown,
+  ServerR = unknown,
+  HandlerR = unknown
+> = NativeSurfaceSelection<E, ServerR, HandlerR>
 
 export type NativePermissionsApi<Method extends string = never> = Readonly<
   Record<Method, NormalizedCapability> & {
@@ -116,7 +125,11 @@ export interface NativeRpcSurface<
   ServerR,
   Method extends string = never
 > extends DesktopRpcSurface<Tag, Group, Rpcs, ServiceId, ServerE, ServerR> {
-  readonly selection: NativeSurfaceApi
+  readonly selection: NativeSurfaceApi<
+    ServerE,
+    DesktopRpcBoundServerRequirements<Rpcs, ServerR>,
+    ServerR
+  >
   readonly permissions: NativePermissionsApi<Method>
   readonly bridgeClientLayer: (
     exchange: BridgeClientExchange,
@@ -331,8 +344,8 @@ const eventMethodFromRpcTag = (tag: `${string}.events.${string}`): string => {
   return `${tag.slice(0, separatorIndex)}.${tag.slice(separatorIndex + EventTagSeparator.length)}`
 }
 
-const nativeSurfacePermissions = <const Method extends string>(
-  registration: AnyDesktopNativeRegistration,
+const nativeSurfacePermissions = <const Method extends string, E, ServerR, HandlerR>(
+  registration: AnyDesktopNativeRegistration<E, ServerR, HandlerR>,
   capabilities: readonly Method[]
 ): NativePermissionsApi<Method> => {
   const permissions: Record<Method, NormalizedCapability> = {} as Record<
@@ -349,7 +362,9 @@ const nativeSurfacePermissions = <const Method extends string>(
   })
 }
 
-const surfaceSelection = (registration: AnyDesktopNativeRegistration): NativeSurfaceSelection =>
+const surfaceSelection = <E, ServerR, HandlerR>(
+  registration: AnyDesktopNativeRegistration<E, ServerR, HandlerR>
+): NativeSurfaceSelection<E, ServerR, HandlerR> =>
   Object.freeze({
     _tag: "NativeSurfaceSelection" as const,
     surfaces: Object.freeze([registration])
