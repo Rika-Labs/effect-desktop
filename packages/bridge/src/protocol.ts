@@ -1242,6 +1242,9 @@ const hostProtocolErrorToRpcClientError = (
     })
   })
 
+const hostPayloadToRpcPayload = (payload: unknown): unknown =>
+  payload === undefined ? null : payload
+
 export const hostProtocolErrorFromRpcClientError = (
   error: unknown
 ): HostProtocolError | undefined => {
@@ -1371,7 +1374,7 @@ export const makeDesktopClientProtocol = (
               : {
                   _tag: "Exit",
                   requestId: pending.requestId,
-                  exit: { _tag: "Success", value: envelope.payload }
+                  exit: { _tag: "Success", value: hostPayloadToRpcPayload(envelope.payload) }
                 }
           return writeToClient(pending.clientId, msg)
         }
@@ -1533,7 +1536,7 @@ export const makeDesktopServerProtocol = (
             _tag: "Request",
             id: serverRequestId,
             tag: envelope.method,
-            payload: envelope.payload === undefined ? null : envelope.payload,
+            payload: hostPayloadToRpcPayload(envelope.payload),
             headers,
             traceId: envelope.traceId
           }

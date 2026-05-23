@@ -38,6 +38,13 @@ const VoidPingRpc = Rpc.make("VoidPing", {
 
 const voidGroup = RpcGroup.make(VoidPingRpc)
 
+const VoidSuccessRpc = Rpc.make("VoidSuccess", {
+  payload: { message: Schema.String },
+  success: Schema.Void
+})
+
+const voidSuccessGroup = RpcGroup.make(VoidSuccessRpc)
+
 const StreamPingRpc = Rpc.make("StreamPing", {
   payload: { message: Schema.String },
   success: Schema.String,
@@ -537,6 +544,78 @@ test("makeDesktopClientProtocol routes responses to the client id that sent each
       )
 
       expect(replies).toEqual(["pong:one", "pong:two"])
+    })
+  ))
+
+test("makeDesktopClientProtocol treats omitted host response payloads as Effect void successes", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
+      const transport: DesktopTransportSend & DesktopTransportRun = {
+        send: (envelope) => {
+          if (envelope.kind !== "request") {
+            return Effect.void
+          }
+          return Queue.offer(
+            queue,
+            new HostProtocolResponseEnvelope({
+              kind: "response",
+              id: envelope.id,
+              timestamp: 0,
+              traceId: envelope.traceId
+            })
+          ).pipe(Effect.asVoid)
+        },
+        run: (onEnvelope) => runQueuedTransport(queue, onEnvelope)
+      }
+
+      const result = yield* Effect.scoped(
+        Effect.gen(function* () {
+          const protocol = yield* makeDesktopClientProtocol(transport)
+          const client = yield* RpcClient.make(voidSuccessGroup).pipe(
+            Effect.provideService(RpcClient.Protocol, protocol)
+          )
+          return yield* client.VoidSuccess({ message: "hello" })
+        })
+      )
+
+      expect(result).toBeUndefined()
+    })
+  ))
+
+test("makeDesktopClientProtocol rejects omitted host response payloads for non-void successes", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
+      const transport: DesktopTransportSend & DesktopTransportRun = {
+        send: (envelope) => {
+          if (envelope.kind !== "request") {
+            return Effect.void
+          }
+          return Queue.offer(
+            queue,
+            new HostProtocolResponseEnvelope({
+              kind: "response",
+              id: envelope.id,
+              timestamp: 0,
+              traceId: envelope.traceId
+            })
+          ).pipe(Effect.asVoid)
+        },
+        run: (onEnvelope) => runQueuedTransport(queue, onEnvelope)
+      }
+
+      const exit = yield* Effect.scoped(
+        Effect.gen(function* () {
+          const protocol = yield* makeDesktopClientProtocol(transport)
+          const client = yield* RpcClient.make(group).pipe(
+            Effect.provideService(RpcClient.Protocol, protocol)
+          )
+          return yield* Effect.exit(client.Ping({ message: "hello" }))
+        })
+      )
+
+      expect(Exit.isFailure(exit)).toBe(true)
     })
   ))
 

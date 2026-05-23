@@ -68,6 +68,7 @@ function CopyButton({ text }: { text: string }) {
 ## Example: dialog
 
 ```tsx
+import { Exit } from "effect"
 import { DialogRpcs } from "@orika/native/renderer"
 
 function OpenButton() {
@@ -75,11 +76,11 @@ function OpenButton() {
   const openFile = dialog.openFile.useMutation()
 
   const onClick = async () => {
-    const result = await openFile.run({
+    const exit = await openFile.runPromise({
       filters: [{ name: "Markdown", extensions: ["md"] }]
     })
-    if (result.paths.length > 0) {
-      // result.paths is string[]
+    if (Exit.isSuccess(exit) && exit.value.paths.length > 0) {
+      // exit.value.paths is string[]
     }
   }
 
@@ -95,7 +96,7 @@ import { NotificationRpcs } from "@orika/native/renderer"
 const notification = DesktopApp.useDesktop(NotificationRpcs)
 const show = notification.show.useMutation()
 
-await show.run({ title: "Done", body: "Indexing complete." })
+show.run({ title: "Done", body: "Indexing complete." })
 ```
 
 ## Example: native hooks

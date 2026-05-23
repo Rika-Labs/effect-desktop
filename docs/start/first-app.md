@@ -90,7 +90,8 @@ export const Manifest = Desktop.manifest(App)
 Create `app/Greeter.tsx`:
 
 ```tsx
-import { ReactDesktop } from "@orika/react"
+import { Option } from "effect"
+import { AsyncResult, ReactDesktop } from "@orika/react"
 import { Manifest } from "./manifest.js"
 import { AppRpcs } from "./contracts.js"
 
@@ -99,6 +100,8 @@ const DesktopApp = ReactDesktop.from(Manifest)
 export function Greeter() {
   const greeting = DesktopApp.useDesktop(AppRpcs)
   const say = greeting.say.useMutation()
+  const result = AsyncResult.value(say.state)
+  const error = AsyncResult.error(say.state)
 
   return (
     <form
@@ -112,14 +115,14 @@ export function Greeter() {
       <button type="submit" disabled={say.status === "running"}>
         Greet
       </button>
-      {say.status === "success" && <p>{say.value.message}</p>}
-      {say.status === "error" && <p>Error: {say.error.reason}</p>}
+      {Option.isSome(result) && <p>{result.value.message}</p>}
+      {Option.isSome(error) && <p>Error: {error.value.reason}</p>}
     </form>
   )
 }
 ```
 
-`useDesktop(AppRpcs)` returns a typed object with one entry per RPC method. Each entry exposes `useMutation()` (for actions) or `useQuery()` (for reads). `say.value` is fully typed — `string` if you ask `value.message`. `say.error.reason` is also typed, because the RpcGroup declared it.
+`useDesktop(AppRpcs)` returns a typed object with one entry per RPC method. Each entry exposes `useMutation()` (for actions) or `useQuery()` (for reads). `say.state` is an `AsyncResult`: `AsyncResult.value(say.state)` is fully typed, and `AsyncResult.error(say.state)` carries the contract error.
 
 ## 5. Running it
 
@@ -138,7 +141,7 @@ bun run dev
 
 - You didn't write a transport. The bridge serializes the call, names the method, propagates the trace id, and returns the typed reply.
 - You didn't write a registry. `Desktop.make` keeps the runtime graph; the renderer reads the manifest.
-- You didn't catch any exceptions. `GreetingError` is the only failure that can reach the renderer's `say.error` channel — anything thrown is treated as a defect by Effect.
+- You didn't catch any exceptions. `GreetingError` is the only typed failure that can reach `AsyncResult.error(say.state)` — anything thrown is treated as a defect by Effect.
 - You didn't ask for permission. `Greeting.say` reads no native authority. Once you add filesystem, processes, or secrets, the [permissions model](../explanation/permissions-model.md) kicks in.
 
 ## Next

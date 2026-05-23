@@ -8,7 +8,7 @@ effect_version: 4
 
 # Mutations
 
-`useMutation` runs an RPC action when you call `.run(input)`. It exposes typed status, value, and error.
+`useMutation` runs an RPC action when you call `.run(input)`. It exposes typed status and an `AsyncResult` state. Use `.runPromise(input)` when you need to await completion or read the success value.
 
 ## Import (per-method)
 
@@ -20,11 +20,14 @@ const create = DesktopApp.useDesktop(TodoRpcs).create.useMutation()
 
 ```ts
 interface MutationResult<I, O, E> {
-  readonly status: "idle" | "running" | "error" | "success"
-  readonly value?: O
-  readonly error?: E
-  readonly run: (input: I) => Promise<O>
+  readonly state: AsyncResult.AsyncResult<O, E>
+  readonly status: "idle" | "running" | "success" | "failure" | "canceled" | "unavailable"
+  readonly run: (input: I) => void
+  readonly runPromise: (input: I) => Promise<Exit.Exit<O, E>>
+  readonly reset: () => void
   readonly isRunning: boolean
+  readonly isSuccess: boolean
+  readonly isFailure: boolean
 }
 ```
 
@@ -36,35 +39,37 @@ const save = DesktopApp.useDesktop(NotesRpcs).save.useMutation()
 return (
   <>
     <button disabled={save.status === "running"} onClick={() => save.run({ id, body })}>
-      {save.status === "running" ? "Saving…" : "Save"}
+      {save.isRunning ? "Saving…" : "Save"}
     </button>
-    {save.status === "error" && <p>Error: {save.error.reason}</p>}
+    {save.isFailure && <p>Save failed.</p>}
   </>
 )
 ```
 
-## Pattern: typed error narrowing
+## Pattern: await completion
 
-```tsx
-{
-  save.status === "error" && save.error._tag === "NoteNotFound" && <p>Note not found.</p>
+```ts
+import { Exit } from "effect"
+
+const exit = await save.runPromise({ id, body })
+if (Exit.isSuccess(exit)) {
+  list.refetch()
 }
 ```
 
-TypeScript narrows on `_tag` exhaustively because the contract declared the closed error union.
-
-## Pattern: refetch a query after mutation
+## Pattern: fire-and-forget action
 
 ```ts
-await save.run({ ... })
-list.refetch()
+save.run({ ... })
 ```
+
+For sequencing or returned values, use `runPromise` and inspect the returned `Exit`.
 
 ## Lower-level
 
-`useDesktopAction(endpoint, options?)` exposes the same shape with `concurrency`, `retry`, and per-call options.
+`useDesktopAction(operation, options?)` exposes the lower-level action shape with `concurrency`.
 
-`DesktopActionConcurrency`: `"replace"` (cancel pending), `"queue"` (serialize), `"all"` (parallel).
+`DesktopActionConcurrency`: `"drop"` (ignore while running), `"replace"` (cancel pending), `"queue"` (serialize).
 
 ## Related
 

@@ -123,8 +123,8 @@ The compose window needs its own renderer entry. In `apps/inspector/src/notes/Co
 
 ```tsx
 import { useState } from "react"
-import { ReactDesktop } from "@orika/react"
-import { useCloseCurrentWindowMutation } from "@orika/react"
+import { Exit } from "effect"
+import { ReactDesktop, useCloseCurrentWindowMutation } from "@orika/react"
 import { Manifest } from "../manifest.js"
 import { NotesRpcs } from "./contracts.js"
 
@@ -138,8 +138,9 @@ export function ComposePanel() {
 
   const onSave = async () => {
     if (!draft.trim()) return
-    await save.run({ id: crypto.randomUUID(), body: draft })
-    await closeWindow.run()
+    const saveExit = await save.runPromise({ id: crypto.randomUUID(), body: draft })
+    if (Exit.isFailure(saveExit)) return
+    await closeWindow.runPromise()
   }
 
   return (

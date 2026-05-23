@@ -15,6 +15,7 @@ import {
   Fiber,
   Layer,
   ManagedRuntime,
+  Queue,
   Schema,
   Scope,
   Stream
@@ -37,10 +38,20 @@ import {
 import { makeRendererInspectorCollector } from "./inspector-events.js"
 
 const Ping = Rpc.make("Notes.Ping", { success: Schema.String })
+const DialogMessage = Rpc.make("Dialog.message", {
+  payload: { message: Schema.String },
+  success: Schema.Void
+})
 const workspaceRootUrl = new URL("../../../../", import.meta.url)
 const bundleScratchRootUrl = new URL("build/orika-bundle-tests/", workspaceRootUrl)
 const rendererEntrypointUrl = new URL("renderer.ts", import.meta.url)
 const PlatformRuntime = ManagedRuntime.make(BunServices.layer)
+
+const runQueuedTransport = (
+  queue: Queue.Queue<HostProtocolEnvelope>,
+  onEnvelope: (envelope: HostProtocolEnvelope) => Effect.Effect<void>
+): Effect.Effect<never> =>
+  Stream.fromQueue(queue).pipe(Stream.runForEach(onEnvelope), Effect.andThen(Effect.never))
 
 test("@orika/core/renderer entrypoint avoids host descriptor modules", () =>
   PlatformRuntime.runPromise(
@@ -273,6 +284,62 @@ test("RendererRpcClients layer closes the client protocol scope", () => {
     })
   )
 })
+
+test("RendererRpcClients decodes omitted host response payloads for void mutations", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const DialogRpcs = RpcGroup.make(DialogMessage)
+      const app = manifestFor(DialogRpcs)
+      const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
+      const requests: HostProtocolEnvelope[] = []
+      const transport: DesktopRendererRpcTransport = {
+        send: (envelope) => {
+          if (envelope.kind !== "request") {
+            return Effect.void
+          }
+          requests.push(envelope)
+          return Queue.offer(
+            queue,
+            new HostProtocolResponseEnvelope({
+              kind: "response",
+              id: envelope.id,
+              timestamp: 0,
+              traceId: envelope.traceId
+            })
+          ).pipe(Effect.asVoid)
+        },
+        run: (onEnvelope) => runQueuedTransport(queue, onEnvelope)
+      }
+
+      const result = yield* runScoped(
+        Effect.gen(function* () {
+          const clients = yield* Effect.service(RendererRpcClients)
+          const dialog = clients.clients.get(DialogRpcs)
+          const message = dialog?.["Dialog.message"]
+          expect(message).toBeDefined()
+          if (message === undefined) {
+            return yield* Effect.die("expected Dialog.message client")
+          }
+          const response = message({ message: "hello" })
+          if (!Effect.isEffect(response)) {
+            return yield* Effect.die("expected Dialog.message to return an Effect")
+          }
+          return yield* response.pipe(Effect.orDie)
+        }),
+        makeDesktopRendererRpcClientLayer(app, { framework: "react" }).pipe(
+          Layer.provide(makeDesktopRendererRpcTransportLayer(transport))
+        )
+      )
+
+      expect(result).toBeUndefined()
+      expect(requests).toHaveLength(1)
+      expect(requests[0]).toMatchObject({
+        kind: "request",
+        method: "Dialog.message",
+        payload: { message: "hello" }
+      })
+    })
+  ))
 
 test("RendererRpcClients test layer executes RpcTest clients and interrupts scoped streams", () =>
   Effect.runPromise(

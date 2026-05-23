@@ -189,7 +189,8 @@ Create `apps/inspector/src/notes/NotesPanel.tsx`:
 
 ```tsx
 import { useState } from "react"
-import { ReactDesktop } from "@orika/react"
+import { Exit, Option } from "effect"
+import { AsyncResult, ReactDesktop } from "@orika/react"
 import { Manifest } from "../manifest.js"
 import { NotesRpcs } from "./contracts.js"
 
@@ -205,22 +206,24 @@ export function NotesPanel() {
 
   const onAdd = async () => {
     if (!draft.trim()) return
-    await save.run({ id: crypto.randomUUID(), body: draft })
+    const exit = await save.runPromise({ id: crypto.randomUUID(), body: draft })
+    if (Exit.isFailure(exit)) return
     setDraft("")
-    list.refetch()
   }
 
   const onDelete = async (id: string) => {
-    await remove.run({ id })
-    list.refetch()
+    await remove.runPromise({ id })
   }
 
-  if (list.status === "pending" || list.status === "loading") {
+  if (AsyncResult.isWaiting(list)) {
     return <p>Loading…</p>
   }
-  if (list.status === "error") {
+  if (AsyncResult.isFailure(list)) {
     return <p>Failed to load notes.</p>
   }
+
+  const noteItems = AsyncResult.getOrElse(list, () => [])
+  const removeError = AsyncResult.error(remove.state)
 
   return (
     <section>
@@ -243,7 +246,7 @@ export function NotesPanel() {
       </form>
 
       <ul>
-        {list.value.map((note) => (
+        {noteItems.map((note) => (
           <li key={note.id}>
             <span>{note.body}</span>
             <button
@@ -257,7 +260,7 @@ export function NotesPanel() {
         ))}
       </ul>
 
-      {remove.status === "error" && remove.error._tag === "NoteNotFound" && (
+      {Option.isSome(removeError) && removeError.value._tag === "NoteNotFound" && (
         <p>That note no longer exists. Refresh.</p>
       )}
     </section>
@@ -268,9 +271,9 @@ export function NotesPanel() {
 Notes on the renderer code:
 
 - `DesktopApp.useDesktop(NotesRpcs)` returns a typed object with one entry per RPC. Each entry exposes `useQuery()`, `useMutation()`, or `useStream()` depending on the endpoint kind.
-- `useQuery()` fetches automatically on mount and exposes `status`, `value`, `error`, and `refetch`.
-- `useMutation()` is fire-on-call: `save.run({ … })` returns a promise; `save.status` reflects the in-flight state.
-- The error narrowing on `remove.error._tag === "NoteNotFound"` is exhaustive — TypeScript knows that's the only error.
+- `useQuery()` fetches automatically on mount and returns an `AsyncResult`.
+- `useMutation()` is fire-on-call: `save.run({ … })` starts the action and returns `void`; `save.runPromise({ … })` returns an `Exit` for sequencing.
+- The error narrowing on `removeError.value._tag === "NoteNotFound"` is exhaustive because `AsyncResult.error(remove.state)` carries the contract error.
 
 Drop `<NotesPanel />` into the inspector's main component:
 
