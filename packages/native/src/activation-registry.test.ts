@@ -1,23 +1,30 @@
 import { expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
 import { HostProtocolInternalError, RpcCapability } from "@orika/bridge"
 import {
+  AuditEvents,
   type AuditEvent,
   type AuditEventsApi,
+  CommandRegistry,
   makeCommandRegistry,
   makePermissionRegistry,
   makeResourceId,
   makeResourceRegistry,
   type NormalizedCapability,
-  P
+  P,
+  PermissionRegistry,
+  type PermissionRegistryApi,
+  ResourceRegistry,
+  type ResourceRegistryApi
 } from "@orika/core"
-import { Cause, Effect, Exit, Fiber, ManagedRuntime, Schema, Stream } from "effect"
+import { Cause, Effect, Exit, Fiber, Layer, ManagedRuntime, Schema, Stream } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 
 import {
   ActivationRegistry,
+  ActivationRegistryClient,
   type ActivationRegistryClientApi,
   makeActivationRegistryMemoryClient,
-  makeActivationRegistryServiceLayer,
   makeActivationRegistryUnsupportedClient
 } from "./activation-registry.js"
 import {
@@ -52,6 +59,25 @@ const activationCommand = Rpc.make("activation.open", {
 }).pipe(RpcCapability(commandCapability))
 const activationCommandGroup = RpcGroup.make(activationCommand)
 
+test("ActivationRegistry public surface omits shallow client and bridge layer helpers", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        readFile(new URL("activation-registry.ts", import.meta.url), "utf8")
+      )
+      const indexSource = yield* Effect.promise(() =>
+        readFile(new URL("index.ts", import.meta.url), "utf8")
+      )
+
+      expect(source).not.toContain("makeActivationRegistryClientLayer")
+      expect(source).not.toContain("makeActivationRegistryBridgeClientLayer")
+      expect(source).not.toContain("makeActivationRegistryServiceLayer")
+      expect(indexSource).not.toContain("makeActivationRegistryClientLayer")
+      expect(indexSource).not.toContain("makeActivationRegistryBridgeClientLayer")
+      expect(indexSource).not.toContain("makeActivationRegistryServiceLayer")
+    })
+  ))
+
 test("ActivationRegistry registers surfaces as scoped resources", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -59,7 +85,7 @@ test("ActivationRegistry registers surfaces as scoped resources", () =>
       const fixture = yield* configuredRuntime(rows)
       const client = yield* makeActivationRegistryMemoryClient()
 
-      const runtime = ManagedRuntime.make(makeActivationRegistryServiceLayer(client, fixture))
+      const runtime = ManagedRuntime.make(activationRegistryLayer(client, fixture))
       const result = yield* Effect.promise(() =>
         runtime.runPromise(
           Effect.gen(function* () {
@@ -103,7 +129,7 @@ test("ActivationRegistry routes activation through CommandRegistry with permissi
         )
       )
 
-      const runtime = ManagedRuntime.make(makeActivationRegistryServiceLayer(client, fixture))
+      const runtime = ManagedRuntime.make(activationRegistryLayer(client, fixture))
       const result = yield* Effect.promise(() =>
         runtime.runPromise(
           Effect.gen(function* () {
@@ -211,7 +237,7 @@ test("ActivationRegistry rejects malformed registration before client side effec
           }).pipe(Effect.andThen(baseClient.registerSurface(input)))
       }
 
-      const runtime = ManagedRuntime.make(makeActivationRegistryServiceLayer(client, fixture))
+      const runtime = ManagedRuntime.make(activationRegistryLayer(client, fixture))
       const exit = yield* Effect.promise(() =>
         runtime.runPromise(
           Effect.gen(function* () {
@@ -254,7 +280,7 @@ test("ActivationRegistry denies before resource registration and client calls", 
           }).pipe(Effect.andThen(baseClient.registerSurface(input)))
       }
 
-      const runtime = ManagedRuntime.make(makeActivationRegistryServiceLayer(client, fixture))
+      const runtime = ManagedRuntime.make(activationRegistryLayer(client, fixture))
       const exit = yield* Effect.promise(() =>
         runtime.runPromise(
           Effect.gen(function* () {
@@ -283,7 +309,7 @@ test("ActivationRegistry unsupported client returns typed unsupported failures",
     Effect.gen(function* () {
       const fixture = yield* configuredRuntime([])
       const runtime = ManagedRuntime.make(
-        makeActivationRegistryServiceLayer(makeActivationRegistryUnsupportedClient(), fixture)
+        activationRegistryLayer(makeActivationRegistryUnsupportedClient(), fixture)
       )
       const result = yield* Effect.promise(() =>
         runtime.runPromise(
@@ -335,7 +361,7 @@ test("ActivationRegistry rejects unknown unregister without supported host side 
           }).pipe(Effect.andThen(baseClient.unregisterSurface(input)))
       }
 
-      const runtime = ManagedRuntime.make(makeActivationRegistryServiceLayer(client, fixture))
+      const runtime = ManagedRuntime.make(activationRegistryLayer(client, fixture))
       const exit = yield* Effect.promise(() =>
         runtime.runPromise(
           Effect.gen(function* () {
@@ -372,7 +398,7 @@ test("ActivationRegistry cleans resource when host registration fails", () =>
         failure: { registerSurface: failure }
       })
 
-      const runtime = ManagedRuntime.make(makeActivationRegistryServiceLayer(client, fixture))
+      const runtime = ManagedRuntime.make(activationRegistryLayer(client, fixture))
       const exit = yield* Effect.promise(() =>
         runtime.runPromise(
           Effect.gen(function* () {
@@ -415,7 +441,7 @@ test("ActivationRegistry unregisters host when committed registration output is 
           }).pipe(Effect.andThen(baseClient.unregisterSurface(input)))
       }
 
-      const runtime = ManagedRuntime.make(makeActivationRegistryServiceLayer(client, fixture))
+      const runtime = ManagedRuntime.make(activationRegistryLayer(client, fixture))
       const exit = yield* Effect.promise(() =>
         runtime.runPromise(
           Effect.gen(function* () {
@@ -452,7 +478,7 @@ test("ActivationRegistry resource disposal removes the surface and unregisters t
           }).pipe(Effect.andThen(baseClient.unregisterSurface(input)))
       }
 
-      const runtime = ManagedRuntime.make(makeActivationRegistryServiceLayer(client, fixture))
+      const runtime = ManagedRuntime.make(activationRegistryLayer(client, fixture))
       const result = yield* Effect.promise(() =>
         runtime.runPromise(
           Effect.gen(function* () {
@@ -489,7 +515,7 @@ test("ActivationRegistry rejects actor and permission context mismatches before 
         )
       )
 
-      const runtime = ManagedRuntime.make(makeActivationRegistryServiceLayer(client, fixture))
+      const runtime = ManagedRuntime.make(activationRegistryLayer(client, fixture))
       const exit = yield* Effect.promise(() =>
         runtime.runPromise(
           Effect.gen(function* () {
@@ -550,6 +576,28 @@ const configuredRuntime = (
     rows.length = 0
     return { permissions, resources, commands, audit }
   })
+
+interface ActivationRegistryFixture {
+  readonly permissions: PermissionRegistryApi
+  readonly resources: ResourceRegistryApi
+  readonly commands: CommandRegistry["Service"]
+  readonly audit: AuditEventsApi
+}
+
+const activationRegistryLayer = (
+  client: ActivationRegistryClientApi,
+  fixture: ActivationRegistryFixture
+): Layer.Layer<ActivationRegistry> =>
+  Layer.provide(
+    ActivationRegistry.layer,
+    Layer.mergeAll(
+      Layer.succeed(ActivationRegistryClient)(client),
+      Layer.succeed(PermissionRegistry)(fixture.permissions),
+      Layer.succeed(ResourceRegistry)(fixture.resources),
+      Layer.succeed(CommandRegistry)(fixture.commands),
+      Layer.succeed(AuditEvents)(fixture.audit)
+    )
+  )
 
 const memoryAudit = (rows: AuditEvent[]): AuditEventsApi => ({
   emit: (event: AuditEvent) =>

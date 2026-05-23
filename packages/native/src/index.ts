@@ -7,10 +7,7 @@ export {
   ActivationRegistryRpcEvents,
   ActivationRegistryRpcs,
   ActivationRegistrySurface,
-  makeActivationRegistryBridgeClientLayer,
-  makeActivationRegistryClientLayer,
   makeActivationRegistryMemoryClient,
-  makeActivationRegistryServiceLayer,
   makeActivationRegistryUnsupportedClient,
   makeHostActivationRegistryRpcRuntime,
   type ActivationRegistryClientApi,
@@ -18,8 +15,7 @@ export {
   type ActivationRegistryMemoryClientOptions,
   type ActivationRegistryRpc,
   type ActivationRegistryRpcHandlers,
-  type ActivationRegistryServiceApi,
-  type ActivationRegistryServiceOptions
+  type ActivationRegistryServiceApi
 } from "./activation-registry.js"
 export {
   App,

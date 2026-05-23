@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
@@ -13,6 +12,7 @@ import {
   RpcGroup
 } from "@orika/bridge"
 import {
+  AuditEvents,
   type AuditEventsApi,
   CommandRegistry,
   type CommandRegistryError,
@@ -31,7 +31,7 @@ import {
   ResourceRegistry,
   type ResourceRegistryApi
 } from "@orika/core"
-import { Clock, Context, Effect, Layer, PubSub, Ref, Schema, Stream } from "effect"
+import { Clock, Context, Effect, Layer, Option, PubSub, Ref, Schema, Stream } from "effect"
 
 import {
   ActivationActor,
@@ -146,7 +146,7 @@ export interface ActivationRegistryServiceApi {
   readonly events: () => Stream.Stream<ActivationEvent, HostProtocolError, never>
 }
 
-export interface ActivationRegistryServiceOptions {
+interface ActivationRegistryServiceOptions {
   readonly permissions: PermissionRegistryApi
   readonly resources: ResourceRegistryApi
   readonly commands: CommandRegistry["Service"]
@@ -168,28 +168,18 @@ export class ActivationRegistry extends Context.Service<
       const permissions = yield* PermissionRegistry
       const resources = yield* ResourceRegistry
       const commands = yield* CommandRegistry
-      return yield* makeActivationRegistryService(client, { permissions, resources, commands })
+      const audit = yield* Effect.serviceOption(AuditEvents)
+      return yield* makeActivationRegistryService(client, {
+        permissions,
+        resources,
+        commands,
+        ...(Option.isSome(audit) ? { audit: audit.value } : {})
+      })
     })
   )
 }
 
 export const ActivationRegistryLive = ActivationRegistry.layer
-
-export const makeActivationRegistryClientLayer = (
-  client: ActivationRegistryClientApi
-): Layer.Layer<ActivationRegistryClient> => Layer.succeed(ActivationRegistryClient)(client)
-
-export const makeActivationRegistryServiceLayer = (
-  client: ActivationRegistryClientApi,
-  options: ActivationRegistryServiceOptions
-): Layer.Layer<ActivationRegistry> =>
-  Layer.effect(ActivationRegistry)(makeActivationRegistryService(client, options))
-
-export const makeActivationRegistryBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<ActivationRegistryClient> =>
-  ActivationRegistrySurface.bridgeClientLayer(exchange, options)
 
 export const ActivationRegistryHandlersLive = ActivationRegistryRpcGroup.toLayer({
   "ActivationRegistry.registerSurface": (input) =>

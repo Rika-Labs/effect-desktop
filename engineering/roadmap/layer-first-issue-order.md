@@ -112,9 +112,10 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 
 ## Architecture Debt Follow-Ups
 
-|                                  Issue | Status | Why here                                                                                                                                                        |
-| -------------------------------------: | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| #1421 Remove Window `windowRpc` helper | Open   | Removes a shallow `NativeSurface.rpc` wrapper that spans the Window parity surface and will simplify later Window lifecycle, bounds, chrome, and state tickets. |
+|                                     Issue | Status | Why here                                                                                                                                                        |
+| ----------------------------------------: | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|    #1421 Remove Window `windowRpc` helper | Open   | Removes a shallow `NativeSurface.rpc` wrapper that spans the Window parity surface and will simplify later Window lifecycle, bounds, chrome, and state tickets. |
+| #1743 Remove shallow native layer helpers | Open   | Removes pass-through native `make*Layer` exports that mirror Effect `Layer` and generated `NativeSurface` construction instead of owning desktop policy.        |
 
 ## Execution Progress
 
