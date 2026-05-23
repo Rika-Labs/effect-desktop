@@ -904,7 +904,7 @@ const decodeOptionalAttribution = (
   field: string
 ): Effect.Effect<string | undefined, PermissionInvalidArgumentError, never> =>
   value === undefined
-    ? Effect.succeed(undefined as string | undefined)
+    ? Effect.void.pipe(Effect.as(undefined))
     : Schema.decodeUnknownEffect(PermissionMetadataText)(value).pipe(
         Effect.mapError((cause) => invalidArgument(operation, field, cause))
       )

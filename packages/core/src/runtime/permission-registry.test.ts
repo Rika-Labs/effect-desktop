@@ -14,6 +14,17 @@ import {
   PermissionRevokedError
 } from "./permission-registry.js"
 
+test("PermissionRegistry optional attribution decoding does not assert absent source", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        Bun.file(new URL("./permission-registry.ts", import.meta.url)).text()
+      )
+
+      expect(source).not.toContain("undefined as string | undefined")
+    })
+  ))
+
 test("PermissionRegistry denies undeclared capabilities by default and audits the normalized request", () =>
   Effect.runPromise(
     Effect.gen(function* () {
