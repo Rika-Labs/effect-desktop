@@ -38,18 +38,21 @@ import {
   DesktopProvider,
   MissingDesktopContextError,
   ReactDesktop,
-  currentWindow,
   type CurrentWindowCloseMutation,
   type DesktopClient,
   type DesktopWindowClient,
-  windows,
   type WindowCreateMutation,
   type PermissionState,
+  useCloseCurrentWindowMutation,
+  useCreateWindowMutation,
+  useCurrentWindow,
+  useCurrentWindowId,
   useDesktop,
   useDesktopAction,
+  useDestroyCurrentWindowMutation,
+  useDestroyWindowMutation,
   useAtomValue,
-  usePermission,
-  useWindow
+  usePermission
 } from "./index.js"
 import { layerLocalStorage, layerSessionStorage } from "./storage/kv.js"
 import { makeDatabase, makeMigration, makeTable, makeVersion } from "./storage/idb.js"
@@ -76,6 +79,9 @@ const reactPackageJsonUrl = new URL("../package.json", import.meta.url)
 const reactPackageRootUrl = new URL("../", import.meta.url)
 const reactPackageIndexUrl = new URL("index.ts", import.meta.url)
 const reactDesktopSourceUrl = new URL("desktop.tsx", import.meta.url)
+const reactProviderSourceUrl = new URL("provider.tsx", import.meta.url)
+const reactCurrentWindowSourceUrl = new URL("current-window.ts", import.meta.url)
+const reactWindowsSourceUrl = new URL("windows.ts", import.meta.url)
 const workspaceRootUrl = new URL("../../../", import.meta.url)
 const reactRootBundleEntryUrl = new URL(".tmp-react-root-bundle-entry.tsx", workspaceRootUrl)
 
@@ -125,6 +131,26 @@ test("React package root does not export browser storage services", () =>
       expect(source).not.toContain("RendererSqlite")
       expect(source).not.toContain("indexedDbStorage")
       expect(source).not.toContain("keyValueStorage")
+    })
+  ))
+
+test("React package root does not export zero-policy window aliases", () =>
+  PlatformRuntime.runPromise(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const indexSource = yield* fs.readFileString(urlToPath(reactPackageIndexUrl))
+      const currentWindowSource = yield* fs.readFileString(urlToPath(reactCurrentWindowSourceUrl))
+      const windowsSource = yield* fs.readFileString(urlToPath(reactWindowsSourceUrl))
+      const providerSource = yield* fs.readFileString(urlToPath(reactProviderSourceUrl))
+
+      expect(indexSource).not.toContain("currentWindow,")
+      expect(indexSource).not.toContain("windows,")
+      expect(indexSource).not.toContain("useOptionalDesktopClient")
+      expect(indexSource).not.toContain("useWindow")
+      expect(currentWindowSource).not.toContain("export const currentWindow")
+      expect(windowsSource).not.toContain("export const windows")
+      expect(providerSource).not.toContain("export const useOptionalDesktopClient")
+      expect(providerSource).not.toContain("export const useWindow")
     })
   ))
 
@@ -296,7 +322,7 @@ test("DesktopProvider exposes the upstream Effect atom registry", () => {
 test("hooks model a missing provider without throwing", () => {
   const Probe = () => {
     const desktopOption = useDesktop()
-    const windowOption = useWindow()
+    const windowOption = useCurrentWindow()
 
     return createElement(
       "span",
@@ -310,7 +336,7 @@ test("hooks model a missing provider without throwing", () => {
 
 test("DesktopProvider can expose the current window handle", () => {
   const Probe = () => {
-    const window = useWindow()
+    const window = useCurrentWindow()
     return createElement("span", null, Option.isSome(window) ? window.value.id : "missing")
   }
   const window = {
@@ -332,9 +358,9 @@ test("DesktopProvider can expose the current window handle", () => {
   ).toBe("<span>window-1</span>")
 })
 
-test("currentWindow subpath exposes the current renderer window id", () => {
+test("useCurrentWindowId exposes the current renderer window id", () => {
   const Probe = () => {
-    const windowId = currentWindow.id.useQuery()
+    const windowId = useCurrentWindowId()
     return createElement(
       "span",
       null,
@@ -360,9 +386,9 @@ test("currentWindow subpath exposes the current renderer window id", () => {
   ).toBe("<span>window-1</span>")
 })
 
-test("windows subpath exposes idle create mutation state before invocation", () => {
+test("useCreateWindowMutation exposes idle create state before invocation", () => {
   const Probe = () => {
-    const createWindow = windows.create.useMutation()
+    const createWindow = useCreateWindowMutation()
     return createElement("span", null, createWindow.status)
   }
 
@@ -371,10 +397,10 @@ test("windows subpath exposes idle create mutation state before invocation", () 
   ).toBe("<span>idle</span>")
 })
 
-test("window lifecycle subpaths expose explicit destroy mutations", () => {
+test("window lifecycle hooks expose explicit destroy mutations", () => {
   const Probe = () => {
-    const destroyWindow = windows.destroy.useMutation()
-    const destroyCurrentWindow = currentWindow.destroy.useMutation()
+    const destroyWindow = useDestroyWindowMutation()
+    const destroyCurrentWindow = useDestroyCurrentWindowMutation()
     return createElement("span", null, `${destroyWindow.status}:${destroyCurrentWindow.status}`)
   }
   const window = {
@@ -551,8 +577,8 @@ test("ReactDesktop root exposes native Window helpers when the app declares Nati
   })
   const NotesReact = ReactDesktop.from(Desktop.manifest(NotesApp))
   const Probe = () => {
-    closeCurrentWindow = currentWindow.close.useMutation()
-    createWindow = windows.create.useMutation()
+    closeCurrentWindow = useCloseCurrentWindowMutation()
+    createWindow = useCreateWindowMutation()
     return createElement("span", null, `${closeCurrentWindow.status}:${createWindow.status}`)
   }
 

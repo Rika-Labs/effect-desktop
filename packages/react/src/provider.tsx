@@ -133,8 +133,6 @@ export const useDesktopContext = (): Option.Option<DesktopRuntimeContext> =>
 export const useDesktop = (): Option.Option<DesktopClient> =>
   Option.map(useContext(DesktopContext), (ctx) => ctx.client)
 
-export const useOptionalDesktopClient = (): Option.Option<DesktopClient> => useDesktop()
-
 export const useDesktopClient = (): DesktopClient => {
   const desktop = useDesktop()
   if (Option.isNone(desktop)) {
@@ -142,6 +140,3 @@ export const useDesktopClient = (): DesktopClient => {
   }
   return desktop.value
 }
-
-export const useWindow = (): Option.Option<WindowHandle> =>
-  Option.flatMap(useContext(DesktopContext), (ctx) => Option.fromUndefinedOr(ctx.currentWindow))

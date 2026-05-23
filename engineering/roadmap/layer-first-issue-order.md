@@ -120,7 +120,7 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 |          #1745 Model Download events by phase | Closed | Replaces the broad `DownloadEvent` phase payload with phase-specific Schema variants so invalid phase/payload combinations are rejected at the boundary.        |
 |       #1747 Model CookieStore events by phase | Closed | Replaces the broad `CookieStoreEvent` phase payload with phase-specific Schema variants so invalid phase/payload combinations are rejected at the boundary.     |
 |    #1748 Model SessionProfile events by phase | Closed | Replaces the broad `SessionProfileEvent` phase payload with phase-specific Schema variants so invalid phase/payload combinations are rejected at the boundary.  |
-| #1785 Remove React window convenience aliases | Open   | Removes zero-policy `currentWindow`/`windows` namespace aliases and duplicate React hooks so the React adapter exposes one Effect-native window contract.       |
+| #1785 Remove React window convenience aliases | Closed | Removes zero-policy `currentWindow`/`windows` namespace aliases and duplicate React hooks so the React adapter exposes one Effect-native window contract.       |
 
 ## Execution Progress
 

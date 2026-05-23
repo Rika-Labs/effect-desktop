@@ -17,7 +17,6 @@ import {
   DesktopProvider,
   ReactDesktop,
   useDesktopClient,
-  useOptionalDesktopClient,
   useDesktop,
   createUnavailableDesktopClient,
   type DesktopClient,
@@ -50,9 +49,9 @@ function App() {
 
 Lower-level provider component. `ReactDesktop.from(manifest).createRoot(...)` uses this internally; you can use it directly when you need finer control over context.
 
-## `useDesktopClient()` / `useOptionalDesktopClient()`
+## `useDesktopClient()`
 
-Returns the full bridge client map. The optional variant returns `null` if no provider is mounted (useful for fallbacks).
+Returns the full bridge client map. It throws if no `DesktopProvider` is mounted. Use `useDesktop()` when fallback UI needs to model the missing-provider case explicitly as `Option.Option<DesktopClient>`.
 
 ## `useDesktop(group)`
 

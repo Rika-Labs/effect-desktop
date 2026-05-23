@@ -31,21 +31,6 @@ export const useDestroyCurrentWindowMutation = (): CurrentWindowDestroyMutation 
   )
 }
 
-export const currentWindow = Object.freeze({
-  handle: Object.freeze({
-    useQuery: useCurrentWindow
-  }),
-  id: Object.freeze({
-    useQuery: useCurrentWindowId
-  }),
-  close: Object.freeze({
-    useMutation: useCloseCurrentWindowMutation
-  }),
-  destroy: Object.freeze({
-    useMutation: useDestroyCurrentWindowMutation
-  })
-})
-
 const currentWindowEffect = <A>(
   context: Option.Option<DesktopRuntimeContext>,
   operation: string,

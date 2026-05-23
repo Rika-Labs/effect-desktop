@@ -17,10 +17,10 @@ import {
   useCurrentWindow,
   useCurrentWindowId,
   useCloseCurrentWindowMutation,
+  useDestroyCurrentWindowMutation,
   useCreateWindowMutation,
   useCloseWindowMutation,
-  windows,
-  currentWindow
+  useDestroyWindowMutation
 } from "@orika/react"
 ```
 
@@ -61,9 +61,9 @@ const close = useCloseCurrentWindowMutation()
 <button onClick={() => close.run({})}>Close</button>
 ```
 
-## `windows` / `currentWindow` namespaces
+## `useDestroyWindowMutation()` / `useDestroyCurrentWindowMutation()`
 
-Bundles the create/close hooks under one namespace if you prefer a single import.
+Destroy by handle, or destroy the current window. Destroy is the explicit lifecycle operation; `close` remains available as the compatibility alias for app code that still speaks in close semantics.
 
 ## Related
 

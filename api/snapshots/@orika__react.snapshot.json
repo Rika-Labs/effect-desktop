@@ -29,14 +29,14 @@
       "signature": "const createUnavailableDesktopClient: (message?: string) => DesktopClient"
     },
     {
-      "name": "currentWindow",
-      "kind": "value",
-      "signature": "const currentWindow: Readonly<{ handle: Readonly<{ useQuery: () => Option.Option<WindowHandle>; }>; id: Readonly<{ useQuery: () => Option.Option<string>; }>; close: Readonly<{ useMutation: () => CurrentWindowCloseMutation; }>; destroy: Readonly<{ useMutation: () => CurrentWindowDestroyMutation; }>; }>"
-    },
-    {
       "name": "CurrentWindowCloseMutation",
       "kind": "type",
       "signature": "export type CurrentWindowCloseMutation = MutationResult<void, void, WindowError>"
+    },
+    {
+      "name": "CurrentWindowDestroyMutation",
+      "kind": "type",
+      "signature": "export type CurrentWindowDestroyMutation = MutationResult<void, void, WindowError>"
     },
     {
       "name": "DesktopAction",
@@ -374,6 +374,16 @@
       "signature": "const useDesktopStream: <A, E, R = never, ER = never>(stream: Stream.Stream<A, E, R>, options?: DesktopStreamOptions<A>, runtime?: FrameworkRuntime<R, ER>) => StreamState<A, E | ER>"
     },
     {
+      "name": "useDestroyCurrentWindowMutation",
+      "kind": "value",
+      "signature": "const useDestroyCurrentWindowMutation: () => CurrentWindowDestroyMutation"
+    },
+    {
+      "name": "useDestroyWindowMutation",
+      "kind": "value",
+      "signature": "const useDestroyWindowMutation: () => WindowDestroyMutation"
+    },
+    {
       "name": "useDisplays",
       "kind": "value",
       "signature": "const useDisplays: (getDisplays: () => Effect.Effect<ReadonlyArray<ScreenDisplay>, ScreenError, never>) => AsyncResult.AsyncResult<ReadonlyArray<ScreenDisplay>, ScreenError>"
@@ -387,11 +397,6 @@
       "name": "useMutation",
       "kind": "value",
       "signature": "const useMutation: <I, A, E, R = never, ER = never>(makeEffect: (input: I) => Effect.Effect<A, E, R>, runtime?: FrameworkRuntime<R, ER>) => MutationResult<I, A, E | ER>"
-    },
-    {
-      "name": "useOptionalDesktopClient",
-      "kind": "value",
-      "signature": "const useOptionalDesktopClient: () => Option.Option<DesktopClient>"
     },
     {
       "name": "usePermission",
@@ -429,11 +434,6 @@
       "signature": "const useThemeMode: (getAppearance: () => Effect.Effect<SystemAppearanceMode, SystemAppearanceError, never>) => AsyncResult.AsyncResult<SystemAppearanceMode, SystemAppearanceError>"
     },
     {
-      "name": "useWindow",
-      "kind": "value",
-      "signature": "const useWindow: () => Option.Option<WindowHandle>"
-    },
-    {
       "name": "WindowCloseInput",
       "kind": "interface",
       "signature": "export interface WindowCloseInput { readonly window: WindowHandle }"
@@ -454,6 +454,11 @@
       "signature": "export type WindowCreateOptions = Schema.Schema.Type<typeof WindowCreateInput>"
     },
     {
+      "name": "WindowDestroyMutation",
+      "kind": "type",
+      "signature": "export type WindowDestroyMutation = MutationResult<WindowCloseInput, void, WindowError>"
+    },
+    {
       "name": "WindowError",
       "kind": "type",
       "signature": "export type WindowError = HostProtocolError"
@@ -462,11 +467,6 @@
       "name": "WindowHandle",
       "kind": "type",
       "signature": "export type WindowHandle = ResourceHandle<\"window\", \"open\">"
-    },
-    {
-      "name": "windows",
-      "kind": "value",
-      "signature": "const windows: Readonly<{ create: Readonly<{ useMutation: () => WindowCreateMutation; }>; close: Readonly<{ useMutation: () => WindowCloseMutation; }>; destroy: Readonly<{ useMutation: () => WindowDestroyMutation; }>; }>"
     }
   ]
 }

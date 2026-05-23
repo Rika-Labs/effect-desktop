@@ -9,8 +9,6 @@ export {
   DesktopProvider,
   useDesktop,
   useDesktopClient,
-  useOptionalDesktopClient,
-  useWindow,
   type DesktopClient,
   type DesktopProviderProps,
   type DesktopRuntimeContext,
@@ -40,20 +38,22 @@ export {
 } from "./mutation.js"
 
 export {
-  currentWindow,
   useCloseCurrentWindowMutation,
   useCurrentWindow,
   useCurrentWindowId,
-  type CurrentWindowCloseMutation
+  useDestroyCurrentWindowMutation,
+  type CurrentWindowCloseMutation,
+  type CurrentWindowDestroyMutation
 } from "./current-window.js"
 
 export {
-  windows,
   useCloseWindowMutation,
   useCreateWindowMutation,
+  useDestroyWindowMutation,
   type WindowCloseInput,
   type WindowCloseMutation,
-  type WindowCreateMutation
+  type WindowCreateMutation,
+  type WindowDestroyMutation
 } from "./windows.js"
 
 export {

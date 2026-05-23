@@ -41,18 +41,6 @@ export const useDestroyWindowMutation = (): WindowDestroyMutation => {
   )
 }
 
-export const windows = Object.freeze({
-  create: Object.freeze({
-    useMutation: useCreateWindowMutation
-  }),
-  close: Object.freeze({
-    useMutation: useCloseWindowMutation
-  }),
-  destroy: Object.freeze({
-    useMutation: useDestroyWindowMutation
-  })
-})
-
 const desktopContextEffect = <A>(
   context: Option.Option<DesktopRuntimeContext>,
   operation: string,
