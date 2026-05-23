@@ -15,7 +15,11 @@ Clipboard host protocol surface.
 ```ts
 import { Desktop } from "@orika/core"
 import { Clipboard, ClipboardError, ClipboardRpcs, Native } from "@orika/native"
+import { ClipboardRpcs as RendererClipboardRpcs } from "@orika/native/renderer"
 ```
+
+Runtime and service code import from `@orika/native`. Browser renderer
+manifests import the renderer-safe RPC group from `@orika/native/renderer`.
 
 ## Status
 

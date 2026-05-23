@@ -14,7 +14,11 @@ Native file, save, message, and confirmation dialogs.
 
 ```ts
 import { Dialog, DialogClient, DialogRpcs, DialogError } from "@orika/native"
+import { DialogRpcs as RendererDialogRpcs } from "@orika/native/renderer"
 ```
+
+Runtime and service code import from `@orika/native`. Browser renderer
+manifests import the renderer-safe RPC group from `@orika/native/renderer`.
 
 ## Methods
 

@@ -44,6 +44,15 @@ const REACT_WINDOW_HOOK_DOCS = [
   "docs/how-to/add-a-window.md",
   "docs/tutorials/02-add-a-second-window.md"
 ] as const
+const RENDERER_SAFE_NATIVE_DOCS = {
+  clipboard: "ClipboardRpcs",
+  dialog: "DialogRpcs",
+  notification: "NotificationRpcs",
+  path: "PathRpcs",
+  screen: "ScreenRpcs",
+  shell: "ShellRpcs",
+  "system-appearance": "SystemAppearanceRpcs"
+} as const
 
 const StringRecord = Schema.Record(Schema.String, Schema.String)
 
@@ -316,6 +325,23 @@ describe("native reference docs", () => {
         violations.push(
           `${path.slice(REPO_ROOT.length + 1)}: ${helper} is not exported by packages/native/src/index.ts`
         )
+      }
+    }
+
+    expect(violations).toEqual([])
+  })
+
+  test("renderer-safe native RPC references show the renderer import", () => {
+    const violations: string[] = []
+
+    for (const [slug, rpcsName] of Object.entries(RENDERER_SAFE_NATIVE_DOCS)) {
+      const relativePath = `docs/reference/native/${slug}.md`
+      const markdown = readFileSync(join(REPO_ROOT, relativePath), "utf8")
+      if (!markdown.includes(`import { ${rpcsName} as Renderer${rpcsName} }`)) {
+        violations.push(`${relativePath}: missing renderer-safe ${rpcsName} import`)
+      }
+      if (!markdown.includes('from "@orika/native/renderer"')) {
+        violations.push(`${relativePath}: missing @orika/native/renderer import`)
       }
     }
 

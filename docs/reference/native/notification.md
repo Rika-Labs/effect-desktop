@@ -10,6 +10,16 @@ effect_version: 4
 
 Host-backed system notifications with typed permission, support, click, and action surfaces.
 
+## Import
+
+```ts
+import { Notification, NotificationError, NotificationRpcs, Native } from "@orika/native"
+import { NotificationRpcs as RendererNotificationRpcs } from "@orika/native/renderer"
+```
+
+Runtime and service code import from `@orika/native`. Browser renderer
+manifests import the renderer-safe RPC group from `@orika/native/renderer`.
+
 ## Platform Status
 
 | Platform | Status                                            | Notes                                                                                                                                                                                               |
