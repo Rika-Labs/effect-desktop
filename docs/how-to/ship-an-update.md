@@ -56,7 +56,7 @@ import { Desktop } from "@orika/core"
 
 export const App = Desktop.make({
   id: "dev.example.notes",
-  windows: { main: { title: "Notes" } }
+  windows: Desktop.window("main", { title: "Notes" })
 })
 
 // Updater configuration (feedUrl, channel, publicKeys, pollIntervalMs) is

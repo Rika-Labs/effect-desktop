@@ -73,7 +73,7 @@ import { TodoHandlersLive } from "./handlers.js"
 
 export const App = Desktop.make({
   id: "dev.example.todos",
-  windows: { main: { title: "Todos" } },
+  windows: Desktop.window("main", { title: "Todos" }),
   rpcs: Desktop.rpc(TodoRpcs, TodoHandlersLive)
 })
 

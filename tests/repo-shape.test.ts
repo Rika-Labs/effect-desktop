@@ -31,6 +31,8 @@ const NATIVE_PACKAGE_EXPORT_BLOCK_PATTERN = /export\s*\{([\s\S]*?)\}\s*from\s+"\
 const CURRENT_WINDOW_VOID_MUTATION_PAYLOAD_PATTERN =
   /use(?:Close|Destroy)CurrentWindowMutation[\s\S]{0,500}\.run\(\s*\{\s*\}\s*\)/m
 const AWAITED_MUTATION_RUN_PATTERN = /\bawait\s+[A-Za-z_$][\w$]*\.run\(/
+const MARKDOWN_CODE_BLOCK_PATTERN = /```[^\n]*\n([\s\S]*?)```/g
+const RAW_DESKTOP_MAKE_WINDOWS_PATTERN = /Desktop\.make\(\s*\{[\s\S]{0,600}\bwindows:\s*\{/m
 const STALE_PACKAGE_README_PHRASES = [
   "public API remains reserved for Phase 4+",
   "Public renderer-facing APIs",
@@ -342,6 +344,30 @@ describe("native reference docs", () => {
       }
       if (!markdown.includes('from "@orika/native/renderer"')) {
         violations.push(`${relativePath}: missing @orika/native/renderer import`)
+      }
+    }
+
+    expect(violations).toEqual([])
+  })
+})
+
+describe("Desktop API docs", () => {
+  test("Desktop.make examples use window declaration helpers", () => {
+    const violations: string[] = []
+
+    for (const path of collectMarkdownFiles(join(REPO_ROOT, "docs"))) {
+      const markdown = readFileSync(path, "utf8")
+      for (const codeBlock of markdown.matchAll(MARKDOWN_CODE_BLOCK_PATTERN)) {
+        const source = codeBlock[1]
+        if (source === undefined || !RAW_DESKTOP_MAKE_WINDOWS_PATTERN.test(source)) {
+          continue
+        }
+
+        violations.push(
+          `${path.slice(
+            REPO_ROOT.length + 1
+          )}: use Desktop.window(...) or Desktop.windows(...), not raw windows records`
+        )
       }
     }
 
