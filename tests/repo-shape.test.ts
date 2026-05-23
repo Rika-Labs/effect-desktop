@@ -36,6 +36,11 @@ const STALE_PACKAGE_README_PHRASES = [
   "manifest emission land in later phases",
   "None until the package implements native-touching primitives"
 ] as const
+const REACT_WINDOW_HOOK_DOCS = [
+  "docs/reference/react/windows.md",
+  "docs/how-to/add-a-window.md",
+  "docs/tutorials/02-add-a-second-window.md"
+] as const
 
 const StringRecord = Schema.Record(Schema.String, Schema.String)
 
@@ -308,6 +313,41 @@ describe("native reference docs", () => {
         violations.push(
           `${path.slice(REPO_ROOT.length + 1)}: ${helper} is not exported by packages/native/src/index.ts`
         )
+      }
+    }
+
+    expect(violations).toEqual([])
+  })
+})
+
+describe("React window docs", () => {
+  test("model current-window hooks as Effect Options", () => {
+    const violations: string[] = []
+
+    for (const relativePath of REACT_WINDOW_HOOK_DOCS) {
+      const markdown = readFileSync(join(REPO_ROOT, relativePath), "utf8")
+      if (!markdown.includes("useCurrentWindowId")) {
+        continue
+      }
+
+      if (!markdown.includes("Option.Option")) {
+        violations.push(`${relativePath}: describe the current-window hook return type as Option`)
+      }
+      if (!markdown.includes("Option.match")) {
+        violations.push(`${relativePath}: route current-window ids with Option.match`)
+      }
+      if (/useCurrentWindow(?:Id)?\(\)[\s\S]{0,180}undefined/i.test(markdown)) {
+        violations.push(`${relativePath}: do not document current-window hooks as undefined`)
+      }
+      if (/useCurrentWindowId\(\)[\s\S]{0,220}returns (?:just )?the id/i.test(markdown)) {
+        violations.push(`${relativePath}: do not document useCurrentWindowId as a raw id`)
+      }
+      if (
+        /const\s+([A-Za-z_$][\w$]*)\s*=\s*useCurrentWindowId\(\)[\s\S]{0,260}(?:\1\s*===\s*["']|switch\s*\(\s*\1\s*\))/m.test(
+          markdown
+        )
+      ) {
+        violations.push(`${relativePath}: do not compare the Option result directly`)
       }
     }
 

@@ -68,20 +68,19 @@ To close a different window by handle, use `useCloseWindowMutation` and pass the
 Each window opens its own renderer with an id. Read it with `useCurrentWindowId`:
 
 ```tsx
+import { Option } from "effect"
 import { useCurrentWindowId } from "@orika/react"
 
 export function App() {
   const id = useCurrentWindowId()
-  switch (id) {
-    case "preferences":
-      return <PreferencesPanel />
-    default:
-      return <MainPanel />
-  }
+  return Option.match(id, {
+    onNone: () => <MainPanel />,
+    onSome: (value) => (value === "preferences" ? <PreferencesPanel /> : <MainPanel />)
+  })
 }
 ```
 
-Same renderer entry, different views per window.
+`useCurrentWindowId()` returns `Option.Option<string>` because the renderer learns its current window from the host after the React root is created. Same renderer entry, different views per window.
 
 ## Permissions
 

@@ -169,19 +169,22 @@ You did not write any of that.
 
 ## Step 4 — Route between windows
 
-How the renderer decides which panel to render is up to your renderer setup. The simplest pattern: read the window id from the `useCurrentWindow` hook and switch on it.
+How the renderer decides which panel to render is up to your renderer setup. The simplest pattern: read the window id from the `useCurrentWindowId` hook and match it.
 
 ```tsx
+import { Option } from "effect"
 import { useCurrentWindowId } from "@orika/react"
 
 export function App() {
   const windowId = useCurrentWindowId()
-  if (windowId === "compose") return <ComposePanel />
-  return <NotesPanel />
+  return Option.match(windowId, {
+    onNone: () => <NotesPanel />,
+    onSome: (id) => (id === "compose" ? <ComposePanel /> : <NotesPanel />)
+  })
 }
 ```
 
-`useCurrentWindowId()` returns the id the framework assigned this renderer. Each window opens its own renderer with its own id; the same React entry point can serve both.
+`useCurrentWindowId()` returns `Option.Option<string>` for the id the framework assigned this renderer. Each window opens its own renderer with its own id; the same React entry point can serve both.
 
 ## Step 5 — Persist window geometry
 

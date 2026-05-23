@@ -26,15 +26,21 @@ import {
 
 ## `useCurrentWindow()`
 
-Returns the `WindowHandle` for the window the renderer is mounted in (or `undefined` before context is established).
+Returns `Option.Option<WindowHandle>` for the window the renderer is mounted in. It is `Option.none()` before the renderer receives its current-window context.
 
 ## `useCurrentWindowId()`
 
-Returns just the id — useful for routing per-window content.
+Returns `Option.Option<string>` for the current window id. Route by matching the option, not by comparing the hook result directly.
 
 ```tsx
+import { Option } from "effect"
+import { useCurrentWindowId } from "@orika/react"
+
 const id = useCurrentWindowId()
-return id === "preferences" ? <PreferencesPanel /> : <MainPanel />
+return Option.match(id, {
+  onNone: () => <MainPanel />,
+  onSome: (value) => (value === "preferences" ? <PreferencesPanel /> : <MainPanel />)
+})
 ```
 
 ## `useCreateWindowMutation()`
