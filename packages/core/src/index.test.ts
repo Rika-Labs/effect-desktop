@@ -34,6 +34,7 @@ import { Reactivity } from "effect/unstable/reactivity"
 import { WorkflowEngine } from "effect/unstable/workflow"
 import type * as RuntimeTransport from "@orika/core/runtime/transport"
 import * as core from "./index.js"
+import { TestRuntimeProviderLayer } from "./providers/test.js"
 import type {
   DesktopRuntimeProviderDescriptor,
   DesktopRuntimeProviderServices,
@@ -63,6 +64,9 @@ type BunProviderServicesContract = Assert<
 type NodeProviderServicesContract = Assert<
   IsEqual<Layer.Success<typeof NodeServices.layer>, DesktopRuntimeProviderServices>
 >
+type TestProviderServicesContract = Assert<
+  IsEqual<Layer.Success<typeof TestRuntimeProviderLayer>, DesktopRuntimeProviderServices>
+>
 type DurableWorkflowEngineContract = Assert<
   IsEqual<
     typeof import("./index.js").WorkflowEngineDurable,
@@ -71,10 +75,12 @@ type DurableWorkflowEngineContract = Assert<
 >
 const bunProviderServicesContract: BunProviderServicesContract = true
 const nodeProviderServicesContract: NodeProviderServicesContract = true
+const testProviderServicesContract: TestProviderServicesContract = true
 const durableWorkflowEngineContract: DurableWorkflowEngineContract = true
 const runtimeProviderServicesContracts = [
   bunProviderServicesContract,
-  nodeProviderServicesContract
+  nodeProviderServicesContract,
+  testProviderServicesContract
 ] as const
 // @ts-expect-error FramedTransport was removed from the public runtime transport subpath.
 type _RemovedFramedTransport = RuntimeTransport.FramedTransport
@@ -120,8 +126,19 @@ test("Desktop.runtime does not erase the runtime spine Layer type", () =>
     })
   ))
 
+test("TestRuntimeProviderLayer does not assert merged provider services", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        Bun.file(new URL("./providers/test.ts", import.meta.url)).text()
+      )
+
+      expect(source).not.toContain("as Layer.Layer<DesktopRuntimeProviderServices, never, never>")
+    })
+  ))
+
 test("public barrel exports the ResourceRegistry factory", () => {
-  expect(runtimeProviderServicesContracts).toEqual([true, true])
+  expect(runtimeProviderServicesContracts).toEqual([true, true, true])
   expect(core.makeResourceRegistry).toBeFunction()
   expect(core.makeProcess).toBeFunction()
   expect(core.ProcessLive).toBeDefined()

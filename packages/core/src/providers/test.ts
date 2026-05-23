@@ -27,4 +27,4 @@ export const TestRuntimeProviderLayer: Layer.Layer<DesktopRuntimeProviderService
         Effect.die("spawn not supported by Desktop test runtime provider")
       )
     )
-  ) as Layer.Layer<DesktopRuntimeProviderServices, never, never>
+  )
