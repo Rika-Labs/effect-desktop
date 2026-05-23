@@ -1,5 +1,4 @@
 import {
-  type BridgeHandlerRuntimeOptions,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
   type RpcCapabilityMetadata,
@@ -134,11 +133,6 @@ export const PathSurface = NativeSurface.make("Path", PathRpcGroup, {
   handlers: PathHandlersLive,
   client: (client) => pathClientFromRpcClient(client)
 })
-
-export const makeHostPathRpcRuntime = <R = never>(
-  handlers: PathRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => PathSurface.hostRuntime(handlers, runtimeOptions)
 
 const makePathService = (client: PathClientApi): PathServiceApi => {
   const toStringPath = (effect: Effect.Effect<CanonicalPath, PathError, never>) =>

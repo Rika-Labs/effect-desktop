@@ -12,7 +12,6 @@ import {
 } from "@orika/core"
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntimeOptions,
   HostProtocolAlreadyExistsError,
   HostProtocolUnsupportedError,
   makeHostProtocolInternalError,
@@ -286,11 +285,6 @@ export const GlobalShortcutSurface = NativeSurface.make("GlobalShortcut", Global
   client: (client) => globalShortcutClientFromRpcClient(client, undefined),
   bridgeClient: (client, exchange) => globalShortcutClientFromRpcClient(client, exchange)
 })
-
-export const makeHostGlobalShortcutRpcRuntime = <R = never>(
-  handlers: GlobalShortcutRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => GlobalShortcutSurface.hostRuntime(handlers, runtimeOptions)
 
 const globalShortcutClientFromRpcClient = (
   client: DesktopRpcClient<GlobalShortcutRpc>,

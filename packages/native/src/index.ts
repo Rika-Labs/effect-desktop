@@ -9,7 +9,6 @@ export {
   ActivationRegistrySurface,
   makeActivationRegistryMemoryClient,
   makeActivationRegistryUnsupportedClient,
-  makeHostActivationRegistryRpcRuntime,
   type ActivationRegistryClientApi,
   type ActivationRegistryError,
   type ActivationRegistryMemoryClientOptions,
@@ -39,7 +38,6 @@ export {
   AppMetadataRpcEvents,
   AppMetadataRpcs,
   AppMetadataSurface,
-  makeHostAppMetadataRpcRuntime,
   type AppMetadataClientApi,
   type AppMetadataError,
   type AppMetadataRpc,
@@ -52,7 +50,6 @@ export {
   AssociationRpcEvents,
   AssociationRpcs,
   AssociationSurface,
-  makeHostAssociationRpcRuntime,
   type AssociationClientApi,
   type AssociationError,
   type AssociationRpc,
@@ -67,7 +64,6 @@ export {
   AutostartRpcEvents,
   AutostartRpcs,
   AutostartSurface,
-  makeHostAutostartRpcRuntime,
   type AutostartClientApi,
   type AutostartError,
   type AutostartRpc,
@@ -86,7 +82,6 @@ export {
   makeAttachmentIntakeMemoryClient,
   makeAttachmentIntakeServiceLayer,
   makeAttachmentIntakeUnsupportedClient,
-  makeHostAttachmentIntakeRpcRuntime,
   type AttachmentIntakeClientApi,
   type AttachmentIntakeError,
   type AttachmentIntakeMemoryClientOptions,
@@ -126,7 +121,6 @@ export {
   type NativeSurfaceSelection
 } from "./native.js"
 export {
-  makeHostNativeFileSystemRpcRuntime,
   NativeFileSystem,
   NativeFileSystemClient,
   NativeFileSystemHandlersLive,
@@ -142,7 +136,6 @@ export {
   type NativeFileSystemServiceApi
 } from "./native-file-system.js"
 export {
-  makeHostNativeNetworkRpcRuntime,
   makeNativeNetworkMemoryClient,
   makeNativeNetworkUnsupportedClient,
   NativeNetwork,
@@ -207,7 +200,6 @@ export {
   BrowsingDataSurface,
   makeBrowsingDataMemoryClient,
   makeBrowsingDataUnsupportedClient,
-  makeHostBrowsingDataRpcRuntime,
   type BrowsingDataClientApi,
   type BrowsingDataError,
   type BrowsingDataRpc,
@@ -256,7 +248,6 @@ export {
   CookieStoreSurface,
   makeCookieStoreMemoryClient,
   makeCookieStoreUnsupportedClient,
-  makeHostCookieStoreRpcRuntime,
   type CookieStoreClientApi,
   type CookieStoreError,
   type CookieStoreRpc,
@@ -296,7 +287,6 @@ export {
   makeDiagnosticsBundlePermissionDeniedError,
   makeDiagnosticsBundleServiceLayer,
   makeDiagnosticsBundleUnsupportedClient,
-  makeHostDiagnosticsBundleRpcRuntime,
   type DiagnosticsBundleClientApi,
   type DiagnosticsBundleError,
   type DiagnosticsBundleRpc,
@@ -316,7 +306,6 @@ export {
   makeDistributionParityMemoryClient,
   makeDistributionParityServiceLayer,
   makeDistributionParityUnsupportedClient,
-  makeHostDistributionParityRpcRuntime,
   type DistributionParityClientApi,
   type DistributionParityError,
   type DistributionParityMemoryClientOptions,
@@ -335,7 +324,6 @@ export {
   JobRuntime,
   JobRuntimeLive,
   JobSurface,
-  makeHostJobRpcRuntime,
   makeJobMemoryClient,
   makeJobServiceLayer,
   makeJobUnsupportedClient,
@@ -384,7 +372,6 @@ export {
   DownloadSurface,
   makeDownloadMemoryClient,
   makeDownloadUnsupportedClient,
-  makeHostDownloadRpcRuntime,
   type DownloadClientApi,
   type DownloadError,
   type DownloadRpc,
@@ -402,7 +389,6 @@ export {
   makeEgressPolicyMemoryClient,
   makeEgressPolicyServiceLayer,
   makeEgressPolicyUnsupportedClient,
-  makeHostEgressPolicyRpcRuntime,
   type EgressPolicyClientApi,
   type EgressPolicyError,
   type EgressPolicyMemoryClientOptions,
@@ -423,7 +409,6 @@ export {
   makeExtensionConfigMemoryClient,
   makeExtensionConfigServiceLayer,
   makeExtensionConfigUnsupportedClient,
-  makeHostExtensionConfigRpcRuntime,
   type ExtensionConfigClientApi,
   type ExtensionConfigError,
   type ExtensionConfigMemoryClientOptions,
@@ -445,7 +430,6 @@ export {
   makeExtensionPackageMemoryClient,
   makeExtensionPackageServiceLayer,
   makeExtensionPackageUnsupportedClient,
-  makeHostExtensionPackageRpcRuntime,
   type ExtensionPackageClientApi,
   type ExtensionPackageError,
   type ExtensionPackageMemoryClientOptions,
@@ -455,7 +439,6 @@ export {
   type ExtensionPackageServiceOptions
 } from "./extension-package.js"
 export {
-  makeHostTransientWindowRoleRpcRuntime,
   makeTransientWindowRoleMemoryClient,
   makeTransientWindowRoleUnsupportedClient,
   TransientWindowRole,
@@ -482,7 +465,6 @@ export {
   ExecutionSandboxSurface,
   makeExecutionSandboxMemoryClient,
   makeExecutionSandboxUnsupportedClient,
-  makeHostExecutionSandboxRpcRuntime,
   type ExecutionSandboxClientApi,
   type ExecutionSandboxError,
   type ExecutionSandboxRpc,
@@ -498,7 +480,6 @@ export {
   LocalToolRuntimeRpcEvents,
   LocalToolRuntimeRpcs,
   LocalToolRuntimeSurface,
-  makeHostLocalToolRuntimeRpcRuntime,
   makeLocalToolRuntimeMemoryClient,
   makeLocalToolRuntimeServiceLayer,
   makeLocalToolRuntimeUnsupportedClient,
@@ -519,7 +500,6 @@ export {
   TransactionalFileMutationRpcEvents,
   TransactionalFileMutationRpcs,
   TransactionalFileMutationSurface,
-  makeHostTransactionalFileMutationRpcRuntime,
   makeTransactionalFileMutationMemoryClient,
   makeTransactionalFileMutationServiceLayer,
   makeTransactionalFileMutationUnsupportedClient,
@@ -541,7 +521,6 @@ export {
   ScopedAccessGrantRpcEvents,
   ScopedAccessGrantRpcs,
   ScopedAccessGrantSurface,
-  makeHostScopedAccessGrantRpcRuntime,
   makeScopedAccessGrantMemoryClient,
   makeScopedAccessGrantUnsupportedClient,
   type ScopedAccessGrantClientApi,
@@ -558,7 +537,6 @@ export {
   SelectionContextRpcEvents,
   SelectionContextRpcs,
   SelectionContextSurface,
-  makeHostSelectionContextRpcRuntime,
   makeSelectionContextMemoryClient,
   makeSelectionContextUnsupportedClient,
   type SelectionContextClientApi,
@@ -579,7 +557,6 @@ export {
   makeFocusedApplicationContextMemoryClient,
   makeFocusedApplicationContextServiceLayer,
   makeFocusedApplicationContextUnsupportedClient,
-  makeHostFocusedApplicationContextRpcRuntime,
   type FocusedApplicationContextClientApi,
   type FocusedApplicationContextError,
   type FocusedApplicationContextMemoryClientOptions,
@@ -615,7 +592,6 @@ export {
   WorkspaceIndexRpcEvents,
   WorkspaceIndexRpcs,
   WorkspaceIndexSurface,
-  makeHostWorkspaceIndexRpcRuntime,
   makeWorkspaceIndexMemoryClient,
   makeWorkspaceIndexServiceLayer,
   makeWorkspaceIndexUnsupportedClient,
@@ -684,7 +660,6 @@ export {
   type MenuServiceApi
 } from "./menu.js"
 export {
-  makeHostNetworkAuthRpcRuntime,
   makeNetworkAuthMemoryClient,
   makeNetworkAuthUnsupportedClient,
   NetworkAuth,
@@ -700,7 +675,6 @@ export {
   type NetworkAuthRpcHandlers
 } from "./network-auth.js"
 export {
-  makeHostWebRequestRpcRuntime,
   makeWebRequestMemoryClient,
   makeWebRequestUnsupportedClient,
   WebRequest,
@@ -773,7 +747,6 @@ export {
   RealtimeMediaSessionRpcEvents,
   RealtimeMediaSessionRpcs,
   RealtimeMediaSessionSurface,
-  makeHostRealtimeMediaSessionRpcRuntime,
   makeRealtimeMediaSessionMemoryClient,
   makeRealtimeMediaSessionPermissionDeniedError,
   makeRealtimeMediaSessionUnsupportedClient,
@@ -793,7 +766,6 @@ export {
   RecentDocumentsRpcEvents,
   RecentDocumentsRpcs,
   RecentDocumentsSurface,
-  makeHostRecentDocumentsRpcRuntime,
   type RecentDocumentsClientApi,
   type RecentDocumentsError,
   type RecentDocumentsRpc,
@@ -824,7 +796,6 @@ export {
   ResidentLifecycleRpcEvents,
   ResidentLifecycleRpcs,
   ResidentLifecycleSurface,
-  makeHostResidentLifecycleRpcRuntime,
   makeResidentLifecycleMemoryClient,
   makeResidentLifecycleServiceLayer,
   makeResidentLifecycleUnsupportedClient,
@@ -938,7 +909,6 @@ export {
   type UpdaterServiceApi
 } from "./updater.js"
 export {
-  makeHostSessionPermissionRpcRuntime,
   makeSessionPermissionMemoryClient,
   makeSessionPermissionUnsupportedClient,
   SessionPermission,
@@ -957,7 +927,6 @@ export {
   type SessionPermissionServiceApi
 } from "./session-permission.js"
 export {
-  makeHostSessionProfileRpcRuntime,
   makeSessionProfileMemoryClient,
   makeSessionProfileUnsupportedClient,
   SessionProfile,

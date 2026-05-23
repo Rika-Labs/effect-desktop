@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntimeOptions,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
@@ -224,11 +223,6 @@ export const NotificationSurface = NativeSurface.make("Notification", Notificati
   client: (client) => notificationClientFromRpcClient(client, undefined),
   bridgeClient: (client, exchange) => notificationClientFromRpcClient(client, exchange)
 })
-
-export const makeHostNotificationRpcRuntime = <R = never>(
-  handlers: NotificationRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => NotificationSurface.hostRuntime(handlers, runtimeOptions)
 
 const makeNotificationService = (
   client: NotificationClientApi,

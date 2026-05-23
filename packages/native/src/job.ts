@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntimeOptions,
   HostProtocolAlreadyExistsError,
   HostProtocolPermissionDeniedError,
   HostProtocolUnsupportedError,
@@ -309,11 +308,6 @@ export const JobSurface = NativeSurface.make(Surface, JobRpcGroup, {
   client: (client) => jobClientFromRpcClient(client, undefined),
   bridgeClient: (client, exchange) => jobClientFromRpcClient(client, exchange)
 })
-
-export const makeHostJobRpcRuntime = <R = never>(
-  handlers: JobRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => JobSurface.hostRuntime(handlers, runtimeOptions)
 
 export interface JobMemoryClientOptions {
   readonly failure?: Partial<

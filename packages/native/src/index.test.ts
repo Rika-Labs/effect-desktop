@@ -100,6 +100,7 @@ import {
 } from "effect"
 import { Rpc, RpcGroup, RpcServer } from "effect/unstable/rpc"
 
+import { AutostartSurface } from "./autostart.js"
 import {
   App,
   AppHandlersLive,
@@ -333,28 +334,9 @@ import {
   DockClient,
   GlobalShortcutClient
 } from "./index.js"
-import { makeHostAppMetadataRpcRuntime } from "./app-metadata.js"
-import { makeHostAppRpcRuntime } from "./app.js"
-import { makeHostAssociationRpcRuntime } from "./association.js"
-import { makeHostAutostartRpcRuntime, AutostartSurface } from "./autostart.js"
-import { makeHostClipboardRpcRuntime } from "./clipboard.js"
-
-import { makeHostDialogRpcRuntime } from "./dialog.js"
-import { makeHostDockRpcRuntime } from "./dock.js"
-
-import { makeHostNativeFileSystemRpcRuntime } from "./native-file-system.js"
-import { makeHostNotificationRpcRuntime } from "./notification.js"
-import { makeHostPathRpcRuntime } from "./path.js"
-import { makeHostPowerMonitorRpcRuntime } from "./power-monitor.js"
-import { makeHostProtocolRpcRuntime } from "./protocol.js"
-import { makeHostRecentDocumentsRpcRuntime, RecentDocumentsSurface } from "./recent-documents.js"
-import { makeHostSafeStorageRpcRuntime } from "./safe-storage.js"
 import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
-import { makeHostScreenRpcRuntime, makeScreenBridgeClientLayer } from "./screen.js"
-import { makeHostShellRpcRuntime } from "./shell.js"
-import { makeHostSystemAppearanceRpcRuntime } from "./system-appearance.js"
-import { makeHostTrayRpcRuntime } from "./tray.js"
-
+import { RecentDocumentsSurface } from "./recent-documents.js"
+import { makeScreenBridgeClientLayer } from "./screen.js"
 import { webViewCapability } from "./webview.js"
 import { makeHostWindowRpcRuntime, makeWindowBridgeClientLayer } from "./window.js"
 import {
@@ -624,7 +606,30 @@ test("native host RPC helpers do not annotate fixed runtime environments", () =>
     })
   ))
 
-test("makeHostScreenRpcRuntime preserves host service requirements", () => {
+test("native host RPC runtime helpers are not shallow surface forwarders", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const glob = new Bun.Glob("*.ts")
+      const offenders: string[] = []
+      for (const entry of glob.scanSync({ cwd: import.meta.dir, onlyFiles: true })) {
+        if (entry.endsWith(".test.ts")) {
+          continue
+        }
+        const source = yield* Effect.promise(() => Bun.file(`${import.meta.dir}/${entry}`).text())
+        if (
+          /export const makeHost[A-Za-z0-9]+RpcRuntime\s*=\s*<R = never>\s*\(\s*handlers:\s*[A-Za-z0-9]+RpcHandlers<R>,\s*runtimeOptions:\s*BridgeHandlerRuntimeOptions\s*=\s*\{\}\s*\)\s*=>\s*[A-Za-z0-9]+Surface\.hostRuntime\(handlers, runtimeOptions\)/.test(
+            source
+          )
+        ) {
+          offenders.push(entry)
+        }
+      }
+
+      expect(offenders).toEqual([])
+    })
+  ))
+
+test("ScreenSurface.hostRuntime preserves host service requirements", () => {
   const hostRuntimeTypeDisplay = new ScreenDisplay({
     id: "display-helper-type",
     bounds: new ScreenBounds({ x: 0, y: 0, width: 100, height: 100 }),
@@ -632,7 +637,7 @@ test("makeHostScreenRpcRuntime preserves host service requirements", () => {
     scaleFactor: 1,
     primary: true
   })
-  const runtime = makeHostScreenRpcRuntime({
+  const runtime = ScreenSurface.hostRuntime({
     "Screen.getDisplays": () =>
       Effect.gen(function* () {
         yield* Window
@@ -654,12 +659,12 @@ test("makeHostScreenRpcRuntime preserves host service requirements", () => {
         return new ScreenSupportedResult({ supported: true })
       })
   })
-  type ScreenHelperRuntimeRequirements = Assert<
+  type ScreenHostRuntimeRequirements = Assert<
     IsEqual<BridgeRuntimeRequirements<typeof runtime>, Window | PermissionRegistry>
   >
-  const screenHelperRuntimeRequirements: ScreenHelperRuntimeRequirements = true
+  const screenHostRuntimeRequirements: ScreenHostRuntimeRequirements = true
 
-  expect(screenHelperRuntimeRequirements).toBe(true)
+  expect(screenHostRuntimeRequirements).toBe(true)
 })
 
 test("Native.Permissions.all declares every public native capability", () => {
@@ -1566,7 +1571,7 @@ test("native host RPC runtime gates single-instance release before handlers run"
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const runtime = makeHostAppRpcRuntime(
+      const runtime = AppSurface.hostRuntime(
         {
           "App.quit": () => Effect.void,
           "App.exit": () => Effect.void,
@@ -2399,7 +2404,7 @@ test("native host RPC runtime denies protected AppMetadata calls before handlers
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const runtime = makeHostAppMetadataRpcRuntime(
+      const runtime = AppMetadataSurface.hostRuntime(
         {
           "AppMetadata.getInfo": () =>
             Effect.sync(() => {
@@ -2437,7 +2442,7 @@ test("native host RPC runtime allows declared AppMetadata permissions", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const runtime = makeHostAppMetadataRpcRuntime(
+      const runtime = AppMetadataSurface.hostRuntime(
         {
           "AppMetadata.getInfo": () =>
             Effect.sync(() => {
@@ -4537,7 +4542,7 @@ test("native host RPC runtime denies protected Tray calls before handlers run", 
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const runtime = makeHostTrayRpcRuntime(
+      const runtime = TraySurface.hostRuntime(
         {
           "Tray.create": () =>
             Effect.sync(() => {
@@ -4809,7 +4814,7 @@ test("native host RPC runtime denies protected Dialog calls before handlers run"
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const runtime = makeHostDialogRpcRuntime(
+      const runtime = DialogSurface.hostRuntime(
         {
           "Dialog.openFile": () =>
             Effect.sync(() => {
@@ -5162,7 +5167,7 @@ test("native host RPC runtime denies protected Clipboard calls before handlers r
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const runtime = makeHostClipboardRpcRuntime(
+      const runtime = ClipboardSurface.hostRuntime(
         {
           "Clipboard.readText": () =>
             Effect.sync(() => {
@@ -5475,7 +5480,7 @@ test("native host RPC runtime denies protected Notification calls before handler
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const runtime = makeHostNotificationRpcRuntime(
+      const runtime = NotificationSurface.hostRuntime(
         {
           "Notification.show": () =>
             Effect.sync(() => {
@@ -5671,7 +5676,7 @@ test("native host RPC runtime denies protected Path calls before handlers run", 
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const runtime = makeHostPathRpcRuntime(
+      const runtime = PathSurface.hostRuntime(
         {
           "Path.appData": () =>
             Effect.sync(() => {
@@ -5963,7 +5968,7 @@ test("native host RPC runtime denies protected Protocol calls before handlers ru
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const runtime = makeHostProtocolRpcRuntime(
+      const runtime = ProtocolSurface.hostRuntime(
         {
           "Protocol.registerAppProtocol": (input) =>
             Effect.sync(() => {
@@ -6262,7 +6267,7 @@ test("native host RPC runtime denies protected Association calls before handlers
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const runtime = makeHostAssociationRpcRuntime(
+      const runtime = AssociationSurface.hostRuntime(
         {
           "Association.isDefaultProtocolClient": (input) =>
             Effect.sync(() => {
@@ -6500,7 +6505,7 @@ test("native host RPC runtime denies protected Autostart calls before handlers r
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const runtime = makeHostAutostartRpcRuntime(
+      const runtime = AutostartSurface.hostRuntime(
         {
           "Autostart.isEnabled": () =>
             Effect.succeed(
@@ -6865,7 +6870,7 @@ test("native host RPC runtime denies protected RecentDocuments calls before hand
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const runtime = makeHostRecentDocumentsRpcRuntime(
+      const runtime = RecentDocumentsSurface.hostRuntime(
         {
           "RecentDocuments.add": (input) =>
             Effect.sync(() => {
@@ -7267,7 +7272,7 @@ test("native host RPC runtime denies protected NativeFileSystem calls before han
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const runtime = makeHostNativeFileSystemRpcRuntime(
+      const runtime = NativeFileSystemSurface.hostRuntime(
         {
           "NativeFileSystem.open": (input) =>
             Effect.sync(() => {
@@ -7317,7 +7322,7 @@ test("native host RPC runtime denies protected NativeFileSystem calls before han
 test("native host RPC runtime lets permission-free NativeFileSystem support calls pass through", () =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const runtime = makeHostNativeFileSystemRpcRuntime(
+      const runtime = NativeFileSystemSurface.hostRuntime(
         {
           "NativeFileSystem.open": () => Effect.succeed(nativeFileSystemOpenResult("handle-1")),
           "NativeFileSystem.stat": () =>
@@ -7588,7 +7593,7 @@ test("native host RPC runtime denies protected SafeStorage calls before handlers
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const runtime = makeHostSafeStorageRpcRuntime(
+      const runtime = SafeStorageSurface.hostRuntime(
         {
           "SafeStorage.set": (input) =>
             Effect.sync(() => {
@@ -8454,7 +8459,7 @@ test("native host RPC runtime denies protected Shell calls before handlers run",
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const runtime = makeHostShellRpcRuntime(
+      const runtime = ShellSurface.hostRuntime(
         {
           "Shell.openExternal": () =>
             Effect.sync(() => {
@@ -9196,7 +9201,7 @@ test("native host RPC runtime denies protected Screen calls before handlers run"
     Effect.gen(function* () {
       const calls: string[] = []
       const rows: AuditEvent[] = []
-      const runtime = makeHostScreenRpcRuntime(
+      const runtime = ScreenSurface.hostRuntime(
         {
           "Screen.getDisplays": () =>
             Effect.sync(() => {
@@ -9241,7 +9246,7 @@ test("native host RPC runtime denies protected Screen calls before handlers run"
 test("native host RPC runtime audits Screen.getDisplays permission use", () => {
   const rows: AuditEvent[] = []
   const calls: string[] = []
-  const runtime = makeHostScreenRpcRuntime(
+  const runtime = ScreenSurface.hostRuntime(
     {
       "Screen.getDisplays": () =>
         Effect.sync(() => {
@@ -9300,7 +9305,7 @@ test("native host RPC runtime lets permission-free Screen support calls pass thr
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const runtime = makeHostScreenRpcRuntime(
+      const runtime = ScreenSurface.hostRuntime(
         {
           "Screen.getDisplays": () => Effect.succeed(new ScreenDisplaysResult({ displays: [] })),
           "Screen.getPrimaryDisplay": () => Effect.succeed(primaryDisplay),
@@ -9799,7 +9804,7 @@ test("native host RPC runtime denies protected SystemAppearance support queries 
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const runtime = makeHostSystemAppearanceRpcRuntime(
+      const runtime = SystemAppearanceSurface.hostRuntime(
         {
           "SystemAppearance.getAppearance": () =>
             Effect.succeed(new SystemAppearanceResult({ appearance: "dark" })),
@@ -10012,7 +10017,7 @@ test("native host RPC runtime denies protected PowerMonitor support queries befo
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const runtime = makeHostPowerMonitorRpcRuntime(
+      const runtime = PowerMonitorSurface.hostRuntime(
         {
           "PowerMonitor.isSupported": () =>
             Effect.sync(() => {
@@ -10196,7 +10201,7 @@ test("native host RPC runtime denies protected Dock calls before handlers run", 
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const runtime = makeHostDockRpcRuntime(
+      const runtime = DockSurface.hostRuntime(
         {
           "Dock.setBadgeCount": (input) =>
             Effect.sync(() => {

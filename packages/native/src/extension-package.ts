@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntimeOptions,
   HostProtocolAlreadyExistsError,
   HostProtocolPermissionDeniedError,
   HostProtocolUnsupportedError,
@@ -238,11 +237,6 @@ export const ExtensionPackageSurface = NativeSurface.make(Surface, ExtensionPack
   client: (client) => extensionPackageClientFromRpcClient(client, undefined),
   bridgeClient: (client, exchange) => extensionPackageClientFromRpcClient(client, exchange)
 })
-
-export const makeHostExtensionPackageRpcRuntime = <R = never>(
-  handlers: ExtensionPackageRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => ExtensionPackageSurface.hostRuntime(handlers, runtimeOptions)
 
 export interface ExtensionPackageMemoryClientOptions {
   readonly failure?: Partial<

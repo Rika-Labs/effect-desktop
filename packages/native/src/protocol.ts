@@ -1,5 +1,4 @@
 import {
-  type BridgeHandlerRuntimeOptions,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
@@ -139,11 +138,6 @@ export const ProtocolSurface = NativeSurface.make("Protocol", ProtocolRpcGroup, 
   handlers: ProtocolHandlersLive,
   client: (client) => protocolClientFromRpcClient(client)
 })
-
-export const makeHostProtocolRpcRuntime = <R = never>(
-  handlers: ProtocolRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => ProtocolSurface.hostRuntime(handlers, runtimeOptions)
 
 const protocolClientFromRpcClient = (client: DesktopRpcClient<ProtocolRpc>): ProtocolClientApi => {
   return Object.freeze({

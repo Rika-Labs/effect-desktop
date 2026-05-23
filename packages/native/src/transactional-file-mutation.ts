@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntimeOptions,
   HostProtocolPermissionDeniedError,
   HostProtocolUnsupportedError,
   makeHostProtocolInternalError,
@@ -238,11 +237,6 @@ export const TransactionalFileMutationSurface = NativeSurface.make(
       transactionalFileMutationClientFromRpcClient(client, exchange)
   }
 )
-
-export const makeHostTransactionalFileMutationRpcRuntime = <R = never>(
-  handlers: TransactionalFileMutationRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => TransactionalFileMutationSurface.hostRuntime(handlers, runtimeOptions)
 
 export interface TransactionalFileMutationMemoryClientOptions {
   readonly files?: ReadonlyMap<string, Uint8Array> | Record<string, Uint8Array | string>

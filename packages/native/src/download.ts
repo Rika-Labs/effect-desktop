@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
   HostProtocolUnsupportedError,
   RpcGroup
@@ -101,11 +100,6 @@ export const DownloadSurface = NativeSurface.make(Surface, DownloadRpcGroup, {
   client: (client) => downloadClientFromRpcClient(client, undefined),
   bridgeClient: (client, exchange) => downloadClientFromRpcClient(client, exchange)
 })
-
-export const makeHostDownloadRpcRuntime = <R = never>(
-  handlers: DownloadRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => DownloadSurface.hostRuntime(handlers, runtimeOptions)
 
 export const makeDownloadMemoryClient = (): Effect.Effect<DownloadClientApi, never, never> =>
   Effect.succeed(

@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntimeOptions,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
@@ -243,11 +242,6 @@ export const UpdaterSurface = NativeSurface.make("Updater", UpdaterRpcGroup, {
       subscribeUpdaterEvent(exchange, "Updater.PreparingRestart")
     )
 })
-
-export const makeHostUpdaterRpcRuntime = <R = never>(
-  handlers: UpdaterRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => UpdaterSurface.hostRuntime(handlers, runtimeOptions)
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
 

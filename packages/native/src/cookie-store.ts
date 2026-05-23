@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
   HostProtocolUnsupportedError,
   RpcGroup
@@ -146,11 +145,6 @@ export const CookieStoreSurface = NativeSurface.make(Surface, CookieStoreRpcGrou
   client: (client) => cookieStoreClientFromRpcClient(client, undefined),
   bridgeClient: (client, exchange) => cookieStoreClientFromRpcClient(client, exchange)
 })
-
-export const makeHostCookieStoreRpcRuntime = <R = never>(
-  handlers: CookieStoreRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => CookieStoreSurface.hostRuntime(handlers, runtimeOptions)
 
 export const makeCookieStoreMemoryClient = (): Effect.Effect<CookieStoreClientApi, never, never> =>
   Effect.succeed(

@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
   HostProtocolInternalError,
   type HostProtocolInvalidArgumentError,
@@ -246,11 +245,6 @@ export const DisplayCaptureSurface = NativeSurface.make(Surface, DisplayCaptureR
   client: (client) => displayCaptureClientFromRpcClient(client, undefined),
   bridgeClient: (client, exchange) => displayCaptureClientFromRpcClient(client, exchange)
 })
-
-export const makeHostDisplayCaptureRpcRuntime = <R = never>(
-  handlers: DisplayCaptureRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => DisplayCaptureSurface.hostRuntime(handlers, runtimeOptions)
 
 export interface DisplayCaptureMemoryClientOptions {
   readonly failure?: Partial<

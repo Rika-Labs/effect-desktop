@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
   HostProtocolUnsupportedError,
   RpcGroup
@@ -122,11 +121,6 @@ export const ExecutionSandboxSurface = NativeSurface.make(Surface, ExecutionSand
   client: (client) => executionSandboxClientFromRpcClient(client, undefined),
   bridgeClient: (client, exchange) => executionSandboxClientFromRpcClient(client, exchange)
 })
-
-export const makeHostExecutionSandboxRpcRuntime = <R = never>(
-  handlers: ExecutionSandboxRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => ExecutionSandboxSurface.hostRuntime(handlers, runtimeOptions)
 
 export const makeExecutionSandboxMemoryClient = (): Effect.Effect<
   ExecutionSandboxClientApi,

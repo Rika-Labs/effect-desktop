@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
   HostProtocolUnsupportedError,
   RpcGroup
@@ -113,11 +112,6 @@ export const WebRequestSurface = NativeSurface.make(Surface, WebRequestRpcGroup,
   client: (client) => webRequestClientFromRpcClient(client, undefined),
   bridgeClient: (client, exchange) => webRequestClientFromRpcClient(client, exchange)
 })
-
-export const makeHostWebRequestRpcRuntime = <R = never>(
-  handlers: WebRequestRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => WebRequestSurface.hostRuntime(handlers, runtimeOptions)
 
 export const makeWebRequestMemoryClient = (): Effect.Effect<WebRequestClientApi, never, never> =>
   Effect.succeed(

@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntimeOptions,
   HostProtocolPermissionDeniedError,
   HostProtocolUnsupportedError,
   makeHostProtocolInternalError,
@@ -207,11 +206,6 @@ export const DiagnosticsBundleSurface = NativeSurface.make(Surface, DiagnosticsB
   client: (client) => diagnosticsBundleClientFromRpcClient(client, undefined),
   bridgeClient: (client, exchange) => diagnosticsBundleClientFromRpcClient(client, exchange)
 })
-
-export const makeHostDiagnosticsBundleRpcRuntime = <R = never>(
-  handlers: DiagnosticsBundleRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => DiagnosticsBundleSurface.hostRuntime(handlers, runtimeOptions)
 
 export interface DiagnosticsBundleMemoryClientOptions {
   readonly failure?: Partial<Record<"collect" | "redact" | "write", DiagnosticsBundleError>>

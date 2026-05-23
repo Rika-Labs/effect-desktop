@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
   type RpcCapabilityMetadata,
   type RpcEndpointKind,
@@ -196,11 +195,6 @@ export const NativeFileSystemSurface = NativeSurface.make(
     bridgeClient: (client, exchange) => nativeFileSystemClientFromRpcClient(client, exchange)
   }
 )
-
-export const makeHostNativeFileSystemRpcRuntime = <R = never>(
-  handlers: NativeFileSystemRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => NativeFileSystemSurface.hostRuntime(handlers, runtimeOptions)
 
 const nativeFileSystemClientFromRpcClient = (
   client: DesktopRpcClient<NativeFileSystemRpc>,

@@ -11,12 +11,12 @@
     {
       "name": "AnyDesktopNativeRegistration",
       "kind": "type",
-      "signature": "export type AnyDesktopNativeRegistration = DesktopNativeRegistration<unknown, unknown>"
+      "signature": "export type AnyDesktopNativeRegistration< E = unknown, ServerR = unknown, HandlerR = unknown > = DesktopNativeRegistration<E, ServerR, HandlerR>"
     },
     {
       "name": "AnyDesktopRpcRegistration",
       "kind": "interface",
-      "signature": "export interface AnyDesktopRpcRegistration<E = unknown, R = unknown> { readonly _tag: \"DesktopRpcRegistration\" readonly group: DesktopRpcRegistrationGroup readonly handlers: Layer.Layer<never, E, R> readonly serverLayer: Layer.Layer<never, E, R> }"
+      "signature": "export interface AnyDesktopRpcRegistration< E = unknown, ServerR = unknown, HandlerR = unknown, HandlerServices = never > { readonly _tag: \"DesktopRpcRegistration\" readonly group: DesktopRpcRegistrationGroup readonly handlers: Layer.Layer<HandlerServices, E, HandlerR> readonly serverLayer: Layer.Layer<never, E, ServerR> }"
     },
     {
       "name": "AnyProvider",
@@ -241,7 +241,7 @@
     {
       "name": "CommandGroupRegistration",
       "kind": "interface",
-      "signature": "export interface CommandGroupRegistration<Rpcs extends Rpc.Any, E, R> { readonly group: RpcGroup.RpcGroup<Rpcs> readonly handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R> readonly ownerScope: ScopeId }"
+      "signature": "export interface CommandGroupRegistration<Rpcs extends Rpc.Any, E, R> { readonly group: RpcGroup.RpcGroup<Rpcs> readonly handlers: Layer.Layer<CommandRpcHandler<Rpcs>, E, R> readonly ownerScope: ScopeId }"
     },
     {
       "name": "CommandInvocationRecord",
@@ -331,7 +331,7 @@
     {
       "name": "Desktop",
       "kind": "value",
-      "signature": "const Desktop: Readonly<{ RedactionFilter: Readonly<{ redact: <A>(record: A, options?: import(\"@orika/bridge\").RedactionFilterOptions) => A; redactForJson: <A>(record: A, options?: import(\"@orika/bridge\").RedactionFilterOptions) => A; redactWithEvidence: <A>(record: A, options?: import(\"@orika/bridge\").RedactionFilterOptions) => import(\"@orika/bridge\").RedactionResult<A>; redactForJsonWithEvidence: <A>(record: A, options?: import(\"@orika/bridge\").RedactionFilterOptions) => import(\"@orika/bridge\").RedactionResult<A>; redactedValue: import(\"effect/Redacted\").Redacted<string>; defaultPattern: RegExp; }>; RpcCapability: <Capability extends import(\"@orika/bridge\").RpcCapabilityMetadata>(capability: Capability) => <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@orika/bridge\").WithRpcCapability<R, Capability>; RpcEndpoint: Readonly<{ query: <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@orika/bridge\").WithRpcEndpointKind<R, \"query\">; mutation: <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@orika/bridge\").WithRpcEndpointKind<R, \"mutation\">; }>; RpcSupport: Readonly<{ supported: <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R, options?: { readonly platforms?: readonly import(\"@orika/bridge\").RpcPlatformSupportMetadata[]; }) => import(\"@orika/bridge\").WithRpcSupport<R, { readonly status: \"supported\"; readonly platforms?: readonly import(\"@orika/bridge\").RpcPlatformSupportMetadata[]; }>; partial: (reason: string, options?: { readonly platforms?: readonly import(\"@orika/bridge\").RpcPlatformSupportMetadata[]; }) => <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@orika/bridge\").WithRpcSupport<R, { readonly status: \"partial\"; readonly reason: string; readonly platforms?: readonly import(\"@orika/bridge\").RpcPlatformSupportMetadata[]; }>; unsupported: (reason: string, options?: { readonly platforms?: readonly import(\"@orika/bridge\").RpcPlatformSupportMetadata[]; }) => <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@orika/bridge\").WithRpcSupport<R, { readonly status: \"unsupported\"; readonly reason: string; readonly platforms?: readonly import(\"@orika/bridge\").RpcPlatformSupportMetadata[]; }>; }>; layer: <RIn = never, E = never>(descriptor: import(\"./runtime/desktop-app.js\").DesktopAppDescriptor<RIn, E>) => Layer.Layer<import(\"./runtime/desktop-app.js\").DesktopRuntimeServices, import(\"./runtime/desktop-app.js\").DesktopConfigError | E, Exclude<RIn, import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderServices | import(\"./runtime/resource-owner.js\").ResourceOwner>>; workflowEngine: { (): Layer.Layer<WorkflowEngine.WorkflowEngine, never, never>; <RIn = never, E = never>(options: DesktopWorkflowEngineOptionsWithPermissions<RIn, E>): Layer.Layer<WorkflowEngine.WorkflowEngine, E, RIn | PermissionRegistry>; <RIn = never, E = never>(options: DesktopWorkflowEngineOptions<RIn, E>): Layer.Layer<WorkflowEngine.WorkflowEngine, E, RIn>; }; WorkflowEngineDurable: import(\"./runtime/desktop-app.js\").DesktopWorkflowEngineLayer<import(\"effect/unstable/sql/SqlClient\").SqlClient, import(\"effect/unstable/sql/SqlError\").SqlError>; WorkflowEngineMemory: import(\"./runtime/desktop-app.js\").DesktopWorkflowEngineLayer<never, never>; launch: (layer: Layer.Layer<import(\"./runtime/desktop-app.js\").DesktopApp, import(\"./runtime/desktop-app.js\").DesktopConfigError, never>) => Effect.Effect<never, import(\"./runtime/desktop-app.js\").DesktopConfigError, never>; make: <RIn = never, E = never>(config: import(\"./runtime/desktop-app.js\").DesktopMakeConfig<RIn, E>) => import(\"./runtime/desktop-app.js\").DesktopAppDescriptor<RIn, E>; manifest: <RIn = never, E = never>(config: import(\"./runtime/desktop-app.js\").DesktopManifestSource<RIn, E>) => import(\"./runtime/renderer-types.js\").DesktopAppManifest; native: (...declarations: readonly import(\"./runtime/desktop-app.js\").DesktopNativeDeclaration[]) => import(\"./runtime/desktop-app.js\").DesktopNativeLayer; permission: (capability: import(\"./runtime/permission-contracts.js\").NormalizedCapability) => DesktopPermissionsLayer; permissions: (...layers: readonly DesktopPermissionsLayer[]) => DesktopPermissionsLayer; provider: (descriptor: import(\"./runtime/desktop-app.js\").DesktopProviderDescriptor) => import(\"./runtime/desktop-app.js\").DesktopProvidersLayer; providers: (...layers: readonly import(\"./runtime/desktop-app.js\").DesktopProvidersLayer[]) => import(\"./runtime/desktop-app.js\").DesktopProvidersLayer; Provider: Readonly<{ runtime: (options: import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderOptions) => import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderDescriptor; webview: (options: import(\"./runtime/desktop-app.js\").DesktopWebViewProviderOptions) => import(\"./runtime/desktop-app.js\").DesktopWebViewProviderDescriptor; Runtime: Readonly<{ bun: import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderDescriptor; node: import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderDescriptor; test: import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderDescriptor; }>; WebView: Readonly<{ system: Readonly<{ kind: \"webview\"; id: \"system\"; hostEngine: \"system\"; capabilities: import(\"./runtime/provider-registry.js\").ProviderCapability[]; node: import(\"./runtime/desktop-app.js\").DesktopRuntimeGraphNode; }>; chrome: Readonly<{ kind: \"webview\"; id: \"chrome\"; hostEngine: \"chrome\"; capabilities: import(\"./runtime/provider-registry.js\").ProviderCapability[]; node: import(\"./runtime/desktop-app.js\").DesktopRuntimeGraphNode; }>; }>; }>; providerLayerFor: (choice: Pick<import(\"./runtime/desktop-app.js\").DesktopRuntimeSelectedProviders, \"runtime\">) => Layer.Layer<import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderServices, import(\"effect/Config\").ConfigError | import(\"./runtime/desktop-app.js\").DesktopConfigError, never>; rpc: <Rpcs extends import(\"effect/unstable/rpc/Rpc\").Any, E, R>(group: import(\"effect/unstable/rpc/RpcGroup\").RpcGroup<Rpcs>, handlers: Layer.Layer<import(\"effect/unstable/rpc/Rpc\").ToHandler<Rpcs>, E, R>) => import(\"./runtime/renderer-types.js\").DesktopRpcsLayer<E, R>; rpcs: <E = never, RIn = never>(...layers: readonly import(\"./runtime/renderer-types.js\").DesktopRpcsLayer<E, RIn>[]) => import(\"./runtime/renderer-types.js\").DesktopRpcsLayer<E, RIn>; window: <RIn = never>(id: string, spec: import(\"./runtime/desktop-app.js\").WindowSpec, services?: Layer.Layer<never, never, RIn | import(\"effect/Scope\").Scope>) => import(\"./runtime/desktop-app.js\").DesktopWindowsLayer<RIn>; windows: <RIn = never>(...layers: readonly import(\"./runtime/desktop-app.js\").DesktopWindowsLayer<RIn>[]) => import(\"./runtime/desktop-app.js\").DesktopWindowsLayer<RIn>; workflow: <RIn = never, E = never>(layer: import(\"./runtime/desktop-app.js\").DesktopWorkflowLayer<RIn, E>) => DesktopWorkflowsLayer<RIn, E>; workflows: <RIn = never, E = never>(...layers: readonly DesktopWorkflowsLayer<RIn, E>[]) => DesktopWorkflowsLayer<RIn, E>; Rpc: Readonly<{ surface: { <const Tag extends string, Group extends import(\"effect/unstable/rpc/RpcGroup\").RpcGroup<import(\"effect/unstable/rpc/RpcGroup\").Rpcs<Group>>, ServiceId, ServerE, ServerR>(tag: Tag, group: Group, options: import(\"./runtime/desktop-rpc-surface.js\").DesktopRpcSurfaceDirectOptions<import(\"effect/unstable/rpc/RpcGroup\").Rpcs<Group>, ServiceId, ServerE, ServerR>): import(\"./runtime/desktop-rpc-surface.js\").DesktopRpcSurface<Tag, Group, import(\"effect/unstable/rpc/RpcGroup\").Rpcs<Group>, ServiceId, ServerE, ServerR>; <const Tag extends string, Group extends import(\"effect/unstable/rpc/RpcGroup\").RpcGroup<import(\"effect/unstable/rpc/RpcGroup\").Rpcs<Group>>, ServiceId, Service, ServerE, ServerR>(tag: Tag, group: Group, options: import(\"./runtime/desktop-rpc-surface.js\").DesktopRpcSurfaceMappedOptions<import(\"effect/unstable/rpc/RpcGroup\").Rpcs<Group>, ServiceId, Service, ServerE, ServerR>): import(\"./runtime/desktop-rpc-surface.js\").DesktopRpcSurface<Tag, Group, import(\"effect/unstable/rpc/RpcGroup\").Rpcs<Group>, ServiceId, ServerE, ServerR>; }; supportedGroup: <Rpcs extends import(\"effect/unstable/rpc/Rpc\").Any>(group: import(\"effect/unstable/rpc/RpcGroup\").RpcGroup<Rpcs>) => import(\"effect/unstable/rpc/RpcGroup\").RpcGroup<import(\"./runtime/desktop-rpc-surface.js\").SupportedRpc<Rpcs>>; }>; runtime: <RIn = never, E = never>(config: import(\"./runtime/desktop-app.js\").DesktopConfig<RIn, E>) => Layer.Layer<import(\"./runtime/desktop-app.js\").DesktopRuntimeServices, import(\"./runtime/desktop-app.js\").DesktopConfigError | E, Exclude<RIn, import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderServices | import(\"./runtime/resource-owner.js\").ResourceOwner>>; runtimeGraph: <RIn, E>(config: import(\"./runtime/desktop-app.js\").DesktopConfig<RIn, E>) => Effect.Effect<import(\"./runtime/desktop-app.js\").DesktopRuntimeGraph, import(\"./runtime/desktop-app.js\").DesktopConfigError, never>; runtimeGraphSnapshot: <RIn, E>(config: import(\"./runtime/desktop-app.js\").DesktopConfig<RIn, E>) => Effect.Effect<import(\"./runtime/desktop-app.js\").LayerGraphSnapshot, never, never>; describeRpcs: <Group extends import(\"./runtime/renderer-types.js\").DesktopRpcRegistrationGroup>(app: import(\"./runtime/rpc-descriptors.js\").DesktopRpcDescriptorSource, group: Group) => readonly import(\"./runtime/renderer-rpc-descriptors.js\").RpcEndpointDescriptor[]; }>"
+      "signature": "const Desktop: Readonly<{ RedactionFilter: Readonly<{ redact: <A>(record: A, options?: import(\"@orika/bridge\").RedactionFilterOptions) => A; redactForJson: <A>(record: A, options?: import(\"@orika/bridge\").RedactionFilterOptions) => A; redactWithEvidence: <A>(record: A, options?: import(\"@orika/bridge\").RedactionFilterOptions) => import(\"@orika/bridge\").RedactionResult<A>; redactForJsonWithEvidence: <A>(record: A, options?: import(\"@orika/bridge\").RedactionFilterOptions) => import(\"@orika/bridge\").RedactionResult<A>; redactedValue: import(\"effect/Redacted\").Redacted<string>; defaultPattern: RegExp; }>; RpcCapability: <Capability extends import(\"@orika/bridge\").RpcCapabilityMetadata>(capability: Capability) => <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@orika/bridge\").WithRpcCapability<R, Capability>; RpcEndpoint: Readonly<{ query: <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@orika/bridge\").WithRpcEndpointKind<R, \"query\">; mutation: <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@orika/bridge\").WithRpcEndpointKind<R, \"mutation\">; }>; RpcSupport: Readonly<{ supported: <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R, options?: { readonly platforms?: readonly import(\"@orika/bridge\").RpcPlatformSupportMetadata[]; }) => import(\"@orika/bridge\").WithRpcSupport<R, { readonly status: \"supported\"; readonly platforms?: readonly import(\"@orika/bridge\").RpcPlatformSupportMetadata[]; }>; partial: (reason: string, options?: { readonly platforms?: readonly import(\"@orika/bridge\").RpcPlatformSupportMetadata[]; }) => <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@orika/bridge\").WithRpcSupport<R, { readonly status: \"partial\"; readonly reason: string; readonly platforms?: readonly import(\"@orika/bridge\").RpcPlatformSupportMetadata[]; }>; unsupported: (reason: string, options?: { readonly platforms?: readonly import(\"@orika/bridge\").RpcPlatformSupportMetadata[]; }) => <R extends import(\"effect/unstable/rpc/Rpc\").Any>(rpc: R) => import(\"@orika/bridge\").WithRpcSupport<R, { readonly status: \"unsupported\"; readonly reason: string; readonly platforms?: readonly import(\"@orika/bridge\").RpcPlatformSupportMetadata[]; }>; }>; layer: <RIn = never, E = never, RpcHandlerR = unknown>(descriptor: import(\"./runtime/desktop-app.js\").DesktopAppDescriptor<RIn, E, RpcHandlerR>) => Layer.Layer<import(\"./runtime/desktop-app.js\").DesktopRuntimeServices, import(\"./runtime/desktop-app.js\").DesktopConfigError | E, Exclude<RIn, PermissionRegistry | import(\"./runtime/permission-interceptor.js\").PermissionInterceptor | import(\"./runtime/desktop-app.js\").DesktopRuntimeServices>>; workflowEngine: { (): Layer.Layer<WorkflowEngine.WorkflowEngine, never, never>; <RIn = never, E = never>(options: DesktopWorkflowEngineOptionsWithPermissions<RIn, E>): Layer.Layer<WorkflowEngine.WorkflowEngine, E, RIn | PermissionRegistry>; <RIn = never, E = never>(options: DesktopWorkflowEngineOptions<RIn, E>): Layer.Layer<WorkflowEngine.WorkflowEngine, E, RIn>; }; WorkflowEngineDurable: import(\"./runtime/desktop-app.js\").DesktopWorkflowEngineLayer<import(\"effect/unstable/sql/SqlClient\").SqlClient, import(\"effect/unstable/sql/SqlError\").SqlError>; WorkflowEngineMemory: import(\"./runtime/desktop-app.js\").DesktopWorkflowEngineLayer<never, never>; launch: (layer: Layer.Layer<import(\"./runtime/desktop-app.js\").DesktopApp, import(\"./runtime/desktop-app.js\").DesktopConfigError, never>) => Effect.Effect<never, import(\"./runtime/desktop-app.js\").DesktopConfigError, never>; make: <RIn = never, E = never, RpcHandlerR = unknown>(config: import(\"./runtime/desktop-app.js\").DesktopMakeConfig<RIn, E, RpcHandlerR>) => import(\"./runtime/desktop-app.js\").DesktopAppDescriptor<RIn, E, RpcHandlerR>; manifest: <RIn = never, E = never, RpcHandlerR = unknown>(config: import(\"./runtime/desktop-app.js\").DesktopManifestSource<RIn, E, RpcHandlerR>) => import(\"./runtime/renderer-types.js\").DesktopAppManifest; native: <const Declarations extends readonly import(\"./runtime/desktop-app.js\").DesktopNativeDeclaration<unknown, unknown, unknown>[]>(...declarations: Declarations) => import(\"./runtime/desktop-app.js\").DesktopNativeLayer<Declarations[number] extends import(\"./runtime/desktop-app.js\").DesktopNativeDeclaration<infer E, unknown, unknown> ? E : never, Declarations[number] extends import(\"./runtime/desktop-app.js\").DesktopNativeDeclaration<unknown, infer ServerR, unknown> ? ServerR : never, Declarations[number] extends import(\"./runtime/desktop-app.js\").DesktopNativeDeclaration<unknown, unknown, infer HandlerR> ? HandlerR : never>; permission: (capability: import(\"./runtime/permission-contracts.js\").NormalizedCapability) => DesktopPermissionsLayer; permissions: (...layers: readonly DesktopPermissionsLayer[]) => DesktopPermissionsLayer; provider: (descriptor: import(\"./runtime/desktop-app.js\").DesktopProviderDescriptor) => import(\"./runtime/desktop-app.js\").DesktopProvidersLayer; providers: (...layers: readonly import(\"./runtime/desktop-app.js\").DesktopProvidersLayer[]) => import(\"./runtime/desktop-app.js\").DesktopProvidersLayer; Provider: Readonly<{ runtime: (options: import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderOptions) => import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderDescriptor; webview: (options: import(\"./runtime/desktop-app.js\").DesktopWebViewProviderOptions) => import(\"./runtime/desktop-app.js\").DesktopWebViewProviderDescriptor; Runtime: Readonly<{ bun: import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderDescriptor; node: import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderDescriptor; test: import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderDescriptor; }>; WebView: Readonly<{ system: Readonly<{ kind: \"webview\"; id: \"system\"; hostEngine: \"system\"; capabilities: import(\"./runtime/provider-registry.js\").ProviderCapability[]; node: import(\"./runtime/desktop-app.js\").DesktopRuntimeGraphNode; }>; chrome: Readonly<{ kind: \"webview\"; id: \"chrome\"; hostEngine: \"chrome\"; capabilities: import(\"./runtime/provider-registry.js\").ProviderCapability[]; node: import(\"./runtime/desktop-app.js\").DesktopRuntimeGraphNode; }>; }>; }>; providerLayerFor: (choice: Pick<import(\"./runtime/desktop-app.js\").DesktopRuntimeSelectedProviders, \"runtime\">) => Layer.Layer<import(\"./runtime/desktop-app.js\").DesktopRuntimeProviderServices, import(\"effect/Config\").ConfigError | import(\"./runtime/desktop-app.js\").DesktopConfigError, never>; rpc: <Rpcs extends import(\"effect/unstable/rpc/Rpc\").Any, E, R>(group: import(\"effect/unstable/rpc/RpcGroup\").RpcGroup<Rpcs>, handlers: Layer.Layer<import(\"effect/unstable/rpc/Rpc\").ToHandler<Rpcs>, E, R>) => import(\"./runtime/renderer-types.js\").DesktopRpcsLayer<E, import(\"./runtime/desktop-app.js\").DesktopRpcBoundServerRequirements<Rpcs, R>, R, import(\"effect/unstable/rpc/Rpc\").ToHandler<Rpcs>>; rpcs: <E = never, RIn = never>(...layers: readonly import(\"./runtime/renderer-types.js\").DesktopRpcsLayer<E, RIn>[]) => import(\"./runtime/renderer-types.js\").DesktopRpcsLayer<E, RIn>; window: <RIn = never>(id: string, spec: import(\"./runtime/desktop-app.js\").WindowSpec, services?: Layer.Layer<never, never, RIn | import(\"effect/Scope\").Scope>) => import(\"./runtime/desktop-app.js\").DesktopWindowsLayer<RIn>; windows: <RIn = never>(...layers: readonly import(\"./runtime/desktop-app.js\").DesktopWindowsLayer<RIn>[]) => import(\"./runtime/desktop-app.js\").DesktopWindowsLayer<RIn>; workflow: <RIn = never, E = never>(layer: import(\"./runtime/desktop-app.js\").DesktopWorkflowLayer<RIn, E>) => DesktopWorkflowsLayer<RIn, E>; workflows: <RIn = never, E = never>(...layers: readonly DesktopWorkflowsLayer<RIn, E>[]) => DesktopWorkflowsLayer<RIn, E>; Rpc: Readonly<{ surface: { <const Tag extends string, Group extends import(\"effect/unstable/rpc/RpcGroup\").RpcGroup<import(\"effect/unstable/rpc/RpcGroup\").Rpcs<Group>>, ServiceId, ServerE, ServerR>(tag: Tag, group: Group, options: import(\"./runtime/desktop-rpc-surface.js\").DesktopRpcSurfaceDirectOptions<import(\"effect/unstable/rpc/RpcGroup\").Rpcs<Group>, ServiceId, ServerE, ServerR>): import(\"./runtime/desktop-rpc-surface.js\").DesktopRpcSurface<Tag, Group, import(\"effect/unstable/rpc/RpcGroup\").Rpcs<Group>, ServiceId, ServerE, ServerR>; <const Tag extends string, Group extends import(\"effect/unstable/rpc/RpcGroup\").RpcGroup<import(\"effect/unstable/rpc/RpcGroup\").Rpcs<Group>>, ServiceId, Service, ServerE, ServerR>(tag: Tag, group: Group, options: import(\"./runtime/desktop-rpc-surface.js\").DesktopRpcSurfaceMappedOptions<import(\"effect/unstable/rpc/RpcGroup\").Rpcs<Group>, ServiceId, Service, ServerE, ServerR>): import(\"./runtime/desktop-rpc-surface.js\").DesktopRpcSurface<Tag, Group, import(\"effect/unstable/rpc/RpcGroup\").Rpcs<Group>, ServiceId, ServerE, ServerR>; }; supportedGroup: <Rpcs extends import(\"effect/unstable/rpc/Rpc\").Any>(group: import(\"effect/unstable/rpc/RpcGroup\").RpcGroup<Rpcs>) => import(\"effect/unstable/rpc/RpcGroup\").RpcGroup<import(\"./runtime/desktop-rpc-surface.js\").SupportedRpc<Rpcs>>; }>; runtime: <RIn = never, E = never, RpcHandlerR = unknown>(config: import(\"./runtime/desktop-app.js\").DesktopConfig<RIn, E, RpcHandlerR>) => Layer.Layer<import(\"./runtime/desktop-app.js\").DesktopRuntimeServices, import(\"./runtime/desktop-app.js\").DesktopConfigError | E, Exclude<RIn, PermissionRegistry | import(\"./runtime/permission-interceptor.js\").PermissionInterceptor | import(\"./runtime/desktop-app.js\").DesktopRuntimeServices>>; runtimeGraph: <RIn, E, RpcHandlerR>(config: import(\"./runtime/desktop-app.js\").DesktopConfig<RIn, E, RpcHandlerR>) => Effect.Effect<import(\"./runtime/desktop-app.js\").DesktopRuntimeGraph, import(\"./runtime/desktop-app.js\").DesktopConfigError, never>; runtimeGraphSnapshot: <RIn, E, RpcHandlerR>(config: import(\"./runtime/desktop-app.js\").DesktopConfig<RIn, E, RpcHandlerR>) => Effect.Effect<import(\"./runtime/desktop-app.js\").LayerGraphSnapshot, never, never>; describeRpcs: <Group extends import(\"./runtime/renderer-types.js\").DesktopRpcRegistrationGroup>(app: import(\"./runtime/rpc-descriptors.js\").DesktopRpcDescriptorSource, group: Group) => readonly import(\"./runtime/renderer-rpc-descriptors.js\").RpcEndpointDescriptor[]; }>"
     },
     {
       "name": "DesktopApp",
@@ -346,7 +346,7 @@
     {
       "name": "DesktopAppDescriptor",
       "kind": "interface",
-      "signature": "export interface DesktopAppDescriptor<RIn = never, E = never> extends DesktopConfig<RIn, E> { readonly _tag: \"DesktopAppDescriptor\" readonly native: DesktopNativeLayer readonly rpcs: DesktopRpcsLayer<E, RIn> readonly permissions: DesktopPermissionsLayer readonly workflows: DesktopWorkflowsLayer<RIn, E> readonly windowRegistrations: ReadonlyArray<DesktopWindowRegistration<RIn>> }"
+      "signature": "export interface DesktopAppDescriptor< RIn = never, E = never, RpcHandlerR = unknown > extends DesktopConfig<RIn, E, RpcHandlerR> { readonly _tag: \"DesktopAppDescriptor\" readonly native: DesktopNativeLayer<E, RIn, RpcHandlerR> readonly rpcs: DesktopRpcsLayer<E, RIn, RpcHandlerR> readonly permissions: DesktopPermissionsLayer readonly workflows: DesktopWorkflowsLayer<RIn, E> readonly windowRegistrations: ReadonlyArray<DesktopWindowRegistration<RIn>> }"
     },
     {
       "name": "DesktopAppManifest",
@@ -356,12 +356,12 @@
     {
       "name": "DesktopCommands",
       "kind": "value",
-      "signature": "const DesktopCommands: Readonly<{ layer: <Rpcs extends Rpc.Any, E, R>(group: RpcGroup.RpcGroup<Rpcs>, handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>, options?: { readonly ownerScope?: ScopeId; }) => Layer.Layer<never, CommandRegistryError | E, CommandRegistry | ResourceRegistry | R>; }>"
+      "signature": "const DesktopCommands: Readonly<{ layer: <Rpcs extends Rpc.Any, E, R>(group: RpcGroup.RpcGroup<Rpcs>, handlers: Layer.Layer<CommandRpcHandler<Rpcs>, E, R>, options?: { readonly ownerScope?: ScopeId; }) => Layer.Layer<never, CommandRegistryError | E, CommandRegistry | ResourceRegistry | R>; }>"
     },
     {
       "name": "DesktopConfig",
       "kind": "interface",
-      "signature": "export interface DesktopConfig<RIn = never, E = never> { readonly id: string readonly windows: DesktopWindowsLayer<RIn> readonly providers?: DesktopProvidersLayer readonly native?: DesktopNativeLayer readonly rpcs?: DesktopRpcsLayer<E, RIn> readonly permissions?: DesktopPermissionsLayer readonly workflows?: DesktopWorkflowsLayer<RIn, E> }"
+      "signature": "export interface DesktopConfig<RIn = never, E = never, RpcHandlerR = unknown> { readonly id: string readonly windows: DesktopWindowsLayer<RIn> readonly providers?: DesktopProvidersLayer readonly native?: DesktopNativeLayer<E, RIn, RpcHandlerR> readonly rpcs?: DesktopRpcsLayer<E, RIn, RpcHandlerR> readonly permissions?: DesktopPermissionsLayer readonly workflows?: DesktopWorkflowsLayer<RIn, E> }"
     },
     {
       "name": "DesktopConfigError",
@@ -411,27 +411,27 @@
     {
       "name": "DesktopMakeConfig",
       "kind": "interface",
-      "signature": "export interface DesktopMakeConfig<RIn = never, E = never> { readonly id?: string readonly windows: DesktopWindowsLayer<RIn> readonly providers?: DesktopProvidersLayer readonly native?: DesktopNativeLayer readonly rpcs?: DesktopRpcsLayer<E, RIn> readonly permissions?: DesktopPermissionsLayer readonly workflows?: DesktopWorkflowsLayer<RIn, E> }"
+      "signature": "export interface DesktopMakeConfig<RIn = never, E = never, RpcHandlerR = unknown> { readonly id?: string readonly windows: DesktopWindowsLayer<RIn> readonly providers?: DesktopProvidersLayer readonly native?: DesktopNativeLayer<E, RIn, RpcHandlerR> readonly rpcs?: DesktopRpcsLayer<E, RIn, RpcHandlerR> readonly permissions?: DesktopPermissionsLayer readonly workflows?: DesktopWorkflowsLayer<RIn, E> }"
     },
     {
       "name": "DesktopManifestSource",
       "kind": "type",
-      "signature": "export type DesktopManifestSource<RIn = never, E = never> = Pick< DesktopConfig<RIn, E>, \"id\" | \"windows\" | \"native\" | \"rpcs\" >"
+      "signature": "export type DesktopManifestSource<RIn = never, E = never, RpcHandlerR = unknown> = Pick< DesktopConfig<RIn, E, RpcHandlerR>, \"id\" | \"windows\" | \"native\" | \"rpcs\" >"
     },
     {
       "name": "DesktopNativeDeclaration",
       "kind": "type",
-      "signature": "export type DesktopNativeDeclaration = DesktopNativeLayer | DesktopNativeSurfaceSelection"
+      "signature": "export type DesktopNativeDeclaration<E = unknown, ServerR = unknown, HandlerR = unknown> = | DesktopNativeLayer<E, ServerR, HandlerR> | DesktopNativeSurfaceSelection<E, ServerR, HandlerR>"
     },
     {
       "name": "DesktopNativeLayer",
       "kind": "type",
-      "signature": "export type DesktopNativeLayer = ReadonlyArray<AnyDesktopNativeRegistration>"
+      "signature": "export type DesktopNativeLayer<E = unknown, ServerR = unknown, HandlerR = unknown> = ReadonlyArray< DesktopNativeRegistration<E, ServerR, HandlerR> >"
     },
     {
       "name": "DesktopNativeSurfaceSelection",
       "kind": "interface",
-      "signature": "export interface DesktopNativeSurfaceSelection { readonly _tag: \"NativeSurfaceSelection\" readonly surfaces: readonly AnyDesktopNativeRegistration[] }"
+      "signature": "export interface DesktopNativeSurfaceSelection<E = unknown, ServerR = unknown, HandlerR = unknown> { readonly _tag: \"NativeSurfaceSelection\" readonly surfaces: readonly DesktopNativeRegistration<E, ServerR, HandlerR>[] }"
     },
     {
       "name": "DesktopObservability",
@@ -504,6 +504,11 @@
       "signature": "const DesktopRpc: Readonly<{ surface: { <const Tag extends string, Group extends RpcGroup.RpcGroup<RpcGroup.Rpcs<Group>>, ServiceId, ServerE, ServerR>(tag: Tag, group: Group, options: DesktopRpcSurfaceDirectOptions<RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR>): DesktopRpcSurface<Tag, Group, RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR>; <const Tag extends string, Group extends RpcGroup.RpcGroup<RpcGroup.Rpcs<Group>>, ServiceId, Service, ServerE, ServerR>(tag: Tag, group: Group, options: DesktopRpcSurfaceMappedOptions<RpcGroup.Rpcs<Group>, ServiceId, Service, ServerE, ServerR>): DesktopRpcSurface<Tag, Group, RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR>; }; supportedGroup: <Rpcs extends Rpc.Any>(group: RpcGroup.RpcGroup<Rpcs>) => RpcGroup.RpcGroup<SupportedRpc<Rpcs>>; }>"
     },
     {
+      "name": "DesktopRpcBoundServerRequirements",
+      "kind": "type",
+      "signature": "export type DesktopRpcBoundServerRequirements<Rpcs extends Rpc.Any, R> = | R | DesktopRpcServerRequirements<PermissionedDesktopRpcs<Rpcs>> | Exclude<Rpc.ToHandler<PermissionedDesktopRpcs<Rpcs>>, Rpc.ToHandler<Rpcs>>"
+    },
+    {
       "name": "DesktopRpcCapabilityFact",
       "kind": "interface",
       "signature": "export interface DesktopRpcCapabilityFact { readonly tag: string readonly capability: RpcCapabilityMetadata readonly support: RpcSupportMetadata }"
@@ -531,12 +536,12 @@
     {
       "name": "DesktopRpcsLayer",
       "kind": "type",
-      "signature": "export type DesktopRpcsLayer<E = never, RIn = never> = ReadonlyArray< AnyDesktopRpcRegistration<E, RIn> >"
+      "signature": "export type DesktopRpcsLayer< E = never, ServerR = never, HandlerR = ServerR, HandlerServices = never > = ReadonlyArray<AnyDesktopRpcRegistration<E, ServerR, HandlerR, HandlerServices>>"
     },
     {
       "name": "DesktopRpcSurface",
       "kind": "interface",
-      "signature": "export interface DesktopRpcSurface< Tag extends string, Group extends RpcGroup.RpcGroup<Rpcs>, Rpcs extends Rpc.Any, ServiceId, ServerE, ServerR > { readonly _tag: \"DesktopRpcSurface\" readonly tag: Tag readonly group: Group readonly serverLayer: DesktopRpcsLayer<ServerE, ServerR> readonly clientLayer: Layer.Layer< ServiceId, never, RpcClient.Protocol | Rpc.MiddlewareClient<Rpcs> > readonly testClientLayer: Layer.Layer< ServiceId, ServerE, ServerR | Rpc.Middleware<Rpcs> | Rpc.MiddlewareClient<Rpcs> > readonly schemaDocs: readonly DesktopRpcSchemaDoc[] readonly contractLaws: readonly DesktopRpcContractLaw[] }"
+      "signature": "export interface DesktopRpcSurface< Tag extends string, Group extends RpcGroup.RpcGroup<Rpcs>, Rpcs extends Rpc.Any, ServiceId, ServerE, ServerR > { readonly _tag: \"DesktopRpcSurface\" readonly tag: Tag readonly group: Group readonly serverLayer: DesktopRpcsLayer< ServerE, DesktopRpcBoundServerRequirements<Rpcs, ServerR>, ServerR > readonly clientLayer: Layer.Layer< ServiceId, never, RpcClient.Protocol | Rpc.MiddlewareClient<Rpcs> > readonly testClientLayer: Layer.Layer< ServiceId, ServerE, ServerR | Rpc.Middleware<Rpcs> | Rpc.MiddlewareClient<Rpcs> > readonly schemaDocs: readonly DesktopRpcSchemaDoc[] readonly contractLaws: readonly DesktopRpcContractLaw[] }"
     },
     {
       "name": "DesktopRpcSurfaceDirectOptions",
@@ -596,7 +601,7 @@
     {
       "name": "DesktopRuntimeLive",
       "kind": "value",
-      "signature": "const DesktopRuntimeLive: <RIn = never, E = never>(config: DesktopConfig<RIn, E>) => Layer.Layer<DesktopRuntimeServices, DesktopConfigError | E, Exclude<RIn, DesktopRuntimeProviderServices | ResourceOwner>>"
+      "signature": "const DesktopRuntimeLive: <RIn = never, E = never, RpcHandlerR = unknown>(config: DesktopConfig<RIn, E, RpcHandlerR>) => Layer.Layer<DesktopRuntimeServices, DesktopConfigError | E, Exclude<RIn, DesktopRuntimeProvidedServices>>"
     },
     {
       "name": "DesktopRuntimeProviderDescriptor",
@@ -1141,7 +1146,7 @@
     {
       "name": "layer",
       "kind": "value",
-      "signature": "const layer: <RIn = never, E = never>(descriptor: DesktopAppDescriptor<RIn, E>) => Layer.Layer<DesktopRuntimeServices, DesktopConfigError | E, Exclude<RIn, DesktopRuntimeProviderServices | ResourceOwner>>"
+      "signature": "const layer: <RIn = never, E = never, RpcHandlerR = unknown>(descriptor: DesktopAppDescriptor<RIn, E, RpcHandlerR>) => Layer.Layer<DesktopRuntimeServices, DesktopConfigError | E, Exclude<RIn, DesktopRuntimeProvidedServices>>"
     },
     {
       "name": "LayerFailurePayload",
@@ -1166,7 +1171,7 @@
     {
       "name": "make",
       "kind": "value",
-      "signature": "const make: <RIn = never, E = never>(config: DesktopMakeConfig<RIn, E>) => DesktopAppDescriptor<RIn, E>"
+      "signature": "const make: <RIn = never, E = never, RpcHandlerR = unknown>(config: DesktopMakeConfig<RIn, E, RpcHandlerR>) => DesktopAppDescriptor<RIn, E, RpcHandlerR>"
     },
     {
       "name": "makeAppResourceOwner",
@@ -1401,7 +1406,7 @@
     {
       "name": "manifest",
       "kind": "value",
-      "signature": "const manifest: <RIn = never, E = never>(config: DesktopManifestSource<RIn, E>) => DesktopAppManifest"
+      "signature": "const manifest: <RIn = never, E = never, RpcHandlerR = unknown>(config: DesktopManifestSource<RIn, E, RpcHandlerR>) => DesktopAppManifest"
     },
     {
       "name": "MissingDesktopContextError",
@@ -1420,8 +1425,8 @@
     },
     {
       "name": "native",
-      "kind": "value",
-      "signature": "const native: (...declarations: readonly DesktopNativeDeclaration[]) => DesktopNativeLayer"
+      "kind": "function",
+      "signature": "function native<const Declarations extends readonly DesktopNativeDeclaration<unknown, unknown, unknown>[]>(...declarations: Declarations): DesktopNativeLayer<DesktopNativeDeclarationError<Declarations[number]>, DesktopNativeDeclarationServerR<...>, DesktopNativeDeclarationHandlerR<...>>"
     },
     {
       "name": "NativeHostEvent",
@@ -2066,7 +2071,7 @@
     {
       "name": "rpc",
       "kind": "value",
-      "signature": "const rpc: <Rpcs extends Rpc.Any, E, R>(group: RpcGroup.RpcGroup<Rpcs>, handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>) => DesktopRpcsLayer<E, R>"
+      "signature": "const rpc: <Rpcs extends Rpc.Any, E, R>(group: RpcGroup.RpcGroup<Rpcs>, handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>) => DesktopRpcsLayer<E, DesktopRpcBoundServerRequirements<Rpcs, R>, R, Rpc.ToHandler<Rpcs>>"
     },
     {
       "name": "RpcCapability",
@@ -2106,17 +2111,17 @@
     {
       "name": "runtime",
       "kind": "value",
-      "signature": "const runtime: <RIn = never, E = never>(config: DesktopConfig<RIn, E>) => Layer.Layer<DesktopRuntimeServices, DesktopConfigError | E, Exclude<RIn, DesktopRuntimeProviderServices | ResourceOwner>>"
+      "signature": "const runtime: <RIn = never, E = never, RpcHandlerR = unknown>(config: DesktopConfig<RIn, E, RpcHandlerR>) => Layer.Layer<DesktopRuntimeServices, DesktopConfigError | E, Exclude<RIn, DesktopRuntimeProvidedServices>>"
     },
     {
       "name": "runtimeGraph",
       "kind": "value",
-      "signature": "const runtimeGraph: <RIn, E>(config: DesktopConfig<RIn, E>) => Effect.Effect<DesktopRuntimeGraph, DesktopConfigError, never>"
+      "signature": "const runtimeGraph: <RIn, E, RpcHandlerR>(config: DesktopConfig<RIn, E, RpcHandlerR>) => Effect.Effect<DesktopRuntimeGraph, DesktopConfigError, never>"
     },
     {
       "name": "runtimeGraphSnapshot",
       "kind": "value",
-      "signature": "const runtimeGraphSnapshot: <RIn, E>(config: DesktopConfig<RIn, E>) => Effect.Effect<LayerGraphSnapshot, never, never>"
+      "signature": "const runtimeGraphSnapshot: <RIn, E, RpcHandlerR>(config: DesktopConfig<RIn, E, RpcHandlerR>) => Effect.Effect<LayerGraphSnapshot, never, never>"
     },
     {
       "name": "ScopeId",

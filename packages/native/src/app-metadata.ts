@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
   type RpcCapabilityMetadata,
   type RpcEndpointKind,
@@ -100,11 +99,6 @@ export const AppMetadataSurface = NativeSurface.make("AppMetadata", AppMetadataR
   client: (client) => appMetadataClientFromRpcClient(client),
   bridgeClient: (client, exchange) => appMetadataClientFromRpcClient(client, exchange)
 })
-
-export const makeHostAppMetadataRpcRuntime = <R = never>(
-  handlers: AppMetadataRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => AppMetadataSurface.hostRuntime(handlers, runtimeOptions)
 
 const appMetadataClientFromRpcClient = (
   client: DesktopRpcClient<AppMetadataRpc>,

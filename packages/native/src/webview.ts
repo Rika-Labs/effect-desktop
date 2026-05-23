@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntimeOptions,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
   makeHostProtocolInvalidArgumentError,
@@ -564,11 +563,6 @@ export const WebViewSurface = NativeSurface.make("WebView", WebViewRpcGroup, {
   client: (client) => webViewClientFromRpcClient(client, undefined),
   bridgeClient: (client, exchange) => webViewClientFromRpcClient(client, exchange)
 })
-
-export const makeHostWebViewRpcRuntime = <R = never>(
-  handlers: WebViewRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => WebViewSurface.hostRuntime(handlers, runtimeOptions)
 
 export const webViewCapability = (
   name: WebViewCapabilityName,

@@ -1,9 +1,4 @@
-import {
-  type BridgeClientExchange,
-  type BridgeHandlerRuntimeOptions,
-  type HostProtocolError,
-  RpcGroup
-} from "@orika/bridge"
+import { type BridgeClientExchange, type HostProtocolError, RpcGroup } from "@orika/bridge"
 import { type DesktopRpcClient, P } from "@orika/core"
 import { Context, Effect, Schema, Stream } from "effect"
 
@@ -134,11 +129,6 @@ export const AssociationSurface = NativeSurface.make("Association", AssociationR
   client: (client) => associationClientFromRpcClient(client),
   bridgeClient: (client, exchange) => associationClientFromRpcClient(client, exchange)
 })
-
-export const makeHostAssociationRpcRuntime = <R = never>(
-  handlers: AssociationRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => AssociationSurface.hostRuntime(handlers, runtimeOptions)
 
 const associationClientFromRpcClient = (
   client: DesktopRpcClient<AssociationRpc>,

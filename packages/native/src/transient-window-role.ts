@@ -1,5 +1,4 @@
 import {
-  type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
   HostProtocolInternalError,
   HostProtocolUnsupportedError,
@@ -97,11 +96,6 @@ export const TransientWindowRoleSurface = NativeSurface.make(Surface, TransientW
   capabilityFacts: TransientWindowRoleCapabilityFacts,
   client: (client) => transientWindowRoleClientFromRpcClient(client)
 })
-
-export const makeHostTransientWindowRoleRpcRuntime = <R = never>(
-  handlers: TransientWindowRoleRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => TransientWindowRoleSurface.hostRuntime(handlers, runtimeOptions)
 
 export const makeTransientWindowRoleMemoryClient = (): Effect.Effect<
   TransientWindowRoleClientApi,

@@ -13,7 +13,6 @@ import {
 } from "@orika/core"
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntimeOptions,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
@@ -195,11 +194,6 @@ export const MenuSurface = NativeSurface.make("Menu", MenuRpcGroup, {
   client: (client) => menuClientFromRpcClient(client, undefined),
   bridgeClient: (client, exchange) => menuClientFromRpcClient(client, exchange)
 })
-
-export const makeHostMenuRpcRuntime = <R = never>(
-  handlers: MenuRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => MenuSurface.hostRuntime(handlers, runtimeOptions)
 
 export const menuCapability = (
   name: MenuCapabilityName,

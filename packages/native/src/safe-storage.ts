@@ -1,5 +1,4 @@
 import {
-  type BridgeHandlerRuntimeOptions,
   HostProtocolUnsupportedError,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
@@ -171,11 +170,6 @@ export const SafeStorageSurface = NativeSurface.make("SafeStorage", SafeStorageR
   handlers: SafeStorageHandlersLive,
   client: (client) => safeStorageClientFromRpcClient(client)
 })
-
-export const makeHostSafeStorageRpcRuntime = <R = never>(
-  handlers: SafeStorageRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => SafeStorageSurface.hostRuntime(handlers, runtimeOptions)
 
 const safeStorageClientFromRpcClient = (
   client: DesktopRpcClient<SafeStorageRpc>

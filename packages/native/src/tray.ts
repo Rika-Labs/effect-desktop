@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntimeOptions,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
@@ -299,11 +298,6 @@ export const TraySurface = NativeSurface.make("Tray", TrayRpcGroup, {
   client: (client) => trayClientFromRpcClient(client, undefined),
   bridgeClient: (client, exchange) => trayClientFromRpcClient(client, exchange)
 })
-
-export const makeHostTrayRpcRuntime = <R = never>(
-  handlers: TrayRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => TraySurface.hostRuntime(handlers, runtimeOptions)
 
 const trayClientFromRpcClient = (
   client: DesktopRpcClient<TrayRpc>,

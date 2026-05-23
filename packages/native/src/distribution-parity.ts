@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntimeOptions,
   HostProtocolPermissionDeniedError,
   HostProtocolUnsupportedError,
   makeHostProtocolInternalError,
@@ -146,11 +145,6 @@ export const DistributionParitySurface = NativeSurface.make(Surface, Distributio
   client: (client) => distributionParityClientFromRpcClient(client, undefined),
   bridgeClient: (client, exchange) => distributionParityClientFromRpcClient(client, exchange)
 })
-
-export const makeHostDistributionParityRpcRuntime = <R = never>(
-  handlers: DistributionParityRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => DistributionParitySurface.hostRuntime(handlers, runtimeOptions)
 
 export interface DistributionParityMemoryClientOptions {
   readonly failure?: Partial<Record<"verify", DistributionParityError>>

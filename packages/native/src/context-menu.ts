@@ -11,12 +11,7 @@ import {
   type ResourceId,
   type ResourceRegistry
 } from "@orika/core"
-import {
-  type BridgeClientExchange,
-  type BridgeHandlerRuntimeOptions,
-  RpcGroup,
-  type HostProtocolError
-} from "@orika/bridge"
+import { type BridgeClientExchange, RpcGroup, type HostProtocolError } from "@orika/bridge"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
@@ -185,11 +180,6 @@ export const ContextMenuSurface = NativeSurface.make("ContextMenu", ContextMenuR
   bridgeClient: (client: DesktopRpcClient<ContextMenuRpc>, exchange: BridgeClientExchange) =>
     contextMenuClientFromRpcClient(client, exchange)
 })
-
-export const makeHostContextMenuRpcRuntime = <R = never>(
-  handlers: ContextMenuRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => ContextMenuSurface.hostRuntime(handlers, runtimeOptions)
 
 const contextMenuClientFromRpcClient = (
   client: DesktopRpcClient<ContextMenuRpc>,

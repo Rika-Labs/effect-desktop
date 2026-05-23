@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
   HostProtocolUnsupportedError,
   RpcGroup
@@ -128,11 +127,6 @@ export const SessionPermissionSurface = NativeSurface.make(Surface, SessionPermi
   client: (client) => sessionPermissionClientFromRpcClient(client, undefined),
   bridgeClient: (client, exchange) => sessionPermissionClientFromRpcClient(client, exchange)
 })
-
-export const makeHostSessionPermissionRpcRuntime = <R = never>(
-  handlers: SessionPermissionRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => SessionPermissionSurface.hostRuntime(handlers, runtimeOptions)
 
 export const makeSessionPermissionMemoryClient = (): Effect.Effect<
   SessionPermissionClientApi,

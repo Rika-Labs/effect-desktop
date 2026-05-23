@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
   HostProtocolPermissionDeniedError,
   HostProtocolUnsupportedError,
@@ -195,11 +194,6 @@ export const ResidentLifecycleSurface = NativeSurface.make(Surface, ResidentLife
   client: (client) => residentLifecycleClientFromRpcClient(client, undefined),
   bridgeClient: (client, exchange) => residentLifecycleClientFromRpcClient(client, exchange)
 })
-
-export const makeHostResidentLifecycleRpcRuntime = <R = never>(
-  handlers: ResidentLifecycleRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => ResidentLifecycleSurface.hostRuntime(handlers, runtimeOptions)
 
 export interface ResidentLifecycleMemoryClientOptions {
   readonly failure?: Partial<Record<"enable" | "disable", ResidentLifecycleError>>

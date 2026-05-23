@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
   HostProtocolUnsupportedError,
   RpcGroup
@@ -126,11 +125,6 @@ export const NetworkAuthSurface = NativeSurface.make(Surface, NetworkAuthRpcGrou
   client: (client) => networkAuthClientFromRpcClient(client, undefined),
   bridgeClient: (client, exchange) => networkAuthClientFromRpcClient(client, exchange)
 })
-
-export const makeHostNetworkAuthRpcRuntime = <R = never>(
-  handlers: NetworkAuthRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => NetworkAuthSurface.hostRuntime(handlers, runtimeOptions)
 
 export const makeNetworkAuthMemoryClient = (): Effect.Effect<NetworkAuthClientApi, never, never> =>
   Effect.succeed(

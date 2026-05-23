@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntimeOptions,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
   type RpcSupportMetadata,
@@ -259,11 +258,6 @@ export const SystemAppearanceSurface = NativeSurface.make(
     bridgeClient: (client, exchange) => systemAppearanceClientFromRpcClient(client, exchange)
   }
 )
-
-export const makeHostSystemAppearanceRpcRuntime = <R = never>(
-  handlers: SystemAppearanceRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => SystemAppearanceSurface.hostRuntime(handlers, runtimeOptions)
 
 const systemAppearanceClientFromRpcClient = (
   client: DesktopRpcClient<SystemAppearanceRpc>,

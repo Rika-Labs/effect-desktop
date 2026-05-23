@@ -1,5 +1,4 @@
 import {
-  type BridgeHandlerRuntimeOptions,
   type RpcCapabilityMetadata,
   type RpcSupportMetadata,
   RpcGroup,
@@ -180,11 +179,6 @@ export const DialogSurface = NativeSurface.make("Dialog", DialogRpcGroup, {
   handlers: DialogHandlersLive,
   client: (client) => dialogClientFromRpcClient(client)
 })
-
-export const makeHostDialogRpcRuntime = <R = never>(
-  handlers: DialogRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => DialogSurface.hostRuntime(handlers, runtimeOptions)
 
 const makeDialogService = (client: DialogClientApi): DialogServiceApi => {
   const service: DialogServiceApi = {

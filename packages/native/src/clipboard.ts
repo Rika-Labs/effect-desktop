@@ -1,5 +1,4 @@
 import {
-  type BridgeHandlerRuntimeOptions,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
   RpcGroup,
@@ -231,11 +230,6 @@ export const ClipboardSurface = NativeSurface.make("Clipboard", ClipboardRpcGrou
   handlers: ClipboardHandlersLive,
   client: (client) => clipboardClientFromRpcClient(client)
 })
-
-export const makeHostClipboardRpcRuntime = <R = never>(
-  handlers: ClipboardRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => ClipboardSurface.hostRuntime(handlers, runtimeOptions)
 
 const makeClipboardService = (client: ClipboardClientApi): ClipboardServiceApi => {
   const service: ClipboardServiceApi = {

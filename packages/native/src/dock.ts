@@ -1,5 +1,4 @@
 import {
-  type BridgeHandlerRuntimeOptions,
   HostProtocolUnsupportedError,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
@@ -220,11 +219,6 @@ export const DockSurface = NativeSurface.make("Dock", DockRpcGroup, {
   capabilityFacts: DockCapabilityFacts,
   client: (client) => dockClientFromRpcClient(client)
 })
-
-export const makeHostDockRpcRuntime = <R = never>(
-  handlers: DockRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => DockSurface.hostRuntime(handlers, runtimeOptions)
 
 const dockClientFromRpcClient = (client: DesktopRpcClient<DockRpc>): DockClientApi => {
   return Object.freeze({

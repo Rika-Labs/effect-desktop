@@ -34,7 +34,6 @@ import {
   JobSupportedResult,
   type JobClientApi,
   JobRpcs,
-  makeHostJobRpcRuntime,
   makeJobMemoryClient,
   makeJobServiceLayer,
   makeJobUnsupportedClient,
@@ -457,7 +456,7 @@ test("Job host RPC runtime denies protected calls before handlers run", async ()
       calls.push(method)
       return snapshot
     })
-  const runtime = makeHostJobRpcRuntime(
+  const runtime = JobSurface.hostRuntime(
     {
       "Job.start": () => handler("start"),
       "Job.pause": () => handler("pause"),

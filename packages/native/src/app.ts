@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntimeOptions,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
@@ -242,11 +241,6 @@ export const AppSurface = NativeSurface.make("App", AppRpcGroup, {
   client: (client) => appClientFromRpcClient(client, undefined),
   bridgeClient: (client, exchange) => appClientFromRpcClient(client, exchange)
 })
-
-export const makeHostAppRpcRuntime = <R = never>(
-  handlers: AppRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => AppSurface.hostRuntime(handlers, runtimeOptions)
 
 const makeAppService = (client: AppClientApi): AppServiceApi => {
   const service: AppServiceApi = {

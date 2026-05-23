@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
   HostProtocolUnsupportedError,
   RpcGroup
@@ -167,11 +166,6 @@ export const BrowsingDataSurface = NativeSurface.make(Surface, BrowsingDataRpcGr
   client: (client) => browsingDataClientFromRpcClient(client, undefined),
   bridgeClient: (client, exchange) => browsingDataClientFromRpcClient(client, exchange)
 })
-
-export const makeHostBrowsingDataRpcRuntime = <R = never>(
-  handlers: BrowsingDataRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => BrowsingDataSurface.hostRuntime(handlers, runtimeOptions)
 
 export const makeBrowsingDataMemoryClient = (): Effect.Effect<
   BrowsingDataClientApi,

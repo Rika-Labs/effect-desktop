@@ -1,7 +1,6 @@
 import {
   type BridgeClientExchange,
   type BridgeClientOptions,
-  type BridgeHandlerRuntimeOptions,
   RpcGroup,
   hostProtocolErrorFromRpcClientError,
   makeHostProtocolInternalError,
@@ -177,11 +176,6 @@ export const makeScreenBridgeClientLayer = (
   })
 
 export type ScreenRpcHandlers<R = never> = NativeRpcHandlers<typeof ScreenRpcGroup, R>
-
-export const makeHostScreenRpcRuntime = <R = never>(
-  handlers: ScreenRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => ScreenSurface.hostRuntime(handlers, runtimeOptions)
 
 const normalizeScreenBridgeRequest = (
   request: HostProtocolRequestEnvelope

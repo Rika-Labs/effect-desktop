@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntimeOptions,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
   RpcGroup,
@@ -134,11 +133,6 @@ export const PowerMonitorSurface = NativeSurface.make("PowerMonitor", PowerMonit
   client: (client) => powerMonitorClientFromRpcClient(client, undefined),
   bridgeClient: (client, exchange) => powerMonitorClientFromRpcClient(client, exchange)
 })
-
-export const makeHostPowerMonitorRpcRuntime = <R = never>(
-  handlers: PowerMonitorRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => PowerMonitorSurface.hostRuntime(handlers, runtimeOptions)
 
 const powerMonitorClientFromRpcClient = (
   client: DesktopRpcClient<PowerMonitorRpc>,

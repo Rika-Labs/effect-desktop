@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntimeOptions,
   HostProtocolPermissionDeniedError,
   HostProtocolUnsupportedError,
   type RpcCapabilityMetadata,
@@ -240,11 +239,6 @@ export const RealtimeMediaSessionSurface = NativeSurface.make(
     bridgeClient: (client, exchange) => realtimeMediaSessionClientFromRpcClient(client, exchange)
   }
 )
-
-export const makeHostRealtimeMediaSessionRpcRuntime = <R = never>(
-  handlers: RealtimeMediaSessionRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => RealtimeMediaSessionSurface.hostRuntime(handlers, runtimeOptions)
 
 export interface RealtimeMediaSessionMemoryClientOptions {
   readonly failure?: Partial<

@@ -1,9 +1,4 @@
-import {
-  type BridgeClientExchange,
-  type BridgeHandlerRuntimeOptions,
-  type HostProtocolError,
-  RpcGroup
-} from "@orika/bridge"
+import { type BridgeClientExchange, type HostProtocolError, RpcGroup } from "@orika/bridge"
 import { type DesktopRpcClient, P } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
@@ -124,11 +119,6 @@ export const AutostartSurface = NativeSurface.make("Autostart", AutostartRpcGrou
   client: (client) => autostartClientFromRpcClient(client),
   bridgeClient: (client, exchange) => autostartClientFromRpcClient(client, exchange)
 })
-
-export const makeHostAutostartRpcRuntime = <R = never>(
-  handlers: AutostartRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => AutostartSurface.hostRuntime(handlers, runtimeOptions)
 
 const autostartClientFromRpcClient = (
   client: DesktopRpcClient<AutostartRpc>,

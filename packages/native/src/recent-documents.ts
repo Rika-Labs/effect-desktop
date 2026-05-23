@@ -1,9 +1,4 @@
-import {
-  type BridgeClientExchange,
-  type BridgeHandlerRuntimeOptions,
-  type HostProtocolError,
-  RpcGroup
-} from "@orika/bridge"
+import { type BridgeClientExchange, type HostProtocolError, RpcGroup } from "@orika/bridge"
 import { type DesktopRpcClient, P } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
@@ -134,11 +129,6 @@ export const RecentDocumentsSurface = NativeSurface.make(
     bridgeClient: (client, exchange) => recentDocumentsClientFromRpcClient(client, exchange)
   }
 )
-
-export const makeHostRecentDocumentsRpcRuntime = <R = never>(
-  handlers: RecentDocumentsRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => RecentDocumentsSurface.hostRuntime(handlers, runtimeOptions)
 
 const recentDocumentsClientFromRpcClient = (
   client: DesktopRpcClient<RecentDocumentsRpc>,

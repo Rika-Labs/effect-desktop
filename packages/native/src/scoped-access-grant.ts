@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
   HostProtocolUnsupportedError,
   RpcGroup
@@ -123,11 +122,6 @@ export const ScopedAccessGrantSurface = NativeSurface.make(Surface, ScopedAccess
   client: (client) => scopedAccessGrantClientFromRpcClient(client, undefined),
   bridgeClient: (client, exchange) => scopedAccessGrantClientFromRpcClient(client, exchange)
 })
-
-export const makeHostScopedAccessGrantRpcRuntime = <R = never>(
-  handlers: ScopedAccessGrantRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => ScopedAccessGrantSurface.hostRuntime(handlers, runtimeOptions)
 
 export const makeScopedAccessGrantMemoryClient = (): Effect.Effect<
   ScopedAccessGrantClientApi,

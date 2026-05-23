@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
   HostProtocolInternalError,
   HostProtocolPermissionDeniedError,
@@ -214,11 +213,6 @@ export const ActivationRegistrySurface = NativeSurface.make(Surface, ActivationR
   client: (client) => activationRegistryClientFromRpcClient(client, undefined),
   bridgeClient: (client, exchange) => activationRegistryClientFromRpcClient(client, exchange)
 })
-
-export const makeHostActivationRegistryRpcRuntime = <R = never>(
-  handlers: ActivationRegistryRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => ActivationRegistrySurface.hostRuntime(handlers, runtimeOptions)
 
 export interface ActivationRegistryMemoryClientOptions {
   readonly failure?: Partial<Record<"registerSurface" | "unregisterSurface", HostProtocolError>>

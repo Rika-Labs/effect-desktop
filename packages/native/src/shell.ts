@@ -1,5 +1,4 @@
 import {
-  type BridgeHandlerRuntimeOptions,
   HostProtocolPermissionDeniedError,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
@@ -167,11 +166,6 @@ export const ShellSurface = NativeSurface.make("Shell", ShellRpcGroup, {
   handlers: ShellHandlersLive,
   client: (client) => shellClientFromRpcClient(client)
 })
-
-export const makeHostShellRpcRuntime = <R = never>(
-  handlers: ShellRpcHandlers<R>,
-  runtimeOptions: BridgeHandlerRuntimeOptions = {}
-) => ShellSurface.hostRuntime(handlers, runtimeOptions)
 
 const shellClientFromRpcClient = (client: DesktopRpcClient<ShellRpc>): ShellClientApi => {
   const shellClient: ShellClientApi = {
