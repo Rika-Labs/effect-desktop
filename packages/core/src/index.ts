@@ -210,11 +210,17 @@ function workflowEngine<RIn = never, E = never>(
     return Layer.merge(WorkflowEngineMemory, declareLayer)
   }
 
-  const merged = workflowLayers.reduce<Layer.Layer<never, E, RIn | WorkflowEngine.WorkflowEngine>>(
-    (acc, wf) => Layer.merge(acc, wf),
-    Layer.empty as Layer.Layer<never, E, RIn | WorkflowEngine.WorkflowEngine>
-  )
+  const merged = mergeWorkflowLayers(workflowLayers)
   return Layer.merge(Layer.provideMerge(merged, WorkflowEngineMemory), declareLayer)
+}
+
+const mergeWorkflowLayers = <RIn, E>(
+  workflowLayers: DesktopWorkflowsLayer<RIn, E>
+): Layer.Layer<never, E, RIn | WorkflowEngine.WorkflowEngine> => {
+  const [firstWorkflowLayer, ...remainingWorkflowLayers] = workflowLayers
+  return firstWorkflowLayer === undefined
+    ? Layer.empty
+    : Layer.mergeAll(firstWorkflowLayer, ...remainingWorkflowLayers)
 }
 
 export const Desktop = Object.freeze({

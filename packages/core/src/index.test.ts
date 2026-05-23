@@ -137,6 +137,19 @@ test("TestRuntimeProviderLayer does not assert merged provider services", () =>
     })
   ))
 
+test("Desktop.workflowEngine does not assert the empty workflow Layer", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        Bun.file(new URL("./index.ts", import.meta.url)).text()
+      )
+
+      expect(source).not.toContain(
+        "Layer.empty as Layer.Layer<never, E, RIn | WorkflowEngine.WorkflowEngine>"
+      )
+    })
+  ))
+
 test("public barrel exports the ResourceRegistry factory", () => {
   expect(runtimeProviderServicesContracts).toEqual([true, true, true])
   expect(core.makeResourceRegistry).toBeFunction()
