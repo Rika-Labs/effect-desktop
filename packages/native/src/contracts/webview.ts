@@ -42,7 +42,6 @@ const WebViewUserAgent = BridgeSafeNonEmptyString
 const WebViewNonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))
 const WebViewZoomFactor = Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0))
 const WebViewRuntimeRequestId = BridgeSafeNonEmptyString
-const WebViewRuntimeEventReason = BridgeSafeString
 const WebViewRuntimePath = BridgeSafeNonEmptyString.check(
   Schema.isPattern(/^(?!.*(?:^|[\\/])\.\.(?:[\\/]|$))[\s\S]*$/u)
 )
@@ -271,79 +270,104 @@ export class WebViewRuntimePoint extends Schema.Class<WebViewRuntimePoint>("WebV
   y: Schema.Int
 }) {}
 
-const WebViewRuntimeEventShape = Schema.makeFilter<{
-  readonly phase: WebViewRuntimeEventPhase
-  readonly url?: string | undefined
-  readonly reason?: string | undefined
-  readonly requestId?: string | undefined
-  readonly permission?: WebViewRuntimePermissionKind | undefined
-  readonly decision?: WebViewPermissionDecision | undefined
-  readonly paths?: readonly string[] | undefined
-  readonly position?: { readonly x: number; readonly y: number } | undefined
-}>((value) => {
-  if (value.phase === "page-load-started" || value.phase === "page-load-finished") {
-    if (value.url === undefined) {
-      return "page-load events require url"
-    }
-    const dragPayload = noDragPayload(value, "page-load events")
-    if (dragPayload !== true) {
-      return dragPayload
-    }
-    return noRuntimeMetadata(value, "page-load events")
-  }
+const WebViewRuntimeEventBase = {
+  webview: WebViewResource
+}
 
-  if (value.phase === "drag-enter" || value.phase === "drag-drop") {
-    if (value.paths === undefined) {
-      return `${value.phase} events require paths`
-    }
-    if (value.position === undefined) {
-      return `${value.phase} events require position`
-    }
-    if (value.url !== undefined) {
-      return `${value.phase} events must not carry url`
-    }
-    return noRuntimeMetadata(value, `${value.phase} events`)
-  }
+const WebViewRuntimeEventForbiddenMetadata = {
+  reason: Schema.optionalKey(Schema.Never),
+  requestId: Schema.optionalKey(Schema.Never),
+  permission: Schema.optionalKey(Schema.Never),
+  decision: Schema.optionalKey(Schema.Never)
+}
 
-  if (value.phase === "drag-over") {
-    if (value.position === undefined) {
-      return "drag-over events require position"
-    }
-    if (value.paths !== undefined) {
-      return "drag-over events must not carry paths"
-    }
-    if (value.url !== undefined) {
-      return "drag-over events must not carry url"
-    }
-    return noRuntimeMetadata(value, "drag-over events")
-  }
+const WebViewRuntimeEventForbiddenDragPayload = {
+  paths: Schema.optionalKey(Schema.Never),
+  position: Schema.optionalKey(Schema.Never)
+}
 
-  if (value.phase === "drag-leave") {
-    if (value.paths !== undefined || value.position !== undefined) {
-      return "drag-leave events must not carry drag payload"
-    }
-    if (value.url !== undefined) {
-      return "drag-leave events must not carry url"
-    }
-    return noRuntimeMetadata(value, "drag-leave events")
-  }
+const WebViewRuntimePlaceholderPhase = Schema.Literals([
+  "download-started",
+  "download-completed",
+  "permission-requested",
+  "permission-resolved",
+  "crashed",
+  "unresponsive",
+  "media-started",
+  "media-stopped",
+  "file-input-requested",
+  "failed"
+])
 
-  return true
+const WebViewPageLoadStartedRuntimeEvent = Schema.Struct({
+  ...WebViewRuntimeEventBase,
+  phase: Schema.Literal("page-load-started"),
+  url: WebViewRuntimeUrl,
+  ...WebViewRuntimeEventForbiddenMetadata,
+  ...WebViewRuntimeEventForbiddenDragPayload
 })
 
-export class WebViewRuntimeEvent extends Schema.Class<WebViewRuntimeEvent>("WebViewRuntimeEvent")(
-  Schema.Struct({
-    webview: WebViewResource,
-    phase: WebViewRuntimeEventPhase,
-    url: Schema.optionalKey(WebViewRuntimeUrl),
-    reason: Schema.optionalKey(WebViewRuntimeEventReason),
-    requestId: Schema.optionalKey(WebViewRuntimeRequestId),
-    permission: Schema.optionalKey(WebViewRuntimePermissionKind),
-    decision: Schema.optionalKey(WebViewPermissionDecision),
-    position: Schema.optionalKey(WebViewRuntimePoint),
-    paths: Schema.optionalKey(Schema.Array(WebViewRuntimePath))
-  }).check(WebViewRuntimeEventShape)
-) {}
+const WebViewPageLoadFinishedRuntimeEvent = Schema.Struct({
+  ...WebViewRuntimeEventBase,
+  phase: Schema.Literal("page-load-finished"),
+  url: WebViewRuntimeUrl,
+  ...WebViewRuntimeEventForbiddenMetadata,
+  ...WebViewRuntimeEventForbiddenDragPayload
+})
+
+const WebViewDragEnterRuntimeEvent = Schema.Struct({
+  ...WebViewRuntimeEventBase,
+  phase: Schema.Literal("drag-enter"),
+  paths: Schema.Array(WebViewRuntimePath),
+  position: WebViewRuntimePoint,
+  url: Schema.optionalKey(Schema.Never),
+  ...WebViewRuntimeEventForbiddenMetadata
+})
+
+const WebViewDragOverRuntimeEvent = Schema.Struct({
+  ...WebViewRuntimeEventBase,
+  phase: Schema.Literal("drag-over"),
+  position: WebViewRuntimePoint,
+  paths: Schema.optionalKey(Schema.Never),
+  url: Schema.optionalKey(Schema.Never),
+  ...WebViewRuntimeEventForbiddenMetadata
+})
+
+const WebViewDragDropRuntimeEvent = Schema.Struct({
+  ...WebViewRuntimeEventBase,
+  phase: Schema.Literal("drag-drop"),
+  paths: Schema.Array(WebViewRuntimePath),
+  position: WebViewRuntimePoint,
+  url: Schema.optionalKey(Schema.Never),
+  ...WebViewRuntimeEventForbiddenMetadata
+})
+
+const WebViewDragLeaveRuntimeEvent = Schema.Struct({
+  ...WebViewRuntimeEventBase,
+  phase: Schema.Literal("drag-leave"),
+  url: Schema.optionalKey(Schema.Never),
+  ...WebViewRuntimeEventForbiddenMetadata,
+  ...WebViewRuntimeEventForbiddenDragPayload
+})
+
+const WebViewPlaceholderRuntimeEvent = Schema.Struct({
+  ...WebViewRuntimeEventBase,
+  phase: WebViewRuntimePlaceholderPhase,
+  url: Schema.optionalKey(Schema.Never),
+  ...WebViewRuntimeEventForbiddenMetadata,
+  ...WebViewRuntimeEventForbiddenDragPayload
+})
+
+export const WebViewRuntimeEvent = Schema.Union([
+  WebViewPageLoadStartedRuntimeEvent,
+  WebViewPageLoadFinishedRuntimeEvent,
+  WebViewDragEnterRuntimeEvent,
+  WebViewDragOverRuntimeEvent,
+  WebViewDragDropRuntimeEvent,
+  WebViewDragLeaveRuntimeEvent,
+  WebViewPlaceholderRuntimeEvent
+])
+export type WebViewRuntimeEvent = typeof WebViewRuntimeEvent.Type
 
 const WebViewFrameEventShape = Schema.makeFilter<{
   readonly phase: WebViewFrameEventPhase
@@ -405,30 +429,3 @@ const isAbsoluteUrl = (value: string): boolean => {
     return false
   }
 }
-
-const noDragPayload = (
-  value: {
-    readonly paths?: readonly string[] | undefined
-    readonly position?: { readonly x: number; readonly y: number } | undefined
-  },
-  label: string
-): true | string =>
-  value.paths === undefined && value.position === undefined
-    ? true
-    : `${label} must not carry drag payload`
-
-const noRuntimeMetadata = (
-  value: {
-    readonly reason?: string | undefined
-    readonly requestId?: string | undefined
-    readonly permission?: WebViewRuntimePermissionKind | undefined
-    readonly decision?: WebViewPermissionDecision | undefined
-  },
-  label: string
-): true | string =>
-  value.reason === undefined &&
-  value.requestId === undefined &&
-  value.permission === undefined &&
-  value.decision === undefined
-    ? true
-    : `${label} must not carry runtime metadata`

@@ -4,6 +4,7 @@ import {
   HostProtocolEventEnvelope,
   HostProtocolInvalidOutputError
 } from "@orika/bridge"
+import { makeResourceId } from "@orika/core"
 import { Cause, Effect, Exit, Schema, Stream } from "effect"
 
 import { WebViewFrameEvent, WebViewRuntimeEvent } from "./contracts/webview.js"
@@ -11,7 +12,7 @@ import { WebViewClient, WebViewSurface } from "./webview.js"
 
 const webviewHandle = {
   kind: "webview",
-  id: "webview-1",
+  id: makeResourceId("webview-1"),
   generation: 0,
   ownerScope: "window:window-1",
   state: "open"
@@ -19,7 +20,7 @@ const webviewHandle = {
 
 const webviewFrameHandle = {
   kind: "webview-frame",
-  id: "frame-1",
+  id: makeResourceId("frame-1"),
   generation: 0,
   ownerScope: "webview:webview-1",
   state: "open"
@@ -79,7 +80,8 @@ test("WebView runtime events require phase-specific payload fields", () =>
           requestId: "permission-request-1"
         },
         { webview: webviewHandle, phase: "drag-leave", decision: "grant" },
-        { webview: webviewHandle, phase: "drag-leave", position: { x: 12, y: 24 } }
+        { webview: webviewHandle, phase: "drag-leave", position: { x: 12, y: 24 } },
+        { webview: webviewHandle, phase: "failed", url: "https://example.test/" }
       ] as const
       for (const event of malformedEvents) {
         const exit = yield* Effect.exit(Schema.decodeUnknownEffect(WebViewRuntimeEvent)(event))
@@ -119,6 +121,54 @@ test("WebView runtime events require phase-specific payload fields", () =>
       }
     })
   ))
+
+test("WebView runtime event types reject impossible phase payloads", () => {
+  type WebViewRuntimeEventValue = typeof WebViewRuntimeEvent.Type
+
+  const pageLoadStarted: WebViewRuntimeEventValue = {
+    webview: webviewHandle,
+    phase: "page-load-started",
+    url: "https://example.test/"
+  }
+  const dragDrop: WebViewRuntimeEventValue = {
+    webview: webviewHandle,
+    phase: "drag-drop",
+    paths: ["/tmp/report.txt"],
+    position: { x: 12, y: 24 }
+  }
+  const failed: WebViewRuntimeEventValue = {
+    webview: webviewHandle,
+    phase: "failed"
+  }
+
+  expect(pageLoadStarted.phase).toBe("page-load-started")
+  expect(dragDrop.paths).toEqual(["/tmp/report.txt"])
+  expect(failed.phase).toBe("failed")
+
+  // @ts-expect-error page-load runtime events must not carry drag payloads.
+  const pageLoadWithPosition: WebViewRuntimeEventValue = {
+    webview: webviewHandle,
+    phase: "page-load-finished",
+    url: "https://example.test/",
+    position: { x: 12, y: 24 }
+  }
+  // @ts-expect-error drag-drop runtime events require paths.
+  const dragDropWithoutPaths: WebViewRuntimeEventValue = {
+    webview: webviewHandle,
+    phase: "drag-drop",
+    position: { x: 12, y: 24 }
+  }
+  // @ts-expect-error placeholder runtime events must not carry covered phase payloads.
+  const failedWithUrl: WebViewRuntimeEventValue = {
+    webview: webviewHandle,
+    phase: "failed",
+    url: "https://example.test/"
+  }
+
+  expect(pageLoadWithPosition.phase).toBe("page-load-finished")
+  expect(dragDropWithoutPaths.phase).toBe("drag-drop")
+  expect(failedWithUrl.phase).toBe("failed")
+})
 
 test("WebView frame events require phase-specific payload fields", () =>
   Effect.runPromise(

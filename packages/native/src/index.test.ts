@@ -432,7 +432,6 @@ import {
   WebViewApiCallEvent,
   WebViewFrameEvent,
   WebViewNavigationBlockedEvent,
-  WebViewRuntimeEvent,
   WindowBounds,
   WindowBoundsEvent,
   WindowRegistryEvent,
@@ -2516,12 +2515,12 @@ test("WebView service delegates through a substitutable WebViewClient port", () 
         })
       ])
       expect(Array.from(result.runtimeEvents)).toEqual([
-        new WebViewRuntimeEvent({
+        {
           webview: webviewHandle,
           phase: "drag-drop",
           paths: ["/tmp/report.txt"],
           position: { x: 12, y: 24 }
-        })
+        }
       ])
       expect(Array.from(result.frameEvents)).toEqual([
         new WebViewFrameEvent({
@@ -2835,12 +2834,12 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
         })
       ])
       expect(Array.from(result.runtimeEvents)).toEqual([
-        new WebViewRuntimeEvent({
+        {
           webview: webviewHandle,
           phase: "drag-drop",
           paths: ["/tmp/report.txt"],
           position: { x: 12, y: 24 }
-        })
+        }
       ])
       expect(Array.from(result.frameEvents)).toEqual([
         new WebViewFrameEvent({
@@ -14447,14 +14446,12 @@ const webViewClient = (calls: string[]): WebViewClientApi => ({
       })
     ),
   onRuntimeEvent: () =>
-    Stream.make(
-      new WebViewRuntimeEvent({
-        webview: webviewHandle,
-        phase: "drag-drop",
-        paths: ["/tmp/report.txt"],
-        position: { x: 12, y: 24 }
-      })
-    ),
+    Stream.make({
+      webview: webviewHandle,
+      phase: "drag-drop",
+      paths: ["/tmp/report.txt"],
+      position: { x: 12, y: 24 }
+    }),
   onFrameEvent: () =>
     Stream.make(
       new WebViewFrameEvent({
