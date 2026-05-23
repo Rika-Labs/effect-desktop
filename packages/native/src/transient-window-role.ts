@@ -1,6 +1,4 @@
 import {
-  type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
@@ -9,7 +7,7 @@ import {
   RpcGroup
 } from "@orika/bridge"
 import { type DesktopRpcClient, P, type PermissionRegistry } from "@orika/core"
-import { Context, Effect, Layer, Schema, Stream } from "effect"
+import { Context, Effect, Schema, Stream } from "effect"
 
 import {
   TransientWindowRoleEvent,
@@ -77,41 +75,10 @@ export interface TransientWindowRoleClientApi {
   readonly events: () => Stream.Stream<TransientWindowRoleEvent, TransientWindowRoleError, never>
 }
 
-export class TransientWindowRoleClient extends Context.Service<
-  TransientWindowRoleClient,
-  TransientWindowRoleClientApi
->()("@orika/native/TransientWindowRoleClient") {}
-
-export interface TransientWindowRoleServiceApi extends TransientWindowRoleClientApi {}
-
 export class TransientWindowRole extends Context.Service<
   TransientWindowRole,
-  TransientWindowRoleServiceApi
->()("@orika/native/TransientWindowRole") {
-  static readonly layer = Layer.effect(TransientWindowRole)(
-    Effect.gen(function* () {
-      const client = yield* TransientWindowRoleClient
-      return makeTransientWindowRoleService(client)
-    })
-  )
-}
-
-export const TransientWindowRoleLive = TransientWindowRole.layer
-
-export const makeTransientWindowRoleClientLayer = (
-  client: TransientWindowRoleClientApi
-): Layer.Layer<TransientWindowRoleClient> => Layer.succeed(TransientWindowRoleClient)(client)
-
-export const makeTransientWindowRoleServiceLayer = (
-  client: TransientWindowRoleClientApi
-): Layer.Layer<TransientWindowRole> =>
-  Layer.succeed(TransientWindowRole, makeTransientWindowRoleService(client))
-
-export const makeTransientWindowRoleBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<TransientWindowRoleClient> =>
-  TransientWindowRoleSurface.bridgeClientLayer(exchange, options)
+  TransientWindowRoleClientApi
+>()("@orika/native/TransientWindowRole") {}
 
 export const TransientWindowRoleHandlersLive = TransientWindowRoleRpcGroup.toLayer({
   "TransientWindowRole.isSupported": () =>
@@ -122,11 +89,10 @@ export const TransientWindowRoleHandlersLive = TransientWindowRoleRpcGroup.toLay
 })
 
 export const TransientWindowRoleSurface = NativeSurface.make(Surface, TransientWindowRoleRpcGroup, {
-  service: TransientWindowRoleClient,
+  service: TransientWindowRole,
   handlers: TransientWindowRoleHandlersLive,
   capabilityFacts: TransientWindowRoleCapabilityFacts,
-  client: (client) => transientWindowRoleClientFromRpcClient(client, undefined),
-  bridgeClient: (client, exchange) => transientWindowRoleClientFromRpcClient(client, exchange)
+  client: (client) => transientWindowRoleClientFromRpcClient(client)
 })
 
 export const makeHostTransientWindowRoleRpcRuntime = (
@@ -157,17 +123,8 @@ export const makeTransientWindowRoleUnsupportedClient = (): TransientWindowRoleC
     events: () => Stream.fail(unsupportedError(EventMethod))
   } satisfies TransientWindowRoleClientApi)
 
-const makeTransientWindowRoleService = (
-  client: TransientWindowRoleClientApi
-): TransientWindowRoleServiceApi =>
-  Object.freeze({
-    isSupported: () => client.isSupported(),
-    events: () => client.events()
-  } satisfies TransientWindowRoleServiceApi)
-
 const transientWindowRoleClientFromRpcClient = (
-  client: DesktopRpcClient<TransientWindowRoleRpc>,
-  _exchange: BridgeClientExchange | undefined
+  client: DesktopRpcClient<TransientWindowRoleRpc>
 ): TransientWindowRoleClientApi =>
   Object.freeze({
     isSupported: () =>

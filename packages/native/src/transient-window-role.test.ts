@@ -1,22 +1,46 @@
 import { expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
 import { type BridgeClientExchange } from "@orika/bridge"
-import { Cause, Effect, Exit, type Layer, ManagedRuntime, Schema, Stream } from "effect"
+import { Cause, Effect, Exit, Layer, ManagedRuntime, Schema, Stream } from "effect"
 
 import { makeNativeCapabilityManifest } from "./capabilities.js"
 import { TransientWindowRoleEvent } from "./contracts/transient-window-role.js"
 import {
-  makeTransientWindowRoleBridgeClientLayer,
   makeTransientWindowRoleMemoryClient,
-  makeTransientWindowRoleServiceLayer,
   makeTransientWindowRoleUnsupportedClient,
   TransientWindowRole,
   TransientWindowRoleCapabilityFacts,
-  TransientWindowRoleClient,
+  type TransientWindowRoleClientApi,
   TransientWindowRoleRpcs,
   TransientWindowRoleSurface
 } from "./transient-window-role.js"
 
 const UnsupportedMethods = ["open", "reposition", "dismiss"] as const
+
+test("TransientWindowRole public surface omits shallow service and layer helpers", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        readFile(new URL("transient-window-role.ts", import.meta.url), "utf8")
+      )
+      const indexSource = yield* Effect.promise(() =>
+        readFile(new URL("index.ts", import.meta.url), "utf8")
+      )
+
+      for (const removedName of [
+        "TransientWindowRoleServiceApi",
+        "class TransientWindowRoleClient",
+        "TransientWindowRoleLive",
+        "makeTransientWindowRoleClientLayer",
+        "makeTransientWindowRoleServiceLayer",
+        "makeTransientWindowRoleBridgeClientLayer",
+        "makeTransientWindowRoleService"
+      ]) {
+        expect(source).not.toContain(removedName)
+        expect(indexSource).not.toContain(removedName)
+      }
+    })
+  ))
 
 test("TransientWindowRole exposes only isSupported as a callable RPC", () => {
   const callableTags = Array.from(TransientWindowRoleRpcs.requests.keys()).toSorted()
@@ -125,7 +149,7 @@ test("TransientWindowRole isSupported reports supported result through the servi
           const service = yield* TransientWindowRole
           return yield* service.isSupported()
         }),
-        makeTransientWindowRoleServiceLayer(client)
+        transientWindowRoleLayer(client)
       )
       expect(result.supported).toBe(true)
     })
@@ -140,7 +164,7 @@ test("TransientWindowRole unsupported client reports the host-adapter-unimplemen
           const service = yield* TransientWindowRole
           return yield* service.isSupported()
         }),
-        makeTransientWindowRoleServiceLayer(client)
+        transientWindowRoleLayer(client)
       )
       expect(result.supported).toBe(false)
       expect(result.reason).toBe("host-adapter-unimplemented")
@@ -221,7 +245,7 @@ test("TransientWindowRole unsupported client fails the event stream as unsupport
           const service = yield* TransientWindowRole
           return yield* Effect.exit(service.events().pipe(Stream.take(1), Stream.runCollect))
         }),
-        makeTransientWindowRoleServiceLayer(client)
+        transientWindowRoleLayer(client)
       )
 
       expectExitFailure(exit, (error) => {
@@ -248,10 +272,10 @@ test("TransientWindowRole bridge client fails event stream as unsupported before
 
       const exit = yield* runScoped(
         Effect.gen(function* () {
-          const client = yield* TransientWindowRoleClient
-          return yield* Effect.exit(client.events().pipe(Stream.take(1), Stream.runCollect))
+          const service = yield* TransientWindowRole
+          return yield* Effect.exit(service.events().pipe(Stream.take(1), Stream.runCollect))
         }),
-        makeTransientWindowRoleBridgeClientLayer(exchange)
+        TransientWindowRoleSurface.bridgeClientLayer(exchange)
       )
 
       expectExitFailure(exit, (error) => {
@@ -280,6 +304,10 @@ const runScoped = <A, E, R>(
     yield* Effect.promise(() => runtime.dispose())
     return result
   })
+
+const transientWindowRoleLayer = (
+  client: TransientWindowRoleClientApi
+): Layer.Layer<TransientWindowRole> => Layer.succeed(TransientWindowRole)(client)
 
 const expectExitFailure = <A>(
   exit: Exit.Exit<A, unknown>,
