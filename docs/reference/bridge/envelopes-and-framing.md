@@ -69,4 +69,5 @@ All carry `recoverable: boolean`. `hostProtocolErrorRecoverableDefault` is the d
 ## Related
 
 - Reference: [Host protocol](host-protocol.md), [Streams and cancellation](streams-and-cancellation.md), [`Transport`](../services/transport.md)
-- Source: [`packages/bridge/src/host-protocol.ts`](../../../packages/bridge/src/host-protocol.ts)
+- Source: [`packages/bridge/src/protocol.ts`](../../../packages/bridge/src/protocol.ts),
+  [`codec.ts`](../../../packages/bridge/src/codec.ts)

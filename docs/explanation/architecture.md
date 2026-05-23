@@ -106,16 +106,16 @@ The framework's job is to give you _useful starting layers_ (`PermissionRegistry
 
 ## Where the responsibilities live in code
 
-| Concern                           | Lives in                                                                                    |
-| --------------------------------- | ------------------------------------------------------------------------------------------- |
-| Native operations                 | `packages/native/src/<service>.ts` (TS surface), `crates/host/src/<service>.rs` (Rust impl) |
-| Runtime services                  | `packages/core/src/runtime/<service>.ts`                                                    |
-| Bridge envelopes                  | `packages/bridge/src/host-protocol.ts`, `framing.ts`                                        |
-| Renderer hooks                    | `packages/react/src/{desktop,mutation,hooks}/...`                                           |
-| CLI commands                      | `packages/cli/src/<command>.ts`                                                             |
-| Test layers                       | `packages/test/src/...` (mock host, mock bridge, headless runtime, memory FS)               |
-| Configuration & production checks | `packages/config/src/index.ts`                                                              |
-| Renderer storage                  | `packages/platform-browser/src/...`                                                         |
+| Concern                           | Lives in                                                                                      |
+| --------------------------------- | --------------------------------------------------------------------------------------------- |
+| Native operations                 | `packages/native/src/<service>.ts` (TS surface), `crates/host/src/<service>.rs` (Rust impl)   |
+| Runtime services                  | `packages/core/src/runtime/<service>.ts`                                                      |
+| Bridge envelopes                  | `packages/bridge/src/protocol.ts`, `codec.ts`                                                 |
+| Renderer hooks                    | `packages/react/src/{desktop,mutation,hooks}/...`                                             |
+| CLI commands                      | `packages/cli/src/<command>.ts`                                                               |
+| Test layers                       | `packages/test/src/index.ts`, `native.ts` (mock host, bridge, headless runtime, native fakes) |
+| Configuration & production checks | `packages/config/src/index.ts`                                                                |
+| Renderer storage                  | `packages/platform-browser/src/...`                                                           |
 
 ## What this means for you
 

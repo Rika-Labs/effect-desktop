@@ -62,7 +62,7 @@ test("creates a window", async () => {
 })
 ```
 
-## 4. Pin RPC responses on the mock bridge
+## 4. Queue RPC responses on the mock bridge
 
 ```ts
 import { Effect } from "effect"

@@ -47,4 +47,6 @@ Method names are values, not strings sprinkled through the codebase. A typo in a
 ## Related
 
 - Reference: [Envelopes and framing](envelopes-and-framing.md), [`Window`](../native/window.md)
-- Source: [`packages/bridge/src/host-protocol.ts`](../../../packages/bridge/src/host-protocol.ts)
+- Source: [`packages/bridge/src/protocol.ts`](../../../packages/bridge/src/protocol.ts),
+  [`handshake.ts`](../../../packages/bridge/src/handshake.ts),
+  [`window.ts`](../../../packages/bridge/src/window.ts)
