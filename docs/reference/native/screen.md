@@ -10,6 +10,16 @@ effect_version: 4
 
 Display information, display-change events, and pointer position.
 
+## Import
+
+```ts
+import { Screen, ScreenRpcs, Native } from "@orika/native"
+import { ScreenRpcs as RendererScreenRpcs } from "@orika/native/renderer"
+```
+
+Runtime and service code import from `@orika/native`. Browser renderer
+manifests import the renderer-safe RPC group from `@orika/native/renderer`.
+
 ## Methods
 
 | Method              | Payload      | Success                         |

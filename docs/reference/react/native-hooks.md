@@ -31,12 +31,13 @@ import {
 
 ```ts
 {
-  data?: {
+  status: "idle" | "running" | "closed" | "failure"
+  data: readonly {
     appearance: "light" | "dark" | "highContrast"
     accentColor: null | { r: number; g: number; b: number; a: number }
     reducedMotion: boolean
     reducedTransparency: boolean
-  }
+  }[]
 }
 ```
 
@@ -55,7 +56,7 @@ unsupported on Linux.
 ## `useDisplays(getDisplays)` → `DisplaysResult`
 
 ```ts
-ReadonlyArray<ScreenDisplay>
+AsyncResult.AsyncResult<ReadonlyArray<ScreenDisplay>, ScreenError>
 ```
 
 Calls `Screen.getDisplays`.
@@ -64,13 +65,15 @@ Calls `Screen.getDisplays`.
 
 ```ts
 {
-  data?:
+  status: "idle" | "running" | "closed" | "failure"
+  data: readonly (
     | PowerMonitorSuspendEvent
     | PowerMonitorResumeEvent
     | PowerMonitorShutdownEvent
     | PowerMonitorLockScreenEvent
     | PowerMonitorUnlockScreenEvent
     | PowerMonitorSourceChangedEvent
+  )[]
 }
 ```
 

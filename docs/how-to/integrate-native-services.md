@@ -99,11 +99,41 @@ const show = notification.show.useMutation()
 show.run({ title: "Done", body: "Indexing complete." })
 ```
 
+## Example: screen and appearance
+
+```tsx
+import { ScreenRpcs, SystemAppearanceRpcs } from "@orika/native/renderer"
+
+function EnvironmentProbe() {
+  const screen = DesktopApp.useDesktop(ScreenRpcs)
+  const appearance = DesktopApp.useDesktop(SystemAppearanceRpcs)
+  const getDisplays = screen.getDisplays.useMutation()
+  const getAppearance = appearance.getAppearance.useMutation()
+
+  const refresh = () => {
+    getDisplays.run()
+    getAppearance.run()
+  }
+
+  return (
+    <button onClick={refresh} disabled={getDisplays.status === "running"}>
+      Refresh environment
+    </button>
+  )
+}
+```
+
+Screen and SystemAppearance reads are modeled as mutations because the host owns
+the native snapshot and permission boundary. Use `runPromise()` when renderer
+code needs to sequence the returned `Exit`.
+
 ## Example: native hooks
 
 The React adapter wraps a few high-frequency reads as hooks:
 
 ```tsx
+import { Option } from "effect"
+import { AsyncResult } from "effect/unstable/reactivity"
 import type { PowerMonitor, Screen, SystemAppearance } from "@orika/native"
 import { useDisplays, usePower, useTheme } from "@orika/react"
 
@@ -122,9 +152,13 @@ function StatusBar(props: {
     onUnlockScreen: props.powerMonitor.onUnlockScreen,
     onPowerSourceChanged: props.powerMonitor.onPowerSourceChanged
   })
+  const displayValue = AsyncResult.value(displays)
+  const latestTheme = theme.data.at(-1)
+
   return (
     <span>
-      {theme.data?.appearance ?? "unknown"} · {displays.data?.length ?? 0} displays
+      {latestTheme?.appearance ?? "unknown"} ·{" "}
+      {Option.isSome(displayValue) ? displayValue.value.length : 0} displays
     </span>
   )
 }

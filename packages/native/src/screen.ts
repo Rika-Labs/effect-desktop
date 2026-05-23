@@ -1,7 +1,7 @@
 import {
   type BridgeClientExchange,
   type BridgeClientOptions,
-  RpcGroup,
+  type RpcGroup,
   hostProtocolErrorFromRpcClientError,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
@@ -23,75 +23,31 @@ import {
   ScreenPoint,
   ScreenSupportedResult
 } from "./contracts/screen.js"
+import {
+  ScreenCapabilityMethods,
+  ScreenRpcEvents as ScreenRpcEventsValue,
+  ScreenRpcs
+} from "./screen-rpc.js"
+
+export {
+  ScreenGetDisplays,
+  ScreenGetPointerPoint,
+  ScreenGetPrimaryDisplay,
+  ScreenIsSupported,
+  ScreenMethodNames,
+  ScreenRpcs
+} from "./screen-rpc.js"
 
 export type ScreenError = HostProtocolError
 
-export const ScreenGetDisplays = NativeSurface.rpc("Screen", "getDisplays", {
-  payload: Schema.Void,
-  success: ScreenDisplaysResult,
-  authority: NativeSurface.authority.native(),
-  endpoint: "mutation",
-  support: NativeSurface.support.supported
-})
+const ScreenRpcGroup = ScreenRpcs
 
-export const ScreenGetPrimaryDisplay = NativeSurface.rpc("Screen", "getPrimaryDisplay", {
-  payload: Schema.Void,
-  success: ScreenDisplay,
-  authority: NativeSurface.authority.native(),
-  endpoint: "mutation",
-  support: NativeSurface.support.supported
-})
-
-export const ScreenGetPointerPoint = NativeSurface.rpc("Screen", "getPointerPoint", {
-  payload: Schema.Void,
-  success: ScreenPoint,
-  authority: NativeSurface.authority.native(),
-  endpoint: "mutation",
-  support: NativeSurface.support.supported
-})
-
-export const ScreenIsSupported = NativeSurface.rpc("Screen", "isSupported", {
-  payload: ScreenIsSupportedInput,
-  success: ScreenSupportedResult,
-  authority: NativeSurface.authority.none,
-  endpoint: "mutation",
-  support: NativeSurface.support.supported
-})
-
-const makeScreenRpcGroup = () =>
-  RpcGroup.make(
-    ScreenGetDisplays,
-    ScreenGetPrimaryDisplay,
-    ScreenGetPointerPoint,
-    ScreenIsSupported
-  )
-
-const ScreenRpcGroup = makeScreenRpcGroup()
-
-export const ScreenRpcs: RpcGroup.RpcGroup<ScreenRpc> = ScreenRpcGroup
-
-export const ScreenRpcEvents = Object.freeze({
-  DisplaysChanged: { payload: ScreenDisplaysChangedEvent }
-})
-
+export const ScreenRpcEvents = ScreenRpcEventsValue
 export type ScreenRpcEvents = typeof ScreenRpcEvents
 
 export type ScreenRpc = RpcGroup.Rpcs<typeof ScreenRpcGroup>
 
 export type ScreenBridgeClientOptions = Omit<BridgeClientOptions, "nextRequestId">
-
-export const ScreenMethodNames = Object.freeze([
-  "getDisplays",
-  "getPrimaryDisplay",
-  "getPointerPoint",
-  "isSupported"
-] as const)
-
-const ScreenCapabilityMethods = Object.freeze([
-  "getDisplays",
-  "getPrimaryDisplay",
-  "getPointerPoint"
-] as const satisfies readonly (typeof ScreenMethodNames)[number][])
 
 export interface ScreenClientApi {
   readonly getDisplays: () => Effect.Effect<ScreenDisplaysResult, ScreenError, never>

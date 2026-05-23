@@ -10,6 +10,16 @@ effect_version: 4
 
 Theme and appearance information.
 
+## Import
+
+```ts
+import { SystemAppearance, SystemAppearanceRpcs, Native } from "@orika/native"
+import { SystemAppearanceRpcs as RendererSystemAppearanceRpcs } from "@orika/native/renderer"
+```
+
+Runtime and service code import from `@orika/native`. Browser renderer
+manifests import the renderer-safe RPC group from `@orika/native/renderer`.
+
 The Rust host system appearance adapter implements read-only snapshot methods
 and appearance-change events on macOS and Windows. Linux supports nullable
 accent-color reads and leaves the broader snapshot/event surface unsupported.
