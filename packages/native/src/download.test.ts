@@ -9,7 +9,7 @@ import { makeResourceId } from "@orika/core"
 import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Schema, Stream } from "effect"
 
 import { makeNativeCapabilityManifest } from "./capabilities.js"
-import { DownloadEvent, DownloadSnapshot } from "./contracts/download.js"
+import { DownloadEvent, DownloadProgressedEvent, DownloadSnapshot } from "./contracts/download.js"
 import {
   Download,
   DownloadCapabilityFacts,
@@ -223,6 +223,46 @@ test("Download contracts reject inconsistent failure messages", () => {
   }
 })
 
+test("Download event types reject impossible phase payloads", () => {
+  type DownloadEventValue = typeof DownloadEvent.Type
+  const baseEvent = {
+    type: "download-event",
+    timestamp: 1_710_000_000_000,
+    download: downloadHandle(),
+    profile: profileHandle(),
+    url: "https://example.test/file.zip",
+    receivedBytes: 0
+  } as const
+
+  const completed: DownloadEventValue = {
+    ...baseEvent,
+    phase: "completed"
+  }
+  const failed: DownloadEventValue = {
+    ...baseEvent,
+    phase: "failed",
+    message: "host failed"
+  }
+
+  expect(completed.phase).toBe("completed")
+  expect(failed.message).toBe("host failed")
+
+  // @ts-expect-error completed download events must not carry failure messages.
+  const completedWithMessage: DownloadEventValue = {
+    ...baseEvent,
+    phase: "completed",
+    message: "host failed"
+  }
+  // @ts-expect-error failed download events must carry failure messages.
+  const failedWithoutMessage: DownloadEventValue = {
+    ...baseEvent,
+    phase: "failed"
+  }
+
+  expect(completedWithMessage.phase).toBe("completed")
+  expect(failedWithoutMessage.phase).toBe("failed")
+})
+
 test("Download bridge client rejects invalid byte progress events as InvalidOutput", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -365,7 +405,7 @@ test("Download bridge client filters event streams by download handle", () =>
       )
 
       expect(Array.from(events)).toEqual([
-        new DownloadEvent({
+        new DownloadProgressedEvent({
           type: "download-event",
           timestamp: 1_710_000_000_001,
           phase: "progressed",

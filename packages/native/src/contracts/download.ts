@@ -32,14 +32,6 @@ const DownloadSnapshotFailureMessage = Schema.makeFilter<{
     ? value.message !== undefined || "failed download snapshot requires message"
     : value.message === undefined || "non-failed download snapshot must not include message"
 )
-const DownloadEventFailureMessage = Schema.makeFilter<{
-  readonly phase: DownloadEventPhase
-  readonly message?: string | undefined
-}>((value) =>
-  value.phase === "failed"
-    ? value.message !== undefined || "failed download event requires message"
-    : value.message === undefined || "non-failed download event must not include message"
-)
 
 export const DownloadState = Schema.Literals([
   "running",
@@ -103,20 +95,93 @@ export class DownloadSupportedResult extends Schema.Class<DownloadSupportedResul
   reason: Schema.optionalKey(BridgeSafeString)
 }) {}
 
-export class DownloadEvent extends Schema.Class<DownloadEvent>("DownloadEvent")(
+const DownloadEventBase = {
+  type: Schema.Literal("download-event"),
+  timestamp: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0)),
+  download: DownloadResource,
+  profile: SessionProfileResource,
+  url: DownloadUrl,
+  destination: Schema.optionalKey(DownloadDestination),
+  receivedBytes: DownloadNonNegativeInt,
+  totalBytes: Schema.optionalKey(DownloadNonNegativeInt)
+}
+
+export class DownloadStartedEvent extends Schema.Class<DownloadStartedEvent>(
+  "DownloadStartedEvent"
+)(
   Schema.Struct({
-    type: Schema.Literal("download-event"),
-    timestamp: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0)),
-    phase: DownloadEventPhase,
-    download: DownloadResource,
-    profile: SessionProfileResource,
-    url: DownloadUrl,
-    destination: Schema.optionalKey(DownloadDestination),
-    receivedBytes: DownloadNonNegativeInt,
-    totalBytes: Schema.optionalKey(DownloadNonNegativeInt),
-    message: Schema.optionalKey(BridgeSafeString)
-  }).check(DownloadByteProgress, DownloadEventFailureMessage)
+    ...DownloadEventBase,
+    phase: Schema.Literal("started"),
+    message: Schema.optionalKey(Schema.Never)
+  }).check(DownloadByteProgress)
 ) {}
+
+export class DownloadProgressedEvent extends Schema.Class<DownloadProgressedEvent>(
+  "DownloadProgressedEvent"
+)(
+  Schema.Struct({
+    ...DownloadEventBase,
+    phase: Schema.Literal("progressed"),
+    message: Schema.optionalKey(Schema.Never)
+  }).check(DownloadByteProgress)
+) {}
+
+export class DownloadPausedEvent extends Schema.Class<DownloadPausedEvent>("DownloadPausedEvent")(
+  Schema.Struct({
+    ...DownloadEventBase,
+    phase: Schema.Literal("paused"),
+    message: Schema.optionalKey(Schema.Never)
+  }).check(DownloadByteProgress)
+) {}
+
+export class DownloadResumedEvent extends Schema.Class<DownloadResumedEvent>(
+  "DownloadResumedEvent"
+)(
+  Schema.Struct({
+    ...DownloadEventBase,
+    phase: Schema.Literal("resumed"),
+    message: Schema.optionalKey(Schema.Never)
+  }).check(DownloadByteProgress)
+) {}
+
+export class DownloadCompletedEvent extends Schema.Class<DownloadCompletedEvent>(
+  "DownloadCompletedEvent"
+)(
+  Schema.Struct({
+    ...DownloadEventBase,
+    phase: Schema.Literal("completed"),
+    message: Schema.optionalKey(Schema.Never)
+  }).check(DownloadByteProgress)
+) {}
+
+export class DownloadCanceledEvent extends Schema.Class<DownloadCanceledEvent>(
+  "DownloadCanceledEvent"
+)(
+  Schema.Struct({
+    ...DownloadEventBase,
+    phase: Schema.Literal("canceled"),
+    message: Schema.optionalKey(Schema.Never)
+  }).check(DownloadByteProgress)
+) {}
+
+export class DownloadFailedEvent extends Schema.Class<DownloadFailedEvent>("DownloadFailedEvent")(
+  Schema.Struct({
+    ...DownloadEventBase,
+    phase: Schema.Literal("failed"),
+    message: BridgeSafeString
+  }).check(DownloadByteProgress)
+) {}
+
+export const DownloadEvent = Schema.Union([
+  DownloadStartedEvent,
+  DownloadProgressedEvent,
+  DownloadPausedEvent,
+  DownloadResumedEvent,
+  DownloadCompletedEvent,
+  DownloadCanceledEvent,
+  DownloadFailedEvent
+])
+export type DownloadEvent = typeof DownloadEvent.Type
 
 const isAbsoluteHttpUrl = (value: string): boolean => {
   try {

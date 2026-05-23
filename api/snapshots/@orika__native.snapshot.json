@@ -1171,7 +1171,7 @@
     {
       "name": "DownloadRpcEvents",
       "kind": "value",
-      "signature": "const DownloadRpcEvents: Readonly<{ Event: { payload: typeof DownloadEvent; }; }>"
+      "signature": "const DownloadRpcEvents: Readonly<{ Event: { payload: Schema.Union<readonly [typeof import(\"./contracts/download.js\").DownloadStartedEvent, typeof import(\"./contracts/download.js\").DownloadProgressedEvent, typeof import(\"./contracts/download.js\").DownloadPausedEvent, typeof import(\"./contracts/download.js\").DownloadResumedEvent, typeof import(\"./contracts/download.js\").DownloadCompletedEvent, typeof import(\"./contracts/download.js\").DownloadCanceledEvent, typeof import(\"./contracts/download.js\").DownloadFailedEvent]>; }; }>"
     },
     {
       "name": "DownloadRpcHandlers",
