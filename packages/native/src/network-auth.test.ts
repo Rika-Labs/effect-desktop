@@ -9,7 +9,7 @@ import { makeResourceId, P } from "@orika/core"
 import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Schema, Stream } from "effect"
 
 import { makeNativeCapabilityManifest } from "./capabilities.js"
-import { NetworkAuthEvent } from "./contracts/network-auth.js"
+import { NetworkAuthEvent, NetworkAuthProxyUpdatedEvent } from "./contracts/network-auth.js"
 import type { SessionProfileHandle } from "./contracts/session-profile.js"
 import {
   makeNetworkAuthMemoryClient,
@@ -20,6 +20,8 @@ import {
   NetworkAuthRpcs,
   NetworkAuthSurface
 } from "./network-auth.js"
+
+type NetworkAuthEventValue = typeof NetworkAuthEvent.Type
 
 const UnsupportedMethods = ["handleAuth", "handleCertificate"] as const
 const SupportedMethods = ["setProxy"] as const
@@ -220,6 +222,61 @@ test("NetworkAuth contracts reject inconsistent event phase payloads", () => {
   }
 })
 
+test("NetworkAuth event types reject impossible phase payloads", () => {
+  const validEvents: ReadonlyArray<NetworkAuthEventValue> = [
+    {
+      type: "network-auth-event",
+      timestamp: 1_710_000_000_000,
+      phase: "proxy-updated",
+      profile: Profile
+    },
+    {
+      type: "network-auth-event",
+      timestamp: 1_710_000_000_000,
+      phase: "auth-decided",
+      profile: Profile,
+      requestId: "request-1",
+      origin: "https://example.test",
+      decision: "allow"
+    },
+    {
+      type: "network-auth-event",
+      timestamp: 1_710_000_000_000,
+      phase: "failed",
+      profile: Profile,
+      message: "host failed"
+    }
+  ]
+
+  // @ts-expect-error proxy-updated network auth events cannot carry request data.
+  const rejectedProxyEvent: NetworkAuthEventValue = {
+    type: "network-auth-event",
+    timestamp: 1_710_000_000_000,
+    phase: "proxy-updated",
+    profile: Profile,
+    requestId: "request-1"
+  }
+  const rejectedFailedEvent: NetworkAuthEventValue = {
+    type: "network-auth-event",
+    timestamp: 1_710_000_000_000,
+    phase: "failed",
+    profile: Profile,
+    requestId: "request-1",
+    origin: "https://example.test",
+    // @ts-expect-error failed network auth events cannot carry decisions.
+    decision: "deny",
+    message: "host failed"
+  }
+
+  void rejectedProxyEvent
+  void rejectedFailedEvent
+  expect(validEvents.map((event) => event.phase)).toEqual([
+    "proxy-updated",
+    "auth-decided",
+    "failed"
+  ])
+})
+
 test("NetworkAuth bridge client rejects inconsistent event phase payloads as InvalidOutput", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -301,7 +358,7 @@ test("NetworkAuth bridge client filters event streams by session profile", () =>
       )
 
       expect(Array.from(events)).toEqual([
-        new NetworkAuthEvent({
+        new NetworkAuthProxyUpdatedEvent({
           type: "network-auth-event",
           timestamp: 1_710_000_000_001,
           phase: "proxy-updated",

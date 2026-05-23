@@ -3356,7 +3356,7 @@
     {
       "name": "NetworkAuthRpcEvents",
       "kind": "value",
-      "signature": "const NetworkAuthRpcEvents: Readonly<{ Event: { payload: typeof NetworkAuthEvent; }; }>"
+      "signature": "const NetworkAuthRpcEvents: Readonly<{ Event: { payload: Schema.Union<readonly [typeof import(\"./contracts/network-auth.js\").NetworkAuthProxyUpdatedEvent, typeof import(\"./contracts/network-auth.js\").NetworkAuthAuthDecidedEvent, typeof import(\"./contracts/network-auth.js\").NetworkAuthCertificateDecidedEvent, typeof import(\"./contracts/network-auth.js\").NetworkAuthFailedEvent]>; }; }>"
     },
     {
       "name": "NetworkAuthRpcHandlers",
