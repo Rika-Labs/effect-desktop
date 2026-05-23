@@ -150,6 +150,18 @@ test("Desktop.rpc registration types use Effect RpcGroup directly", () =>
     })
   ))
 
+test("Desktop.describeRpcs synthetic manifest does not assert config shape", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        Bun.file(new URL("./runtime/rpc-descriptors.ts", import.meta.url)).text()
+      )
+
+      expect(source).not.toContain("windows: [] as DesktopWindowsLayer<never>")
+      expect(source).not.toContain("as Parameters<typeof desktopManifest>[0]")
+    })
+  ))
+
 test("Desktop.runtime does not erase the runtime spine Layer type", () =>
   Effect.runPromise(
     Effect.gen(function* () {

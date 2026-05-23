@@ -664,6 +664,18 @@ test("Desktop.native registers selected native surfaces into app manifests", () 
   expect(selectedNativeRuntimeRequirements).toBe(true)
 })
 
+test("Desktop.describeRpcs includes native-only groups from config-shaped apps", () => {
+  const app = Desktop.make({
+    id: "native-descriptor-source",
+    windows: Desktop.window("main", { title: "Native Descriptor Source" }),
+    native: Desktop.native(Native.Clipboard)
+  })
+
+  expect(Desktop.describeRpcs(app, ClipboardRpcs).map((descriptor) => descriptor.tag)).toEqual(
+    Array.from(ClipboardRpcs.requests.keys())
+  )
+})
+
 test("Desktop.native preserves native server requirements on the app runtime layer", () =>
   Effect.runPromise(
     Effect.gen(function* () {
