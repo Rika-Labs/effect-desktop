@@ -18,18 +18,28 @@ Devtools expose runtime state without granting raw authority. They are safe to i
 
 `@orika/devtools` exports:
 
-- `DevtoolsShell`.
+- `DevtoolsShell` and `DevtoolsShellLive` for the loopback listener and token
+  lifecycle.
 - Live panels for diagnostics, event logs, workflows, reactivity, persistence, logs, cluster, layer graph, and embedded inspector views.
-- `DevtoolsSnapshotClient`.
-- Test helpers for panels and inspector events.
+- `DevtoolsSnapshotClient` for `exportSnapshot()`.
+- `InspectorTest`, `ReplayTransport`, fixture decoders, and collector laws from
+  `@orika/devtools/testing`.
 
 ## Verify Devtools Exports
 
 ```ts run
-import { DevtoolsShell, DevtoolsSnapshotClient } from "../packages/devtools/src/index.js"
+import {
+  DevtoolsShell,
+  DevtoolsShellLive,
+  DevtoolsSnapshotClient
+} from "../packages/devtools/src/index.js"
 
-if (DevtoolsShell === undefined || DevtoolsSnapshotClient === undefined) {
-  throw new Error("DevtoolsShell or DevtoolsSnapshotClient is unavailable")
+if (
+  DevtoolsShell === undefined ||
+  DevtoolsShellLive === undefined ||
+  DevtoolsSnapshotClient === undefined
+) {
+  throw new Error("Devtools exports are unavailable")
 }
 ```
 

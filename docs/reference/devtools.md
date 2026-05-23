@@ -8,7 +8,10 @@ effect_version: 4
 
 # Devtools
 
-`@orika/devtools` exposes the runtime inspector — a panel-based UI that observes resources, events, telemetry, layer graph, workflows, and persistence without granting raw authority.
+`@orika/devtools` exposes runtime inspector services: shell lifecycle, snapshot
+export, live panel projections, embedded inspector views, and test fixtures.
+They observe resources, events, telemetry, layer graph, workflows, and
+persistence without granting raw authority.
 
 ## Import
 
@@ -18,25 +21,42 @@ import { DevtoolsShell, DevtoolsSnapshotClient } from "@orika/devtools"
 
 ## `DevtoolsShell`
 
-The top-level React-rendered devtools shell. Mount it inside the inspector renderer (or any privileged renderer):
+Effect service that owns the devtools listener lifecycle. It starts only in
+development, or in production when both explicit production gates and safe
+capture are enabled.
 
-```tsx
-<DevtoolsShell snapshotClient={client} />
+```ts
+const shell = yield * DevtoolsShell
+const handle =
+  yield *
+  shell.start({
+    profile: "dev",
+    stateDir: "/tmp/orika-state",
+    openShell: false
+  })
+
+yield * handle.disable
 ```
+
+When `openShell` is not `false`, provide a `DevtoolsShellWindow` port through
+`DevtoolsShellLive(options)`; the default shell window fails closed with a typed
+`DevtoolsShellOpenError`.
 
 ## `DevtoolsSnapshotClient`
 
-The client that pulls runtime snapshots from `Telemetry`, `ResourceRegistry`, `EventLog`, and the layer graph.
+The client that exports one redacted runtime snapshot from the live panel
+services.
 
 ```ts
 const client = yield * DevtoolsSnapshotClient
-const resources = yield * client.resourceSnapshot()
-const layers = yield * client.layerGraphSnapshot()
+const snapshot = yield * client.exportSnapshot()
+const resources = snapshot.liveRuntime.resources
+const layers = snapshot.layerGraph.layerGraph
 ```
 
 ## Panels
 
-The shell ships with these live panels:
+The package ships these live panel services:
 
 | Panel              | Source                                  |
 | ------------------ | --------------------------------------- |
@@ -50,9 +70,17 @@ The shell ships with these live panels:
 | Layer graph        | Runtime layer dependency snapshot       |
 | Embedded inspector | Recursive inspector view                |
 
-## Test variants
+## Embedded inspector
 
-Each panel has a corresponding test layer (under `@orika/devtools/testing`) that runs the panel's render logic against deterministic snapshots — useful for snapshot tests of devtools UI.
+`DesktopInspector.layer({ mode: "embedded-devtools" })` composes core
+observability with `EmbeddedInspectorPanel`. Production profile returns a
+disabled panel even when embedded mode is requested.
+
+## Test helpers
+
+The `@orika/devtools/testing` subpath exports `InspectorTest`,
+`ReplayTransport`, fixture decoders, and collector laws for recording and
+replaying inspector frames against deterministic snapshots.
 
 ## Safety
 
