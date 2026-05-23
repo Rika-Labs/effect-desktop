@@ -72,8 +72,10 @@ test("RendererRpcClients invokes flat RpcClient without an unknown-erased functi
       const source = yield* fs.readFileString(fileURLToPath(rendererRpcClientUrl))
 
       expect(source).not.toContain("RawRendererRpcInvocation")
+      expect(source).not.toContain("RendererRpcInvocation")
       expect(source).not.toContain("as unknown as")
-      expect(source).toContain("Desktop manifests erase the concrete")
+      expect(source).not.toContain("as RendererRpcInvocation")
+      expect(source).toContain("const result = rpcClient(tag, input)")
     })
   ))
 

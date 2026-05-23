@@ -121,7 +121,7 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 |       #1747 Model CookieStore events by phase | Closed | Replaces the broad `CookieStoreEvent` phase payload with phase-specific Schema variants so invalid phase/payload combinations are rejected at the boundary.     |
 |    #1748 Model SessionProfile events by phase | Closed | Replaces the broad `SessionProfileEvent` phase payload with phase-specific Schema variants so invalid phase/payload combinations are rejected at the boundary.  |
 | #1785 Remove React window convenience aliases | Closed | Removes zero-policy `currentWindow`/`windows` namespace aliases and duplicate React hooks so the React adapter exposes one Effect-native window contract.       |
-|    #1798 Preserve renderer RPC group generics | Open   | Removes the remaining renderer RPC flat-client invocation assertion by carrying concrete Effect RPC group types through renderer manifests.                     |
+|    #1798 Preserve renderer RPC group generics | Closed | Removes the remaining renderer RPC flat-client invocation assertion by reconstructing an invokable Effect RPC union at the erased renderer manifest boundary.   |
 
 ## Execution Progress
 

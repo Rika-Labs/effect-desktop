@@ -6,8 +6,15 @@ import {
   type DesktopTransportRun,
   type DesktopTransportSend
 } from "@orika/bridge"
-import { Clock, Context, Effect, Exit, Layer, Queue, Scope, Stream } from "effect"
-import { Rpc, RpcClient, RpcGroup, RpcTest } from "effect/unstable/rpc"
+import { Clock, Context, Effect, Exit, Layer, Queue, Scope, Stream, type Schema } from "effect"
+import {
+  Rpc,
+  RpcClient,
+  type RpcClientError,
+  RpcGroup,
+  type RpcSchema,
+  RpcTest
+} from "effect/unstable/rpc"
 
 import type {
   AnyDesktopRpcRegistrationGroup,
@@ -39,7 +46,20 @@ export type DesktopRendererRpcClient = Readonly<Record<string, DesktopRendererRp
 
 export type DesktopRendererRpcClientMap = ReadonlyMap<RpcGroup.Any, DesktopRendererRpcClient>
 
-type DesktopRendererRpcFlatClient = RpcClient.RpcClient.Flat<Rpc.AnyWithProps, unknown>
+type DesktopRendererRpc =
+  | Rpc.Rpc<string, Schema.Unknown, Schema.Unknown, Schema.Never, never, never>
+  | Rpc.Rpc<
+      string,
+      Schema.Unknown,
+      RpcSchema.Stream<Schema.Unknown, Schema.Never>,
+      Schema.Never,
+      never,
+      never
+    >
+type DesktopRendererRpcFlatClient = RpcClient.RpcClient.Flat<
+  DesktopRendererRpc,
+  RpcClientError.RpcClientError
+>
 type DesktopRendererRpcScopedResult =
   | Effect.Effect<unknown, RendererRpcError, Scope.Scope>
   | Stream.Stream<unknown, RendererRpcError, Scope.Scope>
@@ -240,12 +260,12 @@ const acquireDesktopRendererRpcTestClients = (
       const group = registration.group
       const handlerContext = yield* Layer.build(registration.handlers)
       const rpcClient = yield* Effect.provide(
-        RpcTest.makeClient(effectRpcGroup(group), { flatten: true }),
+        RpcTest.makeClient(effectRpcTestGroup(group), { flatten: true }),
         handlerContext
       )
       const client = makeRpcTestGroupClient(
         group,
-        rpcClient,
+        rendererRpcFlatClient(rpcClient),
         scope,
         framework,
         inspector ?? disabledRendererInspectorCollector
@@ -314,16 +334,24 @@ const makeRpcTestGroupClient = (
 
 const effectRpcGroup = (
   group: AnyDesktopRpcRegistrationGroup
+): RpcGroup.RpcGroup<DesktopRendererRpc> =>
+  // Renderer manifests expose browser-safe descriptors; the group value is still
+  // the original Effect RpcGroup, but its exact RPC union is erased at this edge.
+  group as RpcGroup.RpcGroup<DesktopRendererRpc>
+
+const effectRpcTestGroup = (
+  group: AnyDesktopRpcRegistrationGroup
 ): RpcGroup.RpcGroup<Rpc.AnyWithProps> =>
-  // Desktop manifests erase heterogeneous group type parameters, but store the original Effect RpcGroup value.
+  // RpcTest needs no handler service for the erased descriptor group; the
+  // concrete handler context is already built from the original registration.
   group as RpcGroup.RpcGroup<Rpc.AnyWithProps>
 
-type RendererRpcInvocation = (
-  tag: string,
-  input: unknown
-) =>
-  | Effect.Effect<unknown, RendererRpcError, Scope.Scope>
-  | Stream.Stream<unknown, RendererRpcError, Scope.Scope>
+const rendererRpcFlatClient = (
+  client: RpcClient.RpcClient.Flat<Rpc.AnyWithProps, never>
+): DesktopRendererRpcFlatClient =>
+  // RpcTest returns the same callable flat client shape, but the erased
+  // AnyWithProps type is not a valid Rpc.Rpc union for direct invocation.
+  client as DesktopRendererRpcFlatClient
 
 const callRendererRpcFlatClient = (
   rpcClient: DesktopRendererRpcFlatClient,
@@ -331,9 +359,7 @@ const callRendererRpcFlatClient = (
   input: unknown,
   framework: DesktopFramework
 ): DesktopRendererRpcScopedResult => {
-  // Effect's flat RPC client is callable, but Desktop manifests erase the concrete
-  // Rpc union. Keep the assertion at this boundary until manifests preserve it.
-  const result = (rpcClient as RendererRpcInvocation)(tag, input)
+  const result = rpcClient(tag, input)
   return Effect.isEffect(result)
     ? Effect.mapError(result, (cause) => new RendererRpcError({ framework, tag, cause }))
     : Stream.mapError(result, (cause) => new RendererRpcError({ framework, tag, cause }))
