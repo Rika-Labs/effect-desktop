@@ -4,6 +4,7 @@ import {
   HostProtocolEventEnvelope,
   HostProtocolInvalidOutputError
 } from "@orika/bridge"
+import { makeResourceId } from "@orika/core"
 import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Schema, Stream } from "effect"
 
 import { makeNativeCapabilityManifest } from "./capabilities.js"
@@ -35,7 +36,7 @@ const UnsupportedSupport = {
 } as const
 const sessionProfileHandle = {
   kind: "session-profile",
-  id: "profile-1",
+  id: makeResourceId("profile-1"),
   generation: 0,
   ownerScope: "test",
   state: "open"
@@ -46,7 +47,7 @@ const beforeRequestInput = {
 } as const
 const webRequestInterceptor = {
   kind: "web-request-interceptor",
-  id: "interceptor-1",
+  id: makeResourceId("interceptor-1"),
   generation: 0,
   ownerScope: "test",
   state: "open"
@@ -150,6 +151,81 @@ test("WebRequest interceptor snapshots require phase action fields to match", ()
       expect(validHeadersReceived.responseHeaders).toEqual([{ name: "x-test", value: "1" }])
     })
   ))
+
+test("WebRequest interceptor snapshot types reject impossible phase action payloads", () => {
+  type WebRequestInterceptorSnapshotValue = typeof WebRequestInterceptorSnapshot.Type
+
+  const beforeRequestAllow: WebRequestInterceptorSnapshotValue = {
+    ...interceptorSnapshot,
+    phase: "before-request",
+    action: "allow"
+  }
+  const beforeRequestRedirect: WebRequestInterceptorSnapshotValue = {
+    ...interceptorSnapshot,
+    phase: "before-request",
+    action: "redirect",
+    redirectUrl: "https://redirect.example.test/"
+  }
+  const headersReceived: WebRequestInterceptorSnapshotValue = {
+    ...interceptorSnapshot,
+    phase: "headers-received",
+    action: "modify-headers",
+    responseHeaders: [{ name: "x-test", value: "1" }]
+  }
+
+  expect(beforeRequestAllow.action).toBe("allow")
+  expect(beforeRequestRedirect.redirectUrl).toBe("https://redirect.example.test/")
+  expect(headersReceived.responseHeaders).toEqual([{ name: "x-test", value: "1" }])
+
+  // @ts-expect-error before-request snapshots must not use modify-headers.
+  const beforeRequestModifyHeaders: WebRequestInterceptorSnapshotValue = {
+    ...interceptorSnapshot,
+    phase: "before-request",
+    action: "modify-headers",
+    responseHeaders: [{ name: "x-test", value: "1" }]
+  }
+  // @ts-expect-error redirect snapshots require redirectUrl.
+  const beforeRequestRedirectWithoutUrl: WebRequestInterceptorSnapshotValue = {
+    ...interceptorSnapshot,
+    phase: "before-request",
+    action: "redirect"
+  }
+  // @ts-expect-error non-redirect before-request snapshots must not carry redirectUrl.
+  const beforeRequestAllowWithRedirectUrl: WebRequestInterceptorSnapshotValue = {
+    ...interceptorSnapshot,
+    phase: "before-request",
+    action: "allow",
+    redirectUrl: "https://redirect.example.test/"
+  }
+  // @ts-expect-error headers-received snapshots require modify-headers.
+  const headersReceivedRedirect: WebRequestInterceptorSnapshotValue = {
+    ...interceptorSnapshot,
+    phase: "headers-received",
+    action: "redirect",
+    redirectUrl: "https://redirect.example.test/"
+  }
+  // @ts-expect-error headers-received snapshots require responseHeaders.
+  const headersReceivedMissingHeaders: WebRequestInterceptorSnapshotValue = {
+    ...interceptorSnapshot,
+    phase: "headers-received",
+    action: "modify-headers"
+  }
+  // @ts-expect-error headers-received snapshots must not carry redirectUrl.
+  const headersReceivedWithRedirectUrl: WebRequestInterceptorSnapshotValue = {
+    ...interceptorSnapshot,
+    phase: "headers-received",
+    action: "modify-headers",
+    responseHeaders: [{ name: "x-test", value: "1" }],
+    redirectUrl: "https://redirect.example.test/"
+  }
+
+  expect(beforeRequestModifyHeaders.action).toBe("modify-headers")
+  expect(beforeRequestRedirectWithoutUrl.action).toBe("redirect")
+  expect(beforeRequestAllowWithRedirectUrl.action).toBe("allow")
+  expect(headersReceivedRedirect.action).toBe("redirect")
+  expect(headersReceivedMissingHeaders.action).toBe("modify-headers")
+  expect(headersReceivedWithRedirectUrl.action).toBe("modify-headers")
+})
 
 test("WebRequest events reject inconsistent failure messages", () => {
   for (const payload of [

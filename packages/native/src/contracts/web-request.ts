@@ -52,36 +52,6 @@ const WebRequestBeforeRequestRedirect = Schema.makeFilter<{
   }
   return value.redirectUrl === undefined || "redirectUrl requires redirect action"
 })
-const WebRequestInterceptorSnapshotShape = Schema.makeFilter<{
-  readonly phase: "before-request" | "headers-received"
-  readonly action: "allow" | "block" | "redirect" | "modify-headers"
-  readonly redirectUrl?: string | undefined
-  readonly responseHeaders?: readonly WebRequestHeader[] | undefined
-}>((value) => {
-  if (value.phase === "headers-received") {
-    if (value.action !== "modify-headers") {
-      return "headers-received snapshots require modify-headers action"
-    }
-    if (value.redirectUrl !== undefined) {
-      return "headers-received snapshots must not carry redirectUrl"
-    }
-    return (
-      value.responseHeaders !== undefined || "headers-received snapshots require responseHeaders"
-    )
-  }
-
-  if (value.action === "modify-headers") {
-    return "before-request snapshots must not carry modify-headers action"
-  }
-  if (value.responseHeaders !== undefined) {
-    return "before-request snapshots must not carry responseHeaders"
-  }
-  if (value.action === "redirect") {
-    return value.redirectUrl !== undefined || "redirect snapshots require redirectUrl"
-  }
-  return value.redirectUrl === undefined || "redirectUrl requires redirect action"
-})
-
 export class WebRequestHeader extends Schema.Class<WebRequestHeader>("WebRequestHeader")({
   name: WebRequestHeaderName,
   value: BridgeSafeString
@@ -117,20 +87,51 @@ export class WebRequestRemoveListenerInput extends Schema.Class<WebRequestRemove
   traceId: Schema.optionalKey(BridgeSafeNonEmptyString)
 }) {}
 
-export class WebRequestInterceptorSnapshot extends Schema.Class<WebRequestInterceptorSnapshot>(
-  "WebRequestInterceptorSnapshot"
-)(
-  Schema.Struct({
-    interceptor: WebRequestInterceptorResource,
-    profile: SessionProfileResource,
-    phase: WebRequestPhase,
-    urlPattern: WebRequestUrlPattern,
-    action: WebRequestAction,
-    order: WebRequestOrder,
-    redirectUrl: Schema.optionalKey(WebRequestRedirectUrl),
-    responseHeaders: Schema.optionalKey(Schema.Array(WebRequestHeader))
-  }).check(WebRequestInterceptorSnapshotShape)
-) {}
+const WebRequestInterceptorSnapshotBase = {
+  interceptor: WebRequestInterceptorResource,
+  profile: SessionProfileResource,
+  urlPattern: WebRequestUrlPattern,
+  order: WebRequestOrder
+}
+
+const WebRequestInterceptorSnapshotForbiddenRedirect = {
+  redirectUrl: Schema.optionalKey(Schema.Never)
+}
+
+const WebRequestInterceptorSnapshotForbiddenHeaders = {
+  responseHeaders: Schema.optionalKey(Schema.Never)
+}
+
+const WebRequestBeforeRequestSnapshot = Schema.Struct({
+  ...WebRequestInterceptorSnapshotBase,
+  phase: Schema.Literal("before-request"),
+  action: Schema.Literals(["allow", "block"]),
+  ...WebRequestInterceptorSnapshotForbiddenRedirect,
+  ...WebRequestInterceptorSnapshotForbiddenHeaders
+})
+
+const WebRequestBeforeRequestRedirectSnapshot = Schema.Struct({
+  ...WebRequestInterceptorSnapshotBase,
+  phase: Schema.Literal("before-request"),
+  action: Schema.Literal("redirect"),
+  redirectUrl: WebRequestRedirectUrl,
+  ...WebRequestInterceptorSnapshotForbiddenHeaders
+})
+
+const WebRequestHeadersReceivedSnapshot = Schema.Struct({
+  ...WebRequestInterceptorSnapshotBase,
+  phase: Schema.Literal("headers-received"),
+  action: Schema.Literal("modify-headers"),
+  responseHeaders: Schema.Array(WebRequestHeader),
+  ...WebRequestInterceptorSnapshotForbiddenRedirect
+})
+
+export const WebRequestInterceptorSnapshot = Schema.Union([
+  WebRequestBeforeRequestSnapshot,
+  WebRequestBeforeRequestRedirectSnapshot,
+  WebRequestHeadersReceivedSnapshot
+])
+export type WebRequestInterceptorSnapshot = typeof WebRequestInterceptorSnapshot.Type
 
 export class WebRequestSupportedResult extends Schema.Class<WebRequestSupportedResult>(
   "WebRequestSupportedResult"
