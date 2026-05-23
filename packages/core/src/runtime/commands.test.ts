@@ -67,6 +67,17 @@ const commandCapability: NormalizedCapability = {
 const actor = new PermissionActor({ kind: "window", id: "window-1" })
 const context = new PermissionContext({ actor, traceId: "trace-1" })
 
+test("CommandRegistry middleware handler wiring does not depend on double assertions", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        Bun.file(new URL("./commands.ts", import.meta.url)).text()
+      )
+
+      expect(source).not.toContain("as unknown as Layer.Layer")
+    })
+  ))
+
 test("CommandRegistry registers, invokes with validated input, checks permission, and audits", () =>
   Effect.runPromise(
     Effect.gen(function* () {

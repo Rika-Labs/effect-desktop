@@ -100,9 +100,11 @@ export type CommandRegistryError =
   | CommandRegistryCommittedAuditFailedError
   | PermissionDenied
 
+type CommandRpcHandler<Rpcs extends Rpc.Any> = Rpc.Handler<Rpcs["_tag"]>
+
 export interface CommandGroupRegistration<Rpcs extends Rpc.Any, E, R> {
   readonly group: RpcGroup.RpcGroup<Rpcs>
-  readonly handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>
+  readonly handlers: Layer.Layer<CommandRpcHandler<Rpcs>, E, R>
   readonly ownerScope: ScopeId
 }
 
@@ -266,7 +268,7 @@ export class CommandRegistry extends Context.Service<CommandRegistry, CommandReg
 export const DesktopCommands = Object.freeze({
   layer: <Rpcs extends Rpc.Any, E, R>(
     group: RpcGroup.RpcGroup<Rpcs>,
-    handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>,
+    handlers: Layer.Layer<CommandRpcHandler<Rpcs>, E, R>,
     options: { readonly ownerScope?: ScopeId } = {}
   ): Layer.Layer<never, CommandRegistryError | E, CommandRegistry | ResourceRegistry | R> =>
     Layer.effectDiscard(
@@ -500,16 +502,11 @@ const registerCommandGroup = <Rpcs extends Rpc.Any, E, R>(
     reservedToken = registrationToken
     const scope = yield* Scope.make()
     commandScope = scope
-    // ToHandler<AddMiddleware<Rpcs, M>> reduces to ToHandler<Rpcs> for every
-    // concrete Rpcs (both expand to Handler<Tag>), but TS cannot reduce the
-    // conditional for the unbound `Rpcs` generic. Re-tag the handlers Layer at
-    // the middleware-decorated handler type so Effect.provide closes the
-    // requirements channel structurally.
-    const middlewareHandlers = registration.handlers as unknown as Layer.Layer<
-      Rpc.ToHandler<Rpc.AddMiddleware<Rpcs, typeof PermissionInterceptor>>,
+    const middlewareHandlers: Layer.Layer<
+      CommandRpcHandler<Rpc.AddMiddleware<Rpcs, typeof PermissionInterceptor>>,
       E,
       R
-    >
+    > = registration.handlers
     const clientContext = yield* Layer.build(
       Layer.mergeAll(middlewareHandlers, makePermissionInterceptorLayer()).pipe(
         Layer.provideMerge(Layer.succeed(PermissionRegistry, permissions))
