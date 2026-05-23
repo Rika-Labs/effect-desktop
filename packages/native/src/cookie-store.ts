@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
@@ -13,7 +12,7 @@ import {
   P,
   type PermissionRegistry
 } from "@orika/core"
-import { Context, Effect, Layer, Schema, Stream } from "effect"
+import { Context, Effect, Schema, Stream } from "effect"
 
 import {
   CookieStoreEvent,
@@ -114,47 +113,9 @@ export interface CookieStoreClientApi {
   ) => Stream.Stream<CookieStoreEvent, CookieStoreError, never>
 }
 
-export class CookieStoreClient extends Context.Service<CookieStoreClient, CookieStoreClientApi>()(
-  "@orika/native/CookieStoreClient"
-) {}
-
-export interface CookieStoreServiceApi {
-  readonly get: (
-    input: CookieStoreGetOptions
-  ) => Effect.Effect<CookieStoreGetResult, CookieStoreError, never>
-  readonly remove: (input: CookieStoreRemoveOptions) => Effect.Effect<void, CookieStoreError, never>
-  readonly set: (input: CookieStoreSetOptions) => Effect.Effect<void, CookieStoreError, never>
-  readonly isSupported: () => Effect.Effect<CookieStoreSupportedResult, CookieStoreError, never>
-  readonly events: (
-    profile?: SessionProfileHandle
-  ) => Stream.Stream<CookieStoreEvent, CookieStoreError, never>
-}
-
-export class CookieStore extends Context.Service<CookieStore, CookieStoreServiceApi>()(
+export class CookieStore extends Context.Service<CookieStore, CookieStoreClientApi>()(
   "@orika/native/CookieStore"
-) {
-  static readonly layer = Layer.effect(CookieStore)(
-    Effect.gen(function* () {
-      const client = yield* CookieStoreClient
-      return makeCookieStoreService(client)
-    })
-  )
-}
-
-export const CookieStoreLive = CookieStore.layer
-
-export const makeCookieStoreClientLayer = (
-  client: CookieStoreClientApi
-): Layer.Layer<CookieStoreClient> => Layer.succeed(CookieStoreClient)(client)
-
-export const makeCookieStoreServiceLayer = (
-  client: CookieStoreClientApi
-): Layer.Layer<CookieStore> => Layer.succeed(CookieStore)(makeCookieStoreService(client))
-
-export const makeCookieStoreBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<CookieStoreClient> => CookieStoreSurface.bridgeClientLayer(exchange, options)
+) {}
 
 export type CookieStoreRpc = RpcGroup.Rpcs<typeof CookieStoreRpcGroup>
 export type CookieStoreRpcHandlers = RpcGroup.HandlersFrom<CookieStoreRpc>
@@ -183,7 +144,7 @@ export const CookieStoreHandlersLive = CookieStoreRpcGroup.toLayer({
 })
 
 export const CookieStoreSurface = NativeSurface.make(Surface, CookieStoreRpcGroup, {
-  service: CookieStoreClient,
+  service: CookieStore,
   capabilities: CookieStoreMethodNames,
   handlers: CookieStoreHandlersLive,
   capabilityFacts: CookieStoreCapabilityFacts,
@@ -223,15 +184,6 @@ export const makeCookieStoreUnsupportedClient = (): CookieStoreClientApi =>
       ),
     events: () => Stream.fail(unsupportedError(EventMethod))
   } satisfies CookieStoreClientApi)
-
-const makeCookieStoreService = (client: CookieStoreClientApi): CookieStoreServiceApi =>
-  Object.freeze({
-    get: (input) => client.get(input),
-    remove: (input) => client.remove(input),
-    set: (input) => client.set(input),
-    isSupported: () => client.isSupported(),
-    events: (profile) => client.events(profile)
-  } satisfies CookieStoreServiceApi)
 
 const cookieStoreClientFromRpcClient = (
   client: DesktopRpcClient<CookieStoreRpc>,

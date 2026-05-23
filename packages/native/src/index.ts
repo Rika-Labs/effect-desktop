@@ -270,24 +270,18 @@ export {
 export {
   CookieStore,
   CookieStoreCapabilityFacts,
-  CookieStoreClient,
   CookieStoreHandlersLive,
-  CookieStoreLive,
   CookieStoreMethodNames,
   CookieStoreRpcEvents,
   CookieStoreRpcs,
   CookieStoreSurface,
-  makeCookieStoreBridgeClientLayer,
-  makeCookieStoreClientLayer,
   makeCookieStoreMemoryClient,
-  makeCookieStoreServiceLayer,
   makeCookieStoreUnsupportedClient,
   makeHostCookieStoreRpcRuntime,
   type CookieStoreClientApi,
   type CookieStoreError,
   type CookieStoreRpc,
-  type CookieStoreRpcHandlers,
-  type CookieStoreServiceApi
+  type CookieStoreRpcHandlers
 } from "./cookie-store.js"
 export {
   CrashReporter,

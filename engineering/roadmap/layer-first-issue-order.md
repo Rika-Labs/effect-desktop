@@ -118,6 +118,7 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 | #1743 Remove shallow native layer helpers | Open   | Removes pass-through native `make*Layer` exports that mirror Effect `Layer` and generated `NativeSurface` construction instead of owning desktop policy.        |
 |   #1744 Model NetworkAuth events by phase | Open   | Replaces the broad `NetworkAuthEvent` phase payload with phase-specific Schema variants so invalid phase/payload combinations are rejected at the boundary.     |
 |      #1745 Model Download events by phase | Open   | Replaces the broad `DownloadEvent` phase payload with phase-specific Schema variants so invalid phase/payload combinations are rejected at the boundary.        |
+|   #1747 Model CookieStore events by phase | Open   | Replaces the broad `CookieStoreEvent` phase payload with phase-specific Schema variants so invalid phase/payload combinations are rejected at the boundary.     |
 
 ## Execution Progress
 
