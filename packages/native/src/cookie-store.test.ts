@@ -9,7 +9,7 @@ import { makeResourceId } from "@orika/core"
 import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Schema, Stream } from "effect"
 
 import { makeNativeCapabilityManifest } from "./capabilities.js"
-import { CookieStoreEvent } from "./contracts/cookie-store.js"
+import { CookieStoreEvent, CookieStoreRemovedEvent } from "./contracts/cookie-store.js"
 import type { SessionProfileHandle } from "./contracts/session-profile.js"
 import {
   CookieStore,
@@ -291,6 +291,66 @@ test("CookieStore contracts reject inconsistent event phase payloads", () => {
   }
 })
 
+test("CookieStore event types reject impossible phase payloads", () => {
+  type CookieStoreEventValue = typeof CookieStoreEvent.Type
+  const cookie = {
+    name: "token",
+    value: "secret",
+    domain: "example.test",
+    path: "/"
+  } as const
+  const baseEvent = {
+    type: "cookie-store-event",
+    timestamp: 1_710_000_000_000,
+    profile: Profile,
+    url: "https://example.test/account"
+  } as const
+
+  const set: CookieStoreEventValue = {
+    ...baseEvent,
+    phase: "set",
+    cookie
+  }
+  const removed: CookieStoreEventValue = {
+    ...baseEvent,
+    phase: "removed",
+    name: "token"
+  }
+  const failed: CookieStoreEventValue = {
+    ...baseEvent,
+    phase: "failed",
+    message: "host failed"
+  }
+
+  expect(set.phase).toBe("set")
+  expect(removed.phase).toBe("removed")
+  expect(failed.message).toBe("host failed")
+
+  // @ts-expect-error set cookie store events must not carry name.
+  const setWithName: CookieStoreEventValue = {
+    ...baseEvent,
+    phase: "set",
+    cookie,
+    name: "token"
+  }
+  // @ts-expect-error removed cookie store events must not carry cookie.
+  const removedWithCookie: CookieStoreEventValue = {
+    ...baseEvent,
+    phase: "removed",
+    name: "token",
+    cookie
+  }
+  // @ts-expect-error failed cookie store events must carry message.
+  const failedWithoutMessage: CookieStoreEventValue = {
+    ...baseEvent,
+    phase: "failed"
+  }
+
+  expect(setWithName.phase).toBe("set")
+  expect(removedWithCookie.phase).toBe("removed")
+  expect(failedWithoutMessage.phase).toBe("failed")
+})
+
 test("CookieStore bridge client rejects inconsistent event phase payloads as InvalidOutput", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -378,7 +438,7 @@ test("CookieStore bridge client filters event streams by session profile", () =>
       )
 
       expect(Array.from(events)).toEqual([
-        new CookieStoreEvent({
+        new CookieStoreRemovedEvent({
           type: "cookie-store-event",
           timestamp: 1_710_000_000_001,
           phase: "removed",

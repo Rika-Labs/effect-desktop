@@ -74,40 +74,44 @@ export class CookieStoreSupportedResult extends Schema.Class<CookieStoreSupporte
   reason: Schema.optionalKey(BridgeSafeString)
 }) {}
 
-const CookieStoreEventPhasePayload = Schema.makeFilter<{
-  readonly phase: CookieEventPhase
-  readonly cookie?: typeof CookieStoreCookie.Type | undefined
-  readonly name?: string | undefined
-  readonly message?: string | undefined
-}>((value) => {
-  switch (value.phase) {
-    case "set":
-      return (
-        (value.cookie !== undefined && value.name === undefined && value.message === undefined) ||
-        "set cookie store events require cookie only"
-      )
-    case "removed":
-      return (
-        (value.cookie === undefined && value.name !== undefined && value.message === undefined) ||
-        "removed cookie store events require name only"
-      )
-    case "failed":
-      return (
-        (value.cookie === undefined && value.name === undefined && value.message !== undefined) ||
-        "failed cookie store events require message only"
-      )
-  }
-})
+const CookieStoreEventBase = {
+  type: Schema.Literal("cookie-store-event"),
+  timestamp: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0)),
+  profile: SessionProfileResource,
+  url: CookieUrl
+}
 
-export class CookieStoreEvent extends Schema.Class<CookieStoreEvent>("CookieStoreEvent")(
-  Schema.Struct({
-    type: Schema.Literal("cookie-store-event"),
-    timestamp: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0)),
-    phase: CookieEventPhase,
-    profile: SessionProfileResource,
-    url: CookieUrl,
-    cookie: Schema.optionalKey(CookieStoreCookie),
-    name: Schema.optionalKey(CookieName),
-    message: Schema.optionalKey(BridgeSafeString)
-  }).check(CookieStoreEventPhasePayload)
-) {}
+export class CookieStoreSetEvent extends Schema.Class<CookieStoreSetEvent>("CookieStoreSetEvent")({
+  ...CookieStoreEventBase,
+  phase: Schema.Literal("set"),
+  cookie: CookieStoreCookie,
+  name: Schema.optionalKey(Schema.Never),
+  message: Schema.optionalKey(Schema.Never)
+}) {}
+
+export class CookieStoreRemovedEvent extends Schema.Class<CookieStoreRemovedEvent>(
+  "CookieStoreRemovedEvent"
+)({
+  ...CookieStoreEventBase,
+  phase: Schema.Literal("removed"),
+  name: CookieName,
+  cookie: Schema.optionalKey(Schema.Never),
+  message: Schema.optionalKey(Schema.Never)
+}) {}
+
+export class CookieStoreFailedEvent extends Schema.Class<CookieStoreFailedEvent>(
+  "CookieStoreFailedEvent"
+)({
+  ...CookieStoreEventBase,
+  phase: Schema.Literal("failed"),
+  message: BridgeSafeString,
+  cookie: Schema.optionalKey(Schema.Never),
+  name: Schema.optionalKey(Schema.Never)
+}) {}
+
+export const CookieStoreEvent = Schema.Union([
+  CookieStoreSetEvent,
+  CookieStoreRemovedEvent,
+  CookieStoreFailedEvent
+])
+export type CookieStoreEvent = typeof CookieStoreEvent.Type

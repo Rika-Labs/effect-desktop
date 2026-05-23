@@ -641,7 +641,7 @@
     {
       "name": "CookieStoreRpcEvents",
       "kind": "value",
-      "signature": "const CookieStoreRpcEvents: Readonly<{ Event: { payload: typeof CookieStoreEvent; }; }>"
+      "signature": "const CookieStoreRpcEvents: Readonly<{ Event: { payload: Schema.Union<readonly [typeof import(\"./contracts/cookie-store.js\").CookieStoreSetEvent, typeof import(\"./contracts/cookie-store.js\").CookieStoreRemovedEvent, typeof import(\"./contracts/cookie-store.js\").CookieStoreFailedEvent]>; }; }>"
     },
     {
       "name": "CookieStoreRpcHandlers",
