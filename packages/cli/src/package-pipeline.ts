@@ -7,6 +7,7 @@ import { Data, Effect, Schema } from "effect"
 import type { DesktopProviderBudget } from "@orika/core"
 
 import { decodeBuildProviderProvenance } from "./build-report.js"
+import type { PackageArtifactMetadata } from "./package-artifact-metadata.js"
 import {
   ReleaseFileSystem,
   runReleaseFileSystem,
@@ -905,7 +906,7 @@ const writeArtifactMetadata = (
             }
           }
         : {})
-    }
+    } satisfies PackageArtifactMetadata
     yield* writeJson(artifactJsonPath, metadata)
     yield* writeFileEffect(checksumsPath, `${digest.sha256}  ${basename(artifactPath)}\n`)
     return {

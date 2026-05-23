@@ -6013,7 +6013,9 @@ test("desktop notarize rejects artifact file names outside the metadata director
                   appVersion: "0.0.0",
                   kind: "dmg",
                   target: "macos-arm64",
-                  fileName
+                  fileName,
+                  sizeBytes: 1,
+                  sha256: "0".repeat(64)
                 },
                 2
               )}\n`

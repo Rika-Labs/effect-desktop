@@ -1,12 +1,21 @@
 import { createHash } from "node:crypto"
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path"
+import { dirname, isAbsolute, join, relative, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
-import { Data, Effect, Schema } from "effect"
+import { Data, Effect } from "effect"
 
 import { makeSecretString, unsafeSecretString } from "@orika/bridge"
 import { decodeDesktopConfig } from "@orika/config"
 
+import {
+  decodePackageArtifactMetadataJson,
+  decodePackageArtifactSha256,
+  decodePackageArtifactSizeBytes,
+  packageArtifactDigestMatches,
+  resolveContainedPackageArtifactPath,
+  type PackageArtifactMetadata,
+  type PackageArtifactMetadataFieldError
+} from "./package-artifact-metadata.js"
 import {
   ReleaseFileSystem,
   runReleaseFileSystem,
@@ -14,10 +23,8 @@ import {
 } from "./release-file-system.js"
 import { runReleaseTool } from "./release-tool-runner.js"
 import {
-  decodeDesktopTarget,
   desktopPlatformDirectory,
   detectDesktopHostTarget,
-  isDesktopArtifactKind,
   resolveDesktopHostTarget,
   resolveDesktopTarget
 } from "./targets.js"
@@ -188,18 +195,6 @@ interface LinuxIntegration {
   readonly appStreamId: string
   readonly snapName: string
 }
-
-const PackagedArtifactMetadata = Schema.Struct({
-  kind: Schema.optionalKey(Schema.Unknown),
-  target: Schema.optionalKey(Schema.Unknown),
-  fileName: Schema.optionalKey(Schema.Unknown),
-  sizeBytes: Schema.optionalKey(Schema.Unknown),
-  sha256: Schema.optionalKey(Schema.Unknown),
-  linuxIntegration: Schema.optionalKey(Schema.Unknown),
-  appId: Schema.optionalKey(Schema.Unknown),
-  appName: Schema.optionalKey(Schema.Unknown),
-  appVersion: Schema.optionalKey(Schema.Unknown)
-})
 
 const DEFAULT_TIMESTAMP_URL = "http://timestamp.digicert.com"
 
@@ -646,7 +641,7 @@ const readPackagedArtifacts = (
         continue
       }
       const metadataPath = join(rootPath, "artifact.json")
-      const metadata = yield* readJson(metadataPath, PackagedArtifactMetadata)
+      const metadata = yield* readPackageArtifactMetadata(metadataPath)
       const appIdField = `${relative(plan.outputPath, metadataPath)}#appId`
       const appNameField = `${relative(plan.outputPath, metadataPath)}#appName`
       const appVersionField = `${relative(plan.outputPath, metadataPath)}#appVersion`
@@ -692,28 +687,27 @@ const readPackagedArtifacts = (
           })
         )
       }
-      const target = yield* readTarget(
-        metadata.target,
-        `${relative(plan.outputPath, metadataPath)}#target`
-      )
-      if (target !== plan.target) {
+      if (metadata.target !== plan.target) {
         continue
       }
-      const kind = yield* readArtifactKind(metadata.kind, metadataPath)
+      const kind = metadata.kind
       const fileNameField = `${relative(plan.outputPath, metadataPath)}#fileName`
-      const fileName = yield* readContainedFileName(metadata.fileName, fileNameField)
-      const artifactPath = yield* resolveContainedArtifactPath(rootPath, fileName, fileNameField)
+      const artifactPath = yield* resolveContainedPackageArtifactPath(
+        rootPath,
+        metadata.fileName,
+        fileNameField
+      ).pipe(Effect.mapError(packageArtifactMetadataConfigError))
       yield* statPath(artifactPath)
-      const sizeBytes = yield* readNonNegativeInteger(
+      const sizeBytes = yield* decodePackageArtifactSizeBytes(
         metadata.sizeBytes,
         `${relative(plan.outputPath, metadataPath)}#sizeBytes`
-      )
-      const sha256 = yield* readSha256(
+      ).pipe(Effect.mapError(packageArtifactMetadataConfigError))
+      const sha256 = yield* decodePackageArtifactSha256(
         metadata.sha256,
         `${relative(plan.outputPath, metadataPath)}#sha256`
-      )
+      ).pipe(Effect.mapError(packageArtifactMetadataConfigError))
       const digest = yield* digestPath(artifactPath)
-      if (digest.sizeBytes !== sizeBytes || digest.sha256 !== sha256) {
+      if (!packageArtifactDigestMatches({ sizeBytes, sha256 }, digest)) {
         return yield* Effect.fail(
           new SignFileError({
             operation: "verify",
@@ -723,11 +717,15 @@ const readPackagedArtifacts = (
           })
         )
       }
-      const linuxIntegration = yield* readLinuxIntegration(
-        metadata.linuxIntegration,
-        relative(plan.outputPath, metadataPath)
-      )
-      artifacts.push({ kind, rootPath, artifactPath, linuxIntegration, appId, appName, appVersion })
+      artifacts.push({
+        kind,
+        rootPath,
+        artifactPath,
+        linuxIntegration: metadata.linuxIntegration,
+        appId,
+        appName,
+        appVersion
+      })
     }
     const relevant = artifacts.filter(
       (artifact) =>
@@ -1022,169 +1020,17 @@ const readSafeAppId = (
     )
   )
 
-const readContainedFileName = (
-  value: unknown,
-  field: string
-): Effect.Effect<string, SignConfigError, never> => {
-  if (typeof value !== "string" || value.length === 0) {
-    return Effect.fail(
-      new SignConfigError({
-        field,
-        message: `${field} is required`,
-        remediation: "Run `bun desktop package` before `bun desktop sign`."
-      })
-    )
-  }
-  if (!isContainedFileName(value)) {
-    return Effect.fail(
-      new SignConfigError({
-        field,
-        message: `${field} must be a single file name without path separators`,
-        remediation: "Regenerate package metadata with `bun desktop package`."
-      })
-    )
-  }
-  return Effect.succeed(value)
-}
-
-const isContainedFileName = (value: string): boolean => {
-  if (value === "." || value === "..") {
-    return false
-  }
-  if (value.includes("/") || value.includes("\\")) {
-    return false
-  }
-  if (isAbsolute(value)) {
-    return false
-  }
-  if (basename(value) !== value) {
-    return false
-  }
-  for (let index = 0; index < value.length; index += 1) {
-    const code = value.charCodeAt(index)
-    if (code < 0x20 || code === 0x7f) {
-      return false
-    }
-  }
-  return true
-}
-
 const appIdMatch = (value: string): boolean =>
-  /^([a-zA-Z][a-zA-Z0-9-]*)(\.[a-zA-Z][a-zA-Z0-9-]*)+$/.test(value) && isContainedFileName(value)
+  /^([a-zA-Z][a-zA-Z0-9-]*)(\.[a-zA-Z][a-zA-Z0-9-]*)+$/u.test(value)
 
-const resolveContainedArtifactPath = (
-  rootPath: string,
-  fileName: string,
-  field: string
-): Effect.Effect<string, SignConfigError, never> => {
-  const candidate = resolve(rootPath, fileName)
-  const containedPrefix = `${rootPath}${sep}`
-  if (candidate !== rootPath && !candidate.startsWith(containedPrefix)) {
-    return Effect.fail(
-      new SignConfigError({
-        field,
-        message: `${field} resolves outside the artifact metadata directory`,
-        remediation: "Regenerate package metadata with `bun desktop package`."
-      })
-    )
-  }
-  return Effect.succeed(candidate)
-}
-
-const readLinuxIntegration = (
-  value: unknown,
-  metadataRelativePath: string
-): Effect.Effect<LinuxIntegration | undefined, SignConfigError, never> => {
-  if (value === undefined) {
-    return Effect.succeed(undefined)
-  }
-  if (!isRecord(value)) {
-    return Effect.fail(
-      new SignConfigError({
-        field: `${metadataRelativePath}#linuxIntegration`,
-        message: `${metadataRelativePath}#linuxIntegration must be an object`,
-        remediation: "Regenerate package metadata with `bun desktop package`."
-      })
-    )
-  }
-  const desktopFile = value["desktopFile"]
-  const appStreamId = value["appStreamId"]
-  const snapName = value["snapName"]
-  if (
-    typeof desktopFile !== "string" ||
-    desktopFile.length === 0 ||
-    typeof appStreamId !== "string" ||
-    appStreamId.length === 0 ||
-    typeof snapName !== "string" ||
-    snapName.length === 0
-  ) {
-    return Effect.fail(
-      new SignConfigError({
-        field: `${metadataRelativePath}#linuxIntegration`,
-        message: `${metadataRelativePath}#linuxIntegration must include desktopFile, appStreamId, and snapName`,
-        remediation: "Regenerate package metadata with `bun desktop package`."
-      })
-    )
-  }
-  return Effect.succeed({ desktopFile, appStreamId, snapName })
-}
-
-const readArtifactKind = (
-  value: unknown,
-  path: string
-): Effect.Effect<SignArtifactKind, SignConfigError, never> => {
-  if (isDesktopArtifactKind(value)) {
-    return Effect.succeed(value)
-  }
-  return Effect.fail(
-    new SignConfigError({
-      field: `${path}#kind`,
-      message: `unsupported artifact kind ${String(value)}`,
-      remediation: "Regenerate artifacts with `bun desktop package`."
-    })
-  )
-}
-
-const readTarget = (
-  value: unknown,
-  field: string
-): Effect.Effect<SignTarget, SignConfigError, never> =>
-  decodeDesktopTarget(value).pipe(
-    Effect.map((target) => target.id),
-    Effect.mapError(
-      () =>
-        new SignConfigError({
-          field,
-          message: `${field} must be a supported sign target`,
-          remediation: "Regenerate package artifacts with `bun desktop package`."
-        })
-    )
-  )
-
-const readNonNegativeInteger = (
-  value: unknown,
-  field: string
-): Effect.Effect<number, SignConfigError, never> =>
-  Number.isSafeInteger(value) && typeof value === "number" && value >= 0
-    ? Effect.succeed(value)
-    : Effect.fail(
-        new SignConfigError({
-          field,
-          message: `${field} must be a non-negative integer`,
-          remediation: "Regenerate package metadata with `bun desktop package`."
-        })
-      )
-
-const readSha256 = (value: unknown, field: string): Effect.Effect<string, SignConfigError, never> =>
-  typeof value === "string" && /^[a-f0-9]{64}$/u.test(value)
-    ? Effect.succeed(value)
-    : Effect.fail(
-        new SignConfigError({
-          field,
-          message: `${field} must be a lowercase SHA-256 hex digest`,
-          remediation: "Regenerate package metadata with `bun desktop package`."
-        })
-      )
+const packageArtifactMetadataConfigError = (
+  error: PackageArtifactMetadataFieldError
+): SignConfigError =>
+  new SignConfigError({
+    field: error.field,
+    message: error.message,
+    remediation: "Regenerate package metadata with `bun desktop package`."
+  })
 
 const loadConfig = (path: string): Effect.Effect<unknown, SignConfigError, never> =>
   Effect.gen(function* () {
@@ -1247,10 +1093,9 @@ const resolveHostTarget = (
     )
   )
 
-const readJson = <S extends Schema.Top>(
-  path: string,
-  schema: S
-): Effect.Effect<S["Type"], SignFileError, S["DecodingServices"]> =>
+const readPackageArtifactMetadata = (
+  path: string
+): Effect.Effect<PackageArtifactMetadata, SignFileError, never> =>
   runReleaseFileSystem(
     Effect.gen(function* () {
       const fs = yield* ReleaseFileSystem
@@ -1267,7 +1112,7 @@ const readJson = <S extends Schema.Top>(
         })
     ),
     Effect.flatMap((content) =>
-      Schema.decodeUnknownEffect(Schema.fromJsonString(schema))(content).pipe(
+      decodePackageArtifactMetadataJson(content).pipe(
         Effect.mapError(
           (cause) =>
             new SignFileError({

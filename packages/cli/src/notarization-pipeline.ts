@@ -1,11 +1,20 @@
 import { createHash } from "node:crypto"
-import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path"
+import { dirname, isAbsolute, join, relative, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
 import { Data, Effect, Schema } from "effect"
 
 import { makeSecretString, unsafeSecretString } from "@orika/bridge"
 
+import {
+  decodePackageArtifactMetadataJson,
+  decodePackageArtifactSha256,
+  decodePackageArtifactSizeBytes,
+  packageArtifactDigestMatches,
+  resolveContainedPackageArtifactPath,
+  type PackageArtifactMetadata,
+  type PackageArtifactMetadataFieldError
+} from "./package-artifact-metadata.js"
 import {
   ReleaseFileSystem,
   runReleaseFileSystem,
@@ -169,17 +178,6 @@ interface PackagedArtifact {
   readonly rootPath: string
   readonly artifactPath: string
 }
-
-const PackagedArtifactMetadata = Schema.Struct({
-  kind: Schema.optionalKey(Schema.Unknown),
-  target: Schema.optionalKey(Schema.Unknown),
-  fileName: Schema.optionalKey(Schema.Unknown),
-  sizeBytes: Schema.optionalKey(Schema.Unknown),
-  sha256: Schema.optionalKey(Schema.Unknown),
-  appId: Schema.optionalKey(Schema.Unknown),
-  appName: Schema.optionalKey(Schema.Unknown),
-  appVersion: Schema.optionalKey(Schema.Unknown)
-})
 
 interface NotaryCredentials {
   readonly args: readonly string[]
@@ -571,7 +569,7 @@ const readPackagedArtifacts = (
         continue
       }
       const metadataPath = join(rootPath, "artifact.json")
-      const metadata = yield* readJson(metadataPath, PackagedArtifactMetadata)
+      const metadata = yield* readPackageArtifactMetadata(metadataPath)
       const appIdField = `${relative(plan.outputPath, metadataPath)}#appId`
       const appNameField = `${relative(plan.outputPath, metadataPath)}#appName`
       const appVersionField = `${relative(plan.outputPath, metadataPath)}#appVersion`
@@ -628,23 +626,23 @@ const readPackagedArtifacts = (
       if (kind === undefined) {
         continue
       }
-      const fileName = yield* readRequiredString(
+      const fileNameField = `${relative(plan.outputPath, metadataPath)}#fileName`
+      const artifactPath = yield* resolveContainedPackageArtifactPath(
+        rootPath,
         metadata.fileName,
-        `${relative(plan.outputPath, metadataPath)}#fileName`,
-        "Run `bun desktop package` before `bun desktop notarize`."
-      )
-      const artifactPath = yield* resolveArtifactPath(rootPath, fileName, metadataPath)
+        fileNameField
+      ).pipe(Effect.mapError(packageArtifactMetadataConfigError))
       yield* statPath(artifactPath)
-      const sizeBytes = yield* readNonNegativeInteger(
+      const sizeBytes = yield* decodePackageArtifactSizeBytes(
         metadata.sizeBytes,
         `${relative(plan.outputPath, metadataPath)}#sizeBytes`
-      )
-      const sha256 = yield* readSha256(
+      ).pipe(Effect.mapError(packageArtifactMetadataConfigError))
+      const sha256 = yield* decodePackageArtifactSha256(
         metadata.sha256,
         `${relative(plan.outputPath, metadataPath)}#sha256`
-      )
+      ).pipe(Effect.mapError(packageArtifactMetadataConfigError))
       const digest = yield* digestPath(artifactPath)
-      if (digest.sizeBytes !== sizeBytes || digest.sha256 !== sha256) {
+      if (!packageArtifactDigestMatches({ sizeBytes, sha256 }, digest)) {
         return yield* Effect.fail(
           new NotarizeFileError({
             operation: "verify",
@@ -756,81 +754,14 @@ const readTarget = (
     )
   )
 
-const readNonNegativeInteger = (
-  value: unknown,
-  field: string
-): Effect.Effect<number, NotarizeConfigError, never> =>
-  Number.isSafeInteger(value) && typeof value === "number" && value >= 0
-    ? Effect.succeed(value)
-    : Effect.fail(
-        new NotarizeConfigError({
-          field,
-          message: `${field} must be a non-negative integer`,
-          remediation: "Regenerate package metadata with `bun desktop package`."
-        })
-      )
-
-const readSha256 = (
-  value: unknown,
-  field: string
-): Effect.Effect<string, NotarizeConfigError, never> =>
-  typeof value === "string" && /^[a-f0-9]{64}$/u.test(value)
-    ? Effect.succeed(value)
-    : Effect.fail(
-        new NotarizeConfigError({
-          field,
-          message: `${field} must be a lowercase SHA-256 hex digest`,
-          remediation: "Regenerate package metadata with `bun desktop package`."
-        })
-      )
-
-const resolveArtifactPath = (
-  rootPath: string,
-  fileName: string,
-  metadataPath: string
-): Effect.Effect<string, NotarizeConfigError, never> => {
-  const field = `${metadataPath}#fileName`
-  const invalid =
-    fileName !== basename(fileName) ||
-    fileName.includes("/") ||
-    fileName.includes("\\") ||
-    fileName.includes(":") ||
-    containsControlCharacter(fileName)
-
-  if (invalid) {
-    return Effect.fail(
-      new NotarizeConfigError({
-        field,
-        message: `${field} must be a contained artifact file name`,
-        remediation: "Regenerate macOS artifacts with `bun desktop package`."
-      })
-    )
-  }
-
-  const resolvedRoot = resolve(rootPath)
-  const artifactPath = resolve(resolvedRoot, fileName)
-  if (dirname(artifactPath) !== resolvedRoot) {
-    return Effect.fail(
-      new NotarizeConfigError({
-        field,
-        message: `${field} must resolve inside its artifact metadata directory`,
-        remediation: "Regenerate macOS artifacts with `bun desktop package`."
-      })
-    )
-  }
-
-  return Effect.succeed(artifactPath)
-}
-
-const containsControlCharacter = (value: string): boolean => {
-  for (const character of value) {
-    const codePoint = character.codePointAt(0)
-    if (codePoint !== undefined && (codePoint <= 0x1f || codePoint === 0x7f)) {
-      return true
-    }
-  }
-  return false
-}
+const packageArtifactMetadataConfigError = (
+  error: PackageArtifactMetadataFieldError
+): NotarizeConfigError =>
+  new NotarizeConfigError({
+    field: error.field,
+    message: error.message,
+    remediation: "Regenerate package metadata with `bun desktop package`."
+  })
 
 const loadConfig = (path: string): Effect.Effect<unknown, NotarizeConfigError, never> =>
   Effect.gen(function* () {
@@ -912,10 +843,9 @@ const resolveHostTarget = (
     )
   )
 
-const readJson = <S extends Schema.Top>(
-  path: string,
-  schema: S
-): Effect.Effect<S["Type"], NotarizeFileError, S["DecodingServices"]> =>
+const readPackageArtifactMetadata = (
+  path: string
+): Effect.Effect<PackageArtifactMetadata, NotarizeFileError, never> =>
   runReleaseFileSystem(
     Effect.gen(function* () {
       const fs = yield* ReleaseFileSystem
@@ -932,7 +862,7 @@ const readJson = <S extends Schema.Top>(
         })
     ),
     Effect.flatMap((content) =>
-      Schema.decodeUnknownEffect(Schema.fromJsonString(schema))(content).pipe(
+      decodePackageArtifactMetadataJson(content).pipe(
         Effect.mapError(
           (cause) =>
             new NotarizeFileError({

@@ -5,7 +5,7 @@ import {
   sign as cryptoSign,
   verify as cryptoVerify
 } from "node:crypto"
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path"
+import { dirname, isAbsolute, join, relative, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
 import { Data, Effect, Option, Schema } from "effect"
@@ -15,6 +15,15 @@ import {
   runReleaseFileSystem,
   type ReleaseFileInfo
 } from "./release-file-system.js"
+import {
+  decodePackageArtifactMetadataJson,
+  decodePackageArtifactSha256,
+  decodePackageArtifactSizeBytes,
+  packageArtifactDigestMatches,
+  resolveContainedPackageArtifactPath,
+  type PackageArtifactMetadata,
+  type PackageArtifactMetadataFieldError
+} from "./package-artifact-metadata.js"
 import { decodeDesktopTarget, desktopPlatformDirectory } from "./targets.js"
 import type { DesktopArtifactKind, DesktopTargetId } from "./targets.js"
 
@@ -152,27 +161,6 @@ interface PackagedArtifact {
 const ED25519_SPKI_PREFIX = Buffer.from("302a300506032b6570032100", "hex")
 const StrictParseOptions = { errors: "all", onExcessProperty: "error" } as const
 
-class PackageArtifactMetadata extends Schema.Class<PackageArtifactMetadata>(
-  "PackageArtifactMetadata"
-)({
-  kind: PublishArtifactKindSchema,
-  target: DecodeDesktopTargetIdSchema,
-  fileName: Schema.String,
-  sizeBytes: Schema.Number,
-  sha256: Schema.String,
-  appId: Schema.String,
-  appName: Schema.String,
-  appVersion: Schema.String,
-  linuxIntegration: Schema.optionalKey(
-    Schema.Struct({
-      desktopFile: Schema.String,
-      appStreamId: Schema.String,
-      flatpakAppId: Schema.String,
-      snapName: Schema.String
-    })
-  )
-}) {}
-
 export const decodeUpdateManifest = (
   value: unknown
 ): Effect.Effect<UpdateManifest, Schema.SchemaError, never> =>
@@ -199,7 +187,7 @@ export const runDesktopPublish = (
     for (const artifact of artifacts) {
       const payload = yield* readArtifactPayload(artifact.artifactPath)
       const digest = payload.digest
-      if (digest.sizeBytes !== artifact.sizeBytes || digest.sha256 !== artifact.sha256) {
+      if (!packageArtifactDigestMatches(artifact, digest)) {
         return yield* Effect.fail(
           new PublishConfigError({
             field: `${relative(plan.outputPath, artifact.artifactPath)}#sha256`,
@@ -421,7 +409,7 @@ const readPackagedArtifacts = (
           continue
         }
         const metadataPath = join(rootPath, "artifact.json")
-        const metadata = yield* readJson(metadataPath, PackageArtifactMetadata)
+        const metadata = yield* readPackageArtifactMetadata(metadataPath)
         const appIdField = `${relative(plan.outputPath, metadataPath)}#appId`
         const appNameField = `${relative(plan.outputPath, metadataPath)}#appName`
         const appVersionField = `${relative(plan.outputPath, metadataPath)}#appVersion`
@@ -482,21 +470,24 @@ const readPackagedArtifacts = (
         }
         const kind = metadata.kind
         const fileNameField = `${relative(plan.outputPath, metadataPath)}#fileName`
-        const fileName = yield* readContainedFileName(metadata.fileName, fileNameField)
-        const sizeBytes = yield* readNonNegativeInteger(
+        const artifactPath = yield* resolveContainedPackageArtifactPath(
+          rootPath,
+          metadata.fileName,
+          fileNameField
+        ).pipe(Effect.mapError(packageArtifactMetadataConfigError))
+        const sizeBytes = yield* decodePackageArtifactSizeBytes(
           metadata.sizeBytes,
           `${relative(plan.outputPath, metadataPath)}#sizeBytes`
-        )
-        const sha256 = yield* readSha256(
+        ).pipe(Effect.mapError(packageArtifactMetadataConfigError))
+        const sha256 = yield* decodePackageArtifactSha256(
           metadata.sha256,
           `${relative(plan.outputPath, metadataPath)}#sha256`
-        )
-        const artifactPath = yield* resolveContainedArtifactPath(rootPath, fileName, fileNameField)
+        ).pipe(Effect.mapError(packageArtifactMetadataConfigError))
         yield* statPath(artifactPath)
         artifacts.push({
           platform: target,
           kind,
-          fileName,
+          fileName: metadata.fileName,
           artifactPath,
           sizeBytes,
           sha256,
@@ -797,7 +788,7 @@ const readAppId = (
   )
 
 const appIdMatch = (value: string): boolean =>
-  /^([a-zA-Z][a-zA-Z0-9-]*)(\.[a-zA-Z][a-zA-Z0-9-]*)+$/u.test(value) && isContainedFileName(value)
+  /^([a-zA-Z][a-zA-Z0-9-]*)(\.[a-zA-Z][a-zA-Z0-9-]*)+$/u.test(value)
 
 interface Semver {
   readonly major: number
@@ -928,99 +919,14 @@ const readPositiveInteger = (
         })
       )
 
-const readNonNegativeInteger = (
-  value: unknown,
-  field: string
-): Effect.Effect<number, PublishConfigError, never> =>
-  typeof value === "number" && Number.isSafeInteger(value) && value >= 0
-    ? Effect.succeed(value)
-    : Effect.fail(
-        new PublishConfigError({
-          field,
-          message: `${field} must be a non-negative integer`,
-          remediation: "Regenerate package metadata."
-        })
-      )
-
-const readContainedFileName = (
-  value: unknown,
-  field: string
-): Effect.Effect<string, PublishConfigError, never> => {
-  if (typeof value !== "string" || value.length === 0) {
-    return Effect.fail(
-      new PublishConfigError({
-        field,
-        message: `${field} is required`,
-        remediation: "Regenerate package metadata."
-      })
-    )
-  }
-  if (!isContainedFileName(value)) {
-    return Effect.fail(
-      new PublishConfigError({
-        field,
-        message: `${field} must be a single file name without path separators`,
-        remediation: "Regenerate package metadata with `bun desktop package`."
-      })
-    )
-  }
-  return Effect.succeed(value)
-}
-
-const isContainedFileName = (value: string): boolean => {
-  if (value === "." || value === "..") {
-    return false
-  }
-  if (value.includes("/") || value.includes("\\")) {
-    return false
-  }
-  if (isAbsolute(value)) {
-    return false
-  }
-  if (basename(value) !== value) {
-    return false
-  }
-  for (let index = 0; index < value.length; index += 1) {
-    const code = value.charCodeAt(index)
-    if (code < 0x20 || code === 0x7f) {
-      return false
-    }
-  }
-  return true
-}
-
-const resolveContainedArtifactPath = (
-  rootPath: string,
-  fileName: string,
-  field: string
-): Effect.Effect<string, PublishConfigError, never> => {
-  const candidate = resolve(rootPath, fileName)
-  const containedPrefix = `${rootPath}${sep}`
-  if (candidate !== rootPath && !candidate.startsWith(containedPrefix)) {
-    return Effect.fail(
-      new PublishConfigError({
-        field,
-        message: `${field} resolves outside the artifact metadata directory`,
-        remediation: "Regenerate package metadata with `bun desktop package`."
-      })
-    )
-  }
-  return Effect.succeed(candidate)
-}
-
-const readSha256 = (
-  value: unknown,
-  field: string
-): Effect.Effect<string, PublishConfigError, never> =>
-  typeof value === "string" && /^[a-f0-9]{64}$/u.test(value)
-    ? Effect.succeed(value)
-    : Effect.fail(
-        new PublishConfigError({
-          field,
-          message: `${field} must be a lowercase SHA-256 hex digest`,
-          remediation: "Regenerate package metadata."
-        })
-      )
+const packageArtifactMetadataConfigError = (
+  error: PackageArtifactMetadataFieldError
+): PublishConfigError =>
+  new PublishConfigError({
+    field: error.field,
+    message: error.message,
+    remediation: "Regenerate package metadata with `bun desktop package`."
+  })
 
 const readOptionalTarget = (
   value: string | undefined
@@ -1065,10 +971,9 @@ const loadConfig = (path: string): Effect.Effect<unknown, PublishConfigError, ne
     return module.default
   })
 
-const readJson = <S extends Schema.Top>(
-  path: string,
-  schema: S
-): Effect.Effect<S["Type"], PublishFileError, S["DecodingServices"]> =>
+const readPackageArtifactMetadata = (
+  path: string
+): Effect.Effect<PackageArtifactMetadata, PublishFileError, never> =>
   runReleaseFileSystem(
     Effect.gen(function* () {
       const fs = yield* ReleaseFileSystem
@@ -1085,7 +990,7 @@ const readJson = <S extends Schema.Top>(
         })
     ),
     Effect.flatMap((content) =>
-      Schema.decodeUnknownEffect(Schema.fromJsonString(schema))(content, StrictParseOptions).pipe(
+      decodePackageArtifactMetadataJson(content).pipe(
         Effect.mapError(
           (cause) =>
             new PublishFileError({
