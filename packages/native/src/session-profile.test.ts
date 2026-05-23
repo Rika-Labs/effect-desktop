@@ -1,26 +1,50 @@
 import { expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
 import {
   type BridgeClientExchange,
   HostProtocolEventEnvelope,
   HostProtocolInvalidOutputError
 } from "@orika/bridge"
-import { Cause, Effect, Exit, type Layer, ManagedRuntime, Option, Schema, Stream } from "effect"
+import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Schema, Stream } from "effect"
 
 import { makeNativeCapabilityManifest } from "./capabilities.js"
 import { SessionProfileEvent } from "./contracts/session-profile.js"
 import {
-  makeSessionProfileBridgeClientLayer,
   makeSessionProfileMemoryClient,
-  makeSessionProfileServiceLayer,
   makeSessionProfileUnsupportedClient,
   SessionProfile,
   SessionProfileCapabilityFacts,
-  SessionProfileClient,
+  type SessionProfileClientApi,
   SessionProfileRpcs,
   SessionProfileSurface
 } from "./session-profile.js"
 
 const CallableMethods = ["fromPartition", "destroy", "list", "isSupported"] as const
+
+test("SessionProfile public surface omits shallow service and layer helpers", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        readFile(new URL("session-profile.ts", import.meta.url), "utf8")
+      )
+      const indexSource = yield* Effect.promise(() =>
+        readFile(new URL("index.ts", import.meta.url), "utf8")
+      )
+
+      for (const removedName of [
+        "SessionProfileServiceApi",
+        "class SessionProfileClient",
+        "SessionProfileLive",
+        "makeSessionProfileClientLayer",
+        "makeSessionProfileServiceLayer",
+        "makeSessionProfileBridgeClientLayer",
+        "makeSessionProfileService"
+      ]) {
+        expect(source).not.toContain(removedName)
+        expect(indexSource).not.toContain(removedName)
+      }
+    })
+  ))
 
 test("SessionProfile exposes profile lifecycle methods as callable RPCs", () => {
   const callableTags = Array.from(SessionProfileRpcs.requests.keys()).toSorted()
@@ -83,7 +107,7 @@ test("SessionProfile memory client creates, lists, and destroys partition handle
           const afterDestroy = yield* service.list()
           return { afterDestroy, beforeDestroy, profile, sameProfile }
         }),
-        makeSessionProfileServiceLayer(client)
+        sessionProfileLayer(client)
       )
 
       expect(result.profile).toMatchObject({
@@ -108,7 +132,7 @@ test("SessionProfile isSupported reports supported result through the service", 
           const service = yield* SessionProfile
           return yield* service.isSupported()
         }),
-        makeSessionProfileServiceLayer(client)
+        sessionProfileLayer(client)
       )
       expect(result.supported).toBe(true)
     })
@@ -123,7 +147,7 @@ test("SessionProfile unsupported client reports the host-routing-unavailable rea
           const service = yield* SessionProfile
           return yield* service.isSupported()
         }),
-        makeSessionProfileServiceLayer(client)
+        sessionProfileLayer(client)
       )
       expect(result.supported).toBe(false)
       expect(result.reason).toBe("host-session-profile-routing-unavailable")
@@ -139,7 +163,7 @@ test("SessionProfile unsupported client fails lifecycle methods as unsupported",
           const service = yield* SessionProfile
           return yield* Effect.exit(service.fromPartition({ partition: "workspace-1" }))
         }),
-        makeSessionProfileServiceLayer(client)
+        sessionProfileLayer(client)
       )
 
       expectExitFailure(exit, (error) => {
@@ -161,7 +185,7 @@ test("SessionProfile unsupported client fails the event stream as unsupported", 
           const service = yield* SessionProfile
           return yield* Effect.exit(service.events().pipe(Stream.take(1), Stream.runCollect))
         }),
-        makeSessionProfileServiceLayer(client)
+        sessionProfileLayer(client)
       )
 
       expectExitFailure(exit, (error) => {
@@ -247,10 +271,10 @@ test("SessionProfile bridge client subscribes to the host event channel", () =>
 
       const collected = yield* runScoped(
         Effect.gen(function* () {
-          const client = yield* SessionProfileClient
-          return yield* client.events().pipe(Stream.runCollect)
+          const service = yield* SessionProfile
+          return yield* service.events().pipe(Stream.runCollect)
         }),
-        makeSessionProfileBridgeClientLayer(exchange)
+        SessionProfileSurface.bridgeClientLayer(exchange)
       )
 
       expect(Array.from(collected)).toEqual([])
@@ -281,12 +305,12 @@ test("SessionProfile bridge client rejects inconsistent event phase payloads as 
       }
       const exit = yield* runScoped(
         Effect.gen(function* () {
-          const client = yield* SessionProfileClient
+          const service = yield* SessionProfile
           return yield* Effect.exit(
-            client.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+            service.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
           )
         }),
-        makeSessionProfileBridgeClientLayer(exchange)
+        SessionProfileSurface.bridgeClientLayer(exchange)
       )
 
       expectInvalidOutput(exit)
@@ -303,6 +327,9 @@ const runScoped = <A, E, R>(
     yield* Effect.promise(() => runtime.dispose())
     return result
   })
+
+const sessionProfileLayer = (client: SessionProfileClientApi): Layer.Layer<SessionProfile> =>
+  Layer.succeed(SessionProfile)(client)
 
 const profileHandle = () =>
   ({

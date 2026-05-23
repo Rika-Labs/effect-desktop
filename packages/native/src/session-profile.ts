@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
@@ -8,7 +7,7 @@ import {
   RpcGroup
 } from "@orika/bridge"
 import { type DesktopRpcClient, makeResourceId, P, type PermissionRegistry } from "@orika/core"
-import { Context, Effect, Layer, Schema, Stream } from "effect"
+import { Context, Effect, Schema, Stream } from "effect"
 
 import {
   type SessionProfileFromPartitionOptions,
@@ -108,52 +107,9 @@ export interface SessionProfileClientApi {
   readonly events: () => Stream.Stream<SessionProfileEvent, SessionProfileError, never>
 }
 
-export class SessionProfileClient extends Context.Service<
-  SessionProfileClient,
-  SessionProfileClientApi
->()("@orika/native/SessionProfileClient") {}
-
-export interface SessionProfileServiceApi {
-  readonly fromPartition: (
-    input: SessionProfileFromPartitionOptions
-  ) => Effect.Effect<SessionProfileHandle, SessionProfileError, never>
-  readonly destroy: (
-    profile: SessionProfileHandle
-  ) => Effect.Effect<void, SessionProfileError, never>
-  readonly list: () => Effect.Effect<SessionProfileList, SessionProfileError, never>
-  readonly isSupported: () => Effect.Effect<
-    SessionProfileSupportedResult,
-    SessionProfileError,
-    never
-  >
-  readonly events: () => Stream.Stream<SessionProfileEvent, SessionProfileError, never>
-}
-
-export class SessionProfile extends Context.Service<SessionProfile, SessionProfileServiceApi>()(
+export class SessionProfile extends Context.Service<SessionProfile, SessionProfileClientApi>()(
   "@orika/native/SessionProfile"
-) {
-  static readonly layer = Layer.effect(SessionProfile)(
-    Effect.gen(function* () {
-      const client = yield* SessionProfileClient
-      return makeSessionProfileService(client)
-    })
-  )
-}
-
-export const SessionProfileLive = SessionProfile.layer
-
-export const makeSessionProfileClientLayer = (
-  client: SessionProfileClientApi
-): Layer.Layer<SessionProfileClient> => Layer.succeed(SessionProfileClient)(client)
-
-export const makeSessionProfileServiceLayer = (
-  client: SessionProfileClientApi
-): Layer.Layer<SessionProfile> => Layer.succeed(SessionProfile)(makeSessionProfileService(client))
-
-export const makeSessionProfileBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<SessionProfileClient> => SessionProfileSurface.bridgeClientLayer(exchange, options)
+) {}
 
 export type SessionProfileRpc = RpcGroup.Rpcs<typeof SessionProfileRpcGroup>
 export type SessionProfileRpcHandlers = RpcGroup.HandlersFrom<SessionProfileRpc>
@@ -182,7 +138,7 @@ export const SessionProfileHandlersLive = SessionProfileRpcGroup.toLayer({
 })
 
 export const SessionProfileSurface = NativeSurface.make(Surface, SessionProfileRpcGroup, {
-  service: SessionProfileClient,
+  service: SessionProfile,
   capabilities: SessionProfileMethodNames,
   handlers: SessionProfileHandlersLive,
   capabilityFacts: SessionProfileCapabilityFacts,
@@ -245,15 +201,6 @@ export const makeSessionProfileUnsupportedClient = (): SessionProfileClientApi =
       ),
     events: () => Stream.fail(unsupportedError(EventMethod))
   } satisfies SessionProfileClientApi)
-
-const makeSessionProfileService = (client: SessionProfileClientApi): SessionProfileServiceApi =>
-  Object.freeze({
-    fromPartition: (input) => client.fromPartition(input),
-    destroy: (profile) => client.destroy(profile),
-    list: () => client.list(),
-    isSupported: () => client.isSupported(),
-    events: () => client.events()
-  } satisfies SessionProfileServiceApi)
 
 const sessionProfileClientFromRpcClient = (
   client: DesktopRpcClient<SessionProfileRpc>,

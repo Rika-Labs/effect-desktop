@@ -112,13 +112,14 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 
 ## Architecture Debt Follow-Ups
 
-|                                     Issue | Status | Why here                                                                                                                                                        |
-| ----------------------------------------: | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-|    #1421 Remove Window `windowRpc` helper | Open   | Removes a shallow `NativeSurface.rpc` wrapper that spans the Window parity surface and will simplify later Window lifecycle, bounds, chrome, and state tickets. |
-| #1743 Remove shallow native layer helpers | Open   | Removes pass-through native `make*Layer` exports that mirror Effect `Layer` and generated `NativeSurface` construction instead of owning desktop policy.        |
-|   #1744 Model NetworkAuth events by phase | Open   | Replaces the broad `NetworkAuthEvent` phase payload with phase-specific Schema variants so invalid phase/payload combinations are rejected at the boundary.     |
-|      #1745 Model Download events by phase | Open   | Replaces the broad `DownloadEvent` phase payload with phase-specific Schema variants so invalid phase/payload combinations are rejected at the boundary.        |
-|   #1747 Model CookieStore events by phase | Open   | Replaces the broad `CookieStoreEvent` phase payload with phase-specific Schema variants so invalid phase/payload combinations are rejected at the boundary.     |
+|                                      Issue | Status | Why here                                                                                                                                                        |
+| -----------------------------------------: | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|     #1421 Remove Window `windowRpc` helper | Open   | Removes a shallow `NativeSurface.rpc` wrapper that spans the Window parity surface and will simplify later Window lifecycle, bounds, chrome, and state tickets. |
+|  #1743 Remove shallow native layer helpers | Open   | Removes pass-through native `make*Layer` exports that mirror Effect `Layer` and generated `NativeSurface` construction instead of owning desktop policy.        |
+|    #1744 Model NetworkAuth events by phase | Open   | Replaces the broad `NetworkAuthEvent` phase payload with phase-specific Schema variants so invalid phase/payload combinations are rejected at the boundary.     |
+|       #1745 Model Download events by phase | Open   | Replaces the broad `DownloadEvent` phase payload with phase-specific Schema variants so invalid phase/payload combinations are rejected at the boundary.        |
+|    #1747 Model CookieStore events by phase | Open   | Replaces the broad `CookieStoreEvent` phase payload with phase-specific Schema variants so invalid phase/payload combinations are rejected at the boundary.     |
+| #1748 Model SessionProfile events by phase | Open   | Replaces the broad `SessionProfileEvent` phase payload with phase-specific Schema variants so invalid phase/payload combinations are rejected at the boundary.  |
 
 ## Execution Progress
 

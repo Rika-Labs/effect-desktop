@@ -1048,16 +1048,11 @@ export {
 } from "./session-permission.js"
 export {
   makeHostSessionProfileRpcRuntime,
-  makeSessionProfileBridgeClientLayer,
-  makeSessionProfileClientLayer,
   makeSessionProfileMemoryClient,
-  makeSessionProfileServiceLayer,
   makeSessionProfileUnsupportedClient,
   SessionProfile,
   SessionProfileCapabilityFacts,
-  SessionProfileClient,
   SessionProfileHandlersLive,
-  SessionProfileLive,
   SessionProfileMethodNames,
   SessionProfileRpcEvents,
   SessionProfileRpcs,
@@ -1065,8 +1060,7 @@ export {
   type SessionProfileClientApi,
   type SessionProfileError,
   type SessionProfileRpc,
-  type SessionProfileRpcHandlers,
-  type SessionProfileServiceApi
+  type SessionProfileRpcHandlers
 } from "./session-profile.js"
 export {
   WebView,
