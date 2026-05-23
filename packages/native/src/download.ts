@@ -1,12 +1,11 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
   HostProtocolUnsupportedError,
   RpcGroup
 } from "@orika/bridge"
-import { type DesktopRpcClient, P, type PermissionRegistry } from "@orika/core"
+import { type DesktopRpcClient, P } from "@orika/core"
 import { Context, Effect, Schema, Stream } from "effect"
 
 import {
@@ -103,10 +102,10 @@ export const DownloadSurface = NativeSurface.make(Surface, DownloadRpcGroup, {
   bridgeClient: (client, exchange) => downloadClientFromRpcClient(client, exchange)
 })
 
-export const makeHostDownloadRpcRuntime = (
-  handlers: DownloadRpcHandlers,
+export const makeHostDownloadRpcRuntime = <R = never>(
+  handlers: DownloadRpcHandlers<R>,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> => DownloadSurface.hostRuntime(handlers, runtimeOptions)
+) => DownloadSurface.hostRuntime(handlers, runtimeOptions)
 
 export const makeDownloadMemoryClient = (): Effect.Effect<DownloadClientApi, never, never> =>
   Effect.succeed(

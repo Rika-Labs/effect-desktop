@@ -7,14 +7,12 @@ import {
   PermissionActor,
   PermissionContext,
   type CommandRegistryError,
-  type PermissionRegistry,
   type ResourceHandle,
   type ResourceId,
   type ResourceRegistry
 } from "@orika/core"
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
@@ -198,10 +196,10 @@ export const MenuSurface = NativeSurface.make("Menu", MenuRpcGroup, {
   bridgeClient: (client, exchange) => menuClientFromRpcClient(client, exchange)
 })
 
-export const makeHostMenuRpcRuntime = (
-  handlers: MenuRpcHandlers,
+export const makeHostMenuRpcRuntime = <R = never>(
+  handlers: MenuRpcHandlers<R>,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> => MenuSurface.hostRuntime(handlers, runtimeOptions)
+) => MenuSurface.hostRuntime(handlers, runtimeOptions)
 
 export const menuCapability = (
   name: MenuCapabilityName,

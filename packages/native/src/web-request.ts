@@ -1,12 +1,11 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
   HostProtocolUnsupportedError,
   RpcGroup
 } from "@orika/bridge"
-import { type DesktopRpcClient, P, type PermissionRegistry } from "@orika/core"
+import { type DesktopRpcClient, P } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import type { SessionProfileHandle } from "./contracts/session-profile.js"
@@ -115,11 +114,10 @@ export const WebRequestSurface = NativeSurface.make(Surface, WebRequestRpcGroup,
   bridgeClient: (client, exchange) => webRequestClientFromRpcClient(client, exchange)
 })
 
-export const makeHostWebRequestRpcRuntime = (
-  handlers: WebRequestRpcHandlers,
+export const makeHostWebRequestRpcRuntime = <R = never>(
+  handlers: WebRequestRpcHandlers<R>,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  WebRequestSurface.hostRuntime(handlers, runtimeOptions)
+) => WebRequestSurface.hostRuntime(handlers, runtimeOptions)
 
 export const makeWebRequestMemoryClient = (): Effect.Effect<WebRequestClientApi, never, never> =>
   Effect.succeed(

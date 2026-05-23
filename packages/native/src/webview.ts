@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
@@ -9,7 +8,7 @@ import {
   type HostProtocolError,
   type RpcSupportMetadata
 } from "@orika/bridge"
-import { type PermissionRegistry, P, type DesktopRpcClient } from "@orika/core"
+import { P, type DesktopRpcClient } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
@@ -566,10 +565,10 @@ export const WebViewSurface = NativeSurface.make("WebView", WebViewRpcGroup, {
   bridgeClient: (client, exchange) => webViewClientFromRpcClient(client, exchange)
 })
 
-export const makeHostWebViewRpcRuntime = (
-  handlers: WebViewRpcHandlers,
+export const makeHostWebViewRpcRuntime = <R = never>(
+  handlers: WebViewRpcHandlers<R>,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> => WebViewSurface.hostRuntime(handlers, runtimeOptions)
+) => WebViewSurface.hostRuntime(handlers, runtimeOptions)
 
 export const webViewCapability = (
   name: WebViewCapabilityName,

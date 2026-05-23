@@ -1,12 +1,11 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
   HostProtocolUnsupportedError,
   RpcGroup
 } from "@orika/bridge"
-import { type DesktopRpcClient, makeResourceId, P, type PermissionRegistry } from "@orika/core"
+import { type DesktopRpcClient, makeResourceId, P } from "@orika/core"
 import { Context, Effect, Schema, Stream } from "effect"
 
 import {
@@ -150,11 +149,10 @@ export const SessionProfileSurface = NativeSurface.make(Surface, SessionProfileR
   bridgeClient: (client, exchange) => sessionProfileClientFromRpcClient(client, exchange)
 })
 
-export const makeHostSessionProfileRpcRuntime = (
-  handlers: SessionProfileRpcHandlers,
+export const makeHostSessionProfileRpcRuntime = <R = never>(
+  handlers: SessionProfileRpcHandlers<R>,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  SessionProfileSurface.hostRuntime(handlers, runtimeOptions)
+) => SessionProfileSurface.hostRuntime(handlers, runtimeOptions)
 
 export const makeSessionProfileMemoryClient = (): Effect.Effect<
   SessionProfileClientApi,

@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   HostProtocolPermissionDeniedError,
   HostProtocolUnsupportedError,
@@ -17,7 +16,6 @@ import {
   emitAuditEvent,
   P,
   PermissionActor,
-  type PermissionRegistry,
   permissionAuditEvent
 } from "@orika/core"
 import { Clock, Context, Effect, Layer, PubSub, Ref, Schema, Stream } from "effect"
@@ -210,11 +208,10 @@ export const DiagnosticsBundleSurface = NativeSurface.make(Surface, DiagnosticsB
   bridgeClient: (client, exchange) => diagnosticsBundleClientFromRpcClient(client, exchange)
 })
 
-export const makeHostDiagnosticsBundleRpcRuntime = (
-  handlers: DiagnosticsBundleRpcHandlers,
+export const makeHostDiagnosticsBundleRpcRuntime = <R = never>(
+  handlers: DiagnosticsBundleRpcHandlers<R>,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  DiagnosticsBundleSurface.hostRuntime(handlers, runtimeOptions)
+) => DiagnosticsBundleSurface.hostRuntime(handlers, runtimeOptions)
 
 export interface DiagnosticsBundleMemoryClientOptions {
   readonly failure?: Partial<Record<"collect" | "redact" | "write", DiagnosticsBundleError>>

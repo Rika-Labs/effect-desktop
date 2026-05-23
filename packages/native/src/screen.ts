@@ -1,7 +1,6 @@
 import {
   type BridgeClientExchange,
   type BridgeClientOptions,
-  type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   RpcGroup,
   hostProtocolErrorFromRpcClientError,
@@ -10,7 +9,7 @@ import {
   HostProtocolRequestEnvelope,
   type HostProtocolError
 } from "@orika/bridge"
-import { type PermissionRegistry, type DesktopRpcClient } from "@orika/core"
+import { type DesktopRpcClient } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
@@ -179,10 +178,10 @@ export const makeScreenBridgeClientLayer = (
 
 export type ScreenRpcHandlers<R = never> = NativeRpcHandlers<typeof ScreenRpcGroup, R>
 
-export const makeHostScreenRpcRuntime = (
-  handlers: ScreenRpcHandlers,
+export const makeHostScreenRpcRuntime = <R = never>(
+  handlers: ScreenRpcHandlers<R>,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> => ScreenSurface.hostRuntime(handlers, runtimeOptions)
+) => ScreenSurface.hostRuntime(handlers, runtimeOptions)
 
 const normalizeScreenBridgeRequest = (
   request: HostProtocolRequestEnvelope

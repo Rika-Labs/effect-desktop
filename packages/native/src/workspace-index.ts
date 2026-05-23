@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   HostProtocolPermissionDeniedError,
   HostProtocolUnsupportedError,
@@ -216,11 +215,10 @@ export const WorkspaceIndexSurface = NativeSurface.make(Surface, WorkspaceIndexR
   bridgeClient: (client, exchange) => workspaceIndexClientFromRpcClient(client, exchange)
 })
 
-export const makeHostWorkspaceIndexRpcRuntime = (
-  handlers: WorkspaceIndexRpcHandlers,
+export const makeHostWorkspaceIndexRpcRuntime = <R = never>(
+  handlers: WorkspaceIndexRpcHandlers<R>,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  WorkspaceIndexSurface.hostRuntime(handlers, runtimeOptions)
+) => WorkspaceIndexSurface.hostRuntime(handlers, runtimeOptions)
 
 export interface WorkspaceIndexMemoryClientOptions {
   readonly failure?: Partial<Record<"open" | "refresh" | "close", WorkspaceIndexError>>

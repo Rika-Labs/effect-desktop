@@ -1,5 +1,4 @@
 import {
-  type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   HostProtocolPermissionDeniedError,
   makeHostProtocolInternalError,
@@ -10,7 +9,7 @@ import {
   RpcGroup,
   type HostProtocolError
 } from "@orika/bridge"
-import { type PermissionRegistry, P, type DesktopRpcClient } from "@orika/core"
+import { P, type DesktopRpcClient } from "@orika/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
@@ -169,10 +168,10 @@ export const ShellSurface = NativeSurface.make("Shell", ShellRpcGroup, {
   client: (client) => shellClientFromRpcClient(client)
 })
 
-export const makeHostShellRpcRuntime = (
-  handlers: ShellRpcHandlers,
+export const makeHostShellRpcRuntime = <R = never>(
+  handlers: ShellRpcHandlers<R>,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> => ShellSurface.hostRuntime(handlers, runtimeOptions)
+) => ShellSurface.hostRuntime(handlers, runtimeOptions)
 
 const shellClientFromRpcClient = (client: DesktopRpcClient<ShellRpc>): ShellClientApi => {
   const shellClient: ShellClientApi = {

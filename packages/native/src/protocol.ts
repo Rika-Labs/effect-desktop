@@ -1,5 +1,4 @@
 import {
-  type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
@@ -8,7 +7,7 @@ import {
   RpcGroup,
   type HostProtocolError
 } from "@orika/bridge"
-import { type PermissionRegistry, P, type DesktopRpcClient } from "@orika/core"
+import { P, type DesktopRpcClient } from "@orika/core"
 import { Context, Effect, Layer, Schema } from "effect"
 import * as nodePath from "node:path"
 
@@ -141,10 +140,10 @@ export const ProtocolSurface = NativeSurface.make("Protocol", ProtocolRpcGroup, 
   client: (client) => protocolClientFromRpcClient(client)
 })
 
-export const makeHostProtocolRpcRuntime = (
-  handlers: ProtocolRpcHandlers,
+export const makeHostProtocolRpcRuntime = <R = never>(
+  handlers: ProtocolRpcHandlers<R>,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> => ProtocolSurface.hostRuntime(handlers, runtimeOptions)
+) => ProtocolSurface.hostRuntime(handlers, runtimeOptions)
 
 const protocolClientFromRpcClient = (client: DesktopRpcClient<ProtocolRpc>): ProtocolClientApi => {
   return Object.freeze({

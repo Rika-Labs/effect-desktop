@@ -1,11 +1,10 @@
 import {
-  type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
   HostProtocolUnsupportedError,
   RpcGroup
 } from "@orika/bridge"
-import { type DesktopRpcClient, P, type PermissionRegistry } from "@orika/core"
+import { type DesktopRpcClient, P } from "@orika/core"
 import { Context, Effect, Schema, Stream } from "effect"
 
 import {
@@ -101,11 +100,10 @@ export const SelectionContextSurface = NativeSurface.make(Surface, SelectionCont
   client: (client) => selectionContextClientFromRpcClient(client)
 })
 
-export const makeHostSelectionContextRpcRuntime = (
-  handlers: SelectionContextRpcHandlers,
+export const makeHostSelectionContextRpcRuntime = <R = never>(
+  handlers: SelectionContextRpcHandlers<R>,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  SelectionContextSurface.hostRuntime(handlers, runtimeOptions)
+) => SelectionContextSurface.hostRuntime(handlers, runtimeOptions)
 
 export const makeSelectionContextMemoryClient = (): Effect.Effect<
   SelectionContextClientApi,

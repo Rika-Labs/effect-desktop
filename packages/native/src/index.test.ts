@@ -601,6 +601,67 @@ test("NativeSurface.hostRuntime preserves host service requirements", () => {
   expect(screenHostRuntimeRequirements).toBe(true)
 })
 
+test("native host RPC helpers do not annotate fixed runtime environments", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const glob = new Bun.Glob("*.ts")
+      const offenders: string[] = []
+      for (const entry of glob.scanSync({ cwd: import.meta.dir, onlyFiles: true })) {
+        if (entry.endsWith(".test.ts")) {
+          continue
+        }
+        const source = yield* Effect.promise(() => Bun.file(`${import.meta.dir}/${entry}`).text())
+        if (
+          /export const makeHost[A-Za-z0-9]+RpcRuntime[\s\S]*?\): BridgeHandlerRuntime</.test(
+            source
+          )
+        ) {
+          offenders.push(entry)
+        }
+      }
+
+      expect(offenders).toEqual([])
+    })
+  ))
+
+test("makeHostScreenRpcRuntime preserves host service requirements", () => {
+  const hostRuntimeTypeDisplay = new ScreenDisplay({
+    id: "display-helper-type",
+    bounds: new ScreenBounds({ x: 0, y: 0, width: 100, height: 100 }),
+    workArea: new ScreenBounds({ x: 0, y: 0, width: 100, height: 100 }),
+    scaleFactor: 1,
+    primary: true
+  })
+  const runtime = makeHostScreenRpcRuntime({
+    "Screen.getDisplays": () =>
+      Effect.gen(function* () {
+        yield* Window
+        return new ScreenDisplaysResult({ displays: [hostRuntimeTypeDisplay] })
+      }),
+    "Screen.getPrimaryDisplay": () =>
+      Effect.gen(function* () {
+        yield* Window
+        return hostRuntimeTypeDisplay
+      }),
+    "Screen.getPointerPoint": () =>
+      Effect.gen(function* () {
+        yield* Window
+        return new ScreenPoint({ x: 12, y: 34 })
+      }),
+    "Screen.isSupported": () =>
+      Effect.gen(function* () {
+        yield* Window
+        return new ScreenSupportedResult({ supported: true })
+      })
+  })
+  type ScreenHelperRuntimeRequirements = Assert<
+    IsEqual<BridgeRuntimeRequirements<typeof runtime>, Window | PermissionRegistry>
+  >
+  const screenHelperRuntimeRequirements: ScreenHelperRuntimeRequirements = true
+
+  expect(screenHelperRuntimeRequirements).toBe(true)
+})
+
 test("Native.Permissions.all declares every public native capability", () => {
   const declared = nativePermissionTags(Native.Permissions.all)
 

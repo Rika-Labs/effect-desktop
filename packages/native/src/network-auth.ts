@@ -1,12 +1,11 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
   HostProtocolUnsupportedError,
   RpcGroup
 } from "@orika/bridge"
-import { type DesktopRpcClient, P, type PermissionRegistry } from "@orika/core"
+import { type DesktopRpcClient, P } from "@orika/core"
 import { Context, Effect, Schema, Stream } from "effect"
 
 import {
@@ -128,11 +127,10 @@ export const NetworkAuthSurface = NativeSurface.make(Surface, NetworkAuthRpcGrou
   bridgeClient: (client, exchange) => networkAuthClientFromRpcClient(client, exchange)
 })
 
-export const makeHostNetworkAuthRpcRuntime = (
-  handlers: NetworkAuthRpcHandlers,
+export const makeHostNetworkAuthRpcRuntime = <R = never>(
+  handlers: NetworkAuthRpcHandlers<R>,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  NetworkAuthSurface.hostRuntime(handlers, runtimeOptions)
+) => NetworkAuthSurface.hostRuntime(handlers, runtimeOptions)
 
 export const makeNetworkAuthMemoryClient = (): Effect.Effect<NetworkAuthClientApi, never, never> =>
   Effect.succeed(

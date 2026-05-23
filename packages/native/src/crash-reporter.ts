@@ -1,5 +1,4 @@
 import {
-  type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   HostProtocolPermissionDeniedError,
   makeHostProtocolInternalError,
@@ -189,11 +188,10 @@ export const CrashReporterSurface = NativeSurface.make(Surface, CrashReporterRpc
   client: (client) => crashReporterClientFromRpcClient(client)
 })
 
-export const makeHostCrashReporterRpcRuntime = (
-  handlers: CrashReporterRpcHandlers,
+export const makeHostCrashReporterRpcRuntime = <R = never>(
+  handlers: CrashReporterRpcHandlers<R>,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  CrashReporterSurface.hostRuntime(handlers, runtimeOptions)
+) => CrashReporterSurface.hostRuntime(handlers, runtimeOptions)
 
 export const makeCrashReporterMemoryClient = (): Effect.Effect<
   CrashReporterClientApi,

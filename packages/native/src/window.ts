@@ -1,7 +1,6 @@
 import {
   type BridgeClientExchange,
   type BridgeClientOptions,
-  type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostWindowClientOptions,
   type HostWindowExchange,
@@ -21,7 +20,6 @@ import {
 } from "@orika/bridge"
 import {
   P,
-  PermissionRegistry,
   ResourceRegistry,
   makeResourceId,
   type DesktopRpcClient,
@@ -963,7 +961,7 @@ export const makeHostWindowRpcRuntime = (
   exchange: HostWindowExchange,
   options: HostWindowRpcOptions = {},
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<ResourceRegistry | PermissionRegistry> =>
+) =>
   makeNativeHostRpcRuntime(
     WindowRpcGroup,
     WindowRpcGroup.toLayer(makeHostWindowHandlers(exchange, options)),

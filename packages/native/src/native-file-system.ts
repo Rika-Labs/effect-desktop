@@ -1,13 +1,12 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
   type RpcCapabilityMetadata,
   type RpcEndpointKind,
   RpcGroup
 } from "@orika/bridge"
-import { type DesktopRpcClient, type PermissionRegistry, P } from "@orika/core"
+import { type DesktopRpcClient, P } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import {
@@ -198,11 +197,10 @@ export const NativeFileSystemSurface = NativeSurface.make(
   }
 )
 
-export const makeHostNativeFileSystemRpcRuntime = (
-  handlers: NativeFileSystemRpcHandlers,
+export const makeHostNativeFileSystemRpcRuntime = <R = never>(
+  handlers: NativeFileSystemRpcHandlers<R>,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  NativeFileSystemSurface.hostRuntime(handlers, runtimeOptions)
+) => NativeFileSystemSurface.hostRuntime(handlers, runtimeOptions)
 
 const nativeFileSystemClientFromRpcClient = (
   client: DesktopRpcClient<NativeFileSystemRpc>,

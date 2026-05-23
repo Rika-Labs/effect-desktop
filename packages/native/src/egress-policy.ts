@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   HostProtocolPermissionDeniedError,
   HostProtocolUnsupportedError,
@@ -206,11 +205,10 @@ export const EgressPolicySurface = NativeSurface.make(Surface, EgressPolicyRpcGr
   bridgeClient: (client, exchange) => egressPolicyClientFromRpcClient(client, exchange)
 })
 
-export const makeHostEgressPolicyRpcRuntime = (
-  handlers: EgressPolicyRpcHandlers,
+export const makeHostEgressPolicyRpcRuntime = <R = never>(
+  handlers: EgressPolicyRpcHandlers<R>,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  EgressPolicySurface.hostRuntime(handlers, runtimeOptions)
+) => EgressPolicySurface.hostRuntime(handlers, runtimeOptions)
 
 export interface EgressPolicyMemoryClientOptions {
   readonly failure?: Partial<Record<"decide" | "record", EgressPolicyError>>

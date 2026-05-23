@@ -1,12 +1,11 @@
 import {
-  type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type RpcCapabilityMetadata,
   type RpcSupportMetadata,
   RpcGroup,
   type HostProtocolError
 } from "@orika/bridge"
-import { type PermissionRegistry, P, type DesktopRpcClient } from "@orika/core"
+import { P, type DesktopRpcClient } from "@orika/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
@@ -182,10 +181,10 @@ export const DialogSurface = NativeSurface.make("Dialog", DialogRpcGroup, {
   client: (client) => dialogClientFromRpcClient(client)
 })
 
-export const makeHostDialogRpcRuntime = (
-  handlers: DialogRpcHandlers,
+export const makeHostDialogRpcRuntime = <R = never>(
+  handlers: DialogRpcHandlers<R>,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> => DialogSurface.hostRuntime(handlers, runtimeOptions)
+) => DialogSurface.hostRuntime(handlers, runtimeOptions)
 
 const makeDialogService = (client: DialogClientApi): DialogServiceApi => {
   const service: DialogServiceApi = {

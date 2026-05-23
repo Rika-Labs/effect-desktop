@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   HostProtocolPermissionDeniedError,
   HostProtocolUnsupportedError,
@@ -9,7 +8,7 @@ import {
   RpcGroup,
   type HostProtocolError
 } from "@orika/bridge"
-import { type DesktopRpcClient, type PermissionRegistry, P } from "@orika/core"
+import { type DesktopRpcClient, P } from "@orika/core"
 import { Context, Effect, Layer, PubSub, Schema, Stream } from "effect"
 
 import { subscribeNativeEvent } from "./event-stream.js"
@@ -242,11 +241,10 @@ export const RealtimeMediaSessionSurface = NativeSurface.make(
   }
 )
 
-export const makeHostRealtimeMediaSessionRpcRuntime = (
-  handlers: RealtimeMediaSessionRpcHandlers,
+export const makeHostRealtimeMediaSessionRpcRuntime = <R = never>(
+  handlers: RealtimeMediaSessionRpcHandlers<R>,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  RealtimeMediaSessionSurface.hostRuntime(handlers, runtimeOptions)
+) => RealtimeMediaSessionSurface.hostRuntime(handlers, runtimeOptions)
 
 export interface RealtimeMediaSessionMemoryClientOptions {
   readonly failure?: Partial<

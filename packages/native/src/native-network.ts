@@ -1,12 +1,11 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
   HostProtocolUnsupportedError,
   RpcGroup
 } from "@orika/bridge"
-import { type DesktopRpcClient, P, type PermissionRegistry } from "@orika/core"
+import { type DesktopRpcClient, P } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeNetworkEvent, NativeNetworkSupportedResult } from "./contracts/native-network.js"
@@ -120,11 +119,10 @@ export const NativeNetworkSurface = NativeSurface.make(Surface, NativeNetworkRpc
   bridgeClient: (client, exchange) => nativeNetworkClientFromRpcClient(client, exchange)
 })
 
-export const makeHostNativeNetworkRpcRuntime = (
-  handlers: NativeNetworkRpcHandlers,
+export const makeHostNativeNetworkRpcRuntime = <R = never>(
+  handlers: NativeNetworkRpcHandlers<R>,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  NativeNetworkSurface.hostRuntime(handlers, runtimeOptions)
+) => NativeNetworkSurface.hostRuntime(handlers, runtimeOptions)
 
 export const makeNativeNetworkMemoryClient = (): Effect.Effect<
   NativeNetworkClientApi,

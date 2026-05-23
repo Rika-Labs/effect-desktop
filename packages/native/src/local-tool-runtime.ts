@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   HostProtocolPermissionDeniedError,
   HostProtocolUnsupportedError,
@@ -258,11 +257,10 @@ export const LocalToolRuntimeSurface = NativeSurface.make(Surface, LocalToolRunt
   bridgeClient: (client, exchange) => localToolRuntimeClientFromRpcClient(client, exchange)
 })
 
-export const makeHostLocalToolRuntimeRpcRuntime = (
-  handlers: LocalToolRuntimeRpcHandlers,
+export const makeHostLocalToolRuntimeRpcRuntime = <R = never>(
+  handlers: LocalToolRuntimeRpcHandlers<R>,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  LocalToolRuntimeSurface.hostRuntime(handlers, runtimeOptions)
+) => LocalToolRuntimeSurface.hostRuntime(handlers, runtimeOptions)
 
 export interface LocalToolRuntimeMemoryClientOptions {
   readonly failure?: Partial<Record<"register" | "run" | "stop" | "health", LocalToolRuntimeError>>

@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   HostProtocolPermissionDeniedError,
   HostProtocolUnsupportedError,
@@ -209,11 +208,10 @@ export const FocusedApplicationContextSurface = NativeSurface.make(
   }
 )
 
-export const makeHostFocusedApplicationContextRpcRuntime = (
-  handlers: FocusedApplicationContextRpcHandlers,
+export const makeHostFocusedApplicationContextRpcRuntime = <R = never>(
+  handlers: FocusedApplicationContextRpcHandlers<R>,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  FocusedApplicationContextSurface.hostRuntime(handlers, runtimeOptions)
+) => FocusedApplicationContextSurface.hostRuntime(handlers, runtimeOptions)
 
 export interface FocusedApplicationContextMemoryClientOptions {
   readonly failure?: Partial<Record<"snapshot", FocusedApplicationContextError>>

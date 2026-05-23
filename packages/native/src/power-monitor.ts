@@ -1,13 +1,12 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
   RpcGroup,
   type HostProtocolError
 } from "@orika/bridge"
-import { type PermissionRegistry, type DesktopRpcClient } from "@orika/core"
+import { type DesktopRpcClient } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
@@ -136,11 +135,10 @@ export const PowerMonitorSurface = NativeSurface.make("PowerMonitor", PowerMonit
   bridgeClient: (client, exchange) => powerMonitorClientFromRpcClient(client, exchange)
 })
 
-export const makeHostPowerMonitorRpcRuntime = (
-  handlers: PowerMonitorRpcHandlers,
+export const makeHostPowerMonitorRpcRuntime = <R = never>(
+  handlers: PowerMonitorRpcHandlers<R>,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  PowerMonitorSurface.hostRuntime(handlers, runtimeOptions)
+) => PowerMonitorSurface.hostRuntime(handlers, runtimeOptions)
 
 const powerMonitorClientFromRpcClient = (
   client: DesktopRpcClient<PowerMonitorRpc>,

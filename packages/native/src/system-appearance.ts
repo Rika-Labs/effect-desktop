@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
@@ -8,7 +7,7 @@ import {
   RpcGroup,
   type HostProtocolError
 } from "@orika/bridge"
-import { type PermissionRegistry, P, type DesktopRpcClient } from "@orika/core"
+import { P, type DesktopRpcClient } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
@@ -261,11 +260,10 @@ export const SystemAppearanceSurface = NativeSurface.make(
   }
 )
 
-export const makeHostSystemAppearanceRpcRuntime = (
-  handlers: SystemAppearanceRpcHandlers,
+export const makeHostSystemAppearanceRpcRuntime = <R = never>(
+  handlers: SystemAppearanceRpcHandlers<R>,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  SystemAppearanceSurface.hostRuntime(handlers, runtimeOptions)
+) => SystemAppearanceSurface.hostRuntime(handlers, runtimeOptions)
 
 const systemAppearanceClientFromRpcClient = (
   client: DesktopRpcClient<SystemAppearanceRpc>,

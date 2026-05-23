@@ -1,12 +1,11 @@
 import {
-  type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
   HostProtocolInternalError,
   HostProtocolUnsupportedError,
   RpcGroup
 } from "@orika/bridge"
-import { type DesktopRpcClient, P, type PermissionRegistry } from "@orika/core"
+import { type DesktopRpcClient, P } from "@orika/core"
 import { Context, Effect, Schema, Stream } from "effect"
 
 import {
@@ -99,11 +98,10 @@ export const TransientWindowRoleSurface = NativeSurface.make(Surface, TransientW
   client: (client) => transientWindowRoleClientFromRpcClient(client)
 })
 
-export const makeHostTransientWindowRoleRpcRuntime = (
-  handlers: TransientWindowRoleRpcHandlers,
+export const makeHostTransientWindowRoleRpcRuntime = <R = never>(
+  handlers: TransientWindowRoleRpcHandlers<R>,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  TransientWindowRoleSurface.hostRuntime(handlers, runtimeOptions)
+) => TransientWindowRoleSurface.hostRuntime(handlers, runtimeOptions)
 
 export const makeTransientWindowRoleMemoryClient = (): Effect.Effect<
   TransientWindowRoleClientApi,

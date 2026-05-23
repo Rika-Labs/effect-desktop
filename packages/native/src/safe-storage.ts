@@ -1,5 +1,4 @@
 import {
-  type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   HostProtocolUnsupportedError,
   makeHostProtocolInternalError,
@@ -12,7 +11,7 @@ import {
   type HostProtocolError,
   unsafeSecretBytes
 } from "@orika/bridge"
-import { type PermissionRegistry, P, type DesktopRpcClient } from "@orika/core"
+import { P, type DesktopRpcClient } from "@orika/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
@@ -173,11 +172,10 @@ export const SafeStorageSurface = NativeSurface.make("SafeStorage", SafeStorageR
   client: (client) => safeStorageClientFromRpcClient(client)
 })
 
-export const makeHostSafeStorageRpcRuntime = (
-  handlers: SafeStorageRpcHandlers,
+export const makeHostSafeStorageRpcRuntime = <R = never>(
+  handlers: SafeStorageRpcHandlers<R>,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  SafeStorageSurface.hostRuntime(handlers, runtimeOptions)
+) => SafeStorageSurface.hostRuntime(handlers, runtimeOptions)
 
 const safeStorageClientFromRpcClient = (
   client: DesktopRpcClient<SafeStorageRpc>

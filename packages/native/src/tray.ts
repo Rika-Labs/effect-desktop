@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
@@ -11,7 +10,6 @@ import {
   type HostProtocolError
 } from "@orika/bridge"
 import {
-  type PermissionRegistry,
   P,
   type DesktopRpcClient,
   ResourceRegistry,
@@ -302,11 +300,10 @@ export const TraySurface = NativeSurface.make("Tray", TrayRpcGroup, {
   bridgeClient: (client, exchange) => trayClientFromRpcClient(client, exchange)
 })
 
-export const makeHostTrayRpcRuntime = (
-  handlers: TrayRpcHandlers,
+export const makeHostTrayRpcRuntime = <R = never>(
+  handlers: TrayRpcHandlers<R>,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry | ResourceRegistry> =>
-  TraySurface.hostRuntime(handlers, runtimeOptions)
+) => TraySurface.hostRuntime(handlers, runtimeOptions)
 
 const trayClientFromRpcClient = (
   client: DesktopRpcClient<TrayRpc>,

@@ -1,12 +1,11 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
   HostProtocolUnsupportedError,
   RpcGroup
 } from "@orika/bridge"
-import { type DesktopRpcClient, P, type PermissionRegistry } from "@orika/core"
+import { type DesktopRpcClient, P } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { runNativeRpc } from "./native-client.js"
@@ -124,11 +123,10 @@ export const ExecutionSandboxSurface = NativeSurface.make(Surface, ExecutionSand
   bridgeClient: (client, exchange) => executionSandboxClientFromRpcClient(client, exchange)
 })
 
-export const makeHostExecutionSandboxRpcRuntime = (
-  handlers: ExecutionSandboxRpcHandlers,
+export const makeHostExecutionSandboxRpcRuntime = <R = never>(
+  handlers: ExecutionSandboxRpcHandlers<R>,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  ExecutionSandboxSurface.hostRuntime(handlers, runtimeOptions)
+) => ExecutionSandboxSurface.hostRuntime(handlers, runtimeOptions)
 
 export const makeExecutionSandboxMemoryClient = (): Effect.Effect<
   ExecutionSandboxClientApi,

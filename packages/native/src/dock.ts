@@ -1,5 +1,4 @@
 import {
-  type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   HostProtocolUnsupportedError,
   makeHostProtocolInternalError,
@@ -10,7 +9,7 @@ import {
   RpcGroup,
   type HostProtocolError
 } from "@orika/bridge"
-import { type PermissionRegistry, P, type DesktopRpcClient } from "@orika/core"
+import { P, type DesktopRpcClient } from "@orika/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
@@ -222,10 +221,10 @@ export const DockSurface = NativeSurface.make("Dock", DockRpcGroup, {
   client: (client) => dockClientFromRpcClient(client)
 })
 
-export const makeHostDockRpcRuntime = (
-  handlers: DockRpcHandlers,
+export const makeHostDockRpcRuntime = <R = never>(
+  handlers: DockRpcHandlers<R>,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> => DockSurface.hostRuntime(handlers, runtimeOptions)
+) => DockSurface.hostRuntime(handlers, runtimeOptions)
 
 const dockClientFromRpcClient = (client: DesktopRpcClient<DockRpc>): DockClientApi => {
   return Object.freeze({

@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
@@ -11,7 +10,6 @@ import {
   type HostProtocolError
 } from "@orika/bridge"
 import {
-  type PermissionRegistry,
   P,
   type DesktopRpcClient,
   ResourceRegistry,
@@ -227,11 +225,10 @@ export const NotificationSurface = NativeSurface.make("Notification", Notificati
   bridgeClient: (client, exchange) => notificationClientFromRpcClient(client, exchange)
 })
 
-export const makeHostNotificationRpcRuntime = (
-  handlers: NotificationRpcHandlers,
+export const makeHostNotificationRpcRuntime = <R = never>(
+  handlers: NotificationRpcHandlers<R>,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  NotificationSurface.hostRuntime(handlers, runtimeOptions)
+) => NotificationSurface.hostRuntime(handlers, runtimeOptions)
 
 const makeNotificationService = (
   client: NotificationClientApi,

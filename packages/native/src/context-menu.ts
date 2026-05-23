@@ -7,14 +7,12 @@ import {
   PermissionActor,
   PermissionContext,
   type CommandRegistryError,
-  type PermissionRegistry,
   type ResourceHandle,
   type ResourceId,
   type ResourceRegistry
 } from "@orika/core"
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   RpcGroup,
   type HostProtocolError
@@ -188,11 +186,10 @@ export const ContextMenuSurface = NativeSurface.make("ContextMenu", ContextMenuR
     contextMenuClientFromRpcClient(client, exchange)
 })
 
-export const makeHostContextMenuRpcRuntime = (
-  handlers: ContextMenuRpcHandlers,
+export const makeHostContextMenuRpcRuntime = <R = never>(
+  handlers: ContextMenuRpcHandlers<R>,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  ContextMenuSurface.hostRuntime(handlers, runtimeOptions)
+) => ContextMenuSurface.hostRuntime(handlers, runtimeOptions)
 
 const contextMenuClientFromRpcClient = (
   client: DesktopRpcClient<ContextMenuRpc>,

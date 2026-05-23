@@ -1,12 +1,11 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
   HostProtocolUnsupportedError,
   RpcGroup
 } from "@orika/bridge"
-import { type DesktopRpcClient, P, type PermissionRegistry } from "@orika/core"
+import { type DesktopRpcClient, P } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { runNativeRpc } from "./native-client.js"
@@ -125,11 +124,10 @@ export const ScopedAccessGrantSurface = NativeSurface.make(Surface, ScopedAccess
   bridgeClient: (client, exchange) => scopedAccessGrantClientFromRpcClient(client, exchange)
 })
 
-export const makeHostScopedAccessGrantRpcRuntime = (
-  handlers: ScopedAccessGrantRpcHandlers,
+export const makeHostScopedAccessGrantRpcRuntime = <R = never>(
+  handlers: ScopedAccessGrantRpcHandlers<R>,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  ScopedAccessGrantSurface.hostRuntime(handlers, runtimeOptions)
+) => ScopedAccessGrantSurface.hostRuntime(handlers, runtimeOptions)
 
 export const makeScopedAccessGrantMemoryClient = (): Effect.Effect<
   ScopedAccessGrantClientApi,

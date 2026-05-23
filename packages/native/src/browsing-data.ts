@@ -1,12 +1,11 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
   HostProtocolUnsupportedError,
   RpcGroup
 } from "@orika/bridge"
-import { type DesktopRpcClient, P, type PermissionRegistry } from "@orika/core"
+import { type DesktopRpcClient, P } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import {
@@ -169,11 +168,10 @@ export const BrowsingDataSurface = NativeSurface.make(Surface, BrowsingDataRpcGr
   bridgeClient: (client, exchange) => browsingDataClientFromRpcClient(client, exchange)
 })
 
-export const makeHostBrowsingDataRpcRuntime = (
-  handlers: BrowsingDataRpcHandlers,
+export const makeHostBrowsingDataRpcRuntime = <R = never>(
+  handlers: BrowsingDataRpcHandlers<R>,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  BrowsingDataSurface.hostRuntime(handlers, runtimeOptions)
+) => BrowsingDataSurface.hostRuntime(handlers, runtimeOptions)
 
 export const makeBrowsingDataMemoryClient = (): Effect.Effect<
   BrowsingDataClientApi,

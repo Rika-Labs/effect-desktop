@@ -1,13 +1,12 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
   type RpcCapabilityMetadata,
   type RpcEndpointKind,
   RpcGroup
 } from "@orika/bridge"
-import { type DesktopRpcClient, type PermissionRegistry, P } from "@orika/core"
+import { type DesktopRpcClient, P } from "@orika/core"
 import { Context, Effect, Schema, Stream } from "effect"
 
 import {
@@ -102,11 +101,10 @@ export const AppMetadataSurface = NativeSurface.make("AppMetadata", AppMetadataR
   bridgeClient: (client, exchange) => appMetadataClientFromRpcClient(client, exchange)
 })
 
-export const makeHostAppMetadataRpcRuntime = (
-  handlers: AppMetadataRpcHandlers,
+export const makeHostAppMetadataRpcRuntime = <R = never>(
+  handlers: AppMetadataRpcHandlers<R>,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  AppMetadataSurface.hostRuntime(handlers, runtimeOptions)
+) => AppMetadataSurface.hostRuntime(handlers, runtimeOptions)
 
 const appMetadataClientFromRpcClient = (
   client: DesktopRpcClient<AppMetadataRpc>,

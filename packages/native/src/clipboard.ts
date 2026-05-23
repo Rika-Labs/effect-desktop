@@ -1,12 +1,11 @@
 import {
-  type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
   RpcGroup,
   type HostProtocolError
 } from "@orika/bridge"
-import { type PermissionRegistry, P, type DesktopRpcClient } from "@orika/core"
+import { P, type DesktopRpcClient } from "@orika/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
@@ -233,11 +232,10 @@ export const ClipboardSurface = NativeSurface.make("Clipboard", ClipboardRpcGrou
   client: (client) => clipboardClientFromRpcClient(client)
 })
 
-export const makeHostClipboardRpcRuntime = (
-  handlers: ClipboardRpcHandlers,
+export const makeHostClipboardRpcRuntime = <R = never>(
+  handlers: ClipboardRpcHandlers<R>,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  ClipboardSurface.hostRuntime(handlers, runtimeOptions)
+) => ClipboardSurface.hostRuntime(handlers, runtimeOptions)
 
 const makeClipboardService = (client: ClipboardClientApi): ClipboardServiceApi => {
   const service: ClipboardServiceApi = {

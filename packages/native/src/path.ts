@@ -1,5 +1,4 @@
 import {
-  type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
@@ -7,7 +6,7 @@ import {
   RpcGroup,
   type HostProtocolError
 } from "@orika/bridge"
-import { type PermissionRegistry, P, type DesktopRpcClient } from "@orika/core"
+import { P, type DesktopRpcClient } from "@orika/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
@@ -136,10 +135,10 @@ export const PathSurface = NativeSurface.make("Path", PathRpcGroup, {
   client: (client) => pathClientFromRpcClient(client)
 })
 
-export const makeHostPathRpcRuntime = (
-  handlers: PathRpcHandlers,
+export const makeHostPathRpcRuntime = <R = never>(
+  handlers: PathRpcHandlers<R>,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> => PathSurface.hostRuntime(handlers, runtimeOptions)
+) => PathSurface.hostRuntime(handlers, runtimeOptions)
 
 const makePathService = (client: PathClientApi): PathServiceApi => {
   const toStringPath = (effect: Effect.Effect<CanonicalPath, PathError, never>) =>

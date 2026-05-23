@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   HostProtocolPermissionDeniedError,
   HostProtocolUnsupportedError,
@@ -222,11 +221,10 @@ export const AttachmentIntakeSurface = NativeSurface.make(Surface, AttachmentInt
   bridgeClient: (client, exchange) => attachmentIntakeClientFromRpcClient(client, exchange)
 })
 
-export const makeHostAttachmentIntakeRpcRuntime = (
-  handlers: AttachmentIntakeRpcHandlers,
+export const makeHostAttachmentIntakeRpcRuntime = <R = never>(
+  handlers: AttachmentIntakeRpcHandlers<R>,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  AttachmentIntakeSurface.hostRuntime(handlers, runtimeOptions)
+) => AttachmentIntakeSurface.hostRuntime(handlers, runtimeOptions)
 
 export interface AttachmentIntakeMemoryClientOptions {
   readonly failure?: Partial<Record<"ingest" | "inspect" | "dispose", AttachmentIntakeError>>

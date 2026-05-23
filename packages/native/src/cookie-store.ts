@@ -1,17 +1,11 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
   HostProtocolUnsupportedError,
   RpcGroup
 } from "@orika/bridge"
-import {
-  type DesktopRpcCapabilityFact,
-  type DesktopRpcClient,
-  P,
-  type PermissionRegistry
-} from "@orika/core"
+import { type DesktopRpcCapabilityFact, type DesktopRpcClient, P } from "@orika/core"
 import { Context, Effect, Schema, Stream } from "effect"
 
 import {
@@ -153,11 +147,10 @@ export const CookieStoreSurface = NativeSurface.make(Surface, CookieStoreRpcGrou
   bridgeClient: (client, exchange) => cookieStoreClientFromRpcClient(client, exchange)
 })
 
-export const makeHostCookieStoreRpcRuntime = (
-  handlers: CookieStoreRpcHandlers,
+export const makeHostCookieStoreRpcRuntime = <R = never>(
+  handlers: CookieStoreRpcHandlers<R>,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> =>
-  CookieStoreSurface.hostRuntime(handlers, runtimeOptions)
+) => CookieStoreSurface.hostRuntime(handlers, runtimeOptions)
 
 export const makeCookieStoreMemoryClient = (): Effect.Effect<CookieStoreClientApi, never, never> =>
   Effect.succeed(

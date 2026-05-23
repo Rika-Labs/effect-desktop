@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
@@ -8,7 +7,7 @@ import {
   RpcGroup,
   type HostProtocolError
 } from "@orika/bridge"
-import { type PermissionRegistry, P, type DesktopRpcClient } from "@orika/core"
+import { P, type DesktopRpcClient } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
@@ -245,10 +244,10 @@ export const UpdaterSurface = NativeSurface.make("Updater", UpdaterRpcGroup, {
     )
 })
 
-export const makeHostUpdaterRpcRuntime = (
-  handlers: UpdaterRpcHandlers,
+export const makeHostUpdaterRpcRuntime = <R = never>(
+  handlers: UpdaterRpcHandlers<R>,
   runtimeOptions: BridgeHandlerRuntimeOptions = {}
-): BridgeHandlerRuntime<PermissionRegistry> => UpdaterSurface.hostRuntime(handlers, runtimeOptions)
+) => UpdaterSurface.hostRuntime(handlers, runtimeOptions)
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
 
