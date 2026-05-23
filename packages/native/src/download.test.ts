@@ -1,26 +1,51 @@
 import { expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
 import {
   type BridgeClientExchange,
   HostProtocolEventEnvelope,
   HostProtocolInvalidOutputError
 } from "@orika/bridge"
-import { Cause, Effect, Exit, type Layer, ManagedRuntime, Option, Schema, Stream } from "effect"
+import { makeResourceId } from "@orika/core"
+import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Schema, Stream } from "effect"
 
 import { makeNativeCapabilityManifest } from "./capabilities.js"
 import { DownloadEvent, DownloadSnapshot } from "./contracts/download.js"
 import {
   Download,
   DownloadCapabilityFacts,
-  DownloadClient,
+  type DownloadClientApi,
   DownloadRpcs,
   DownloadSurface,
-  makeDownloadBridgeClientLayer,
   makeDownloadMemoryClient,
-  makeDownloadServiceLayer,
   makeDownloadUnsupportedClient
 } from "./download.js"
 
 const UnsupportedMethods = ["start", "pause", "resume", "cancel", "list"] as const
+
+test("Download public surface omits shallow service and layer helpers", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        readFile(new URL("download.ts", import.meta.url), "utf8")
+      )
+      const indexSource = yield* Effect.promise(() =>
+        readFile(new URL("index.ts", import.meta.url), "utf8")
+      )
+
+      for (const removedName of [
+        "DownloadServiceApi",
+        "class DownloadClient",
+        "DownloadLive",
+        "makeDownloadClientLayer",
+        "makeDownloadServiceLayer",
+        "makeDownloadBridgeClientLayer",
+        "makeDownloadService"
+      ]) {
+        expect(source).not.toContain(removedName)
+        expect(indexSource).not.toContain(removedName)
+      }
+    })
+  ))
 
 test("Download exposes only isSupported as a callable RPC", () => {
   const callableTags = Array.from(DownloadRpcs.requests.keys()).toSorted()
@@ -39,7 +64,7 @@ test("Download isSupported reports supported result through the service", () =>
           const downloads = yield* Download
           return yield* downloads.isSupported()
         }),
-        makeDownloadServiceLayer(client)
+        downloadLayer(client)
       )
       expect(result.supported).toBe(true)
     })
@@ -54,7 +79,7 @@ test("Download unsupported client reports the host-unavailable reason", () =>
           const downloads = yield* Download
           return yield* downloads.isSupported()
         }),
-        makeDownloadServiceLayer(client)
+        downloadLayer(client)
       )
       expect(result.supported).toBe(false)
       expect(result.reason).toBe("host-download-unavailable")
@@ -225,12 +250,12 @@ test("Download bridge client rejects invalid byte progress events as InvalidOutp
       }
       const exit = yield* runScoped(
         Effect.gen(function* () {
-          const client = yield* DownloadClient
+          const client = yield* Download
           return yield* Effect.exit(
             client.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
           )
         }),
-        makeDownloadBridgeClientLayer(exchange)
+        DownloadSurface.bridgeClientLayer(exchange)
       )
 
       expectInvalidOutput(exit)
@@ -276,16 +301,81 @@ test("Download bridge client rejects inconsistent failure messages as InvalidOut
         }
         const exit = yield* runScoped(
           Effect.gen(function* () {
-            const client = yield* DownloadClient
+            const client = yield* Download
             return yield* Effect.exit(
               client.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
             )
           }),
-          makeDownloadBridgeClientLayer(exchange)
+          DownloadSurface.bridgeClientLayer(exchange)
         )
 
         expectInvalidOutput(exit)
       }
+    })
+  ))
+
+test("Download bridge client filters event streams by download handle", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const subscriptions: string[] = []
+      const exchange: BridgeClientExchange = {
+        request: () => Effect.die("Download event filter test does not issue bridge requests"),
+        subscribe: (method) => {
+          subscriptions.push(method)
+          return Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              method,
+              timestamp: 1_710_000_000_000,
+              traceId: "download-other-handle",
+              payload: {
+                type: "download-event",
+                timestamp: 1_710_000_000_000,
+                phase: "progressed",
+                download: downloadHandle("download:2"),
+                profile: profileHandle(),
+                url: "https://example.test/file.zip",
+                receivedBytes: 1
+              }
+            }),
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              method,
+              timestamp: 1_710_000_000_001,
+              traceId: "download-target-handle",
+              payload: {
+                type: "download-event",
+                timestamp: 1_710_000_000_001,
+                phase: "progressed",
+                download: downloadHandle(),
+                profile: profileHandle(),
+                url: "https://example.test/file.zip",
+                receivedBytes: 2
+              }
+            })
+          )
+        }
+      }
+      const events = yield* runScoped(
+        Effect.gen(function* () {
+          const client = yield* Download
+          return yield* client.events(downloadHandle()).pipe(Stream.take(1), Stream.runCollect)
+        }),
+        DownloadSurface.bridgeClientLayer(exchange)
+      )
+
+      expect(Array.from(events)).toEqual([
+        new DownloadEvent({
+          type: "download-event",
+          timestamp: 1_710_000_000_001,
+          phase: "progressed",
+          download: downloadHandle(),
+          profile: profileHandle(),
+          url: "https://example.test/file.zip",
+          receivedBytes: 2
+        })
+      ])
+      expect(subscriptions).toEqual(["Download.Event"])
     })
   ))
 
@@ -300,10 +390,13 @@ const runScoped = <A, E, R>(
     return result
   })
 
-const downloadHandle = () =>
+const downloadLayer = (client: DownloadClientApi): Layer.Layer<Download> =>
+  Layer.succeed(Download)(client)
+
+const downloadHandle = (id = "download:1") =>
   ({
     kind: "download",
-    id: "download-1",
+    id: makeResourceId(id),
     generation: 0,
     ownerScope: "scope-1",
     state: "open"
@@ -312,7 +405,7 @@ const downloadHandle = () =>
 const profileHandle = () =>
   ({
     kind: "session-profile",
-    id: "profile-1",
+    id: makeResourceId("session-profile:workspace-1"),
     generation: 0,
     ownerScope: "scope-1",
     state: "open"

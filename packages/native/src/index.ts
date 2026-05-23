@@ -415,24 +415,18 @@ export {
 export {
   Download,
   DownloadCapabilityFacts,
-  DownloadClient,
   DownloadHandlersLive,
-  DownloadLive,
   DownloadMethodNames,
   DownloadRpcEvents,
   DownloadRpcs,
   DownloadSurface,
-  makeDownloadBridgeClientLayer,
-  makeDownloadClientLayer,
   makeDownloadMemoryClient,
-  makeDownloadServiceLayer,
   makeDownloadUnsupportedClient,
   makeHostDownloadRpcRuntime,
   type DownloadClientApi,
   type DownloadError,
   type DownloadRpc,
-  type DownloadRpcHandlers,
-  type DownloadServiceApi
+  type DownloadRpcHandlers
 } from "./download.js"
 export {
   EgressPolicy,

@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
@@ -8,7 +7,7 @@ import {
   RpcGroup
 } from "@orika/bridge"
 import { type DesktopRpcClient, P, type PermissionRegistry } from "@orika/core"
-import { Context, Effect, Layer, Schema, Stream } from "effect"
+import { Context, Effect, Schema, Stream } from "effect"
 
 import {
   DownloadEvent,
@@ -73,38 +72,9 @@ export interface DownloadClientApi {
   readonly events: (download?: DownloadHandle) => Stream.Stream<DownloadEvent, DownloadError, never>
 }
 
-export class DownloadClient extends Context.Service<DownloadClient, DownloadClientApi>()(
-  "@orika/native/DownloadClient"
-) {}
-
-export interface DownloadServiceApi {
-  readonly isSupported: () => Effect.Effect<DownloadSupportedResult, DownloadError, never>
-  readonly events: (download?: DownloadHandle) => Stream.Stream<DownloadEvent, DownloadError, never>
-}
-
-export class Download extends Context.Service<Download, DownloadServiceApi>()(
+export class Download extends Context.Service<Download, DownloadClientApi>()(
   "@orika/native/Download"
-) {
-  static readonly layer = Layer.effect(Download)(
-    Effect.gen(function* () {
-      const client = yield* DownloadClient
-      return makeDownloadService(client)
-    })
-  )
-}
-
-export const DownloadLive = Download.layer
-
-export const makeDownloadClientLayer = (client: DownloadClientApi): Layer.Layer<DownloadClient> =>
-  Layer.succeed(DownloadClient)(client)
-
-export const makeDownloadServiceLayer = (client: DownloadClientApi): Layer.Layer<Download> =>
-  Layer.succeed(Download)(makeDownloadService(client))
-
-export const makeDownloadBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<DownloadClient> => DownloadSurface.bridgeClientLayer(exchange, options)
+) {}
 
 export type DownloadRpc = RpcGroup.Rpcs<typeof DownloadRpcGroup>
 export type DownloadRpcHandlers = RpcGroup.HandlersFrom<DownloadRpc>
@@ -118,7 +88,7 @@ export const DownloadHandlersLive = DownloadRpcGroup.toLayer({
 })
 
 export const DownloadSurface = NativeSurface.make(Surface, DownloadRpcGroup, {
-  service: DownloadClient,
+  service: Download,
   handlers: DownloadHandlersLive,
   capabilityFacts: DownloadCapabilityFacts,
   client: (client) => downloadClientFromRpcClient(client, undefined),
@@ -144,12 +114,6 @@ export const makeDownloadUnsupportedClient = (): DownloadClientApi =>
       Effect.succeed(new DownloadSupportedResult({ supported: false, reason: UnsupportedReason })),
     events: () => Stream.fail(unsupportedError(EventMethod))
   } satisfies DownloadClientApi)
-
-const makeDownloadService = (client: DownloadClientApi): DownloadServiceApi =>
-  Object.freeze({
-    isSupported: () => client.isSupported(),
-    events: (download) => client.events(download)
-  } satisfies DownloadServiceApi)
 
 const downloadClientFromRpcClient = (
   client: DesktopRpcClient<DownloadRpc>,
