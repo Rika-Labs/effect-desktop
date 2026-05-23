@@ -42,4 +42,4 @@ Validation, permission checks, budget enforcement, resource cleanup — all run 
 
 - Reference: [`Process`](../services/process.md), [`PTY`](../services/pty.md)
 - How-to: [Run a child process](../../how-to/run-a-child-process.md), [Open a PTY](../../how-to/open-a-pty.md)
-- Source: [`packages/test/src/mock-process.ts`](../../../packages/test/src/mock-process.ts), [`mock-pty.ts`](../../../packages/test/src/mock-pty.ts)
+- Source: [`packages/test/src/index.ts`](../../../packages/test/src/index.ts)

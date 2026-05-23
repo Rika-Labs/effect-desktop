@@ -14,7 +14,7 @@ A framework that is hard to test produces apps that are hard to test. ORIKA's de
 
 - **Every service is a tag.** `Window`, `Filesystem`, `Process`, `Settings`, `Secrets` — all are `Context.Service` tags. Tests provide a different layer for the same tag.
 - **Every native module ships a test layer.** `WindowTest`, `ScreenTest`, `DialogTest`, `ClipboardTest`. They satisfy the same contract as the live versions, run entirely in memory, and record what was called.
-- **The bridge is substitutable.** `makeMockBridge(options)` returns a `BridgeClientExchange` you can pin responses on. It enforces the contract — calls with wrong shapes fail at decode time, just like production.
+- **The bridge is substitutable.** `makeMockBridge(options)` returns a mock bridge with an `exchange`, typed `client(...)` helper, response queues, and call log. It enforces the contract — calls with wrong shapes fail at decode time, just like production.
 
 Together, these turn most desktop tests into ordinary unit tests. No real OS, no real window manager, no real notarization — and yet the test exercises the actual runtime path your handlers take.
 

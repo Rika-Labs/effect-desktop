@@ -13,19 +13,22 @@ In-memory implementation of the `Filesystem` service. Same contract — root con
 ## Import
 
 ```ts
-import { MemoryFilesystem, type FilesystemOptions } from "@orika/test"
+import { MemoryFilesystem, type MemoryFilesystemOptions } from "@orika/test"
 ```
 
 ## Layer
 
 ```ts
 import { Layer } from "effect"
-import { ResourceOwner } from "@orika/core"
+import { ResourceOwner, ResourceRegistryLive } from "@orika/core"
 
 const FilesystemLive = MemoryFilesystem.layer({
-  rootScope: "/",
-  policy: defaultMemoryPolicy
-}).pipe(Layer.provide(ResourceOwner.test("test")))
+  directories: ["/workspace"],
+  permissions: {
+    readRoots: ["/workspace"],
+    writeRoots: ["/workspace"]
+  }
+}).pipe(Layer.provide(ResourceRegistryLive), Layer.provide(ResourceOwner.test("test")))
 ```
 
 ## Behavior
@@ -43,4 +46,4 @@ So tests fail the same way production fails. A path traversal that returns `File
 
 - Reference: [`Filesystem`](../services/filesystem.md)
 - How-to: [Write a test with layers](../../how-to/write-a-test-with-layers.md)
-- Source: [`packages/test/src/memory-filesystem.ts`](../../../packages/test/src/memory-filesystem.ts)
+- Source: [`packages/test/src/index.ts`](../../../packages/test/src/index.ts)
