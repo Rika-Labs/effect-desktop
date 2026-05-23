@@ -13,49 +13,49 @@ Two fakes. `MockHost` replaces the Rust host. `MockBridge` replaces the bridge e
 ## MockHost
 
 ```ts
-import { MockHostLive, MockHost } from "@orika/test"
+import { MockHostLive } from "@orika/test"
 
 const layer = MockHostLive({
-  version: { protocol: 1, app: "0.1.0" },
-  latencyMs: 10
+  fixtures: {
+    "host.ping": () => undefined
+  },
+  now: () => 1710000000000
 })
 ```
 
 Records every call. Maintains an in-memory window registry. Preserves trace ids. Implements `host.version`, `host.ping`, `Window.create`, `Window.destroy`.
 
-After running, inspect `MockHost.calls` to assert what the handler did.
+After running, inspect `host.calls()` and `host.windows()` from the `MockHost` service to assert what the handler did.
 
 ## MockBridge
 
 ```ts
+import { Effect } from "effect"
 import { makeMockBridge } from "@orika/test"
 
-const bridge = makeMockBridge({
-  pin: [
-    { method: "Notes.list", success: [] },
-    { method: "Notes.save", failure: new Error("write failed") },
-    {
-      method: "Notes.import",
-      stream: [
-        /* items */
-      ]
-    }
-  ]
-})
+const bridge = makeMockBridge({ now: () => 1710000000000 })
+
+await Effect.runPromise(bridge.succeed("Notes.list", []))
+await Effect.runPromise(bridge.fail("Notes.save", { _tag: "WriteFailed" }))
+await Effect.runPromise(
+  bridge.streamChunks("Notes.import", [
+    /* items */
+  ])
+)
 ```
 
-Returns a `BridgeClientExchange` you can pin per-method responses on. Enforces the contract — wrong-shape pins fail at decode time.
+Returns a mock bridge with an `exchange`, a typed `client(...)` helper, queued success/failure/stream responses, and a call log. Enforces the contract — wrong-shape queued responses fail at decode time.
 
-`bridge.callLog` contains the recorded calls with `{ method, payload, traceId, timestamp }`.
+`bridge.calls()` contains the recorded calls with `{ method, payload, traceId, timestamp }`.
 
 ## Inject into a renderer test
 
 ```ts
-const DesktopApp = ReactDesktop.from(Manifest, { transport: bridge })
+const DesktopApp = ReactDesktop.from(Manifest, { transport: bridge.exchange })
 ```
 
 ## Related
 
 - How-to: [Inject a mock host and bridge](../../how-to/inject-mock-host-and-bridge.md), [Write a test with layers](../../how-to/write-a-test-with-layers.md)
 - Reference: [`HeadlessRuntime`](headless-runtime.md)
-- Source: [`packages/test/src/mock-host.ts`](../../../packages/test/src/mock-host.ts), [`mock-bridge.ts`](../../../packages/test/src/mock-bridge.ts)
+- Source: [`packages/test/src/index.ts`](../../../packages/test/src/index.ts)

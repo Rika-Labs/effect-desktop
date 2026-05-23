@@ -15,54 +15,54 @@ effect_version: 4
 `MockHostLive(options)` is a fake Rust host. It records every call, maintains an in-memory window registry, preserves trace IDs, and implements `host.version`, `host.ping`, `Window.create`, `Window.destroy`.
 
 ```ts
-import { Effect, Layer } from "effect"
-import { MockHostLive } from "@orika/test"
+import { Effect, ManagedRuntime } from "effect"
+import { WINDOW_CREATE_METHOD, WINDOW_DESTROY_METHOD, makeHostWindowClient } from "@orika/bridge"
+import { MockHost, MockHostLive } from "@orika/test"
 
-const program = Effect.gen(function* () {
-  // ... your handler-side effect
-})
+const runtime = ManagedRuntime.make(MockHostLive())
 
-await Effect.runPromise(
-  program.pipe(
-    Effect.provide(
-      MockHostLive({
-        version: { protocol: 1, app: "0.1.0" },
-        latencyMs: 10 // simulate host latency
-      })
-    )
-  )
+await runtime.runPromise(
+  Effect.gen(function* () {
+    const host = yield* MockHost
+    const window = makeHostWindowClient(host)
+    const created = yield* window.create({ title: "Docs" })
+    yield* window.destroy(created.windowId)
+
+    expect(host.calls().map((call) => call.method)).toEqual([
+      WINDOW_CREATE_METHOD,
+      WINDOW_DESTROY_METHOD
+    ])
+  })
 )
 ```
 
-After running, you can read the recorded calls (`MockHost.calls`) to assert what the handler did.
+Override host behavior with `fixtures` when you need a specific response or typed host failure. After running, read `host.calls()` and `host.windows()` to assert what the handler did.
 
 ## MockBridge
 
-`makeMockBridge(options)` returns a `BridgeClientExchange` you can pin responses on. It enforces the contract — wrong-shape pins fail at decode time.
+`makeMockBridge(options)` returns a mock bridge with an `exchange`, a typed `client(...)` helper, response queues, and a call log. It enforces the contract — wrong-shape queued responses fail at decode time.
 
 ```ts
+import { Effect } from "effect"
 import { makeMockBridge } from "@orika/test"
 
-const bridge = makeMockBridge({
-  pin: [
-    { method: "Notes.list", success: [{ id: "1", title: "First" }] },
-    { method: "Notes.save", failure: new Error("write failed") },
-    {
-      method: "Notes.import",
-      stream: [
-        { kind: "started", total: 2, imported: 0, skipped: 0 },
-        { kind: "imported", total: 2, imported: 1, skipped: 0, file: "a.md" },
-        { kind: "completed", total: 2, imported: 2, skipped: 0 }
-      ]
-    }
-  ]
-})
+const bridge = makeMockBridge({ now: () => 1710000000000 })
+
+await Effect.runPromise(bridge.succeed("Notes.list", [{ id: "1", title: "First" }]))
+await Effect.runPromise(bridge.fail("Notes.save", { _tag: "WriteFailed" }))
+await Effect.runPromise(
+  bridge.streamChunks("Notes.import", [
+    { kind: "started", total: 2, imported: 0, skipped: 0 },
+    { kind: "imported", total: 2, imported: 1, skipped: 0, file: "a.md" },
+    { kind: "completed", total: 2, imported: 2, skipped: 0 }
+  ])
+)
 
 // Inject into a renderer test
-const DesktopApp = ReactDesktop.from(Manifest, { transport: bridge })
+const DesktopApp = ReactDesktop.from(Manifest, { transport: bridge.exchange })
 ```
 
-After running, `bridge.callLog` contains the recorded calls with `{ method, payload, traceId, timestamp }`.
+After running, `bridge.calls()` contains the recorded calls with `{ method, payload, traceId, timestamp }`.
 
 ## When to use one vs. the other
 
@@ -70,7 +70,7 @@ After running, `bridge.callLog` contains the recorded calls with `{ method, payl
 | ------------------------------------------ | ------------------------------------------------ |
 | Test a handler against a fake host         | `MockHostLive`                                   |
 | Test a renderer against fake RPC responses | `makeMockBridge`                                 |
-| Test the full handler + bridge round-trip  | `HeadlessRuntime.layer` (bundles both)           |
+| Test the full handler + bridge round-trip  | `HeadlessRuntime.run` or `HeadlessRuntime.layer` |
 | Test the bridge framing itself             | Construct envelopes directly via `@orika/bridge` |
 
 ## Recording assertions
@@ -85,7 +85,7 @@ Both fakes record:
 Assert by reading the log:
 
 ```ts
-expect(bridge.callLog).toContainEqual(
+expect(bridge.calls()).toContainEqual(
   expect.objectContaining({ method: "Notes.save", payload: { id: "n1", body: "hello" } })
 )
 ```

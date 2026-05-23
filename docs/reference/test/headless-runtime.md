@@ -13,6 +13,7 @@ Composes the most common test layers into one runnable layer. Used in the majori
 ## Import
 
 ```ts
+import { Effect, Layer } from "effect"
 import {
   HeadlessRuntime,
   type LeakDetectionOptions,
@@ -26,14 +27,14 @@ import {
 
 Returns a `Layer` providing:
 
-- Real `PermissionRegistry`, `ResourceRegistry`, `AuditEvents`.
+- Real `PermissionRegistry`, `ResourceRegistry`, `Telemetry`, `ResourceOwner`.
 - Mock `MockHost`, `MockBridge`.
-- `MemoryFilesystem`, `MockProcess`, `MockPTY`.
+- `Filesystem`, `Process`, and `PTY` services backed by memory fixtures.
 
 Compose with your handler layer:
 
 ```ts
-const TestLive = Layer.merge(HeadlessRuntime.layer({ testName: "Notes.save" }), NotesHandlersLive)
+const TestLive = NotesHandlersLive.pipe(Layer.provideMerge(HeadlessRuntime.layer()))
 ```
 
 ## `HeadlessRuntime.run(effect, options)`
@@ -41,15 +42,38 @@ const TestLive = Layer.merge(HeadlessRuntime.layer({ testName: "Notes.save" }), 
 Runs an effect against the layer plus resource leak detection:
 
 ```ts
-await HeadlessRuntime.run(
-  Effect.gen(function* () {
-    /* test body */
-  }).pipe(Effect.provide(NotesHandlersLive)),
-  { testName: "save persists" }
+await Effect.runPromise(
+  HeadlessRuntime.run(
+    Effect.gen(function* () {
+      /* test body */
+    }).pipe(Effect.provide(NotesHandlersLive)),
+    { leakDetection: { testName: "save persists" } }
+  )
 )
 ```
 
+`HeadlessRuntime.run` returns an `Effect`; run it with `Effect.runPromise` or the
+test runner helper you normally use for Effect tests.
+
+## Runtime options
+
+```ts
+{
+  bridge?: { now?: () => number }
+  filesystem?: MemoryFilesystemOptions
+  host?: MockHostOptions
+  leakDetection?: false | LeakDetectionOptions
+  permissions?: PermissionRegistryOptions
+  process?: MockProcessOptions
+  pty?: MockPtyOptions
+  registry?: Parameters<typeof makeResourceRegistry>[0]
+  telemetry?: TelemetryOptions
+}
+```
+
 ## Leak detection options
+
+Pass these under `leakDetection` for `HeadlessRuntime.run`.
 
 ```ts
 {
@@ -61,7 +85,8 @@ await HeadlessRuntime.run(
 
 ## `runHeadless(body, options)`
 
-Lower-level runner. Same shape as `HeadlessRuntime.run`.
+Lower-level host-protocol runner. The body receives a `HeadlessRuntime` value
+with `handshake`, `window`, `request`, `registry`, and recorded `calls()`.
 
 ## `assertNoOpenResourcesIn(registry, options)`
 

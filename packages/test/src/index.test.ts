@@ -1633,7 +1633,7 @@ test("MockPTY rejects writes and resizes after exit", () =>
     })
   ))
 
-test("HeadlessRuntime layer composes mocks with real registry telemetry and permissions", () => {
+test("HeadlessRuntime run composes mocks with real registry telemetry and permissions", () => {
   const ProjectRpcs = bridgeContractFromRpcGroup(
     "Test.HeadlessRuntime.Project",
     RpcGroup.make(
@@ -1644,97 +1644,110 @@ test("HeadlessRuntime layer composes mocks with real registry telemetry and perm
       })
     )
   )
-  const runtime = ManagedRuntime.make(
-    HeadlessRuntime.layer({
-      filesystem: {
-        directories: ["/workspace"],
-        permissions: {
-          readRoots: ["/workspace"],
-          writeRoots: ["/workspace"]
-        }
-      },
-      process: {
-        processes: [{ command: "echo", args: ["ok"], stdout: [bytes("ok\n")] }],
-        permissions: { spawn: ["echo"] }
-      },
-      pty: {
-        ptys: [{ command: "bash", output: [bytes("prompt")] }],
-        permissions: { spawn: ["bash"] },
-        budgets: { outputCoalesceBytes: 1024, outputCoalesceMs: 1 }
-      },
-      telemetry: { now: () => 1710000000800 },
-      permissions: { traceId: () => "trace-permission" }
-    })
-  )
-  return runtime.runPromise(
-    Effect.gen(function* () {
-      const filesystem = yield* Filesystem
-      const process = yield* Process
-      const pty = yield* PTY
-      const telemetry = yield* Telemetry
-      const permissions = yield* PermissionRegistry
-      const host = yield* MockHost
-      const bridge = yield* MockBridge
-      const owner = yield* ResourceOwner
+  return Effect.runPromise(
+    HeadlessRuntime.run(
+      Effect.gen(function* () {
+        const filesystem = yield* Filesystem
+        const process = yield* Process
+        const pty = yield* PTY
+        const telemetry = yield* Telemetry
+        const permissions = yield* PermissionRegistry
+        const host = yield* MockHost
+        const window = makeHostWindowClient(host, {
+          nextRequestId: nextSequence("request"),
+          nextTraceId: nextSequence("trace"),
+          now: () => 1710000000800
+        })
+        const bridge = yield* MockBridge
+        const owner = yield* ResourceOwner
 
-      yield* bridge.succeed("Test.HeadlessRuntime.Project.open", { id: "project-1" })
-      const client = bridge.client({ project: ProjectRpcs })
-      const opened = yield* client.project.open({ path: "/workspace/project" })
+        const createdWindow = yield* window.create({ title: "Headless QA" })
+        yield* window.destroy(createdWindow.windowId)
 
-      yield* filesystem.write("/workspace/out.txt", bytes("file"))
-      const file = yield* filesystem.read("/workspace/out.txt")
+        yield* bridge.succeed("Test.HeadlessRuntime.Project.open", { id: "project-1" })
+        const client = bridge.client({ project: ProjectRpcs })
+        const opened = yield* client.project.open({ path: "/workspace/project" })
 
-      const child = yield* process.spawn("echo", ["ok"])
-      const stdout = yield* Stream.runCollect(child.stdout)
-      const processExit = yield* child.exit
+        yield* filesystem.write("/workspace/out.txt", bytes("file"))
+        const file = yield* filesystem.read("/workspace/out.txt")
 
-      const terminal = yield* pty.open({
-        argv: ["bash"],
-        rows: 24,
-        cols: 80
-      })
-      yield* terminal.write(bytes("pwd\n"))
-      const terminalOutput = yield* Stream.runCollect(terminal.output)
-      const ptyExit = yield* terminal.onExit
+        const child = yield* process.spawn("echo", ["ok"])
+        const stdout = yield* Stream.runCollect(child.stdout)
+        const processExit = yield* child.exit
 
-      yield* telemetry.log({
-        level: "info",
-        subsystem: "test",
-        operation: "HeadlessRuntime",
-        traceId: "trace-headless",
-        message: "ran"
-      })
-      const logs = yield* telemetry.listLogs()
-      const decisions = yield* permissions.listDecisions()
+        const terminal = yield* pty.open({
+          argv: ["bash"],
+          rows: 24,
+          cols: 80
+        })
+        yield* terminal.write(bytes("pwd\n"))
+        const terminalOutput = yield* Stream.runCollect(terminal.output)
+        const ptyExit = yield* terminal.onExit
 
-      expect({
-        opened,
-        file: text(file),
-        stdout: Array.from(stdout).map(text),
-        processExit,
-        terminalOutput: Array.from(terminalOutput).map(text),
-        ptyExit,
-        hostCalls: host.calls().map((call) => call.method),
-        bridgeCalls: bridge.calls().map((call) => call.method),
-        logs: logs.map((log) => log.message),
-        decisions,
-        ownerKind: owner.kind,
-        ownerScope: owner.scopeId
-      }).toEqual({
-        opened: { id: "project-1" },
-        file: "file",
-        stdout: ["ok\n"],
-        processExit: { code: 0 },
-        terminalOutput: ["prompt"],
-        ptyExit: { code: 0 },
-        hostCalls: [],
-        bridgeCalls: ["Test.HeadlessRuntime.Project.open"],
-        logs: ["ran"],
-        decisions: [],
-        ownerKind: "test",
-        ownerScope: "headless"
-      })
-    })
+        yield* telemetry.log({
+          level: "info",
+          subsystem: "test",
+          operation: "HeadlessRuntime",
+          traceId: "trace-headless",
+          message: "ran"
+        })
+        const logs = yield* telemetry.listLogs()
+        const decisions = yield* permissions.listDecisions()
+
+        expect({
+          opened,
+          file: text(file),
+          stdout: Array.from(stdout).map(text),
+          processExit,
+          terminalOutput: Array.from(terminalOutput).map(text),
+          ptyExit,
+          createdWindow,
+          hostCalls: host.calls().map((call) => call.method),
+          hostWindowCount: host.windows().size,
+          bridgeCalls: bridge.calls().map((call) => call.method),
+          logs: logs.map((log) => log.message),
+          decisions,
+          ownerKind: owner.kind,
+          ownerScope: owner.scopeId
+        }).toEqual({
+          opened: { id: "project-1" },
+          file: "file",
+          stdout: ["ok\n"],
+          processExit: { code: 0 },
+          terminalOutput: ["prompt"],
+          ptyExit: { code: 0 },
+          createdWindow: { windowId: "headless-window-1" },
+          hostCalls: [WINDOW_CREATE_METHOD, WINDOW_DESTROY_METHOD],
+          hostWindowCount: 0,
+          bridgeCalls: ["Test.HeadlessRuntime.Project.open"],
+          logs: ["ran"],
+          decisions: [],
+          ownerKind: "test",
+          ownerScope: "headless"
+        })
+      }),
+      {
+        leakDetection: { testName: "headless desktop QA demo" },
+        filesystem: {
+          directories: ["/workspace"],
+          permissions: {
+            readRoots: ["/workspace"],
+            writeRoots: ["/workspace"]
+          }
+        },
+        process: {
+          processes: [{ command: "echo", args: ["ok"], stdout: [bytes("ok\n")] }],
+          permissions: { spawn: ["echo"] }
+        },
+        pty: {
+          ptys: [{ command: "bash", output: [bytes("prompt")] }],
+          permissions: { spawn: ["bash"] },
+          budgets: { outputCoalesceBytes: 1024, outputCoalesceMs: 1 }
+        },
+        telemetry: { now: () => 1710000000800 },
+        permissions: { traceId: () => "trace-permission" }
+      }
+    )
   )
 })
 

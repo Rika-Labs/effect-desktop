@@ -26,12 +26,15 @@ Together, these turn most desktop tests into ordinary unit tests. No real OS, no
 import { Effect } from "effect"
 import { HeadlessRuntime } from "@orika/test"
 
-await HeadlessRuntime.run(
-  Effect.gen(function* () {
-    // your handler-side effect — gets a real Permission registry, mock bridge,
-    // memory filesystem, mock process, mock PTY, mock host
-  }),
-  { testName: "creates a window" }
+await Effect.runPromise(
+  HeadlessRuntime.run(
+    Effect.gen(function* () {
+      // your handler-side effect gets a real permission registry, resource
+      // registry, telemetry service, mock bridge, memory filesystem,
+      // mock process, mock PTY, and mock host.
+    }),
+    { leakDetection: { testName: "creates a window" } }
+  )
 )
 ```
 
@@ -41,9 +44,9 @@ await HeadlessRuntime.run(
 - `MockBridge` — fake bridge exchange with contract-aware fakes.
 - `MemoryFilesystem` — in-memory tree with full permission enforcement.
 - `MockProcess`, `MockPTY` — deterministic spawning and output buffering.
-- A real `PermissionRegistry`, `ResourceRegistry`, and `AuditEvents`.
+- A real `PermissionRegistry`, `ResourceRegistry`, `Telemetry`, and `ResourceOwner`.
 
-The point: **production code paths run unchanged**. The handler doesn't know it's in a test. The same permission checks fire. The same audit events emit (you can assert against them). The only thing different is the leaves of the dependency graph.
+The point: **production code paths run unchanged**. The handler doesn't know it's in a test. The same permission checks fire, the same resource registry tracks handles, and telemetry logs are available when your code writes them. The only thing different is the leaves of the dependency graph.
 
 ## Resource leak detection
 
@@ -72,12 +75,14 @@ import { MyAppHandlersLive } from "../src/handlers.js"
 import { SaveNote } from "../src/contracts.js"
 
 test("Notes.save persists and returns a savedAt timestamp", async () => {
-  await HeadlessRuntime.run(
-    Effect.gen(function* () {
-      const result = yield* SaveNote({ id: "n1", body: "hello" })
-      expect(result.savedAt).toBeGreaterThan(0)
-    }).pipe(Effect.provide(MyAppHandlersLive)),
-    { testName: "save persists" }
+  await Effect.runPromise(
+    HeadlessRuntime.run(
+      Effect.gen(function* () {
+        const result = yield* SaveNote({ id: "n1", body: "hello" })
+        expect(result.savedAt).toBeGreaterThan(0)
+      }).pipe(Effect.provide(MyAppHandlersLive)),
+      { leakDetection: { testName: "save persists" } }
+    )
   )
 })
 ```
@@ -88,15 +93,13 @@ A renderer test (with React Testing Library):
 import { render, screen, fireEvent } from "@testing-library/react"
 import { ReactDesktop } from "@orika/react"
 import { makeMockBridge } from "@orika/test"
-import { Manifest, AppRpcs } from "../src/manifest.js"
-
-const bridge = makeMockBridge({
-  pin: { method: "Greeting.say", success: { message: "Hi, Test!" } }
-})
-
-const DesktopApp = ReactDesktop.from(Manifest, { transport: bridge })
+import { Manifest } from "../src/manifest.js"
 
 test("renders the greeting", async () => {
+  const bridge = makeMockBridge()
+  await Effect.runPromise(bridge.succeed("Greeting.say", { message: "Hi, Test!" }))
+  const DesktopApp = ReactDesktop.from(Manifest, { transport: bridge.exchange })
+
   render(
     <DesktopApp.createRoot>
       <Greeter />
