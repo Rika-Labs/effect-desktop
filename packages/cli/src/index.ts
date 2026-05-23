@@ -1271,7 +1271,7 @@ export const runDesktopBuild = (
     yield* makeDirectory(plan.layoutPath)
     const cache = yield* readBuildCache(plan)
 
-    const rendererNode = yield* makeRendererBuildNode(plan)
+    const rendererNode = yield* makeRendererBuildNode(plan, options.cwd)
     const renderer = yield* runBuildNode(options, cache, rendererNode, {
       name: "renderer",
       command: "bun",
@@ -1532,12 +1532,15 @@ const readOptionalString = (
 }
 
 const makeRendererBuildNode = (
-  plan: BuildPlan
+  plan: BuildPlan,
+  repoRoot: string
 ): Effect.Effect<BuildNodePlan, BuildFileError, never> =>
   hashBuildInputs([
     ["renderer.framework", plan.rendererFramework],
+    ["renderer.styling", plan.rendererStyling],
     ["renderer.entry", plan.rendererEntry],
-    ["renderer.entry.sha256", yieldableFileDigest(plan.rendererEntryPath)]
+    ["renderer.entry.sha256", yieldableFileDigest(plan.rendererEntryPath)],
+    ["workspace.packages.sha256", hashExistingTrees([join(repoRoot, "packages")])]
   ]).pipe(
     Effect.map((cacheKey) => ({
       name: "renderer" as const,

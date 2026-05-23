@@ -8264,7 +8264,7 @@ test("desktop build reuses provider-owned nodes when only runtime source changes
     })
   ))
 
-test("desktop build invalidates runtime cache when workspace runtime dependencies change", () =>
+test("desktop build invalidates runtime and renderer cache when workspace dependencies change", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const directory = yield* Effect.promise(() =>
@@ -8308,15 +8308,80 @@ test("desktop build invalidates runtime cache when workspace runtime dependencie
           yield* Effect.promise(() => readFile(join(layout, "build-report.json"), "utf8"))
         )
         expect(calls).toEqual([
+          "renderer:bun run build",
           `runtime:bun build ${join(appRoot, "runtime.ts")} --target=bun --outdir ${join(layout, "runtime")}`
         ])
         expect(report.steps.map((step) => [step.name, step.status, step.provider])).toEqual([
-          ["renderer", "reused", "renderer:react"],
+          ["renderer", "rebuilt", "renderer:react"],
           ["runtime", "rebuilt", "runtime:bun"],
           ["native-host", "reused", "webview:system"],
           ["bridge", "reused", undefined],
           ["manifest", "rebuilt", undefined]
         ])
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop build invalidates renderer cache when workspace renderer dependencies change", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-build-renderer-deps-cache-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        const appRoot = join(directory, "apps", "inspector")
+        const layout = join(appRoot, "build", "effect-desktop", "linux-x64")
+        const rendererDependency = join(directory, "packages", "react", "src", "desktop.tsx")
+        yield* Effect.promise(() => mkdir(dirname(rendererDependency), { recursive: true }))
+        yield* Effect.promise(() =>
+          writeFile(rendererDependency, "export const rendererVersion = 'old'\n")
+        )
+        const calls: string[] = []
+        const runner: CommandRunner = (invocation) =>
+          Effect.gen(function* () {
+            calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
+            yield* writeBuildFixtureOutput(invocation, {
+              rendererHtml: "<h1>renderer</h1>",
+              runtimeJs: "console.log('runtime')\n"
+            })
+          })
+
+        const runBuild = () =>
+          runCli({
+            argv: ["build", "--config", "apps/inspector/desktop.config.ts", "--json"],
+            cwd: directory,
+            hostTarget: "linux-x64",
+            commandRunner: runner,
+            writeStdout: () => {},
+            writeStderr: () => {}
+          })
+
+        expect(yield* runBuild()).toBe(0)
+        calls.length = 0
+        yield* Effect.promise(() =>
+          writeFile(rendererDependency, "export const rendererVersion = 'new'\n")
+        )
+
+        expect(yield* runBuild()).toBe(0)
+
+        const report = decodeBuildStepsReportJson(
+          yield* Effect.promise(() => readFile(join(layout, "build-report.json"), "utf8"))
+        )
+        expect(calls).toEqual([
+          "renderer:bun run build",
+          `runtime:bun build ${join(appRoot, "runtime.ts")} --target=bun --outdir ${join(layout, "runtime")}`
+        ])
+        expect(report.steps.map((step) => [step.name, step.status, step.provider])).toEqual([
+          ["renderer", "rebuilt", "renderer:react"],
+          ["runtime", "rebuilt", "runtime:bun"],
+          ["native-host", "reused", "webview:system"],
+          ["bridge", "reused", undefined],
+          ["manifest", "rebuilt", undefined]
+        ])
+        expect(report.steps.find((step) => step.name === "renderer")?.reason).toContain("cache key")
       } finally {
         yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
       }
