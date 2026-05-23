@@ -1,13 +1,12 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
   RpcGroup
 } from "@orika/bridge"
 import { type DesktopRpcClient, type PermissionRegistry, P } from "@orika/core"
-import { Context, Effect, Layer, Schema, Stream } from "effect"
+import { Context, Effect, Schema, Stream } from "effect"
 
 import {
   AssociationEvent,
@@ -103,42 +102,9 @@ export interface AssociationClientApi {
   readonly events: () => Stream.Stream<AssociationEvent, AssociationError, never>
 }
 
-export class AssociationClient extends Context.Service<AssociationClient, AssociationClientApi>()(
-  "@orika/native/AssociationClient"
-) {}
-
-export type AssociationServiceApi = AssociationClientApi
-
-export class Association extends Context.Service<Association, AssociationServiceApi>()(
+export class Association extends Context.Service<Association, AssociationClientApi>()(
   "@orika/native/Association"
-) {
-  static readonly layer = Layer.effect(Association)(
-    Effect.gen(function* () {
-      const client = yield* AssociationClient
-      return Association.of({
-        isDefaultProtocolClient: (input) => client.isDefaultProtocolClient(input),
-        setDefaultProtocolClient: (input) => client.setDefaultProtocolClient(input),
-        getFileAssociations: (input) => client.getFileAssociations(input),
-        events: () => client.events()
-      } satisfies AssociationServiceApi)
-    })
-  )
-}
-
-export const AssociationLive = Association.layer
-
-export const makeAssociationClientLayer = (
-  client: AssociationClientApi
-): Layer.Layer<AssociationClient> => Layer.succeed(AssociationClient)(client)
-
-export const makeAssociationServiceLayer = (
-  client: AssociationClientApi
-): Layer.Layer<Association> => Layer.provide(AssociationLive, makeAssociationClientLayer(client))
-
-export const makeAssociationBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<AssociationClient> => AssociationSurface.bridgeClientLayer(exchange, options)
+) {}
 
 export type AssociationRpc = RpcGroup.Rpcs<typeof AssociationRpcGroup>
 export type AssociationRpcHandlers = RpcGroup.HandlersFrom<AssociationRpc>
@@ -162,7 +128,7 @@ export const AssociationHandlersLive = AssociationRpcGroup.toLayer({
 })
 
 export const AssociationSurface = NativeSurface.make("Association", AssociationRpcGroup, {
-  service: AssociationClient,
+  service: Association,
   capabilities: AssociationMethodNames,
   handlers: AssociationHandlersLive,
   client: (client) => associationClientFromRpcClient(client),

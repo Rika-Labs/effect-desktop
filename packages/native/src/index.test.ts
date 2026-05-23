@@ -112,10 +112,10 @@ import {
   AppMetadataRpcs,
   AppMetadataSurface,
   Association,
-  AssociationLive,
   AssociationMethodNames,
   AssociationRpcs,
   AssociationRpcEvents,
+  AssociationSurface,
   Autostart,
   AutostartLive,
   AutostartMethodNames,
@@ -281,7 +281,6 @@ import {
   WindowClient,
   WindowLive,
   WindowMethodNames,
-  makeAssociationServiceLayer,
   makeAppServiceLayer,
   makeAutostartServiceLayer,
   makeClipboardServiceLayer,
@@ -338,7 +337,7 @@ import {
 } from "./index.js"
 import { makeHostAppMetadataRpcRuntime } from "./app-metadata.js"
 import { makeAppBridgeClientLayer, makeHostAppRpcRuntime } from "./app.js"
-import { makeAssociationBridgeClientLayer, makeHostAssociationRpcRuntime } from "./association.js"
+import { makeHostAssociationRpcRuntime } from "./association.js"
 import { makeAutostartBridgeClientLayer, makeHostAutostartRpcRuntime } from "./autostart.js"
 import { makeClipboardBridgeClientLayer, makeHostClipboardRpcRuntime } from "./clipboard.js"
 import { makeContextMenuBridgeClientLayer } from "./context-menu.js"
@@ -5874,7 +5873,7 @@ test("Association contracts reject inconsistent event phase payloads", () => {
   }
 })
 
-test("Association service delegates through a substitutable AssociationClient port", () =>
+test("Association delegates through a substitutable service value", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
@@ -5891,7 +5890,7 @@ test("Association service delegates through a substitutable AssociationClient po
 
             return { events, fileAssociations, protocolStatus }
           }),
-          makeAssociationServiceLayer(associationClient(calls))
+          associationLayer(associationClient(calls))
         )
       )
 
@@ -5944,7 +5943,7 @@ test("Association bridge client sends typed host envelopes and decodes events an
 
             return { fileAssociations, protocolStatus }
           }),
-          Layer.provide(AssociationLive, makeAssociationBridgeClientLayer(exchange))
+          AssociationSurface.bridgeClientLayer(exchange)
         )
       )
 
@@ -5993,7 +5992,7 @@ test("Association bridge client subscribes to native association events", () =>
             const association = yield* Association
             return yield* association.events().pipe(Stream.take(1), Stream.runCollect)
           }),
-          Layer.provide(AssociationLive, makeAssociationBridgeClientLayer(exchange))
+          AssociationSurface.bridgeClientLayer(exchange)
         )
       )
 
@@ -6025,7 +6024,7 @@ test("Association bridge client rejects inconsistent event phase payloads as Inv
             const association = yield* Association
             return yield* Effect.exit(association.events().pipe(Stream.take(1), Stream.runHead))
           }),
-          Layer.provide(AssociationLive, makeAssociationBridgeClientLayer(exchange))
+          AssociationSurface.bridgeClientLayer(exchange)
         )
       )
 
@@ -6039,11 +6038,8 @@ test("Association bridge client rejects invalid schemes and file extensions befo
       const requests: HostProtocolRequestEnvelope[] = []
       const client = yield* runScoped(
         Association.asEffect(),
-        Layer.provide(
-          AssociationLive,
-          makeAssociationBridgeClientLayer(
-            associationExchange(requests, () => ({ kind: "success", payload: undefined }))
-          )
+        AssociationSurface.bridgeClientLayer(
+          associationExchange(requests, () => ({ kind: "success", payload: undefined }))
         )
       )
 
@@ -6104,7 +6100,7 @@ test("native host RPC runtime denies protected Association calls before handlers
     })
   ))
 
-test("Association service propagates unsupported platform and host failure", () =>
+test("Association propagates unsupported platform and host failure", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const unsupported = new HostProtocolUnsupportedError({
@@ -6129,14 +6125,14 @@ test("Association service propagates unsupported platform and host failure", () 
           const association = yield* Association
           return yield* Effect.exit(association.isDefaultProtocolClient({ scheme: "example" }))
         }),
-        makeAssociationServiceLayer(unsupportedClient)
+        associationLayer(unsupportedClient)
       )
       const hostFailureExit = yield* runScoped(
         Effect.gen(function* () {
           const association = yield* Association
           return yield* Effect.exit(association.isDefaultProtocolClient({ scheme: "example" }))
         }),
-        makeAssociationServiceLayer(hostFailureClient)
+        associationLayer(hostFailureClient)
       )
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
@@ -14229,6 +14225,9 @@ const associationClient = (calls: string[]): AssociationClientApi => ({
       return new AssociationEvent({ phase: "failed", reason: "host-adapter-unimplemented" })
     })
 })
+
+const associationLayer = (client: AssociationClientApi): Layer.Layer<Association> =>
+  Layer.succeed(Association)(client)
 
 const autostartClient = (calls: string[]): AutostartClientApi => ({
   isEnabled: () =>

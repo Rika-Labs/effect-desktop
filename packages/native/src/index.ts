@@ -49,22 +49,16 @@ export {
 } from "./app-metadata.js"
 export {
   Association,
-  AssociationClient,
   AssociationHandlersLive,
-  AssociationLive,
   AssociationMethodNames,
   AssociationRpcEvents,
   AssociationRpcs,
   AssociationSurface,
-  makeAssociationBridgeClientLayer,
-  makeAssociationClientLayer,
-  makeAssociationServiceLayer,
   makeHostAssociationRpcRuntime,
   type AssociationClientApi,
   type AssociationError,
   type AssociationRpc,
-  type AssociationRpcHandlers,
-  type AssociationServiceApi
+  type AssociationRpcHandlers
 } from "./association.js"
 export {
   Autostart,
