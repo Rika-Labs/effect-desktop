@@ -16,6 +16,7 @@ import { type PermissionRegistry, P, type DesktopRpcClient } from "@orika/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 import {
   SafeStorageAvailabilityResult,
   SafeStorageKeyInput,
@@ -132,7 +133,7 @@ export const SafeStorageLive = SafeStorage.layer
 
 export type SafeStorageRpc = RpcGroup.Rpcs<typeof SafeStorageRpcGroup>
 
-export type SafeStorageRpcHandlers = RpcGroup.HandlersFrom<SafeStorageRpc>
+export type SafeStorageRpcHandlers<R = never> = NativeRpcHandlers<typeof SafeStorageRpcGroup, R>
 
 export const SafeStorageHandlersLive = SafeStorageRpcGroup.toLayer({
   "SafeStorage.set": (input) =>

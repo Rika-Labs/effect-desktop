@@ -40,6 +40,7 @@ import {
 import { subscribeNativeEvent } from "./event-stream.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 
 export * from "./contracts/resident-lifecycle.js"
 
@@ -90,7 +91,10 @@ const ResidentLifecycleRpcGroup = RpcGroup.make(
 )
 
 export type ResidentLifecycleRpc = RpcGroup.Rpcs<typeof ResidentLifecycleRpcGroup>
-export type ResidentLifecycleRpcHandlers = RpcGroup.HandlersFrom<ResidentLifecycleRpc>
+export type ResidentLifecycleRpcHandlers<R = never> = NativeRpcHandlers<
+  typeof ResidentLifecycleRpcGroup,
+  R
+>
 export const ResidentLifecycleRpcs: RpcGroup.RpcGroup<ResidentLifecycleRpc> =
   ResidentLifecycleRpcGroup
 

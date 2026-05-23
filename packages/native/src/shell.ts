@@ -14,6 +14,7 @@ import { type PermissionRegistry, P, type DesktopRpcClient } from "@orika/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 import {
   ShellOpenExternalInput,
   type ShellOpenExternalOptions,
@@ -130,7 +131,7 @@ export const ShellLive = Shell.layer
 
 export type ShellRpc = RpcGroup.Rpcs<typeof ShellRpcGroup>
 
-export type ShellRpcHandlers = RpcGroup.HandlersFrom<ShellRpc>
+export type ShellRpcHandlers<R = never> = NativeRpcHandlers<typeof ShellRpcGroup, R>
 
 export const ShellHandlersLive = ShellRpcGroup.toLayer({
   "Shell.openExternal": (input) =>

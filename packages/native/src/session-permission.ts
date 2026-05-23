@@ -17,6 +17,7 @@ import type { SessionProfileHandle } from "./contracts/session-profile.js"
 import { subscribeNativeEvent } from "./event-stream.js"
 import { runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 
 export * from "./contracts/session-permission.js"
 
@@ -108,7 +109,10 @@ export class SessionPermission extends Context.Service<
 export const SessionPermissionLive = SessionPermission.layer
 
 export type SessionPermissionRpc = RpcGroup.Rpcs<typeof SessionPermissionRpcGroup>
-export type SessionPermissionRpcHandlers = RpcGroup.HandlersFrom<SessionPermissionRpc>
+export type SessionPermissionRpcHandlers<R = never> = NativeRpcHandlers<
+  typeof SessionPermissionRpcGroup,
+  R
+>
 
 export const SessionPermissionHandlersLive = SessionPermissionRpcGroup.toLayer({
   "SessionPermission.isSupported": () =>

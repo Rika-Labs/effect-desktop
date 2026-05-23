@@ -22,6 +22,7 @@ import type { SessionProfileHandle } from "./contracts/session-profile.js"
 import { subscribeNativeEvent } from "./event-stream.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 
 export * from "./contracts/browsing-data.js"
 
@@ -139,7 +140,7 @@ export class BrowsingData extends Context.Service<BrowsingData, BrowsingDataServ
 export const BrowsingDataLive = BrowsingData.layer
 
 export type BrowsingDataRpc = RpcGroup.Rpcs<typeof BrowsingDataRpcGroup>
-export type BrowsingDataRpcHandlers = RpcGroup.HandlersFrom<BrowsingDataRpc>
+export type BrowsingDataRpcHandlers<R = never> = NativeRpcHandlers<typeof BrowsingDataRpcGroup, R>
 
 export const BrowsingDataHandlersLive = BrowsingDataRpcGroup.toLayer({
   "BrowsingData.clear": (input) =>

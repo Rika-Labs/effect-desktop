@@ -22,6 +22,7 @@ import {
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 import { subscribeNativeEvent } from "./event-stream.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import { bindScopedCommand } from "./command-binding.js"
@@ -166,7 +167,7 @@ const invokeContextMenuCommand = (
 
 export type ContextMenuRpc = RpcGroup.Rpcs<typeof ContextMenuRpcGroup>
 
-export type ContextMenuRpcHandlers = RpcGroup.HandlersFrom<ContextMenuRpc>
+export type ContextMenuRpcHandlers<R = never> = NativeRpcHandlers<typeof ContextMenuRpcGroup, R>
 
 export const ContextMenuHandlersLive = ContextMenuRpcGroup.toLayer({
   "ContextMenu.show": (input) =>

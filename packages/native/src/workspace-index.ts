@@ -29,6 +29,7 @@ import { Clock, Context, Effect, Layer, PubSub, Ref, Schema, Stream } from "effe
 import { subscribeNativeEvent } from "./event-stream.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 import {
   WorkspaceIndexActor,
   WorkspaceIndexCloseInput,
@@ -179,7 +180,10 @@ export const makeWorkspaceIndexServiceLayer = (
 
 export type WorkspaceIndexRpc = RpcGroup.Rpcs<typeof WorkspaceIndexRpcGroup>
 
-export type WorkspaceIndexRpcHandlers = RpcGroup.HandlersFrom<WorkspaceIndexRpc>
+export type WorkspaceIndexRpcHandlers<R = never> = NativeRpcHandlers<
+  typeof WorkspaceIndexRpcGroup,
+  R
+>
 
 export const WorkspaceIndexHandlersLive = WorkspaceIndexRpcGroup.toLayer({
   "WorkspaceIndex.open": (input) =>

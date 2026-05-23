@@ -15,6 +15,7 @@ import {
 } from "./contracts/transient-window-role.js"
 import { runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 
 export * from "./contracts/transient-window-role.js"
 
@@ -56,7 +57,10 @@ export const TransientWindowRoleCapabilityFacts = Object.freeze([
 const TransientWindowRoleRpcGroup = RpcGroup.make(TransientWindowRoleIsSupported)
 
 export type TransientWindowRoleRpc = RpcGroup.Rpcs<typeof TransientWindowRoleRpcGroup>
-export type TransientWindowRoleRpcHandlers = RpcGroup.HandlersFrom<TransientWindowRoleRpc>
+export type TransientWindowRoleRpcHandlers<R = never> = NativeRpcHandlers<
+  typeof TransientWindowRoleRpcGroup,
+  R
+>
 export const TransientWindowRoleRpcs: RpcGroup.RpcGroup<TransientWindowRoleRpc> =
   TransientWindowRoleRpcGroup
 

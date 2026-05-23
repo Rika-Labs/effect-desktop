@@ -26,6 +26,7 @@ import {
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 import { subscribeNativeEvent } from "./event-stream.js"
 export * from "./contracts/menu.js"
 import { bindScopedCommand } from "./command-binding.js"
@@ -161,7 +162,7 @@ export const MenuLive = Menu.layer
 
 export type MenuRpc = RpcGroup.Rpcs<typeof MenuRpcGroup>
 
-export type MenuRpcHandlers = RpcGroup.HandlersFrom<MenuRpc>
+export type MenuRpcHandlers<R = never> = NativeRpcHandlers<typeof MenuRpcGroup, R>
 
 export const MenuHandlersLive = MenuRpcGroup.toLayer({
   "Menu.setApplicationMenu": (input) =>

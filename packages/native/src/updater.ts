@@ -12,6 +12,7 @@ import { type PermissionRegistry, P, type DesktopRpcClient } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 import { subscribeNativeEvent } from "./event-stream.js"
 import {
   UpdaterCheckInput,
@@ -190,7 +191,7 @@ export const UpdaterLive = Updater.layer
 
 export type UpdaterRpc = RpcGroup.Rpcs<typeof UpdaterRpcGroup>
 
-export type UpdaterRpcHandlers = RpcGroup.HandlersFrom<UpdaterRpc>
+export type UpdaterRpcHandlers<R = never> = NativeRpcHandlers<typeof UpdaterRpcGroup, R>
 
 export const UpdaterHandlersLive = UpdaterRpcGroup.toLayer({
   "Updater.check": (input) =>

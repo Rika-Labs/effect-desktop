@@ -29,6 +29,7 @@ import {
 import { subscribeNativeEvent } from "./event-stream.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 
 export * from "./contracts/native-file-system.js"
 
@@ -152,7 +153,10 @@ export class NativeFileSystem extends Context.Service<
 export const NativeFileSystemLive = NativeFileSystem.layer
 
 export type NativeFileSystemRpc = RpcGroup.Rpcs<typeof NativeFileSystemRpcGroup>
-export type NativeFileSystemRpcHandlers = RpcGroup.HandlersFrom<NativeFileSystemRpc>
+export type NativeFileSystemRpcHandlers<R = never> = NativeRpcHandlers<
+  typeof NativeFileSystemRpcGroup,
+  R
+>
 
 export const NativeFileSystemHandlersLive = NativeFileSystemRpcGroup.toLayer({
   "NativeFileSystem.open": (input) =>

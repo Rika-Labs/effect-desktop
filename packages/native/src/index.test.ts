@@ -55,6 +55,7 @@ import {
   RpcCapability,
   rpcSupport,
   type BridgeClientExchange,
+  type BridgeHandlerRuntime,
   type BridgeClientResponse,
   HostProtocolRequestEnvelope,
   HostProtocolEventEnvelope,
@@ -465,6 +466,8 @@ const appEventOpenFilePaths = (
 type IsEqual<A, B> =
   (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false
 type Assert<T extends true> = T
+type BridgeRuntimeRequirements<Runtime> =
+  Runtime extends BridgeHandlerRuntime<infer Requirements> ? Requirements : never
 
 const runScoped = <A, E, R>(
   effect: Effect.Effect<A, E, R>,
@@ -547,6 +550,55 @@ test("native services expose canonical static layers", () => {
   expect(WebViewLive).toBe(WebView.layer)
   expect(WindowLive).toBe(Window.layer)
   expect(AppEventRouterLive).toBe(AppEventRouter.layer)
+})
+
+test("native host RPC runtime does not assert permission-only runtime environment", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        Bun.file(new URL("./native-rpc-runtime.ts", import.meta.url)).text()
+      )
+
+      expect(source).not.toContain("return runtime as BridgeHandlerRuntime<PermissionRegistry>")
+    })
+  ))
+
+test("NativeSurface.hostRuntime preserves host service requirements", () => {
+  const hostRuntimeTypeDisplay = new ScreenDisplay({
+    id: "display-type",
+    bounds: new ScreenBounds({ x: 0, y: 0, width: 100, height: 100 }),
+    workArea: new ScreenBounds({ x: 0, y: 0, width: 100, height: 100 }),
+    scaleFactor: 1,
+    primary: true
+  })
+  const runtime = ScreenSurface.hostRuntime({
+    "Screen.getDisplays": () =>
+      Effect.gen(function* () {
+        yield* Window
+        return new ScreenDisplaysResult({ displays: [hostRuntimeTypeDisplay] })
+      }),
+    "Screen.getPrimaryDisplay": () =>
+      Effect.gen(function* () {
+        yield* Window
+        return hostRuntimeTypeDisplay
+      }),
+    "Screen.getPointerPoint": () =>
+      Effect.gen(function* () {
+        yield* Window
+        return new ScreenPoint({ x: 12, y: 34 })
+      }),
+    "Screen.isSupported": () =>
+      Effect.gen(function* () {
+        yield* Window
+        return new ScreenSupportedResult({ supported: true })
+      })
+  })
+  type ScreenHostRuntimeRequirements = Assert<
+    IsEqual<BridgeRuntimeRequirements<typeof runtime>, Window | PermissionRegistry>
+  >
+  const screenHostRuntimeRequirements: ScreenHostRuntimeRequirements = true
+
+  expect(screenHostRuntimeRequirements).toBe(true)
 })
 
 test("Native.Permissions.all declares every public native capability", () => {
@@ -2765,6 +2817,10 @@ test("native host RPC runtime denies protected WebView document and devtools cal
       const runtime = makeNativeHostRpcRuntime(WebViewRpcs, WebViewHandlersLive, {
         originAuth: RendererOriginAuth.unsafeDisabledForTests
       })
+      const webViewLayer = Layer.provide(
+        WebViewLive,
+        Layer.succeed(WebViewClient)(webViewClient([]))
+      )
       const calls = [
         {
           method: WEBVIEW_PRINT_METHOD,
@@ -2800,7 +2856,11 @@ test("native host RPC runtime denies protected WebView document and devtools cal
               traceId: `trace-webview-devtools-denied-${index}`
             })
           )
-          .pipe(Effect.provideService(PermissionRegistry, permissions))
+          .pipe(
+            Effect.provide(
+              Layer.merge(Layer.succeed(PermissionRegistry)(permissions), webViewLayer)
+            )
+          )
 
         expect(response.kind).toBe("failure")
         if (response.kind === "failure") {

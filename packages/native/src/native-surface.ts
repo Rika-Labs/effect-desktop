@@ -28,19 +28,39 @@ import {
   NormalizedCapability as NormalizedCapabilitySchema,
   type NormalizedCapability,
   P,
-  type PermissionRegistry
+  PermissionInterceptor
 } from "@orika/core"
 import { Context, Effect, Layer, Option, Schema, SchemaAST, Stream } from "effect"
+import type { Scope } from "effect"
 import { Rpc, RpcClient, RpcGroup, RpcSchema } from "effect/unstable/rpc"
 
 import { subscribeNativeEvent } from "./event-stream.js"
-import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
+import {
+  makeNativeHostRpcRuntime,
+  type NativeHostRpcRuntimeEnvironment
+} from "./native-rpc-runtime.js"
 
 type NativeRpcGroup<Rpcs extends Rpc.Any> = RpcGroup.RpcGroup<Rpcs> & {
   readonly requests: ReadonlyMap<string, Rpcs>
 }
 
-type NativeRpcHandlers<Group extends RpcGroup.Any> = RpcGroup.HandlersFrom<RpcGroup.Rpcs<Group>>
+type PermissionedNativeRpcs<Rpcs extends Rpc.Any> = Rpc.AddMiddleware<
+  Rpcs,
+  typeof PermissionInterceptor
+>
+
+export type NativeRpcHandlers<Group extends RpcGroup.Any, R = never> = {
+  readonly [Current in PermissionedNativeRpcs<
+    RpcGroup.Rpcs<Group>
+  > as Current["_tag"]]: Rpc.ToHandlerFn<Current, R>
+}
+
+type NativeRpcHandlerRequirements<Group extends RpcGroup.Any, R> =
+  | Exclude<R, Scope.Scope>
+  | RpcGroup.HandlersServices<
+      PermissionedNativeRpcs<RpcGroup.Rpcs<Group>>,
+      NativeRpcHandlers<Group, R>
+    >
 
 export type NativeSurfaceSelection<
   E = unknown,
@@ -135,10 +155,12 @@ export interface NativeRpcSurface<
     exchange: BridgeClientExchange,
     options?: BridgeClientOptions
   ) => Layer.Layer<ServiceId>
-  readonly hostRuntime: (
-    handlers: NativeRpcHandlers<Group>,
+  readonly hostRuntime: <R = never>(
+    handlers: NativeRpcHandlers<Group, R>,
     runtimeOptions?: BridgeHandlerRuntimeOptions
-  ) => BridgeHandlerRuntime<PermissionRegistry>
+  ) => BridgeHandlerRuntime<
+    NativeHostRpcRuntimeEnvironment<Rpcs, NativeRpcHandlerRequirements<Group, R>>
+  >
 }
 
 export const nativeAuthority = Object.freeze({
@@ -289,6 +311,17 @@ function make<
     "client" in options
       ? DesktopRpc.surface(tag, group, options)
       : DesktopRpc.surface(tag, group, options)
+  const hostRuntime = <R = never>(
+    handlers: NativeRpcHandlers<Group, R>,
+    runtimeOptions: BridgeHandlerRuntimeOptions = {}
+  ): BridgeHandlerRuntime<
+    NativeHostRpcRuntimeEnvironment<Rpcs, NativeRpcHandlerRequirements<Group, R>>
+  > =>
+    makeNativeHostRpcRuntime(
+      group,
+      group.middleware(PermissionInterceptor).toLayer(handlers),
+      runtimeOptions
+    )
 
   const surfaceWithoutSelection = Object.freeze({
     ...desktopSurface,
@@ -297,10 +330,7 @@ function make<
         service,
         RpcClient.make(group).pipe(Effect.map((client) => toBridgeService(client, exchange)))
       ).pipe(Layer.provide(makeBridgeProtocolLayer(exchange, bridgeOptions))),
-    hostRuntime: (
-      handlers: NativeRpcHandlers<Group>,
-      runtimeOptions: BridgeHandlerRuntimeOptions = {}
-    ) => makeNativeHostRpcRuntime(group, group.toLayer(handlers), runtimeOptions)
+    hostRuntime
   })
 
   return Object.freeze({

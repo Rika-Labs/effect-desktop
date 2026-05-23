@@ -11,6 +11,7 @@ import { type PermissionRegistry, type DesktopRpcClient } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 import { subscribeNativeEvent } from "./event-stream.js"
 import {
   PowerMonitorIsSupportedInput,
@@ -116,7 +117,7 @@ export const PowerMonitorLive = PowerMonitor.layer
 
 export type PowerMonitorRpc = RpcGroup.Rpcs<typeof PowerMonitorRpcGroup>
 
-export type PowerMonitorRpcHandlers = RpcGroup.HandlersFrom<PowerMonitorRpc>
+export type PowerMonitorRpcHandlers<R = never> = NativeRpcHandlers<typeof PowerMonitorRpcGroup, R>
 
 export const PowerMonitorHandlersLive = PowerMonitorRpcGroup.toLayer({
   "PowerMonitor.isSupported": (input) =>

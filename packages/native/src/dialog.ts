@@ -10,6 +10,7 @@ import { type PermissionRegistry, P, type DesktopRpcClient } from "@orika/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import {
   DialogConfirmInput,
@@ -140,7 +141,7 @@ export class Dialog extends Context.Service<Dialog, DialogServiceApi>()("@orika/
 
 export const DialogLive = Dialog.layer
 
-export type DialogRpcHandlers = RpcGroup.HandlersFrom<DialogRpc>
+export type DialogRpcHandlers<R = never> = NativeRpcHandlers<typeof DialogRpcGroup, R>
 
 export const DialogHandlersLive = DialogRpcGroup.toLayer({
   "Dialog.openFile": (input) =>

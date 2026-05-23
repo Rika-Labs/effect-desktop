@@ -21,6 +21,7 @@ import {
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 import { subscribeNativeEvent } from "./event-stream.js"
 import {
   NotificationActionEvent,
@@ -185,7 +186,7 @@ export const makeNotificationServiceLayer = (
 
 export type NotificationRpc = RpcGroup.Rpcs<typeof NotificationRpcGroup>
 
-export type NotificationRpcHandlers = RpcGroup.HandlersFrom<NotificationRpc>
+export type NotificationRpcHandlers<R = never> = NativeRpcHandlers<typeof NotificationRpcGroup, R>
 
 export const NotificationHandlersLive = NotificationRpcGroup.toLayer({
   "Notification.show": (input) =>

@@ -25,6 +25,7 @@ import { Clock, Context, Effect, Layer, PubSub, Ref, Schema, Stream } from "effe
 import { subscribeNativeEvent } from "./event-stream.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 import {
   DiagnosticsBundleCollectInput,
   DiagnosticsBundleCollectResult,
@@ -173,7 +174,10 @@ export const makeDiagnosticsBundleServiceLayer = (
 
 export type DiagnosticsBundleRpc = RpcGroup.Rpcs<typeof DiagnosticsBundleRpcGroup>
 
-export type DiagnosticsBundleRpcHandlers = RpcGroup.HandlersFrom<DiagnosticsBundleRpc>
+export type DiagnosticsBundleRpcHandlers<R = never> = NativeRpcHandlers<
+  typeof DiagnosticsBundleRpcGroup,
+  R
+>
 
 export const DiagnosticsBundleHandlersLive = DiagnosticsBundleRpcGroup.toLayer({
   "DiagnosticsBundle.collect": (input) =>

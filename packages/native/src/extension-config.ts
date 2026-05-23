@@ -42,6 +42,7 @@ import {
 import { subscribeNativeEvent } from "./event-stream.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 import {
   ExtensionConfigActor,
   ExtensionConfigEvent,
@@ -242,7 +243,10 @@ export const makeExtensionConfigServiceLayer = (
 
 export type ExtensionConfigRpc = RpcGroup.Rpcs<typeof ExtensionConfigRpcGroup>
 
-export type ExtensionConfigRpcHandlers = RpcGroup.HandlersFrom<ExtensionConfigRpc>
+export type ExtensionConfigRpcHandlers<R = never> = NativeRpcHandlers<
+  typeof ExtensionConfigRpcGroup,
+  R
+>
 
 export const ExtensionConfigHandlersLive = ExtensionConfigRpcGroup.toLayer({
   "ExtensionConfig.read": (input) =>

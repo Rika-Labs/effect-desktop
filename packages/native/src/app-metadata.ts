@@ -19,6 +19,7 @@ import {
 import { subscribeNativeEvent } from "./event-stream.js"
 import { runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 
 export * from "./contracts/app-metadata.js"
 
@@ -73,7 +74,7 @@ export class AppMetadata extends Context.Service<AppMetadata, AppMetadataClientA
 ) {}
 
 export type AppMetadataRpc = RpcGroup.Rpcs<typeof AppMetadataRpcGroup>
-export type AppMetadataRpcHandlers = RpcGroup.HandlersFrom<AppMetadataRpc>
+export type AppMetadataRpcHandlers<R = never> = NativeRpcHandlers<typeof AppMetadataRpcGroup, R>
 
 export const AppMetadataHandlersLive = AppMetadataRpcGroup.toLayer({
   "AppMetadata.getInfo": () =>

@@ -28,6 +28,7 @@ import {
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 import { subscribeNativeEvent } from "./event-stream.js"
 import { bindScopedCommand } from "./command-binding.js"
 import {
@@ -261,7 +262,10 @@ const logGlobalShortcutCleanupFailure =
 
 export type GlobalShortcutRpc = RpcGroup.Rpcs<typeof GlobalShortcutRpcGroup>
 
-export type GlobalShortcutRpcHandlers = RpcGroup.HandlersFrom<GlobalShortcutRpc>
+export type GlobalShortcutRpcHandlers<R = never> = NativeRpcHandlers<
+  typeof GlobalShortcutRpcGroup,
+  R
+>
 
 export const GlobalShortcutHandlersLive = GlobalShortcutRpcGroup.toLayer({
   "GlobalShortcut.isRegistered": (input) =>

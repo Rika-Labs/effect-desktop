@@ -14,6 +14,7 @@ import {
 } from "./contracts/selection-context.js"
 import { runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 
 export * from "./contracts/selection-context.js"
 
@@ -80,7 +81,10 @@ export class SelectionContext extends Context.Service<
 >()("@orika/native/SelectionContext") {}
 
 export type SelectionContextRpc = RpcGroup.Rpcs<typeof SelectionContextRpcGroup>
-export type SelectionContextRpcHandlers = RpcGroup.HandlersFrom<SelectionContextRpc>
+export type SelectionContextRpcHandlers<R = never> = NativeRpcHandlers<
+  typeof SelectionContextRpcGroup,
+  R
+>
 
 export const SelectionContextHandlersLive = SelectionContextRpcGroup.toLayer({
   "SelectionContext.isSupported": () =>

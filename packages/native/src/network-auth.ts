@@ -19,6 +19,7 @@ import type { SessionProfileHandle } from "./contracts/session-profile.js"
 import { subscribeNativeEvent } from "./event-stream.js"
 import { runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 
 export * from "./contracts/network-auth.js"
 
@@ -103,7 +104,7 @@ export class NetworkAuth extends Context.Service<NetworkAuth, NetworkAuthClientA
 ) {}
 
 export type NetworkAuthRpc = RpcGroup.Rpcs<typeof NetworkAuthRpcGroup>
-export type NetworkAuthRpcHandlers = RpcGroup.HandlersFrom<NetworkAuthRpc>
+export type NetworkAuthRpcHandlers<R = never> = NativeRpcHandlers<typeof NetworkAuthRpcGroup, R>
 
 export const NetworkAuthHandlersLive = NetworkAuthRpcGroup.toLayer({
   "NetworkAuth.isSupported": () =>

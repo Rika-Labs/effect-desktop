@@ -28,6 +28,7 @@ import { Clock, Context, Effect, Layer, PubSub, Ref, Schema, Stream } from "effe
 import { subscribeNativeEvent } from "./event-stream.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 import {
   EgressPolicyDecisionInput,
   EgressPolicyDecisionRequest,
@@ -166,7 +167,7 @@ export const makeEgressPolicyServiceLayer = (
 
 export type EgressPolicyRpc = RpcGroup.Rpcs<typeof EgressPolicyRpcGroup>
 
-export type EgressPolicyRpcHandlers = RpcGroup.HandlersFrom<EgressPolicyRpc>
+export type EgressPolicyRpcHandlers<R = never> = NativeRpcHandlers<typeof EgressPolicyRpcGroup, R>
 
 export const EgressPolicyHandlersLive = EgressPolicyRpcGroup.toLayer({
   "EgressPolicy.decide": (input) =>

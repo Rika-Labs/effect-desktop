@@ -10,6 +10,7 @@ import { type PermissionRegistry, P, type DesktopRpcClient } from "@orika/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import {
   type ClipboardCapability,
@@ -178,7 +179,7 @@ export class Clipboard extends Context.Service<Clipboard, ClipboardServiceApi>()
 
 export const ClipboardLive = Clipboard.layer
 
-export type ClipboardRpcHandlers = RpcGroup.HandlersFrom<ClipboardRpc>
+export type ClipboardRpcHandlers<R = never> = NativeRpcHandlers<typeof ClipboardRpcGroup, R>
 
 export const ClipboardHandlersLive = ClipboardRpcGroup.toLayer({
   "Clipboard.readText": () =>

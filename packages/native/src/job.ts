@@ -58,6 +58,7 @@ import {
 } from "./contracts/job.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 
 export * from "./contracts/job.js"
 
@@ -149,7 +150,7 @@ const JobRpcGroup = RpcGroup.make(
 )
 
 export type JobRpc = RpcGroup.Rpcs<typeof JobRpcGroup>
-export type JobRpcHandlers = RpcGroup.HandlersFrom<JobRpc>
+export type JobRpcHandlers<R = never> = NativeRpcHandlers<typeof JobRpcGroup, R>
 export const JobRpcs: RpcGroup.RpcGroup<JobRpc> = JobRpcGroup
 export const JobMethodNames = Object.freeze([
   "start",

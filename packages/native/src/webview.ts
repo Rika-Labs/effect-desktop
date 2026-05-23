@@ -13,6 +13,7 @@ import { type PermissionRegistry, P, type DesktopRpcClient } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 import { subscribeNativeEvent } from "./event-stream.js"
 export * from "./contracts/webview.js"
 import {
@@ -477,7 +478,7 @@ export const WebViewLive = WebView.layer
 
 export type WebViewRpc = RpcGroup.Rpcs<typeof WebViewRpcGroup>
 
-export type WebViewRpcHandlers = RpcGroup.HandlersFrom<WebViewRpc>
+export type WebViewRpcHandlers<R = never> = NativeRpcHandlers<typeof WebViewRpcGroup, R>
 
 export const WebViewHandlersLive = WebViewRpcGroup.toLayer({
   "WebView.create": (input) =>

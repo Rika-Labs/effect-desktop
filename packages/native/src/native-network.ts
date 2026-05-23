@@ -12,6 +12,7 @@ import { Context, Effect, Layer, Schema, Stream } from "effect"
 import { NativeNetworkEvent, NativeNetworkSupportedResult } from "./contracts/native-network.js"
 import { runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 
 export * from "./contracts/native-network.js"
 
@@ -94,7 +95,7 @@ export class NativeNetwork extends Context.Service<NativeNetwork, NativeNetworkS
 export const NativeNetworkLive = NativeNetwork.layer
 
 export type NativeNetworkRpc = RpcGroup.Rpcs<typeof NativeNetworkRpcGroup>
-export type NativeNetworkRpcHandlers = RpcGroup.HandlersFrom<NativeNetworkRpc>
+export type NativeNetworkRpcHandlers<R = never> = NativeRpcHandlers<typeof NativeNetworkRpcGroup, R>
 
 export const NativeNetworkHandlersLive = NativeNetworkRpcGroup.toLayer({
   "NativeNetwork.isSupported": () =>

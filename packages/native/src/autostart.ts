@@ -17,6 +17,7 @@ import {
 import { subscribeNativeEvent } from "./event-stream.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 
 export * from "./contracts/autostart.js"
 
@@ -97,7 +98,7 @@ export class Autostart extends Context.Service<Autostart, AutostartServiceApi>()
 export const AutostartLive = Autostart.layer
 
 export type AutostartRpc = RpcGroup.Rpcs<typeof AutostartRpcGroup>
-export type AutostartRpcHandlers = RpcGroup.HandlersFrom<AutostartRpc>
+export type AutostartRpcHandlers<R = never> = NativeRpcHandlers<typeof AutostartRpcGroup, R>
 
 export const AutostartHandlersLive = AutostartRpcGroup.toLayer({
   "Autostart.isEnabled": () =>

@@ -11,6 +11,7 @@ import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 import {
   ExecutionSandboxEvent,
   ExecutionSandboxSupportedResult
@@ -102,7 +103,10 @@ export const ExecutionSandboxLive = ExecutionSandbox.layer
 
 export type ExecutionSandboxRpc = RpcGroup.Rpcs<typeof ExecutionSandboxRpcGroup>
 
-export type ExecutionSandboxRpcHandlers = RpcGroup.HandlersFrom<ExecutionSandboxRpc>
+export type ExecutionSandboxRpcHandlers<R = never> = NativeRpcHandlers<
+  typeof ExecutionSandboxRpcGroup,
+  R
+>
 
 export const ExecutionSandboxHandlersLive = ExecutionSandboxRpcGroup.toLayer({
   "ExecutionSandbox.isSupported": () =>

@@ -17,6 +17,7 @@ import {
 import { subscribeNativeEvent } from "./event-stream.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 
 export * from "./contracts/recent-documents.js"
 
@@ -100,7 +101,10 @@ export class RecentDocuments extends Context.Service<RecentDocuments, RecentDocu
 export const RecentDocumentsLive = RecentDocuments.layer
 
 export type RecentDocumentsRpc = RpcGroup.Rpcs<typeof RecentDocumentsRpcGroup>
-export type RecentDocumentsRpcHandlers = RpcGroup.HandlersFrom<RecentDocumentsRpc>
+export type RecentDocumentsRpcHandlers<R = never> = NativeRpcHandlers<
+  typeof RecentDocumentsRpcGroup,
+  R
+>
 
 export const RecentDocumentsHandlersLive = RecentDocumentsRpcGroup.toLayer({
   "RecentDocuments.add": (input) =>

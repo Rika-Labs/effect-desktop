@@ -11,6 +11,7 @@ import { type PermissionRegistry, P, type DesktopRpcClient } from "@orika/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 import { CanonicalPath } from "./contracts/path.js"
 
 export type PathError = HostProtocolError
@@ -87,7 +88,7 @@ export const PathLive = Path.layer
 
 export type PathRpc = RpcGroup.Rpcs<typeof PathRpcGroup>
 
-export type PathRpcHandlers = RpcGroup.HandlersFrom<PathRpc>
+export type PathRpcHandlers<R = never> = NativeRpcHandlers<typeof PathRpcGroup, R>
 
 export const PathHandlersLive = PathRpcGroup.toLayer({
   "Path.appData": () =>

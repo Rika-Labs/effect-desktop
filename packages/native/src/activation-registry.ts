@@ -50,6 +50,7 @@ import {
 import { subscribeNativeEvent } from "./event-stream.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 
 export * from "./contracts/activation-registry.js"
 
@@ -98,7 +99,10 @@ const ActivationRegistryRpcGroup = RpcGroup.make(
 )
 
 export type ActivationRegistryRpc = RpcGroup.Rpcs<typeof ActivationRegistryRpcGroup>
-export type ActivationRegistryRpcHandlers = RpcGroup.HandlersFrom<ActivationRegistryRpc>
+export type ActivationRegistryRpcHandlers<R = never> = NativeRpcHandlers<
+  typeof ActivationRegistryRpcGroup,
+  R
+>
 export const ActivationRegistryRpcs: RpcGroup.RpcGroup<ActivationRegistryRpc> =
   ActivationRegistryRpcGroup
 

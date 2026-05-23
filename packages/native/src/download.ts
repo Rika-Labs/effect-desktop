@@ -16,6 +16,7 @@ import {
 } from "./contracts/download.js"
 import { runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 
 export * from "./contracts/download.js"
 
@@ -77,7 +78,7 @@ export class Download extends Context.Service<Download, DownloadClientApi>()(
 ) {}
 
 export type DownloadRpc = RpcGroup.Rpcs<typeof DownloadRpcGroup>
-export type DownloadRpcHandlers = RpcGroup.HandlersFrom<DownloadRpc>
+export type DownloadRpcHandlers<R = never> = NativeRpcHandlers<typeof DownloadRpcGroup, R>
 
 export const DownloadHandlersLive = DownloadRpcGroup.toLayer({
   "Download.isSupported": () =>

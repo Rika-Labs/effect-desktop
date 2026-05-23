@@ -12,6 +12,7 @@ import { type PermissionRegistry, P, type DesktopRpcClient } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 import { subscribeNativeEvent } from "./event-stream.js"
 export * from "./contracts/app.js"
 import {
@@ -190,7 +191,7 @@ export const AppLive = App.layer
 
 export type AppRpc = RpcGroup.Rpcs<typeof AppRpcGroup>
 
-export type AppRpcHandlers = RpcGroup.HandlersFrom<AppRpc>
+export type AppRpcHandlers<R = never> = NativeRpcHandlers<typeof AppRpcGroup, R>
 
 export const AppHandlersLive = AppRpcGroup.toLayer({
   "App.quit": (input) =>

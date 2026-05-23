@@ -21,6 +21,7 @@ import {
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 import { subscribeNativeEvent } from "./event-stream.js"
 import {
   TrayActivatedEvent,
@@ -252,7 +253,7 @@ export const makeTrayServiceLayer = (
 
 export type TrayRpc = RpcGroup.Rpcs<typeof TrayRpcGroup>
 
-export type TrayRpcHandlers = RpcGroup.HandlersFrom<TrayRpc>
+export type TrayRpcHandlers<R = never> = NativeRpcHandlers<typeof TrayRpcGroup, R>
 
 export const TrayHandlersLive = TrayRpcGroup.toLayer({
   "Tray.create": (input) =>

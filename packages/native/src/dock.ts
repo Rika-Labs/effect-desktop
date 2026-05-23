@@ -14,6 +14,7 @@ import { type PermissionRegistry, P, type DesktopRpcClient } from "@orika/core"
 import { Context, Effect, Layer, Schema } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 import {
   type DockMethod,
   DockIsSupportedInput,
@@ -182,7 +183,7 @@ export const DockLive = Dock.layer
 
 export type DockRpc = RpcGroup.Rpcs<typeof DockRpcGroup>
 
-export type DockRpcHandlers = RpcGroup.HandlersFrom<DockRpc>
+export type DockRpcHandlers<R = never> = NativeRpcHandlers<typeof DockRpcGroup, R>
 
 export const DockHandlersLive = DockRpcGroup.toLayer({
   "Dock.setBadgeCount": (input) =>

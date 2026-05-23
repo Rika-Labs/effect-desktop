@@ -4,7 +4,7 @@ import {
   NativeHostEvent,
   type NativeHostInspectorCollectorApi,
   PermissionInterceptor,
-  PermissionRegistry
+  type PermissionRegistry
 } from "@orika/core"
 import {
   type BridgeCallState,
@@ -21,19 +21,24 @@ type NativeRpcGroup<Rpcs extends Rpc.Any> = RpcGroup.RpcGroup<Rpcs> & {
   readonly requests: ReadonlyMap<string, Rpcs>
 }
 
-export const makeNativeHostRpcRuntime = <Rpcs extends Rpc.Any, E extends HostProtocolError = never>(
+export type NativeHostRpcRuntimeEnvironment<Rpcs extends Rpc.Any, R> =
+  | PermissionRegistry
+  | R
+  | Rpc.ServicesServer<Rpc.AddMiddleware<Rpcs, typeof PermissionInterceptor>>
+
+export const makeNativeHostRpcRuntime = <
+  Rpcs extends Rpc.Any,
+  E extends HostProtocolError = never,
+  R = never
+>(
   group: NativeRpcGroup<Rpcs>,
-  handlers: Layer.Layer<
-    Rpc.ToHandler<Rpc.AddMiddleware<Rpcs, typeof PermissionInterceptor>>,
-    E,
-    unknown
-  >,
+  handlers: Layer.Layer<Rpc.ToHandler<Rpc.AddMiddleware<Rpcs, typeof PermissionInterceptor>>, E, R>,
   options: BridgeHandlerRuntimeOptions & {
     readonly nativeHostInspector?: NativeHostInspectorCollectorApi
     readonly nextTraceId?: () => string
   } = {}
-): BridgeHandlerRuntime<PermissionRegistry> => {
-  const runtime = makeDesktopRpcHandlerRuntime(
+): BridgeHandlerRuntime<NativeHostRpcRuntimeEnvironment<Rpcs, R>> =>
+  makeDesktopRpcHandlerRuntime(
     group.middleware(PermissionInterceptor),
     Layer.merge(handlers, makePermissionInterceptorLayer()),
     {
@@ -48,8 +53,6 @@ export const makeNativeHostRpcRuntime = <Rpcs extends Rpc.Any, E extends HostPro
         )
     }
   )
-  return runtime as BridgeHandlerRuntime<PermissionRegistry>
-}
 
 const nativeHostInspectorState = (
   inspector: NativeHostInspectorCollectorApi | undefined,

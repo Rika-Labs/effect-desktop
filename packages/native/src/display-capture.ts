@@ -48,6 +48,7 @@ import {
 import { isSupportedImageHeader, PNG_HEADER } from "./contracts/image.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 
 export * from "./contracts/display-capture.js"
 
@@ -211,7 +212,10 @@ export const makeDisplayCaptureGrantAuthorityLayer = (
   Layer.succeed(DisplayCaptureGrantAuthority, makeDisplayCaptureGrantAuthority(grants))
 
 export type DisplayCaptureRpc = RpcGroup.Rpcs<typeof DisplayCaptureRpcGroup>
-export type DisplayCaptureRpcHandlers = RpcGroup.HandlersFrom<DisplayCaptureRpc>
+export type DisplayCaptureRpcHandlers<R = never> = NativeRpcHandlers<
+  typeof DisplayCaptureRpcGroup,
+  R
+>
 
 export const DisplayCaptureHandlersLive = DisplayCaptureRpcGroup.toLayer({
   "DisplayCapture.captureDisplay": (input) =>

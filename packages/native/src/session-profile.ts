@@ -22,6 +22,7 @@ import {
 import { subscribeNativeEvent } from "./event-stream.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 
 export * from "./contracts/session-profile.js"
 
@@ -112,7 +113,10 @@ export class SessionProfile extends Context.Service<SessionProfile, SessionProfi
 ) {}
 
 export type SessionProfileRpc = RpcGroup.Rpcs<typeof SessionProfileRpcGroup>
-export type SessionProfileRpcHandlers = RpcGroup.HandlersFrom<SessionProfileRpc>
+export type SessionProfileRpcHandlers<R = never> = NativeRpcHandlers<
+  typeof SessionProfileRpcGroup,
+  R
+>
 
 export const SessionProfileHandlersLive = SessionProfileRpcGroup.toLayer({
   "SessionProfile.fromPartition": (input) =>

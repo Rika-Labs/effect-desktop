@@ -29,6 +29,7 @@ import type { SessionProfileHandle } from "./contracts/session-profile.js"
 import { subscribeNativeEvent } from "./event-stream.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 
 export * from "./contracts/cookie-store.js"
 
@@ -118,7 +119,7 @@ export class CookieStore extends Context.Service<CookieStore, CookieStoreClientA
 ) {}
 
 export type CookieStoreRpc = RpcGroup.Rpcs<typeof CookieStoreRpcGroup>
-export type CookieStoreRpcHandlers = RpcGroup.HandlersFrom<CookieStoreRpc>
+export type CookieStoreRpcHandlers<R = never> = NativeRpcHandlers<typeof CookieStoreRpcGroup, R>
 
 export const CookieStoreHandlersLive = CookieStoreRpcGroup.toLayer({
   "CookieStore.get": (input) =>

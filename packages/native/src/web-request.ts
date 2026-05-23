@@ -14,6 +14,7 @@ import { WebRequestEvent, WebRequestSupportedResult } from "./contracts/web-requ
 import { subscribeNativeEvent } from "./event-stream.js"
 import { runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 
 export * from "./contracts/web-request.js"
 
@@ -96,7 +97,7 @@ export class WebRequest extends Context.Service<WebRequest, WebRequestServiceApi
 export const WebRequestLive = WebRequest.layer
 
 export type WebRequestRpc = RpcGroup.Rpcs<typeof WebRequestRpcGroup>
-export type WebRequestRpcHandlers = RpcGroup.HandlersFrom<WebRequestRpc>
+export type WebRequestRpcHandlers<R = never> = NativeRpcHandlers<typeof WebRequestRpcGroup, R>
 
 export const WebRequestHandlersLive = WebRequestRpcGroup.toLayer({
   "WebRequest.isSupported": () =>

@@ -29,6 +29,7 @@ import { Clock, Context, Effect, Layer, PubSub, Ref, Schema, Stream } from "effe
 import { subscribeNativeEvent } from "./event-stream.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 import {
   AttachmentIntakeActor,
   AttachmentIntakeDisposeInput,
@@ -185,7 +186,10 @@ export const makeAttachmentIntakeServiceLayer = (
   Layer.effect(AttachmentIntake)(makeAttachmentIntakeService(client, options))
 
 export type AttachmentIntakeRpc = RpcGroup.Rpcs<typeof AttachmentIntakeRpcGroup>
-export type AttachmentIntakeRpcHandlers = RpcGroup.HandlersFrom<AttachmentIntakeRpc>
+export type AttachmentIntakeRpcHandlers<R = never> = NativeRpcHandlers<
+  typeof AttachmentIntakeRpcGroup,
+  R
+>
 
 export const AttachmentIntakeHandlersLive = AttachmentIntakeRpcGroup.toLayer({
   "AttachmentIntake.ingest": (input) =>

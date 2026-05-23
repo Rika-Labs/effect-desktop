@@ -33,6 +33,7 @@ import {
 import { subscribeNativeEvent } from "./event-stream.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 
 export * from "./contracts/distribution-parity.js"
 
@@ -69,7 +70,10 @@ const DistributionParityRpcGroup = RpcGroup.make(
 )
 
 export type DistributionParityRpc = RpcGroup.Rpcs<typeof DistributionParityRpcGroup>
-export type DistributionParityRpcHandlers = RpcGroup.HandlersFrom<DistributionParityRpc>
+export type DistributionParityRpcHandlers<R = never> = NativeRpcHandlers<
+  typeof DistributionParityRpcGroup,
+  R
+>
 export const DistributionParityRpcs: RpcGroup.RpcGroup<DistributionParityRpc> =
   DistributionParityRpcGroup
 export const DistributionParityMethodNames = Object.freeze(["verify", "isSupported"] as const)

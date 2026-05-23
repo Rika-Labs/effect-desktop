@@ -14,6 +14,7 @@ import { type PermissionRegistry, type DesktopRpcClient } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 import { subscribeNativeEvent } from "./event-stream.js"
 import {
   ScreenDisplay,
@@ -176,7 +177,7 @@ export const makeScreenBridgeClientLayer = (
     normalizeRequest: normalizeScreenBridgeRequest
   })
 
-export type ScreenRpcHandlers = RpcGroup.HandlersFrom<ScreenRpc>
+export type ScreenRpcHandlers<R = never> = NativeRpcHandlers<typeof ScreenRpcGroup, R>
 
 export const makeHostScreenRpcRuntime = (
   handlers: ScreenRpcHandlers,

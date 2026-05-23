@@ -26,6 +26,7 @@ import {
 import { Clock, Context, Effect, Layer, Ref, Schema } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 import {
   CrashReporterBreadcrumbInput,
   CrashReporterFlushResult,
@@ -156,7 +157,7 @@ export const makeCrashReporterServiceLayer = (
 
 export type CrashReporterRpc = RpcGroup.Rpcs<typeof CrashReporterRpcGroup>
 
-export type CrashReporterRpcHandlers = RpcGroup.HandlersFrom<CrashReporterRpc>
+export type CrashReporterRpcHandlers<R = never> = NativeRpcHandlers<typeof CrashReporterRpcGroup, R>
 
 export const CrashReporterHandlersLive = CrashReporterRpcGroup.toLayer({
   "CrashReporter.start": (input) =>

@@ -39,6 +39,7 @@ import {
 } from "./contracts/focused-application-context.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 
 export * from "./contracts/focused-application-context.js"
 
@@ -177,8 +178,10 @@ export const makeFocusedApplicationContextServiceLayer = (
   Layer.succeed(FocusedApplicationContext)(makeFocusedApplicationContextService(client, options))
 
 export type FocusedApplicationContextRpc = RpcGroup.Rpcs<typeof FocusedApplicationContextRpcGroup>
-export type FocusedApplicationContextRpcHandlers =
-  RpcGroup.HandlersFrom<FocusedApplicationContextRpc>
+export type FocusedApplicationContextRpcHandlers<R = never> = NativeRpcHandlers<
+  typeof FocusedApplicationContextRpcGroup,
+  R
+>
 
 export const FocusedApplicationContextHandlersLive = FocusedApplicationContextRpcGroup.toLayer({
   "FocusedApplicationContext.snapshot": (input) =>

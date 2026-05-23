@@ -51,6 +51,7 @@ import {
 import { subscribeNativeEvent } from "./event-stream.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 
 const Surface = "TransactionalFileMutation"
 const UnsupportedReason = "host-adapter-unimplemented"
@@ -198,8 +199,10 @@ export const makeTransactionalFileMutationServiceLayer = (
 
 export type TransactionalFileMutationRpc = RpcGroup.Rpcs<typeof TransactionalFileMutationRpcGroup>
 
-export type TransactionalFileMutationRpcHandlers =
-  RpcGroup.HandlersFrom<TransactionalFileMutationRpc>
+export type TransactionalFileMutationRpcHandlers<R = never> = NativeRpcHandlers<
+  typeof TransactionalFileMutationRpcGroup,
+  R
+>
 
 export const TransactionalFileMutationHandlersLive = TransactionalFileMutationRpcGroup.toLayer({
   "TransactionalFileMutation.prepare": (input) =>

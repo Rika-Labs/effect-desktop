@@ -29,6 +29,7 @@ import { Clock, Context, Effect, Layer, PubSub, Ref, Schema, Stream } from "effe
 import { subscribeNativeEvent } from "./event-stream.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 import {
   LocalToolRuntimeActor,
   LocalToolRuntimeBudgetPolicy,
@@ -216,7 +217,10 @@ export const makeLocalToolRuntimeServiceLayer = (
 
 export type LocalToolRuntimeRpc = RpcGroup.Rpcs<typeof LocalToolRuntimeRpcGroup>
 
-export type LocalToolRuntimeRpcHandlers = RpcGroup.HandlersFrom<LocalToolRuntimeRpc>
+export type LocalToolRuntimeRpcHandlers<R = never> = NativeRpcHandlers<
+  typeof LocalToolRuntimeRpcGroup,
+  R
+>
 
 export const LocalToolRuntimeHandlersLive = LocalToolRuntimeRpcGroup.toLayer({
   "LocalToolRuntime.register": (input) =>

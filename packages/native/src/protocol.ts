@@ -13,6 +13,7 @@ import { Context, Effect, Layer, Schema } from "effect"
 import * as nodePath from "node:path"
 
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 import {
   ProtocolDenyInput,
   type ProtocolDenyOptions,
@@ -108,7 +109,7 @@ export const ProtocolLive = Protocol.layer
 
 export type ProtocolRpc = RpcGroup.Rpcs<typeof ProtocolRpcGroup>
 
-export type ProtocolRpcHandlers = RpcGroup.HandlersFrom<ProtocolRpc>
+export type ProtocolRpcHandlers<R = never> = NativeRpcHandlers<typeof ProtocolRpcGroup, R>
 
 export const ProtocolHandlersLive = ProtocolRpcGroup.toLayer({
   "Protocol.registerAppProtocol": (input) =>

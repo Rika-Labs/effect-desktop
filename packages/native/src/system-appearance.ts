@@ -12,6 +12,7 @@ import { type PermissionRegistry, P, type DesktopRpcClient } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 import { subscribeNativeEvent } from "./event-stream.js"
 import {
   type SystemAppearanceColor,
@@ -210,7 +211,10 @@ export const SystemAppearanceLive = SystemAppearance.layer
 
 export type SystemAppearanceRpc = RpcGroup.Rpcs<typeof SystemAppearanceRpcGroup>
 
-export type SystemAppearanceRpcHandlers = RpcGroup.HandlersFrom<SystemAppearanceRpc>
+export type SystemAppearanceRpcHandlers<R = never> = NativeRpcHandlers<
+  typeof SystemAppearanceRpcGroup,
+  R
+>
 
 export const SystemAppearanceHandlersLive = SystemAppearanceRpcGroup.toLayer({
   "SystemAppearance.getAppearance": () =>

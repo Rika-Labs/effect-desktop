@@ -32,6 +32,7 @@ import { Clock, Context, Effect, Layer, PubSub, Ref, Schema, Stream } from "effe
 import { subscribeNativeEvent } from "./event-stream.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 import {
   ExtensionPackageActor,
   ExtensionPackageEvent,
@@ -198,7 +199,10 @@ export const makeExtensionPackageServiceLayer = (
 
 export type ExtensionPackageRpc = RpcGroup.Rpcs<typeof ExtensionPackageRpcGroup>
 
-export type ExtensionPackageRpcHandlers = RpcGroup.HandlersFrom<ExtensionPackageRpc>
+export type ExtensionPackageRpcHandlers<R = never> = NativeRpcHandlers<
+  typeof ExtensionPackageRpcGroup,
+  R
+>
 
 export const ExtensionPackageHandlersLive = ExtensionPackageRpcGroup.toLayer({
   "ExtensionPackage.install": (input) =>

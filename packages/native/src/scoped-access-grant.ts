@@ -11,6 +11,7 @@ import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 import {
   ScopedAccessGrantEvent,
   ScopedAccessGrantSupportedResult
@@ -103,7 +104,10 @@ export const ScopedAccessGrantLive = ScopedAccessGrant.layer
 
 export type ScopedAccessGrantRpc = RpcGroup.Rpcs<typeof ScopedAccessGrantRpcGroup>
 
-export type ScopedAccessGrantRpcHandlers = RpcGroup.HandlersFrom<ScopedAccessGrantRpc>
+export type ScopedAccessGrantRpcHandlers<R = never> = NativeRpcHandlers<
+  typeof ScopedAccessGrantRpcGroup,
+  R
+>
 
 export const ScopedAccessGrantHandlersLive = ScopedAccessGrantRpcGroup.toLayer({
   "ScopedAccessGrant.isSupported": () =>

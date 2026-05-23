@@ -15,6 +15,7 @@ import { Context, Effect, Layer, PubSub, Schema, Stream } from "effect"
 import { subscribeNativeEvent } from "./event-stream.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 import {
   RealtimeMediaDeviceStateEvent,
   RealtimeMediaInterruptionEvent,
@@ -196,7 +197,10 @@ export const RealtimeMediaSessionLive = RealtimeMediaSession.layer
 
 export type RealtimeMediaSessionRpc = RpcGroup.Rpcs<typeof RealtimeMediaSessionRpcGroup>
 
-export type RealtimeMediaSessionRpcHandlers = RpcGroup.HandlersFrom<RealtimeMediaSessionRpc>
+export type RealtimeMediaSessionRpcHandlers<R = never> = NativeRpcHandlers<
+  typeof RealtimeMediaSessionRpcGroup,
+  R
+>
 
 export const RealtimeMediaSessionHandlersLive = RealtimeMediaSessionRpcGroup.toLayer({
   "RealtimeMediaSession.open": (input) =>

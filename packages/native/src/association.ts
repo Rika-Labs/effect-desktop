@@ -20,6 +20,7 @@ import {
 import { subscribeNativeEvent } from "./event-stream.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
+import type { NativeRpcHandlers } from "./native-surface.js"
 
 export * from "./contracts/association.js"
 
@@ -107,7 +108,7 @@ export class Association extends Context.Service<Association, AssociationClientA
 ) {}
 
 export type AssociationRpc = RpcGroup.Rpcs<typeof AssociationRpcGroup>
-export type AssociationRpcHandlers = RpcGroup.HandlersFrom<AssociationRpc>
+export type AssociationRpcHandlers<R = never> = NativeRpcHandlers<typeof AssociationRpcGroup, R>
 
 export const AssociationHandlersLive = AssociationRpcGroup.toLayer({
   "Association.isDefaultProtocolClient": (input) =>
