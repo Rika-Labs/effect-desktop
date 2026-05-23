@@ -1,6 +1,6 @@
 # @orika/devtools
 
-> **Status:** Phase 19 runtime inspector projections. See `engineering/SPEC.md`.
+> **Status:** Active runtime inspector projections. See `engineering/SPEC.md`.
 
 ## Purpose
 
@@ -77,7 +77,8 @@ bun run typecheck
 
 ## Platform notes
 
-None until the package implements native-touching primitives.
+Platform-neutral projection package. Native state appears only through the core
+runtime and native services that devtools observes.
 
 ## Internal Architecture
 

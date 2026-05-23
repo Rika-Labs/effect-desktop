@@ -1,7 +1,13 @@
 # @orika/config
 
-> **Status:** Phase 16 starts the production security checker; full config
-> loading and manifest emission land in later phases. See `engineering/SPEC.md`.
+> **Status:** Active desktop config schema, merge policy, CSP renderer, and
+> production security checker. See `engineering/SPEC.md`.
+
+## Purpose
+
+Typed `desktop.config.ts` helpers and production policy checks. The package owns
+config shape validation, decoded config merging, default CSP rendering,
+weakened-CSP detection, and structured production check reports for the CLI.
 
 ## Dependencies
 

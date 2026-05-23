@@ -1,6 +1,7 @@
 # @orika/core
 
-> **Status:** Phase 2 runtime entry exists; the public API remains reserved for Phase 4+. See `engineering/SPEC.md`.
+> **Status:** Active runtime framework surface for Desktop composition,
+> Layer-first RPC, and core runtime services. See `engineering/SPEC.md`.
 
 ## Purpose
 
@@ -8,12 +9,11 @@ Public framework API and runtime contracts (`Desktop.run`, `Desktop.window`, `De
 
 ## Public API
 
-The package exports runtime primitives as they land by phase. Phase 16 adds the
-`PermissionRegistry`, `ApprovalBroker`, and `AuditEvents` services to the Phase
-15 `SqlClientLive`, `Settings`, `Transport`, `WindowState`, `Secrets`, and
-`RedactionFilter` services/utilities for scope-bound local storage, app-owned
-protocol transport, platform-backed credential storage, and human-visible
-emission safety.
+The package exports the active runtime primitives used by apps, adapters, CLI
+checks, and test layers: Desktop composition, Layer-first RPC surfaces,
+permission and approval services, audit events, SQLite, settings, transport,
+window state, secrets, redaction, processes, workers, jobs, telemetry, and
+resource ownership.
 
 ### Desktop RPC surfaces
 

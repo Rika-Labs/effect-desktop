@@ -28,6 +28,14 @@ const PHASE_0_RUST_TEST_MARKER = "fn it_compiles"
 const NATIVE_LAYER_HELPER_NAME_PATTERN =
   /\b(make[A-Za-z0-9]+(?:ClientLayer|ServiceLayer|BridgeClientLayer))\b/g
 const NATIVE_PACKAGE_EXPORT_BLOCK_PATTERN = /export\s*\{([\s\S]*?)\}\s*from\s+"\.[^"]+\.js"/g
+const STALE_PACKAGE_README_PHRASES = [
+  "public API remains reserved for Phase 4+",
+  "Public renderer-facing APIs",
+  "are populated in Phase 4",
+  "Phase 3 starts the package",
+  "manifest emission land in later phases",
+  "None until the package implements native-touching primitives"
+] as const
 
 const StringRecord = Schema.Record(Schema.String, Schema.String)
 
@@ -151,6 +159,25 @@ describe("root README", () => {
       }
       expect(existsSync(join(REPO_ROOT, "packages", packageName, "package.json"))).toBe(true)
     }
+  })
+})
+
+describe("package READMEs", () => {
+  test("do not carry stale phase-gate placeholders", () => {
+    const violations: string[] = []
+
+    for (const path of collectMarkdownFiles(join(REPO_ROOT, "packages")).filter((file) =>
+      file.endsWith("/README.md")
+    )) {
+      const readme = readFileSync(path, "utf8")
+      for (const phrase of STALE_PACKAGE_README_PHRASES) {
+        if (readme.includes(phrase)) {
+          violations.push(`${path.slice(REPO_ROOT.length + 1)}: remove stale phrase "${phrase}"`)
+        }
+      }
+    }
+
+    expect(violations).toEqual([])
   })
 })
 

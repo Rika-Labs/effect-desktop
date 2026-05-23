@@ -1,7 +1,7 @@
 # @orika/test
 
-> **Status:** Phase 3.5 headless harness is available. Phase 15 adds a memory
-> Secrets safe-storage adapter. See `engineering/SPEC.md`.
+> **Status:** Active headless harness, deterministic test layers, and memory
+> service substitutes. See `engineering/SPEC.md`.
 
 ## Purpose
 
@@ -99,7 +99,8 @@ bun run typecheck
 
 ## Platform notes
 
-None until the package implements native-touching primitives.
+CI-safe by default. Mock layers run in-process and avoid OS prompts or native
+hosts unless a test explicitly opts into a live adapter.
 
 ## Internal architecture
 

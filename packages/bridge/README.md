@@ -1,17 +1,17 @@
 # @orika/bridge
 
-> **Status:** Phase 3 host-protocol schema mirror. Public renderer-facing APIs
-> are populated in Phase 4. See `engineering/SPEC.md`.
+> **Status:** Active host-protocol and Effect RPC bridge boundary. See
+> `engineering/SPEC.md`.
 
 ## Purpose
 
 Typed renderer-runtime bridge: contract registry, client and handler generation, request/response, events, streams, resource handles, cancellation.
 
-Phase 3 starts the package with the host protocol envelope Schema mirror,
-required `host.version` / `host.ping` handshake wrappers, and the initial
-`Window.create` / `Window.destroy` wrappers so the runtime can decode the same
-JSON fixtures as `crates/host-protocol` and exercise the first native-touching
-host method calls.
+The package owns the host protocol envelope Schema mirror, handshake clients,
+initial host window clients, bridge contract lowering, Effect RPC protocol
+adapters, stream registries, runtime call observation, redaction, and typed
+client helpers. It decodes the same JSON fixtures as `crates/host-protocol` and
+keeps renderer/runtime/host wire failures as typed values.
 
 ## Public API
 
@@ -63,7 +63,8 @@ bun run typecheck
 
 ## Platform notes
 
-None until the package implements native-touching primitives.
+Platform-neutral TypeScript protocol package. Native behavior stays in the Rust
+host and `@orika/native`; this package validates and routes the wire contract.
 
 ## Dependency notes
 
