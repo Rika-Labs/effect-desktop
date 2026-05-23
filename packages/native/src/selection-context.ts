@@ -1,6 +1,4 @@
 import {
-  type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
@@ -8,7 +6,7 @@ import {
   RpcGroup
 } from "@orika/bridge"
 import { type DesktopRpcClient, P, type PermissionRegistry } from "@orika/core"
-import { Context, Effect, Layer, Schema, Stream } from "effect"
+import { Context, Effect, Schema, Stream } from "effect"
 
 import {
   SelectionContextEvent,
@@ -76,48 +74,10 @@ export interface SelectionContextClientApi {
   readonly events: () => Stream.Stream<SelectionContextEvent, SelectionContextError, never>
 }
 
-export class SelectionContextClient extends Context.Service<
-  SelectionContextClient,
-  SelectionContextClientApi
->()("@orika/native/SelectionContextClient") {}
-
-export interface SelectionContextServiceApi {
-  readonly isSupported: () => Effect.Effect<
-    SelectionContextSupportedResult,
-    SelectionContextError,
-    never
-  >
-  readonly events: () => Stream.Stream<SelectionContextEvent, SelectionContextError, never>
-}
-
 export class SelectionContext extends Context.Service<
   SelectionContext,
-  SelectionContextServiceApi
->()("@orika/native/SelectionContext") {
-  static readonly layer = Layer.effect(SelectionContext)(
-    Effect.gen(function* () {
-      const client = yield* SelectionContextClient
-      return makeSelectionContextService(client)
-    })
-  )
-}
-
-export const SelectionContextLive = SelectionContext.layer
-
-export const makeSelectionContextClientLayer = (
-  client: SelectionContextClientApi
-): Layer.Layer<SelectionContextClient> => Layer.succeed(SelectionContextClient)(client)
-
-export const makeSelectionContextServiceLayer = (
-  client: SelectionContextClientApi
-): Layer.Layer<SelectionContext> =>
-  Layer.succeed(SelectionContext)(makeSelectionContextService(client))
-
-export const makeSelectionContextBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<SelectionContextClient> =>
-  SelectionContextSurface.bridgeClientLayer(exchange, options)
+  SelectionContextClientApi
+>()("@orika/native/SelectionContext") {}
 
 export type SelectionContextRpc = RpcGroup.Rpcs<typeof SelectionContextRpcGroup>
 export type SelectionContextRpcHandlers = RpcGroup.HandlersFrom<SelectionContextRpc>
@@ -131,11 +91,10 @@ export const SelectionContextHandlersLive = SelectionContextRpcGroup.toLayer({
 })
 
 export const SelectionContextSurface = NativeSurface.make(Surface, SelectionContextRpcGroup, {
-  service: SelectionContextClient,
+  service: SelectionContext,
   handlers: SelectionContextHandlersLive,
   capabilityFacts: SelectionContextCapabilityFacts,
-  client: (client) => selectionContextClientFromRpcClient(client, undefined),
-  bridgeClient: (client, exchange) => selectionContextClientFromRpcClient(client, exchange)
+  client: (client) => selectionContextClientFromRpcClient(client)
 })
 
 export const makeHostSelectionContextRpcRuntime = (
@@ -165,17 +124,8 @@ export const makeSelectionContextUnsupportedClient = (): SelectionContextClientA
     events: () => Stream.fail(unsupportedError(SelectionContextEventMethod))
   } satisfies SelectionContextClientApi)
 
-const makeSelectionContextService = (
-  client: SelectionContextClientApi
-): SelectionContextServiceApi =>
-  Object.freeze({
-    isSupported: () => client.isSupported(),
-    events: () => client.events()
-  } satisfies SelectionContextServiceApi)
-
 const selectionContextClientFromRpcClient = (
-  client: DesktopRpcClient<SelectionContextRpc>,
-  _exchange: BridgeClientExchange | undefined
+  client: DesktopRpcClient<SelectionContextRpc>
 ): SelectionContextClientApi =>
   Object.freeze({
     isSupported: () =>

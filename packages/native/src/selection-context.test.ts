@@ -1,17 +1,16 @@
 import { expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
 import { type BridgeClientExchange } from "@orika/bridge"
-import { Effect, type Layer, ManagedRuntime, Schema, Stream } from "effect"
+import { Effect, Layer, ManagedRuntime, Schema, Stream } from "effect"
 
 import { makeNativeCapabilityManifest } from "./capabilities.js"
 import { SelectionContextEvent } from "./contracts/selection-context.js"
 import {
-  makeSelectionContextBridgeClientLayer,
   makeSelectionContextMemoryClient,
-  makeSelectionContextServiceLayer,
   makeSelectionContextUnsupportedClient,
   SelectionContext,
   SelectionContextCapabilityFacts,
-  SelectionContextClient,
+  type SelectionContextClientApi,
   SelectionContextRpcs,
   SelectionContextSurface
 } from "./selection-context.js"
@@ -22,6 +21,31 @@ const UnsupportedMethods = [
   "watchFocus",
   "stopWatching"
 ] as const
+
+test("SelectionContext public surface omits shallow service and layer helpers", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        readFile(new URL("selection-context.ts", import.meta.url), "utf8")
+      )
+      const indexSource = yield* Effect.promise(() =>
+        readFile(new URL("index.ts", import.meta.url), "utf8")
+      )
+
+      for (const removedName of [
+        "SelectionContextServiceApi",
+        "class SelectionContextClient",
+        "SelectionContextLive",
+        "makeSelectionContextClientLayer",
+        "makeSelectionContextServiceLayer",
+        "makeSelectionContextBridgeClientLayer",
+        "makeSelectionContextService"
+      ]) {
+        expect(source).not.toContain(removedName)
+        expect(indexSource).not.toContain(removedName)
+      }
+    })
+  ))
 
 test("SelectionContext exposes only isSupported as a callable RPC", () => {
   const callableTags = Array.from(SelectionContextRpcs.requests.keys()).toSorted()
@@ -77,7 +101,7 @@ test("SelectionContext isSupported reports supported result through the service"
           const context = yield* SelectionContext
           return yield* context.isSupported()
         }),
-        makeSelectionContextServiceLayer(client)
+        selectionContextLayer(client)
       )
       expect(result.supported).toBe(true)
     })
@@ -92,7 +116,7 @@ test("SelectionContext unsupported client reports the host-unavailable reason", 
           const context = yield* SelectionContext
           return yield* context.isSupported()
         }),
-        makeSelectionContextServiceLayer(client)
+        selectionContextLayer(client)
       )
       expect(result.supported).toBe(false)
       expect(result.reason).toBe("host-adapter-unimplemented")
@@ -212,12 +236,12 @@ test("SelectionContext bridge client fails event stream as unsupported before su
         }
       }
 
-      const runtime = ManagedRuntime.make(makeSelectionContextBridgeClientLayer(exchange))
+      const runtime = ManagedRuntime.make(SelectionContextSurface.bridgeClientLayer(exchange))
       const exit = yield* Effect.promise(() =>
         runtime.runPromise(
           Effect.gen(function* () {
-            const client = yield* SelectionContextClient
-            return yield* Effect.exit(client.events().pipe(Stream.take(1), Stream.runCollect))
+            const context = yield* SelectionContext
+            return yield* Effect.exit(context.events().pipe(Stream.take(1), Stream.runCollect))
           })
         )
       )
@@ -256,3 +280,6 @@ const runScoped = <A, E, R>(
     yield* Effect.promise(() => runtime.dispose())
     return result
   })
+
+const selectionContextLayer = (client: SelectionContextClientApi): Layer.Layer<SelectionContext> =>
+  Layer.succeed(SelectionContext)(client)

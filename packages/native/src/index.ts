@@ -625,24 +625,18 @@ export {
 export {
   SelectionContext,
   SelectionContextCapabilityFacts,
-  SelectionContextClient,
   SelectionContextHandlersLive,
-  SelectionContextLive,
   SelectionContextMethodNames,
   SelectionContextRpcEvents,
   SelectionContextRpcs,
   SelectionContextSurface,
   makeHostSelectionContextRpcRuntime,
-  makeSelectionContextBridgeClientLayer,
-  makeSelectionContextClientLayer,
   makeSelectionContextMemoryClient,
-  makeSelectionContextServiceLayer,
   makeSelectionContextUnsupportedClient,
   type SelectionContextClientApi,
   type SelectionContextError,
   type SelectionContextRpc,
-  type SelectionContextRpcHandlers,
-  type SelectionContextServiceApi
+  type SelectionContextRpcHandlers
 } from "./selection-context.js"
 export {
   FocusedApplicationContext,
