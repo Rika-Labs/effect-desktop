@@ -624,7 +624,7 @@ export const provider = (descriptor: DesktopProviderDescriptor): DesktopProvider
 export const providers = (...layers: readonly DesktopProvidersLayer[]): DesktopProvidersLayer =>
   Object.freeze(layers.flat())
 
-export const native = <
+export function native<
   const Declarations extends readonly DesktopNativeDeclaration<unknown, unknown, unknown>[]
 >(
   ...declarations: Declarations
@@ -632,19 +632,20 @@ export const native = <
   DesktopNativeDeclarationError<Declarations[number]>,
   DesktopNativeDeclarationServerR<Declarations[number]>,
   DesktopNativeDeclarationHandlerR<Declarations[number]>
-> =>
-  // The runtime flattening preserves the exact registrations passed in by each
-  // declaration; TypeScript widens the variadic union to unknown when `flatMap`
-  // crosses the layer/selection union, so keep that proof at this constructor.
-  Object.freeze(
-    declarations.flatMap((declaration) =>
-      isDesktopNativeLayer(declaration) ? declaration : declaration.surfaces
-    )
-  ) as DesktopNativeLayer<
-    DesktopNativeDeclarationError<Declarations[number]>,
-    DesktopNativeDeclarationServerR<Declarations[number]>,
-    DesktopNativeDeclarationHandlerR<Declarations[number]>
-  >
+>
+export function native(...declarations: readonly DesktopNativeDeclaration[]): DesktopNativeLayer {
+  const registrations: DesktopNativeRegistration[] = []
+
+  for (const declaration of declarations) {
+    if (isDesktopNativeLayer(declaration)) {
+      registrations.push(...declaration)
+    } else {
+      registrations.push(...declaration.surfaces)
+    }
+  }
+
+  return Object.freeze(registrations)
+}
 
 const isDesktopNativeLayer = <E, ServerR, HandlerR>(
   declaration: DesktopNativeDeclaration<E, ServerR, HandlerR>

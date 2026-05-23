@@ -36,6 +36,7 @@ import type * as RuntimeTransport from "@orika/core/runtime/transport"
 import * as core from "./index.js"
 import { TestRuntimeProviderLayer } from "./providers/test.js"
 import type {
+  DesktopNativeLayer,
   DesktopRuntimeProviderDescriptor,
   DesktopRuntimeProviderServices,
   DesktopWorkflowEngineLayer,
@@ -214,6 +215,17 @@ test("Desktop runtime layer array merge does not assert the empty Layer", () =>
       )
 
       expect(source).not.toContain("(Layer.empty as Layer.Layer<never, E, R>)")
+    })
+  ))
+
+test("Desktop.native does not assert flattened native declarations", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        Bun.file(new URL("./runtime/desktop-app.ts", import.meta.url)).text()
+      )
+
+      expect(source).not.toContain(") as DesktopNativeLayer<")
     })
   ))
 
@@ -883,17 +895,23 @@ test("Desktop.rpc pairs an RpcGroup with its implementation for app adapters", (
 test("Desktop.native composes an empty native layer without adding runtime surfaces", () =>
   Effect.runPromise(
     Effect.gen(function* () {
+      const emptyNative = core.Desktop.native()
+      type EmptyNativeLayerContract = Assert<
+        IsEqual<typeof emptyNative, DesktopNativeLayer<never, never, never>>
+      >
+      const emptyNativeLayerContract: EmptyNativeLayerContract = true
       const app = core.Desktop.make({
         id: "native-empty",
         windows: core.Desktop.window("main", { title: "Native" }),
         providers: core.Desktop.provider(core.Desktop.Provider.Runtime.test),
-        native: core.Desktop.native()
+        native: emptyNative
       })
       const graph = yield* core.Desktop.runtimeGraph(app)
 
       expect(app.native).toEqual([])
       expect(core.Desktop.manifest(app).rpcGroups).toEqual([])
       expect(graph.nodes.some((node) => node.kind === "native-surface")).toBe(false)
+      expect(emptyNativeLayerContract).toBe(true)
     })
   ))
 
