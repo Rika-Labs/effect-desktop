@@ -1401,7 +1401,7 @@
     {
       "name": "ExtensionConfig",
       "kind": "class",
-      "signature": "export class ExtensionConfig extends Context.Service<ExtensionConfig, ExtensionConfigServiceApi>()( \"@orika/native/ExtensionConfig\" ) { static readonly layer = Layer.effect(ExtensionConfig)( Effect.gen(function* () { const client = yield* ExtensionConfigClient const permissions = yield* PermissionRegistry const secrets = yield* SafeStorage return yield* makeExtensionConfigService(client, { permissions, secrets }) }) ) }"
+      "signature": "export class ExtensionConfig extends Context.Service<ExtensionConfig, ExtensionConfigServiceApi>()( \"@orika/native/ExtensionConfig\" ) { static readonly layer = Layer.effect(ExtensionConfig)( Effect.gen(function* () { const client = yield* ExtensionConfigClient const permissions = yield* PermissionRegistry const secrets = yield* SafeStorage const audit = yield* Effect.serviceOption(AuditEvents) return yield* makeExtensionConfigService(client, { permissions, secrets, ...(Option.isSome(audit) ? { audit: audit.value } : {}) }) }) ) }"
     },
     {
       "name": "ExtensionConfigClient",
@@ -2242,16 +2242,6 @@
       "name": "makeExecutionSandboxUnsupportedClient",
       "kind": "value",
       "signature": "const makeExecutionSandboxUnsupportedClient: () => ExecutionSandboxClientApi"
-    },
-    {
-      "name": "makeExtensionConfigBridgeClientLayer",
-      "kind": "value",
-      "signature": "const makeExtensionConfigBridgeClientLayer: (exchange: BridgeClientExchange, options?: BridgeClientOptions) => Layer.Layer<ExtensionConfigClient>"
-    },
-    {
-      "name": "makeExtensionConfigClientLayer",
-      "kind": "value",
-      "signature": "const makeExtensionConfigClientLayer: (client: ExtensionConfigClientApi) => Layer.Layer<ExtensionConfigClient>"
     },
     {
       "name": "makeExtensionConfigMemoryClient",

@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
 import {
   type BridgeClientExchange,
   type HostProtocolError,
@@ -10,8 +11,15 @@ import {
   makeSecretBytes,
   unsafeSecretBytes
 } from "@orika/bridge"
-import { type AuditEvent, type AuditEventsApi, makePermissionRegistry, P } from "@orika/core"
-import { Cause, Effect, Exit, type Layer, ManagedRuntime, Schema, Stream } from "effect"
+import {
+  AuditEvents,
+  type AuditEvent,
+  type AuditEventsApi,
+  makePermissionRegistry,
+  P,
+  PermissionRegistry
+} from "@orika/core"
+import { Cause, Effect, Exit, Layer, ManagedRuntime, Schema, Stream } from "effect"
 
 import {
   ExtensionConfig,
@@ -20,7 +28,6 @@ import {
   ExtensionConfigSurface,
   type ExtensionConfigSecretStoreApi,
   type ExtensionConfigWriteRequest,
-  makeExtensionConfigBridgeClientLayer,
   makeExtensionConfigMemoryClient,
   makeExtensionConfigServiceLayer,
   makeExtensionConfigUnsupportedClient
@@ -36,6 +43,27 @@ import {
   ExtensionConfigValueEntry,
   ExtensionConfigWriteInput
 } from "./contracts/extension-config.js"
+import { SafeStorage } from "./safe-storage.js"
+
+test("ExtensionConfig public surface omits shallow client and bridge layer helpers", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        readFile(new URL("extension-config.ts", import.meta.url), "utf8")
+      )
+      const indexSource = yield* Effect.promise(() =>
+        readFile(new URL("index.ts", import.meta.url), "utf8")
+      )
+
+      for (const removedName of [
+        "makeExtensionConfigClientLayer",
+        "makeExtensionConfigBridgeClientLayer"
+      ]) {
+        expect(source).not.toContain(removedName)
+        expect(indexSource).not.toContain(removedName)
+      }
+    })
+  ))
 
 test("ExtensionConfig service writes typed values, stores secrets safely, redacts exports, and audits use", () =>
   Effect.runPromise(
@@ -75,6 +103,34 @@ test("ExtensionConfig service writes typed values, stores secrets safely, redact
       expect(result.event._tag).toBe("Some")
       expect(rows.some((row) => row.kind === "permission-used")).toBe(true)
       expect(serialize(result.redacted)).not.toContain("1,2,3")
+    })
+  ))
+
+test("ExtensionConfig layer preserves AuditEvents from context", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const rows: AuditEvent[] = []
+      const permissions = yield* configuredPermissions(rows)
+      const client = yield* makeExtensionConfigMemoryClient()
+      const secrets = memorySecretStore()
+
+      yield* runScoped(
+        Effect.gen(function* () {
+          const config = yield* ExtensionConfig
+          return yield* config.write(writeRequest())
+        }),
+        Layer.provide(
+          ExtensionConfig.layer,
+          Layer.mergeAll(
+            Layer.succeed(ExtensionConfigClient)(client),
+            Layer.succeed(PermissionRegistry)(permissions),
+            Layer.succeed(SafeStorage)(secrets),
+            Layer.succeed(AuditEvents)(memoryAudit(rows))
+          )
+        )
+      )
+
+      expect(rows.some((row) => row.kind === "permission-used")).toBe(true)
     })
   ))
 
@@ -289,7 +345,7 @@ test("ExtensionConfig rejects secret field defaults before native transport", ()
             )
           )
         }),
-        makeExtensionConfigBridgeClientLayer(exchange)
+        ExtensionConfigSurface.bridgeClientLayer(exchange)
       )
 
       expect(requests).toEqual([])
@@ -334,7 +390,7 @@ test("ExtensionConfig rejects malformed values before native transport", () =>
             )
           )
         }),
-        makeExtensionConfigBridgeClientLayer(exchange)
+        ExtensionConfigSurface.bridgeClientLayer(exchange)
       )
 
       expect(requests).toEqual([])
@@ -445,7 +501,7 @@ test("ExtensionConfig bridge client decodes native lifecycle events", () =>
           const client = yield* ExtensionConfigClient
           return yield* client.events().pipe(Stream.runHead)
         }),
-        makeExtensionConfigBridgeClientLayer(exchange)
+        ExtensionConfigSurface.bridgeClientLayer(exchange)
       )
 
       expect(event._tag).toBe("Some")
@@ -485,7 +541,7 @@ test("ExtensionConfig bridge client rejects native lifecycle events with reasons
           const client = yield* ExtensionConfigClient
           return yield* Effect.exit(client.events().pipe(Stream.runHead))
         }),
-        makeExtensionConfigBridgeClientLayer(exchange)
+        ExtensionConfigSurface.bridgeClientLayer(exchange)
       )
 
       expectInvalidOutput(exit)
@@ -733,7 +789,7 @@ const memoryAudit = (rows: AuditEvent[]): AuditEventsApi => ({
 })
 
 const bridgeExtensionConfigClient = (exchange: BridgeClientExchange): ExtensionConfigClientApi => {
-  const layer = makeExtensionConfigBridgeClientLayer(exchange)
+  const layer = ExtensionConfigSurface.bridgeClientLayer(exchange)
   const withClient = <A, E>(
     run: (client: ExtensionConfigClientApi) => Effect.Effect<A, E, never>
   ): Effect.Effect<A, E, never> =>

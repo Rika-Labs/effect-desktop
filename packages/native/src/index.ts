@@ -478,8 +478,6 @@ export {
   ExtensionConfigRpcEvents,
   ExtensionConfigRpcs,
   ExtensionConfigSurface,
-  makeExtensionConfigBridgeClientLayer,
-  makeExtensionConfigClientLayer,
   makeExtensionConfigMemoryClient,
   makeExtensionConfigServiceLayer,
   makeExtensionConfigUnsupportedClient,

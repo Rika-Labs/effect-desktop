@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   HostProtocolPermissionDeniedError,
@@ -13,6 +12,7 @@ import {
   type SecretBytes
 } from "@orika/bridge"
 import {
+  AuditEvents,
   type AuditEventsApi,
   type DesktopRpcClient,
   emitAuditEvent,
@@ -222,27 +222,23 @@ export class ExtensionConfig extends Context.Service<ExtensionConfig, ExtensionC
       const client = yield* ExtensionConfigClient
       const permissions = yield* PermissionRegistry
       const secrets = yield* SafeStorage
-      return yield* makeExtensionConfigService(client, { permissions, secrets })
+      const audit = yield* Effect.serviceOption(AuditEvents)
+      return yield* makeExtensionConfigService(client, {
+        permissions,
+        secrets,
+        ...(Option.isSome(audit) ? { audit: audit.value } : {})
+      })
     })
   )
 }
 
 export const ExtensionConfigLive = ExtensionConfig.layer
 
-export const makeExtensionConfigClientLayer = (
-  client: ExtensionConfigClientApi
-): Layer.Layer<ExtensionConfigClient> => Layer.succeed(ExtensionConfigClient)(client)
-
 export const makeExtensionConfigServiceLayer = (
   client: ExtensionConfigClientApi,
   options: ExtensionConfigServiceOptions
 ): Layer.Layer<ExtensionConfig> =>
   Layer.effect(ExtensionConfig)(makeExtensionConfigService(client, options))
-
-export const makeExtensionConfigBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<ExtensionConfigClient> => ExtensionConfigSurface.bridgeClientLayer(exchange, options)
 
 export type ExtensionConfigRpc = RpcGroup.Rpcs<typeof ExtensionConfigRpcGroup>
 
