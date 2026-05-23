@@ -24,6 +24,17 @@ import {
 
 const encodeUnknownJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown))
 
+test("startup environment empty window lists do not assert registration arrays", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        Bun.file(new URL("./window-supervisor.ts", import.meta.url)).text()
+      )
+
+      expect(source).not.toContain("Object.freeze([]) as ReadonlyArray<")
+    })
+  ))
+
 const runScoped = <A, E, R, LE>(
   effect: Effect.Effect<A, E, R>,
   layer: Layer.Layer<R, LE, never>

@@ -37,6 +37,8 @@ type StartupEnvironmentSource = {
   readonly startupWindows: Option.Option<string>
   readonly smokeTest: Option.Option<string>
 }
+const emptyStartupWindows: ReadonlyArray<DesktopWindowRegistration<SupervisedWindowDeps>> =
+  Object.freeze([])
 
 export interface OpenedDeclaredWindow {
   readonly name: string
@@ -85,16 +87,9 @@ export const readStartupEnvironment = (
     Effect.flatMap((config) =>
       Effect.all({
         startupWindows: Option.isSome(config.appModule)
-          ? Effect.succeed(
-              Object.freeze([]) as ReadonlyArray<DesktopWindowRegistration<SupervisedWindowDeps>>
-            )
+          ? Effect.succeed(emptyStartupWindows)
           : Option.match(config.startupWindows, {
-              onNone: () =>
-                Effect.succeed(
-                  Object.freeze([]) as ReadonlyArray<
-                    DesktopWindowRegistration<SupervisedWindowDeps>
-                  >
-                ),
+              onNone: () => Effect.succeed(emptyStartupWindows),
               onSome: decodeStartupWindowsJson
             }),
         smokeTest: decodeSmokeTest(config.smokeTest)
