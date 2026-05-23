@@ -20,8 +20,8 @@ import {
 import { describeRpcs } from "@orika/core/runtime/renderer-rpc-descriptors"
 import { makeFrameworkRuntime, type FrameworkRuntime } from "@orika/core/runtime/renderer-stream"
 import type {
+  AnyDesktopRpcRegistrationGroup as RpcGroupWithRequests,
   DesktopAppManifest,
-  DesktopRpcRegistrationGroup as RpcGroupWithRequests,
   DesktopRpcsLayer
 } from "@orika/core/runtime/renderer-types"
 import { makeWindowRendererClient } from "@orika/native/renderer"

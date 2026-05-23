@@ -4,8 +4,8 @@ import { Rpc, RpcSchema } from "effect/unstable/rpc"
 
 import { makeDuplicateDesktopRpcNameError, makeMissingDesktopRpcsError } from "./desktop-errors.js"
 import type {
+  AnyDesktopRpcRegistrationGroup,
   DesktopAppManifest,
-  DesktopRpcRegistrationGroup,
   RendererRpcEndpointDescriptor
 } from "./renderer-types.js"
 
@@ -13,13 +13,7 @@ export type RpcEndpointDescriptorKind = RendererRpcEndpointDescriptor["kind"]
 export type RpcEndpointDescriptor = RendererRpcEndpointDescriptor
 export type DesktopRpcDescriptorSource = Pick<DesktopAppManifest, "rpcGroups">
 
-// Effect's public Rpc.Any type omits these fields, but RpcGroup requests contain full Rpc values.
-interface RpcWithSchemas extends Rpc.Any {
-  readonly payloadSchema: Schema.Top
-  readonly successSchema: Schema.Top
-}
-
-export const describeRpcs = <Group extends DesktopRpcRegistrationGroup>(
+export const describeRpcs = <Group extends AnyDesktopRpcRegistrationGroup>(
   app: DesktopRpcDescriptorSource,
   group: Group
 ): readonly RendererRpcEndpointDescriptor[] => {
@@ -36,7 +30,7 @@ export const describeRpcs = <Group extends DesktopRpcRegistrationGroup>(
       name: rpcEndpointName(rpc._tag),
       tag: rpc._tag,
       kind: endpointKind(rpc),
-      hasPayload: payloadSchema(rpc) !== Schema.Void,
+      hasPayload: rpc.payloadSchema !== Schema.Void,
       rpc,
       capability: rpcCapability(rpc),
       support: rpcSupport(rpc)
@@ -65,12 +59,8 @@ const assertUniqueEndpointNames = (descriptors: readonly RendererRpcEndpointDesc
   }
 }
 
-const endpointKind = (rpc: Rpc.Any): RendererRpcEndpointDescriptor["kind"] =>
-  RpcSchema.isStreamSchema(successSchema(rpc)) ? "stream" : rpcEndpointKind(rpc)
+const endpointKind = (rpc: Rpc.AnyWithProps): RendererRpcEndpointDescriptor["kind"] =>
+  RpcSchema.isStreamSchema(rpc.successSchema) ? "stream" : rpcEndpointKind(rpc)
 
-const payloadSchema = (rpc: Rpc.Any): Schema.Top => (rpc as RpcWithSchemas).payloadSchema
-
-const successSchema = (rpc: Rpc.Any): Schema.Top => (rpc as RpcWithSchemas).successSchema
-
-const groupTags = (group: DesktopRpcRegistrationGroup): readonly string[] =>
+const groupTags = (group: AnyDesktopRpcRegistrationGroup): readonly string[] =>
   Array.from(group.requests.keys())

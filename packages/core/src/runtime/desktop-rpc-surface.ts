@@ -16,26 +16,29 @@ import {
   type DesktopRpcsLayer
 } from "./desktop-app.js"
 
-export type DesktopRpcClient<Rpcs extends Rpc.Any> = RpcClient.RpcClient<
+export type DesktopRpcClient<Rpcs extends Rpc.AnyWithProps> = RpcClient.RpcClient<
   Rpcs,
   RpcClientError.RpcClientError
 >
 
-export type SupportedRpc<R extends Rpc.Any> =
+export type SupportedRpc<R extends Rpc.AnyWithProps> =
   R extends RpcSupportMarker<infer Support>
     ? Support extends { readonly status: "unsupported" }
       ? never
       : R
     : R
 
-export type SupportedDesktopRpcClient<Rpcs extends Rpc.Any> = DesktopRpcClient<SupportedRpc<Rpcs>>
-
-export type SupportedDesktopRpcGroup<Group extends RpcGroup.RpcGroup<Rpc.Any>> = RpcGroup.RpcGroup<
-  SupportedRpc<RpcGroup.Rpcs<Group>>
+export type SupportedDesktopRpcClient<Rpcs extends Rpc.AnyWithProps> = DesktopRpcClient<
+  SupportedRpc<Rpcs>
 >
 
-type RpcGroupRequests = {
-  readonly requests: ReadonlyMap<string, Rpc.Any>
+export type SupportedDesktopRpcGroup<
+  Group extends RpcGroup.RpcGroup<Rpcs>,
+  Rpcs extends Rpc.AnyWithProps = RpcGroup.Rpcs<Group>
+> = RpcGroup.RpcGroup<SupportedRpc<RpcGroup.Rpcs<Group>>>
+
+type RpcGroupRequests<Rpcs extends Rpc.AnyWithProps = Rpc.AnyWithProps> = {
+  readonly requests: ReadonlyMap<string, Rpcs>
 }
 
 export interface DesktopRpcSchemaDoc {
@@ -72,13 +75,13 @@ export class DesktopRpcSurfaceError extends Data.TaggedError("DesktopRpcSurfaceE
   readonly tag: string
 }> {}
 
-export interface DesktopRpcSurfaceOptionsBase<Rpcs extends Rpc.Any, ServerE, ServerR> {
+export interface DesktopRpcSurfaceOptionsBase<Rpcs extends Rpc.AnyWithProps, ServerE, ServerR> {
   readonly handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, ServerE, ServerR>
   readonly capabilityFacts?: readonly DesktopRpcCapabilityFact[]
 }
 
 export interface DesktopRpcSurfaceDirectOptions<
-  Rpcs extends Rpc.Any,
+  Rpcs extends Rpc.AnyWithProps,
   ServiceId,
   ServerE,
   ServerR
@@ -87,7 +90,7 @@ export interface DesktopRpcSurfaceDirectOptions<
 }
 
 export interface DesktopRpcSurfaceMappedOptions<
-  Rpcs extends Rpc.Any,
+  Rpcs extends Rpc.AnyWithProps,
   ServiceId,
   Service,
   ServerE,
@@ -100,7 +103,7 @@ export interface DesktopRpcSurfaceMappedOptions<
 export interface DesktopRpcSurface<
   Tag extends string,
   Group extends RpcGroup.RpcGroup<Rpcs>,
-  Rpcs extends Rpc.Any,
+  Rpcs extends Rpc.AnyWithProps,
   ServiceId,
   ServerE,
   ServerR
@@ -129,48 +132,44 @@ export interface DesktopRpcSurface<
 
 export function surface<
   const Tag extends string,
-  Group extends RpcGroup.RpcGroup<RpcGroup.Rpcs<Group>>,
+  Rpcs extends Rpc.AnyWithProps,
+  Group extends RpcGroup.RpcGroup<Rpcs>,
   ServiceId,
   ServerE,
   ServerR
 >(
   tag: Tag,
-  group: Group,
-  options: DesktopRpcSurfaceDirectOptions<RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR>
-): DesktopRpcSurface<Tag, Group, RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR>
+  group: RpcGroup.RpcGroup<Rpcs> & Group,
+  options: DesktopRpcSurfaceDirectOptions<Rpcs, ServiceId, ServerE, ServerR>
+): DesktopRpcSurface<Tag, Group, Rpcs, ServiceId, ServerE, ServerR>
 export function surface<
   const Tag extends string,
-  Group extends RpcGroup.RpcGroup<RpcGroup.Rpcs<Group>>,
+  Rpcs extends Rpc.AnyWithProps,
+  Group extends RpcGroup.RpcGroup<Rpcs>,
   ServiceId,
   Service,
   ServerE,
   ServerR
 >(
   tag: Tag,
-  group: Group,
-  options: DesktopRpcSurfaceMappedOptions<
-    RpcGroup.Rpcs<Group>,
-    ServiceId,
-    Service,
-    ServerE,
-    ServerR
-  >
-): DesktopRpcSurface<Tag, Group, RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR>
+  group: RpcGroup.RpcGroup<Rpcs> & Group,
+  options: DesktopRpcSurfaceMappedOptions<Rpcs, ServiceId, Service, ServerE, ServerR>
+): DesktopRpcSurface<Tag, Group, Rpcs, ServiceId, ServerE, ServerR>
 export function surface<
   const Tag extends string,
-  Group extends RpcGroup.RpcGroup<RpcGroup.Rpcs<Group>>,
+  Rpcs extends Rpc.AnyWithProps,
+  Group extends RpcGroup.RpcGroup<Rpcs>,
   ServiceId,
   Service,
   ServerE,
   ServerR
 >(
   tag: Tag,
-  group: Group,
+  group: RpcGroup.RpcGroup<Rpcs> & Group,
   options:
-    | DesktopRpcSurfaceDirectOptions<RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR>
-    | DesktopRpcSurfaceMappedOptions<RpcGroup.Rpcs<Group>, ServiceId, Service, ServerE, ServerR>
-): DesktopRpcSurface<Tag, Group, RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR> {
-  type Rpcs = RpcGroup.Rpcs<Group>
+    | DesktopRpcSurfaceDirectOptions<Rpcs, ServiceId, ServerE, ServerR>
+    | DesktopRpcSurfaceMappedOptions<Rpcs, ServiceId, Service, ServerE, ServerR>
+): DesktopRpcSurface<Tag, Group, Rpcs, ServiceId, ServerE, ServerR> {
   const service = options.service as Context.Key<ServiceId, DesktopRpcClient<Rpcs> | Service>
   const toService = (client: DesktopRpcClient<Rpcs>): DesktopRpcClient<Rpcs> | Service =>
     "client" in options ? options.client(client) : client
@@ -194,7 +193,7 @@ export function surface<
   })
 }
 
-export const supportedGroup = <Rpcs extends Rpc.Any>(
+export const supportedGroup = <Rpcs extends Rpc.AnyWithProps>(
   group: RpcGroup.RpcGroup<Rpcs>
 ): RpcGroup.RpcGroup<SupportedRpc<Rpcs>> =>
   RpcGroup.make(...Array.from(group.requests.values()).filter(isSupportedRpc))
@@ -204,7 +203,7 @@ export const DesktopRpc = Object.freeze({
   supportedGroup
 })
 
-const isSupportedRpc = <R extends Rpc.Any>(rpc: R): rpc is SupportedRpc<R> =>
+const isSupportedRpc = <R extends Rpc.AnyWithProps>(rpc: R): rpc is SupportedRpc<R> =>
   rpcSupport(rpc).status !== "unsupported"
 
 const assertCapabilityFacts = (
@@ -226,20 +225,19 @@ const assertCapabilityFacts = (
   }
 }
 
-const callableSchemaDocs = (group: RpcGroupRequests): readonly DesktopRpcSchemaDoc[] =>
+const callableSchemaDocs = <Rpcs extends Rpc.AnyWithProps>(
+  group: RpcGroupRequests<Rpcs>
+): readonly DesktopRpcSchemaDoc[] =>
   Array.from(group.requests.values()).map((rpc) => {
-    const withSchemas = rpc as Rpc.AnyWithProps
-    const stream = streamSchemasFromRpcSuccess(withSchemas.successSchema)
+    const stream = streamSchemasFromRpcSuccess(rpc.successSchema)
     return Object.freeze({
       name: rpcEndpointName(rpc._tag),
       tag: rpc._tag,
       kind: Option.isSome(stream) ? "stream" : rpcEndpointKind(rpc),
       callable: true,
-      payload: Option.some(withSchemas.payloadSchema),
-      success: Option.some(
-        Option.isSome(stream) ? stream.value.success : withSchemas.successSchema
-      ),
-      error: Option.some(Option.isSome(stream) ? stream.value.error : withSchemas.errorSchema),
+      payload: Option.some(rpc.payloadSchema),
+      success: Option.some(Option.isSome(stream) ? stream.value.success : rpc.successSchema),
+      error: Option.some(Option.isSome(stream) ? stream.value.error : rpc.errorSchema),
       stream: Option.map(stream, ({ success, error }) => ({ chunk: success, error })),
       capability: rpcCapability(rpc),
       support: rpcSupport(rpc)
@@ -353,11 +351,10 @@ const checkSchemaBackedEndpoints = (
 ): Effect.Effect<void, DesktopRpcSurfaceError, never> =>
   Effect.suspend(() => {
     for (const rpc of group.requests.values()) {
-      const withSchemas = rpc as Partial<Rpc.AnyWithProps>
       if (
-        !Schema.isSchema(withSchemas.payloadSchema) ||
-        !Schema.isSchema(withSchemas.successSchema) ||
-        !Schema.isSchema(withSchemas.errorSchema)
+        !Schema.isSchema(rpc.payloadSchema) ||
+        !Schema.isSchema(rpc.successSchema) ||
+        !Schema.isSchema(rpc.errorSchema)
       ) {
         return Effect.fail(
           new DesktopRpcSurfaceError({
@@ -371,23 +368,15 @@ const checkSchemaBackedEndpoints = (
     return Effect.void
   })
 
-interface RpcStreamSchema extends Schema.Schema<unknown> {
-  readonly success: Schema.Schema<unknown>
-  readonly error: Schema.Schema<unknown>
-}
-
 const streamSchemasFromRpcSuccess = (
-  schema: Schema.Schema<unknown>
+  schema: Schema.Top
 ): Option.Option<{
-  readonly success: Schema.Schema<unknown>
-  readonly error: Schema.Schema<unknown>
-}> => {
-  if (!RpcSchema.isStreamSchema(schema)) {
-    return Option.none()
-  }
-  const stream = schema as RpcStreamSchema
-  return Option.some({ success: stream.success, error: stream.error })
-}
+  readonly success: Schema.Top
+  readonly error: Schema.Top
+}> =>
+  RpcSchema.isStreamSchema(schema)
+    ? Option.some({ success: schema.success, error: schema.error })
+    : Option.none()
 
 const isWireSegmentName = (value: string): boolean => isPrintableName(value) && !value.includes(".")
 

@@ -22,7 +22,7 @@ import {
   type DesktopRendererRpcTransport,
   type FrameworkRuntime,
   type MissingDesktopRpcClientError,
-  type DesktopRpcRegistrationGroup as RpcGroupWithRequests
+  type AnyDesktopRpcRegistrationGroup as RpcGroupWithRequests
 } from "@orika/core/renderer"
 import type { WithRpcEndpointKind } from "@orika/bridge"
 import { Cause, Effect, Exit, ManagedRuntime, Stream } from "effect"

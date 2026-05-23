@@ -40,7 +40,7 @@ import {
   type NativeHostRpcRuntimeEnvironment
 } from "./native-rpc-runtime.js"
 
-type NativeRpcGroup<Rpcs extends Rpc.Any> = RpcGroup.RpcGroup<Rpcs> & {
+type NativeRpcGroup<Rpcs extends Rpc.AnyWithProps> = RpcGroup.RpcGroup<Rpcs> & {
   readonly requests: ReadonlyMap<string, Rpcs>
 }
 
@@ -129,7 +129,7 @@ export interface NativeRpcSurfaceSelectionOptions<Method extends string = never>
   readonly capabilities?: readonly Method[]
 }
 
-export interface NativeRpcSurfaceBridgeClientOptions<Rpcs extends Rpc.Any, Service> {
+export interface NativeRpcSurfaceBridgeClientOptions<Rpcs extends Rpc.AnyWithProps, Service> {
   readonly bridgeClient?: (
     client: DesktopRpcClient<Rpcs>,
     exchange: BridgeClientExchange
@@ -139,7 +139,7 @@ export interface NativeRpcSurfaceBridgeClientOptions<Rpcs extends Rpc.Any, Servi
 export interface NativeRpcSurface<
   Tag extends string,
   Group extends NativeRpcGroup<Rpcs>,
-  Rpcs extends Rpc.Any,
+  Rpcs extends Rpc.AnyWithProps,
   ServiceId,
   ServerE,
   ServerR,
@@ -246,20 +246,22 @@ const capabilityFact = <const Surface extends string, const Method extends strin
 
 function make<
   const Tag extends string,
-  Group extends RpcGroup.Any & NativeRpcGroup<RpcGroup.Rpcs<Group>>,
+  Rpcs extends Rpc.AnyWithProps,
+  Group extends NativeRpcGroup<Rpcs>,
   ServiceId,
   ServerE,
   ServerR,
   const Method extends string = never
 >(
   tag: Tag,
-  group: Group,
-  options: DesktopRpcSurfaceDirectOptions<RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR> &
+  group: NativeRpcGroup<Rpcs> & Group,
+  options: DesktopRpcSurfaceDirectOptions<Rpcs, ServiceId, ServerE, ServerR> &
     NativeRpcSurfaceSelectionOptions<Method>
-): NativeRpcSurface<Tag, Group, RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR, Method>
+): NativeRpcSurface<Tag, Group, Rpcs, ServiceId, ServerE, ServerR, Method>
 function make<
   const Tag extends string,
-  Group extends RpcGroup.Any & NativeRpcGroup<RpcGroup.Rpcs<Group>>,
+  Rpcs extends Rpc.AnyWithProps,
+  Group extends NativeRpcGroup<Rpcs>,
   ServiceId,
   Service,
   ServerE,
@@ -267,20 +269,15 @@ function make<
   const Method extends string = never
 >(
   tag: Tag,
-  group: Group,
-  options: DesktopRpcSurfaceMappedOptions<
-    RpcGroup.Rpcs<Group>,
-    ServiceId,
-    Service,
-    ServerE,
-    ServerR
-  > &
+  group: NativeRpcGroup<Rpcs> & Group,
+  options: DesktopRpcSurfaceMappedOptions<Rpcs, ServiceId, Service, ServerE, ServerR> &
     NativeRpcSurfaceSelectionOptions<Method> &
-    NativeRpcSurfaceBridgeClientOptions<RpcGroup.Rpcs<Group>, Service>
-): NativeRpcSurface<Tag, Group, RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR, Method>
+    NativeRpcSurfaceBridgeClientOptions<Rpcs, Service>
+): NativeRpcSurface<Tag, Group, Rpcs, ServiceId, ServerE, ServerR, Method>
 function make<
   const Tag extends string,
-  Group extends RpcGroup.Any & NativeRpcGroup<RpcGroup.Rpcs<Group>>,
+  Rpcs extends Rpc.AnyWithProps,
+  Group extends NativeRpcGroup<Rpcs>,
   ServiceId,
   Service,
   ServerE,
@@ -288,15 +285,14 @@ function make<
   const Method extends string = never
 >(
   tag: Tag,
-  group: Group,
+  group: NativeRpcGroup<Rpcs> & Group,
   options:
-    | (DesktopRpcSurfaceDirectOptions<RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR> &
+    | (DesktopRpcSurfaceDirectOptions<Rpcs, ServiceId, ServerE, ServerR> &
         NativeRpcSurfaceSelectionOptions<Method>)
-    | (DesktopRpcSurfaceMappedOptions<RpcGroup.Rpcs<Group>, ServiceId, Service, ServerE, ServerR> &
+    | (DesktopRpcSurfaceMappedOptions<Rpcs, ServiceId, Service, ServerE, ServerR> &
         NativeRpcSurfaceSelectionOptions<Method> &
-        NativeRpcSurfaceBridgeClientOptions<RpcGroup.Rpcs<Group>, Service>)
-): NativeRpcSurface<Tag, Group, RpcGroup.Rpcs<Group>, ServiceId, ServerE, ServerR, Method> {
-  type Rpcs = RpcGroup.Rpcs<Group>
+        NativeRpcSurfaceBridgeClientOptions<Rpcs, Service>)
+): NativeRpcSurface<Tag, Group, Rpcs, ServiceId, ServerE, ServerR, Method> {
   const service = options.service as Context.Key<ServiceId, DesktopRpcClient<Rpcs> | Service>
   const toBridgeService = (
     client: DesktopRpcClient<Rpcs>,

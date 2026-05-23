@@ -8,14 +8,14 @@ import {
   manifest as desktopManifest,
   type DesktopAppManifest,
   type DesktopManifestSource,
-  type DesktopRpcRegistrationGroup
+  type AnyDesktopRpcRegistrationGroup
 } from "./desktop-app.js"
 
 export type DesktopRpcDescriptorSource =
   | Pick<DesktopAppManifest, "rpcGroups">
   | DesktopManifestSource<unknown, unknown, unknown>
 
-export const describeRpcs = <Group extends DesktopRpcRegistrationGroup>(
+export const describeRpcs = <Group extends AnyDesktopRpcRegistrationGroup>(
   app: DesktopRpcDescriptorSource,
   group: Group
 ): readonly RpcEndpointDescriptor[] => {

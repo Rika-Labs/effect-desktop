@@ -49,6 +49,7 @@ import type {
 } from "./renderer-types.js"
 export type {
   AnyDesktopRpcRegistration,
+  AnyDesktopRpcRegistrationGroup,
   DesktopAppManifest,
   DesktopRpcGroupDescriptor,
   DesktopRpcRegistration,
@@ -685,7 +686,7 @@ export const manifest = <RIn = never, E = never, RpcHandlerR = unknown>(
   })
 }
 
-export const rpc = <Rpcs extends Rpc.Any, E, R>(
+export const rpc = <Rpcs extends Rpc.AnyWithProps, E, R>(
   group: RpcGroup.RpcGroup<Rpcs>,
   handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>
 ): DesktopRpcsLayer<E, DesktopRpcBoundServerRequirements<Rpcs, R>, R, Rpc.ToHandler<Rpcs>> =>
@@ -1373,7 +1374,7 @@ const mergeLayerArray = <E, R>(
   return firstLayer === undefined ? Layer.empty : Layer.mergeAll(firstLayer, ...remainingLayers)
 }
 
-const bindRpcGroup = <Rpcs extends Rpc.Any, E, R>(
+const bindRpcGroup = <Rpcs extends Rpc.AnyWithProps, E, R>(
   group: RpcGroup.RpcGroup<Rpcs>,
   handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>
 ): Layer.Layer<never, E, DesktopRpcBoundServerRequirements<Rpcs, R>> =>

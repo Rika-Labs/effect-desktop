@@ -8,9 +8,9 @@ import { Clock, Context, Effect, Exit, Layer, Scope, Stream } from "effect"
 import { Rpc, RpcClient, RpcGroup, RpcTest } from "effect/unstable/rpc"
 
 import type {
+  AnyDesktopRpcRegistrationGroup,
   AnyDesktopRpcRegistration,
   DesktopAppManifest,
-  DesktopRpcRegistrationGroup,
   DesktopRpcsLayer
 } from "./renderer-types.js"
 import {
@@ -37,7 +37,7 @@ export type DesktopRendererRpcClient = Readonly<Record<string, DesktopRendererRp
 
 export type DesktopRendererRpcClientMap = ReadonlyMap<RpcGroup.Any, DesktopRendererRpcClient>
 
-type DesktopRendererRpcFlatClient = RpcClient.RpcClient.Flat<Rpc.Any, unknown>
+type DesktopRendererRpcFlatClient = RpcClient.RpcClient.Flat<Rpc.AnyWithProps, unknown>
 type DesktopRendererRpcScopedResult =
   | Effect.Effect<unknown, RendererRpcError, Scope.Scope>
   | Stream.Stream<unknown, RendererRpcError, Scope.Scope>
@@ -188,7 +188,7 @@ const acquireDesktopRendererRpcTestClients = (
       const group = registration.group
       const handlerContext = yield* Layer.build(registration.handlers)
       const rpcClient = yield* Effect.provide(
-        RpcTest.makeClient(group as RpcGroup.RpcGroup<Rpc.Any>, { flatten: true }),
+        RpcTest.makeClient(effectRpcGroup(group), { flatten: true }),
         handlerContext
       )
       const client = makeRpcTestGroupClient(
@@ -209,14 +209,14 @@ const snapshotRegistrations = (
   Effect.succeed(rpcs)
 
 const makeGroupClient = (
-  group: DesktopRpcRegistrationGroup,
+  group: AnyDesktopRpcRegistrationGroup,
   protocol: RpcClient.Protocol["Service"],
   options: DesktopRendererRpcClientLayerOptions
 ): Effect.Effect<DesktopRendererRpcClient, never, Scope.Scope> =>
   Effect.gen(function* () {
     const scope = yield* Effect.scope
     const rpcClient = yield* Effect.provideService(
-      RpcClient.make(group as RpcGroup.RpcGroup<Rpc.Any>, { flatten: true }),
+      RpcClient.make(effectRpcGroup(group), { flatten: true }),
       RpcClient.Protocol,
       protocol
     )
@@ -238,7 +238,7 @@ const makeGroupClient = (
   })
 
 const makeRpcTestGroupClient = (
-  group: DesktopRpcRegistrationGroup,
+  group: AnyDesktopRpcRegistrationGroup,
   rpcClient: DesktopRendererRpcFlatClient,
   scope: Scope.Scope,
   framework: DesktopFramework,
@@ -259,6 +259,12 @@ const makeRpcTestGroupClient = (
   }
   return Object.freeze(client)
 }
+
+const effectRpcGroup = (
+  group: AnyDesktopRpcRegistrationGroup
+): RpcGroup.RpcGroup<Rpc.AnyWithProps> =>
+  // Desktop manifests erase heterogeneous group type parameters, but store the original Effect RpcGroup value.
+  group as RpcGroup.RpcGroup<Rpc.AnyWithProps>
 
 type RawRendererRpcInvocation = (
   tag: string,

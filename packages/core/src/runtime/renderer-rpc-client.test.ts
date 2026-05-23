@@ -19,7 +19,7 @@ import type { PlatformError } from "effect/PlatformError"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 
 import { Desktop } from "../index.js"
-import type { DesktopAppManifest } from "./desktop-app.js"
+import type { AnyDesktopRpcRegistrationGroup, DesktopAppManifest } from "./desktop-app.js"
 import { MissingDesktopRpcClientError } from "./desktop-errors.js"
 import {
   RendererRpcClients,
@@ -401,9 +401,7 @@ const runBunBuild = ({
 
 const adapterBundleExternals = Object.freeze(["@orika/bridge", "effect", "effect/unstable/rpc"])
 
-const manifestFor = (
-  group: RpcGroup.Any & { readonly requests: ReadonlyMap<string, Rpc.Any> }
-): DesktopAppManifest =>
+const manifestFor = (group: AnyDesktopRpcRegistrationGroup): DesktopAppManifest =>
   Object.freeze({
     _tag: "DesktopAppManifest",
     id: "notes",

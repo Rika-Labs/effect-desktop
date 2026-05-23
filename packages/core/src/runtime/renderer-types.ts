@@ -10,18 +10,20 @@ export interface RendererWindowSpec {
   readonly renderer?: string
 }
 
-export type DesktopRpcRegistrationGroup = RpcGroup.Any & {
-  readonly requests: ReadonlyMap<string, Rpc.Any>
+export type DesktopRpcRegistrationGroup<Rpcs extends Rpc.AnyWithProps> = RpcGroup.RpcGroup<Rpcs>
+
+export type AnyDesktopRpcRegistrationGroup = RpcGroup.Any & {
+  readonly requests: ReadonlyMap<string, Rpc.AnyWithProps>
 }
 
 export interface DesktopRpcRegistration<
-  Rpcs extends Rpc.Any,
+  Rpcs extends Rpc.AnyWithProps,
   E = unknown,
   ServerR = unknown,
   HandlerR = ServerR
 > {
   readonly _tag: "DesktopRpcRegistration"
-  readonly group: RpcGroup.RpcGroup<Rpcs>
+  readonly group: DesktopRpcRegistrationGroup<Rpcs>
   readonly handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, HandlerR>
   readonly serverLayer: Layer.Layer<never, E, ServerR>
 }
@@ -33,7 +35,7 @@ export interface AnyDesktopRpcRegistration<
   HandlerServices = never
 > {
   readonly _tag: "DesktopRpcRegistration"
-  readonly group: DesktopRpcRegistrationGroup
+  readonly group: AnyDesktopRpcRegistrationGroup
   readonly handlers: Layer.Layer<HandlerServices, E, HandlerR>
   readonly serverLayer: Layer.Layer<never, E, ServerR>
 }
@@ -47,7 +49,7 @@ export type DesktopRpcsLayer<
 
 export interface DesktopRpcGroupDescriptor {
   readonly _tag: "DesktopRpcGroup"
-  readonly group: DesktopRpcRegistrationGroup
+  readonly group: AnyDesktopRpcRegistrationGroup
 }
 
 export interface DesktopAppManifest {
@@ -62,7 +64,7 @@ export interface RendererRpcEndpointDescriptor {
   readonly tag: string
   readonly kind: "query" | "mutation" | "stream"
   readonly hasPayload: boolean
-  readonly rpc: Rpc.Any
+  readonly rpc: Rpc.AnyWithProps
   readonly capability: Option.Option<RpcCapabilityMetadata>
   readonly support: RpcSupportMetadata
 }

@@ -146,7 +146,32 @@ test("Desktop.rpc registration types use Effect RpcGroup directly", () =>
       )
 
       expect(source).not.toContain("TypedDesktopRpcRegistrationGroup")
-      expect(source).toContain("readonly group: RpcGroup.RpcGroup<Rpcs>")
+      expect(source).toContain(
+        "export type DesktopRpcRegistrationGroup<Rpcs extends Rpc.AnyWithProps> = RpcGroup.RpcGroup<Rpcs>"
+      )
+      expect(source).toContain("readonly group: DesktopRpcRegistrationGroup<Rpcs>")
+    })
+  ))
+
+test("Desktop RPC schema descriptor code uses Effect Rpc.AnyWithProps directly", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const rendererTypes = yield* Effect.promise(() =>
+        Bun.file(new URL("./runtime/renderer-types.ts", import.meta.url)).text()
+      )
+      const descriptorSource = yield* Effect.promise(() =>
+        Bun.file(new URL("./runtime/renderer-rpc-descriptors.ts", import.meta.url)).text()
+      )
+      const surfaceSource = yield* Effect.promise(() =>
+        Bun.file(new URL("./runtime/desktop-rpc-surface.ts", import.meta.url)).text()
+      )
+
+      expect(rendererTypes).toContain("Rpcs extends Rpc.AnyWithProps")
+      expect(rendererTypes).toContain("RpcGroup.RpcGroup<Rpcs>")
+      expect(descriptorSource).not.toContain("interface RpcWithSchemas")
+      expect(descriptorSource).not.toContain("as RpcWithSchemas")
+      expect(surfaceSource).not.toContain("rpc as Rpc.AnyWithProps")
+      expect(surfaceSource).not.toContain("rpc as Partial<Rpc.AnyWithProps>")
     })
   ))
 

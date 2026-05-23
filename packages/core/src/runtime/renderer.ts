@@ -58,6 +58,7 @@ export {
   type DesktopFramework
 } from "./desktop-errors.js"
 export type {
+  AnyDesktopRpcRegistrationGroup,
   DesktopAppManifest,
   DesktopRpcRegistration,
   DesktopRpcRegistrationGroup,
