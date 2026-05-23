@@ -10,7 +10,7 @@ effect_version: 4
 
 `Download` describes profile-owned download lifecycle and event operations. The download start, pause, resume, cancel, and list operations are declared as capability facts but are not callable in this build; `isSupported` and the `Download.Event` stream are the genuinely callable surface.
 
-The public service is Layer-first and test-substitutable. The TypeScript service exposes `Download.Event` as a typed stream. The memory client records snapshots under download handles and emits ordered replayable events, including terminal `canceled` events for interrupted downloads.
+The public service is Layer-first and test-substitutable. The TypeScript service exposes `Download.Event` as a typed stream. The memory client is intentionally minimal in this build: `isSupported()` returns `{ supported: true }` and `events()` returns an empty stream. It does not record download snapshots, replay lifecycle events, or synthesize cancellation events.
 
 ## Methods
 
@@ -35,7 +35,7 @@ The host does not yet receive portable provider download callbacks from profile-
 | Windows  | `unsupported` | `host-download-unavailable` |
 | Linux    | `unsupported` | `host-download-unavailable` |
 
-`isSupported` returns `{ supported: false, reason: "host-download-unavailable" }` from the host. Use `makeDownloadMemoryClient()` for deterministic lifecycle and cleanup tests; use `makeDownloadUnsupportedClient()` for the typed unsupported path.
+`isSupported` returns `{ supported: false, reason: "host-download-unavailable" }` from the host. Use `makeDownloadMemoryClient()` only when a test needs a supported no-op `Download` substitute; it does not model download lifecycle state. Use `makeDownloadUnsupportedClient()` for the typed unsupported path.
 
 ## Related
 
