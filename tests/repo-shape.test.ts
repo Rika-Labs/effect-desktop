@@ -33,6 +33,8 @@ const CURRENT_WINDOW_VOID_MUTATION_PAYLOAD_PATTERN =
 const AWAITED_MUTATION_RUN_PATTERN = /\bawait\s+[A-Za-z_$][\w$]*\.run\(/
 const MARKDOWN_CODE_BLOCK_PATTERN = /```[^\n]*\n([\s\S]*?)```/g
 const RAW_DESKTOP_MAKE_WINDOWS_PATTERN = /Desktop\.make\(\s*\{[\s\S]{0,600}\bwindows:\s*\{/m
+const CURRENT_WINDOW_ID_LITERAL_ROUTING_PATTERN =
+  /useCurrentWindowId\(\)[\s\S]{0,500}onSome:\s*\(\s*([A-Za-z_$][\w$]*)\s*\)\s*=>[\s\S]{0,220}\b\1\s*===\s*["']/m
 const STALE_PACKAGE_README_PHRASES = [
   "public API remains reserved for Phase 4+",
   "Public renderer-facing APIs",
@@ -381,7 +383,11 @@ describe("React window docs", () => {
 
     for (const relativePath of REACT_WINDOW_HOOK_DOCS) {
       const markdown = readFileSync(join(REPO_ROOT, relativePath), "utf8")
-      if (!markdown.includes("useCurrentWindowId")) {
+      const hasCurrentWindowIdExample =
+        /import\s*\{[\s\S]{0,120}\buseCurrentWindowId\b[\s\S]{0,120}}\s*from\s+"@orika\/react"/m.test(
+          markdown
+        ) || /const\s+[A-Za-z_$][\w$]*\s*=\s*useCurrentWindowId\(\)/m.test(markdown)
+      if (!hasCurrentWindowIdExample) {
         continue
       }
 
@@ -403,6 +409,11 @@ describe("React window docs", () => {
         )
       ) {
         violations.push(`${relativePath}: do not compare the Option result directly`)
+      }
+      if (CURRENT_WINDOW_ID_LITERAL_ROUTING_PATTERN.test(markdown)) {
+        violations.push(
+          `${relativePath}: do not route renderer views by comparing current host window ids to literals`
+        )
       }
       if (CURRENT_WINDOW_VOID_MUTATION_PAYLOAD_PATTERN.test(markdown)) {
         violations.push(`${relativePath}: call current-window close/destroy mutations with run()`)

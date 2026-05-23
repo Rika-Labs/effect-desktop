@@ -1,4 +1,5 @@
 import { ResourceHandleSchema, type ResourceHandle } from "@orika/core/runtime/resources"
+import { AppRendererRoute } from "@orika/bridge"
 import { Schema } from "effect"
 
 const PositiveFiniteNumber = Schema.Number.check(Schema.isFinite(), Schema.isGreaterThan(0))
@@ -70,6 +71,7 @@ export class WindowCreateInput extends Schema.Class<WindowCreateInput>("WindowCr
   title: Schema.optionalKey(Schema.NonEmptyString),
   width: Schema.optionalKey(PositiveFiniteNumber),
   height: Schema.optionalKey(PositiveFiniteNumber),
+  renderer: Schema.optionalKey(AppRendererRoute),
   parent: Schema.optionalKey(WindowResource),
   titleBarStyle: Schema.optionalKey(WindowTitleBarStyle),
   vibrancy: Schema.optionalKey(WindowVibrancyMaterial),

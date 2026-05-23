@@ -41,7 +41,12 @@ export const App = Desktop.make({
   id: "dev.example.notes",
   windows: Desktop.windows(
     Desktop.window("main", { title: "Notes", width: 720, height: 520 }),
-    Desktop.window("compose", { title: "Compose Note", width: 480, height: 360 })
+    Desktop.window("compose", {
+      title: "Compose Note",
+      width: 480,
+      height: 360,
+      renderer: "/compose"
+    })
   ),
   native: Desktop.native(Native.Window),
   rpcs: Desktop.rpc(NotesRpcs, NotesHandlersLive)
@@ -50,7 +55,7 @@ export const App = Desktop.make({
 export const Manifest = Desktop.manifest(App)
 ```
 
-Each `Desktop.window(id, spec)` returns a `Layer` that self-registers the window with the framework. Compose multiple windows with `Desktop.windows(...)`. The window ids (`"main"`, `"compose"`) are what the runtime uses to address them. The `compose` window is declared so the runtime knows about it; we'll open it on demand from the renderer rather than at launch.
+Each `Desktop.window(id, spec)` returns a `Layer` that self-registers the window with the framework. Compose multiple windows with `Desktop.windows(...)`. The window ids (`"main"`, `"compose"`) are what runtime services use to scope declarations; renderer view selection uses the renderer route. The `compose` window is declared so the runtime knows about it; we'll open it on demand from the renderer rather than at launch.
 
 If your renderer owns a separate manifest value, include
 `WindowRendererRpcs` from `@orika/native/renderer` there. Keep `WindowRpcs` from
@@ -104,7 +109,7 @@ Inside the component:
 ```tsx
 const createWindow = useCreateWindowMutation()
 
-const onOpenCompose = () => createWindow.run({ title: "Compose Note" })
+const onOpenCompose = () => createWindow.run({ title: "Compose Note", renderer: "/compose" })
 ```
 
 And in the JSX:
@@ -176,22 +181,15 @@ You did not write any of that.
 
 ## Step 4 — Route between windows
 
-How the renderer decides which panel to render is up to your renderer setup. The simplest pattern: read the window id from the `useCurrentWindowId` hook and match it.
+How the renderer decides which panel to render is up to your renderer setup. The simplest pattern: open the compose window on `/compose` and branch on the route. `useCurrentWindowId()` returns the host window resource id for native operations, not the `Desktop.window(...)` declaration id.
 
 ```tsx
-import { Option } from "effect"
-import { useCurrentWindowId } from "@orika/react"
-
 export function App() {
-  const windowId = useCurrentWindowId()
-  return Option.match(windowId, {
-    onNone: () => <NotesPanel />,
-    onSome: (id) => (id === "compose" ? <ComposePanel /> : <NotesPanel />)
-  })
+  return window.location.pathname === "/compose" ? <ComposePanel /> : <NotesPanel />
 }
 ```
 
-`useCurrentWindowId()` returns `Option.Option<string>` for the id the framework assigned this renderer. Each window opens its own renderer with its own id; the same React entry point can serve both.
+Same React entry point, different renderer route, different panel. If your app already has a router, use its current route instead of reading `window.location` directly.
 
 ## Step 5 — Persist window geometry
 

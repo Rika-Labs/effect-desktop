@@ -47,7 +47,7 @@ Returns `Option.Option<WindowHandle>` for the window the renderer is mounted in.
 
 ## `useCurrentWindowId()`
 
-Returns `Option.Option<string>` for the current window id. Route by matching the option, not by comparing the hook result directly.
+Returns `Option.Option<string>` for the current host window resource id. This is the `WindowHandle.id` used by native window operations; it is not the `Desktop.window(id, ...)` registration id. Route renderer views with renderer routes, your app router, or explicit app state.
 
 ```tsx
 import { Option } from "effect"
@@ -55,8 +55,8 @@ import { useCurrentWindowId } from "@orika/react"
 
 const id = useCurrentWindowId()
 return Option.match(id, {
-  onNone: () => <MainPanel />,
-  onSome: (value) => (value === "preferences" ? <PreferencesPanel /> : <MainPanel />)
+  onNone: () => <span>pending</span>,
+  onSome: (value) => <span>{value}</span>
 })
 ```
 
@@ -66,7 +66,7 @@ Mutation that opens a new window:
 
 ```tsx
 const createWindow = useCreateWindowMutation()
-createWindow.run({ title: "Preferences" })
+createWindow.run({ title: "Preferences", renderer: "/preferences" })
 ```
 
 ## `useCloseWindowMutation()` / `useCloseCurrentWindowMutation()`

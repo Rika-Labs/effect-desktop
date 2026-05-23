@@ -225,7 +225,7 @@ test("Window renderer client constructor derives service from renderer RPC clien
       const rendererClients = yield* RendererRpcClients
       const client = Option.getOrThrow(makeWindowRendererClient(rendererClients.clients))
 
-      const created = yield* client.create({ title: "Child" })
+      const created = yield* client.create({ title: "Child", renderer: "/child" })
       const current = yield* client.getCurrent()
       yield* client.close(current)
       yield* client.destroy(created)
@@ -233,7 +233,7 @@ test("Window renderer client constructor derives service from renderer RPC clien
       expect(String(created.id)).toBe("window-main")
       expect(String(current.id)).toBe("window-main")
       expect(calls).toEqual([
-        "create:Child",
+        "create:Child:/child",
         "getCurrent",
         "close:window-main",
         "destroy:window-main"
@@ -272,7 +272,7 @@ const testWindowState = {
 const makeTestWindowClient = (current: WindowHandle, calls: string[]): WindowClientApi => ({
   create: (input) =>
     Effect.sync(() => {
-      calls.push(`create:${input.title ?? ""}`)
+      calls.push(`create:${input.title ?? ""}:${input.renderer ?? ""}`)
       return current
     }),
   close: (window) =>

@@ -2314,6 +2314,7 @@ const toHostWindowCreateInput = (
     ...(input.title === undefined ? {} : { title: input.title }),
     ...(input.width === undefined ? {} : { width: input.width }),
     ...(input.height === undefined ? {} : { height: input.height }),
+    ...(input.renderer === undefined ? {} : { renderer: input.renderer }),
     ...(parentWindowId === undefined ? {} : { parentWindowId }),
     ...(input.titleBarStyle === undefined ? {} : { titleBarStyle: input.titleBarStyle }),
     ...(input.vibrancy === undefined ? {} : { vibrancy: input.vibrancy }),

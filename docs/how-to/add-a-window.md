@@ -22,7 +22,12 @@ export const App = Desktop.make({
   id: "dev.example.app",
   windows: Desktop.windows(
     Desktop.window("main", { title: "App", width: 1024, height: 720 }),
-    Desktop.window("preferences", { title: "Preferences", width: 480, height: 360 })
+    Desktop.window("preferences", {
+      title: "Preferences",
+      width: 480,
+      height: 360,
+      renderer: "/preferences"
+    })
   ),
   native: Desktop.native(Native.Window)
 })
@@ -45,7 +50,7 @@ function OpenPrefsButton() {
   return (
     <button
       disabled={createWindow.status === "running"}
-      onClick={() => createWindow.run({ title: "Preferences" })}
+      onClick={() => createWindow.run({ title: "Preferences", renderer: "/preferences" })}
     >
       Preferences
     </button>
@@ -72,22 +77,15 @@ To close a different window by handle, use `useCloseWindowMutation` and pass the
 
 ## 4. Route between windows in the renderer
 
-Each window opens its own renderer with an id. Read it with `useCurrentWindowId`:
+Open fixed views on distinct renderer routes, then choose the panel from the route. `useCurrentWindowId()` returns the host window resource id for native window operations; it is not the `Desktop.window(...)` declaration id.
 
 ```tsx
-import { Option } from "effect"
-import { useCurrentWindowId } from "@orika/react"
-
 export function App() {
-  const id = useCurrentWindowId()
-  return Option.match(id, {
-    onNone: () => <MainPanel />,
-    onSome: (value) => (value === "preferences" ? <PreferencesPanel /> : <MainPanel />)
-  })
+  return window.location.pathname === "/preferences" ? <PreferencesPanel /> : <MainPanel />
 }
 ```
 
-`useCurrentWindowId()` returns `Option.Option<string>` because the renderer learns its current window from the host after the React root is created. Same renderer entry, different views per window.
+Same renderer entry, different route, different view. If your app already uses a router, read the route from that router instead of `window.location` directly.
 
 ## Permissions
 

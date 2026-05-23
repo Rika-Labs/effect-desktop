@@ -11911,7 +11911,7 @@ test("host WindowClient adapter creates owned child windows and closes children 
         Effect.gen(function* () {
           const window = yield* Window
           const parent = yield* window.create({ title: "Parent" })
-          const child = yield* window.create({ title: "Child", parent })
+          const child = yield* window.create({ title: "Child", renderer: "/child", parent })
           const duringLifetime = yield* registry.list()
           yield* window.close(parent)
           const afterClose = yield* registry.list()
@@ -11930,7 +11930,10 @@ test("host WindowClient adapter creates owned child windows and closes children 
       expect(result.afterClose.entries).toEqual([])
       expect(requests.map((request) => [request.method, request.payload])).toEqual([
         [WINDOW_CREATE_METHOD, { title: "Parent" }],
-        [WINDOW_CREATE_METHOD, { title: "Child", parentWindowId: "host-parent" }],
+        [
+          WINDOW_CREATE_METHOD,
+          { title: "Child", renderer: "/child", parentWindowId: "host-parent" }
+        ],
         [WINDOW_DESTROY_METHOD, { windowId: "host-child" }],
         [WINDOW_DESTROY_METHOD, { windowId: "host-parent" }]
       ])

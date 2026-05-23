@@ -81,7 +81,7 @@ const WindowTrafficLights = Schema.Struct({
 })
 const WindowProgressState = Schema.Literals(["none", "normal", "indeterminate", "paused", "error"])
 const WindowAttentionType = Schema.Literals(["critical", "informational"])
-const AppRendererRoute = Schema.NonEmptyString.check(
+export const AppRendererRoute = Schema.NonEmptyString.check(
   Schema.isPattern(/^(?!\/\/)(?![A-Za-z][A-Za-z0-9+.-]*:)(?!.*\\)(?!.*\s).+$/u)
 )
 const WindowRegistryEventPhase = Schema.Literals([
