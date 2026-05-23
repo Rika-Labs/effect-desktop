@@ -230,7 +230,7 @@ export const SolidDesktop = Object.freeze({
         mount: HTMLElement,
         options?: SolidDesktopRenderOptions
       ) => {
-        const rootProps =
+        const rootProps: SolidDesktopRootProps =
           options?.transport === undefined && options?.rpcs === undefined
             ? {
                 get children() {
@@ -239,7 +239,7 @@ export const SolidDesktop = Object.freeze({
               }
             : {
                 transport: options.transport,
-                rpcLayers: options.rpcs,
+                rpcs: options.rpcs,
                 get children() {
                   return children()
                 }

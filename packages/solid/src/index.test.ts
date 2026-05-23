@@ -35,6 +35,16 @@ test("SolidDesktop adapter runtime uses the shared scoped framework helper", () 
     })
   ))
 
+test("SolidDesktop.render forwards the public rpcs option to DesktopRoot", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* readSolidIndexSource
+
+      expect(source).toContain("rpcs: options.rpcs")
+      expect(source).not.toContain("rpcLayers: options.rpcs")
+    })
+  ))
+
 test("SolidDesktop.from exposes app-scoped primitives from provided groups", () => {
   const ListNotes = Rpc.make("Notes.List", { success: Schema.Array(Schema.String) }).pipe(
     RpcEndpoint.query
