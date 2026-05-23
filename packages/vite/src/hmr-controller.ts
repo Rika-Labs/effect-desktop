@@ -28,11 +28,10 @@ export interface ViteDevRuntimeServer {
     readonly on: (event: string, handler: (payload: { readonly data: string }) => void) => void
     readonly off: (event: string, handler: (payload: { readonly data: string }) => void) => void
   }
-  readonly watcher: {
-    readonly on: (event: "change", handler: (filePath: string) => void) => void
-    readonly off?: (event: "change", handler: (filePath: string) => void) => void
-    readonly removeListener?: (event: "change", handler: (filePath: string) => void) => void
-  }
+  readonly transformRequest?: (
+    url: string,
+    options?: { readonly ssr?: boolean }
+  ) => Promise<unknown>
   readonly httpServer?: {
     readonly once: (event: "close", handler: () => void) => void
   } | null
@@ -52,7 +51,14 @@ export interface HmrControllerOptions {
 
 export interface HmrController {
   readonly process: () => RuntimeProcess | undefined
+  readonly handleHotUpdate: (filePath: string, modules: readonly RuntimeHotUpdateModule[]) => void
   readonly dispose: () => void
+}
+
+export interface RuntimeHotUpdateModule {
+  readonly id: string | null
+  readonly file: string | null
+  readonly importers: ReadonlySet<RuntimeHotUpdateModule>
 }
 
 export const makeHmrController = (options: HmrControllerOptions): HmrController => {
@@ -70,6 +76,7 @@ export const makeHmrController = (options: HmrControllerOptions): HmrController 
       return path.resolve(cwd, entry)
     })
   )
+  const normalizedEntryPath = normalizeFilePath(entryPath)
 
   const run = (
     effect: Effect.Effect<
@@ -119,8 +126,12 @@ export const makeHmrController = (options: HmrControllerOptions): HmrController 
     }
   }
 
-  const handleFileChange = (filePath: string): void => {
-    if (filePath === entryPath) {
+  const handleHotUpdate = (filePath: string, modules: readonly RuntimeHotUpdateModule[]): void => {
+    if (normalizeFilePath(filePath) === normalizedEntryPath) {
+      restart()
+      return
+    }
+    if (modules.some((module) => reachesRuntimeEntry(module, normalizedEntryPath))) {
       restart()
     }
   }
@@ -130,18 +141,16 @@ export const makeHmrController = (options: HmrControllerOptions): HmrController 
       listenerScope,
       Effect.sync(() => {
         server.ws.off(FRAME_UP_EVENT, handleFrameUp)
-        const removeFileChange = server.watcher.off ?? server.watcher.removeListener
-        removeFileChange?.("change", handleFileChange)
       })
     )
   )
   server.ws.on(FRAME_UP_EVENT, handleFrameUp)
-  server.watcher.on("change", handleFileChange)
 
   runLifecycle(startRuntime())
 
   return {
     process: () => active?.process,
+    handleHotUpdate,
     dispose: () => {
       if (disposed) {
         return
@@ -209,6 +218,17 @@ export const makeHmrController = (options: HmrControllerOptions): HmrController 
       )
       active = { process, frameFiber, exitFiber }
       server.ws.send(RUNTIME_READY_EVENT, {})
+      refreshRuntimeGraph()
+    })
+  }
+
+  function refreshRuntimeGraph(): void {
+    const transformRequest = server.transformRequest
+    if (transformRequest === undefined) {
+      return
+    }
+    void transformRequest(entryPath, { ssr: true }).catch((error: unknown) => {
+      reportRuntimeError(server, error)
     })
   }
 
@@ -229,6 +249,35 @@ export const makeHmrController = (options: HmrControllerOptions): HmrController 
     })
   }
 }
+
+const reachesRuntimeEntry = (
+  module: RuntimeHotUpdateModule,
+  normalizedEntryPath: string,
+  seen = new Set<RuntimeHotUpdateModule>()
+): boolean => {
+  if (seen.has(module)) {
+    return false
+  }
+  seen.add(module)
+  if (moduleMatchesPath(module, normalizedEntryPath)) {
+    return true
+  }
+  for (const importer of module.importers) {
+    if (reachesRuntimeEntry(importer, normalizedEntryPath, seen)) {
+      return true
+    }
+  }
+  return false
+}
+
+const moduleMatchesPath = (module: RuntimeHotUpdateModule, normalizedPath: string): boolean =>
+  normalizeOptionalFilePath(module.id) === normalizedPath ||
+  normalizeOptionalFilePath(module.file) === normalizedPath
+
+const normalizeOptionalFilePath = (path: string | null): string | null =>
+  path === null ? null : normalizeFilePath(path)
+
+const normalizeFilePath = (path: string): string => path.replaceAll("\\", "/")
 
 interface ActiveRuntime {
   readonly process: RuntimeProcess

@@ -8,6 +8,7 @@ test("desktop plugin has expected shape", () => {
   expect(typeof plugin.resolveId).toBe("function")
   expect(typeof plugin.load).toBe("function")
   expect(typeof plugin.configureServer).toBe("function")
+  expect(typeof plugin.handleHotUpdate).toBe("function")
 })
 
 test("desktop plugin resolves virtual module id", () => {

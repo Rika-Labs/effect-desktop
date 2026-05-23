@@ -18,6 +18,8 @@ class MissingProcessRecord extends Schema.TaggedErrorClass<MissingProcessRecord>
 ) {}
 
 const SyntheticRuntimePath = "/workspace/app/src/runtime.ts"
+const SyntheticRuntimeDependencyPath = "/workspace/app/src/runtime-dependency.ts"
+const SyntheticRendererPath = "/workspace/app/src/renderer.tsx"
 
 describe("HMR controller", () => {
   test("spawns the runtime through ChildProcessSpawner and forwards frames through HMR", () =>
@@ -74,12 +76,87 @@ describe("HMR controller", () => {
         })
 
         yield* waitFor(() => server.sent.some(([event]) => event === RUNTIME_READY_EVENT))
-        server.emitWatchChange(SyntheticRuntimePath)
+        controller.handleHotUpdate(SyntheticRuntimePath, [
+          makeFakeRuntimeModule(SyntheticRuntimePath)
+        ])
 
         yield* waitFor(() => fake.records.length === 2)
         expect(fake.records[0]?.killed).toBe(true)
         expect(fake.events).toEqual(["spawn:1", "close:1", "spawn:2"])
         yield* waitFor(() => server.sent.some(([event]) => event === RUNTIME_RESTART_EVENT))
+
+        controller.dispose()
+        yield* waitFor(() => fake.records.every((record) => record.killed))
+      })
+    ))
+
+  test("warms Vite SSR module graph after runtime starts", () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const fake = makeFakeProcessLayer()
+        const server = makeFakeServer()
+        const controller = makeHmrController({
+          entry: "src/runtime.ts",
+          cwd: "/workspace/app",
+          server,
+          processLayer: fake.layer
+        })
+
+        yield* waitFor(() => server.transforms.length === 1)
+        expect(server.transforms).toEqual([[SyntheticRuntimePath, { ssr: true }]])
+
+        controller.dispose()
+        yield* waitFor(() => fake.records.every((record) => record.killed))
+      })
+    ))
+
+  test("restarts when Vite reports a changed runtime dependency", () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const fake = makeFakeProcessLayer()
+        const server = makeFakeServer()
+        const controller = makeHmrController({
+          entry: "src/runtime.ts",
+          cwd: "/workspace/app",
+          server,
+          processLayer: fake.layer
+        })
+
+        yield* waitFor(() => server.sent.some(([event]) => event === RUNTIME_READY_EVENT))
+        const runtime = makeFakeRuntimeModule(SyntheticRuntimePath)
+        const dependency = makeFakeRuntimeModule(SyntheticRuntimeDependencyPath)
+        dependency.importers.add(runtime)
+
+        controller.handleHotUpdate(SyntheticRuntimeDependencyPath, [dependency])
+
+        yield* waitFor(() => fake.records.length === 2)
+        expect(fake.records[0]?.killed).toBe(true)
+        expect(fake.events).toEqual(["spawn:1", "close:1", "spawn:2"])
+
+        controller.dispose()
+        yield* waitFor(() => fake.records.every((record) => record.killed))
+      })
+    ))
+
+  test("ignores Vite hot updates outside the runtime dependency graph", () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const fake = makeFakeProcessLayer()
+        const server = makeFakeServer()
+        const controller = makeHmrController({
+          entry: "src/runtime.ts",
+          cwd: "/workspace/app",
+          server,
+          processLayer: fake.layer
+        })
+
+        yield* waitFor(() => server.sent.some(([event]) => event === RUNTIME_READY_EVENT))
+        const renderer = makeFakeRuntimeModule(SyntheticRendererPath)
+
+        controller.handleHotUpdate(SyntheticRendererPath, [renderer])
+
+        yield* Effect.sleep("25 millis")
+        expect(fake.records).toHaveLength(1)
 
         controller.dispose()
         yield* waitFor(() => fake.records.every((record) => record.killed))
@@ -154,7 +231,7 @@ describe("HMR controller", () => {
       })
     ))
 
-  test("dispose unregisters Vite websocket and watcher handlers", () =>
+  test("dispose unregisters Vite websocket handlers", () =>
     Effect.runPromise(
       Effect.gen(function* () {
         const fake = makeFakeProcessLayer()
@@ -167,13 +244,11 @@ describe("HMR controller", () => {
         })
 
         yield* waitFor(() => server.sent.some(([event]) => event === RUNTIME_READY_EVENT))
-        expect(server.listenerCounts()).toEqual({ frameUp: 1, change: 1 })
+        expect(server.listenerCounts()).toEqual({ frameUp: 1 })
 
         controller.dispose()
         yield* waitFor(() => fake.records.every((record) => record.killed))
-        yield* waitFor(
-          () => server.listenerCounts().frameUp === 0 && server.listenerCounts().change === 0
-        )
+        yield* waitFor(() => server.listenerCounts().frameUp === 0)
       })
     ))
 
@@ -190,9 +265,12 @@ describe("HMR controller", () => {
         })
 
         yield* waitFor(() => server.sent.some(([event]) => event === RUNTIME_READY_EVENT))
-        const entryPath = SyntheticRuntimePath
-        server.emitWatchChange(entryPath)
-        server.emitWatchChange(entryPath)
+        controller.handleHotUpdate(SyntheticRuntimePath, [
+          makeFakeRuntimeModule(SyntheticRuntimePath)
+        ])
+        controller.handleHotUpdate(SyntheticRuntimePath, [
+          makeFakeRuntimeModule(SyntheticRuntimePath)
+        ])
 
         yield* waitFor(() => fake.records.length === 3)
         expect(fake.events).toEqual(["spawn:1", "close:1", "spawn:2", "close:2", "spawn:3"])
@@ -275,23 +353,36 @@ const makeFakeProcessLayer = (
   }
 }
 
+interface FakeRuntimeModule {
+  readonly id: string
+  readonly file: string
+  readonly importers: Set<FakeRuntimeModule>
+}
+
+const makeFakeRuntimeModule = (file: string): FakeRuntimeModule => ({
+  id: file,
+  file,
+  importers: new Set()
+})
+
 type SentEvent = readonly [string, unknown]
 
 const makeFakeServer = (): ViteDevRuntimeServer & {
   readonly sent: SentEvent[]
   readonly errors: string[]
+  readonly transforms: Array<readonly [string, { readonly ssr?: boolean } | undefined]>
   readonly emitWs: (event: string, payload: { readonly data: string }) => void
-  readonly emitWatchChange: (filePath: string) => void
-  readonly listenerCounts: () => { readonly frameUp: number; readonly change: number }
+  readonly listenerCounts: () => { readonly frameUp: number }
 } => {
   const wsHandlers = new Map<string, Set<(payload: { readonly data: string }) => void>>()
-  const watchHandlers = new Set<(filePath: string) => void>()
   const sent: SentEvent[] = []
   const errors: string[] = []
+  const transforms: Array<readonly [string, { readonly ssr?: boolean } | undefined]> = []
 
   return {
     sent,
     errors,
+    transforms,
     ws: {
       send: (event, payload) => {
         sent.push([event, payload])
@@ -309,13 +400,9 @@ const makeFakeServer = (): ViteDevRuntimeServer & {
         }
       }
     },
-    watcher: {
-      on: (_event, handler) => {
-        watchHandlers.add(handler)
-      },
-      off: (_event, handler) => {
-        watchHandlers.delete(handler)
-      }
+    transformRequest: (url, options) => {
+      transforms.push([url, options])
+      return Promise.resolve(undefined)
     },
     httpServer: {
       once: () => {}
@@ -332,14 +419,8 @@ const makeFakeServer = (): ViteDevRuntimeServer & {
         handler(payload)
       }
     },
-    emitWatchChange: (filePath) => {
-      for (const handler of watchHandlers) {
-        handler(filePath)
-      }
-    },
     listenerCounts: () => ({
-      frameUp: wsHandlers.get(FRAME_UP_EVENT)?.size ?? 0,
-      change: watchHandlers.size
+      frameUp: wsHandlers.get(FRAME_UP_EVENT)?.size ?? 0
     })
   }
 }

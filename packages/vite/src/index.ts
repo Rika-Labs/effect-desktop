@@ -54,6 +54,10 @@ export default function desktop(options: DesktopPluginOptions): Plugin {
       })
     },
 
+    handleHotUpdate(ctx) {
+      hmr?.handleHotUpdate(ctx.file, ctx.modules)
+    },
+
     buildStart() {
       const environmentName = this.environment?.name
       if (environmentName === undefined || environmentName === "client") {
