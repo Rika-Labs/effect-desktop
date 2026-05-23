@@ -4226,7 +4226,7 @@
     {
       "name": "SessionProfileRpcEvents",
       "kind": "value",
-      "signature": "const SessionProfileRpcEvents: Readonly<{ Event: { payload: typeof SessionProfileEvent; }; }>"
+      "signature": "const SessionProfileRpcEvents: Readonly<{ Event: { payload: Schema.Union<readonly [typeof import(\"./contracts/session-profile.js\").SessionProfileOpenedEvent, typeof import(\"./contracts/session-profile.js\").SessionProfileClosedEvent, typeof import(\"./contracts/session-profile.js\").SessionProfileFailedEvent]>; }; }>"
     },
     {
       "name": "SessionProfileRpcHandlers",

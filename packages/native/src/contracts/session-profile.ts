@@ -39,38 +39,44 @@ export class SessionProfileSupportedResult extends Schema.Class<SessionProfileSu
   reason: Schema.optionalKey(BridgeSafeString)
 }) {}
 
-const SessionProfileEventPhasePayload = Schema.makeFilter<{
-  readonly phase: SessionProfileEventPhase
-  readonly profile?: SessionProfileHandle | undefined
-  readonly partition?: string | undefined
-  readonly message?: string | undefined
-}>((value) => {
-  switch (value.phase) {
-    case "opened":
-    case "closed":
-      return (
-        (value.profile !== undefined &&
-          value.partition !== undefined &&
-          value.message === undefined) ||
-        `${value.phase} session profile events require profile and partition only`
-      )
-    case "failed":
-      return (
-        (value.profile === undefined &&
-          value.partition === undefined &&
-          value.message !== undefined) ||
-        "failed session profile events require message only"
-      )
-  }
-})
+const SessionProfileEventBase = {
+  type: Schema.Literal("session-profile-event"),
+  timestamp: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0))
+}
 
-export class SessionProfileEvent extends Schema.Class<SessionProfileEvent>("SessionProfileEvent")(
-  Schema.Struct({
-    type: Schema.Literal("session-profile-event"),
-    timestamp: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0)),
-    phase: SessionProfileEventPhase,
-    profile: Schema.optionalKey(SessionProfileResource),
-    partition: Schema.optionalKey(BridgeSafeNonEmptyString),
-    message: Schema.optionalKey(BridgeSafeString)
-  }).check(SessionProfileEventPhasePayload)
-) {}
+export class SessionProfileOpenedEvent extends Schema.Class<SessionProfileOpenedEvent>(
+  "SessionProfileOpenedEvent"
+)({
+  ...SessionProfileEventBase,
+  phase: Schema.Literal("opened"),
+  profile: SessionProfileResource,
+  partition: BridgeSafeNonEmptyString,
+  message: Schema.optionalKey(Schema.Never)
+}) {}
+
+export class SessionProfileClosedEvent extends Schema.Class<SessionProfileClosedEvent>(
+  "SessionProfileClosedEvent"
+)({
+  ...SessionProfileEventBase,
+  phase: Schema.Literal("closed"),
+  profile: SessionProfileResource,
+  partition: BridgeSafeNonEmptyString,
+  message: Schema.optionalKey(Schema.Never)
+}) {}
+
+export class SessionProfileFailedEvent extends Schema.Class<SessionProfileFailedEvent>(
+  "SessionProfileFailedEvent"
+)({
+  ...SessionProfileEventBase,
+  phase: Schema.Literal("failed"),
+  message: BridgeSafeString,
+  profile: Schema.optionalKey(Schema.Never),
+  partition: Schema.optionalKey(Schema.Never)
+}) {}
+
+export const SessionProfileEvent = Schema.Union([
+  SessionProfileOpenedEvent,
+  SessionProfileClosedEvent,
+  SessionProfileFailedEvent
+])
+export type SessionProfileEvent = typeof SessionProfileEvent.Type

@@ -5,6 +5,7 @@ import {
   HostProtocolEventEnvelope,
   HostProtocolInvalidOutputError
 } from "@orika/bridge"
+import { makeResourceId } from "@orika/core"
 import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Schema, Stream } from "effect"
 
 import { makeNativeCapabilityManifest } from "./capabilities.js"
@@ -257,6 +258,64 @@ test("SessionProfile contracts reject inconsistent event phase payloads", () => 
   }
 })
 
+test("SessionProfile event types reject impossible phase payloads", () => {
+  type SessionProfileEventValue = typeof SessionProfileEvent.Type
+  const profile = profileHandle()
+  const baseEvent = {
+    type: "session-profile-event",
+    timestamp: 1_710_000_000_000
+  } as const
+
+  const opened: SessionProfileEventValue = {
+    ...baseEvent,
+    phase: "opened",
+    profile,
+    partition: "workspace-1"
+  }
+  const closed: SessionProfileEventValue = {
+    ...baseEvent,
+    phase: "closed",
+    profile,
+    partition: "workspace-1"
+  }
+  const failed: SessionProfileEventValue = {
+    ...baseEvent,
+    phase: "failed",
+    message: "host failed"
+  }
+
+  expect(opened.phase).toBe("opened")
+  expect(closed.partition).toBe("workspace-1")
+  expect(failed.message).toBe("host failed")
+
+  // @ts-expect-error opened session profile events must not carry message.
+  const openedWithMessage: SessionProfileEventValue = {
+    ...baseEvent,
+    phase: "opened",
+    profile,
+    partition: "workspace-1",
+    message: "host failed"
+  }
+  // @ts-expect-error closed session profile events require partition.
+  const closedWithoutPartition: SessionProfileEventValue = {
+    ...baseEvent,
+    phase: "closed",
+    profile
+  }
+  // @ts-expect-error failed session profile events must not carry profile or partition.
+  const failedWithProfile: SessionProfileEventValue = {
+    ...baseEvent,
+    phase: "failed",
+    profile,
+    partition: "workspace-1",
+    message: "host failed"
+  }
+
+  expect(openedWithMessage.phase).toBe("opened")
+  expect(closedWithoutPartition.phase).toBe("closed")
+  expect(failedWithProfile.phase).toBe("failed")
+})
+
 test("SessionProfile bridge client subscribes to the host event channel", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -334,7 +393,7 @@ const sessionProfileLayer = (client: SessionProfileClientApi): Layer.Layer<Sessi
 const profileHandle = () =>
   ({
     kind: "session-profile",
-    id: "session-profile:workspace-1",
+    id: makeResourceId("session-profile:workspace-1"),
     generation: 0,
     ownerScope: "workspace:1",
     state: "open"
