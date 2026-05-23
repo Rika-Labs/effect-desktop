@@ -1,10 +1,10 @@
 import { BunServices } from "@effect/platform-bun"
-import { Config, Layer } from "effect"
+import type { Config, Layer } from "effect"
 
 import type { DesktopRuntimeProviderServices } from "../runtime/desktop-app.js"
 
-export const BunRuntimeProviderLayer = BunServices.layer as Layer.Layer<
+export const BunRuntimeProviderLayer: Layer.Layer<
   DesktopRuntimeProviderServices,
   Config.ConfigError,
   never
->
+> = BunServices.layer

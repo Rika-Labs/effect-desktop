@@ -137,6 +137,28 @@ test("TestRuntimeProviderLayer does not assert merged provider services", () =>
     })
   ))
 
+test("BunRuntimeProviderLayer does not assert upstream provider services", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        Bun.file(new URL("./providers/bun.ts", import.meta.url)).text()
+      )
+
+      expect(source).not.toContain("BunServices.layer as Layer.Layer")
+    })
+  ))
+
+test("NodeRuntimeProviderLayer does not assert upstream provider services", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        Bun.file(new URL("./providers/node.ts", import.meta.url)).text()
+      )
+
+      expect(source).not.toContain("NodeServices.layer as Layer.Layer")
+    })
+  ))
+
 test("Desktop.workflowEngine does not assert the empty workflow Layer", () =>
   Effect.runPromise(
     Effect.gen(function* () {
