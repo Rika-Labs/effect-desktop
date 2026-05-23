@@ -517,6 +517,7 @@ const makeStore = (
       }).pipe(Effect.withSpan("Settings.set", { attributes: { namespace, key } })),
     delete: (key: string, options?: SettingsMutationOptions) =>
       Effect.gen(function* () {
+        const resolvedOptions = yield* decodeMutationOptions(options, "Settings.delete")
         const validatedKey = yield* decodeKey(key, "Settings.delete")
         const oldRaw = yield* kvGet(kv, valueKey(namespace, validatedKey), "Settings.delete")
         yield* kvRemove(kv, valueKey(namespace, validatedKey), "Settings.delete")
@@ -526,7 +527,7 @@ const makeStore = (
             key: validatedKey,
             oldValue: oldRaw.value,
             newValue: undefined,
-            source: options?.source ?? "delete"
+            source: resolvedOptions?.source ?? "delete"
           })
         }
       }).pipe(Effect.withSpan("Settings.delete", { attributes: { namespace, key } })),
@@ -541,6 +542,7 @@ const makeStore = (
       options?: SettingsMutationOptions
     ) =>
       Effect.gen(function* () {
+        const resolvedOptions = yield* decodeMutationOptions(options, "Settings.update")
         const validatedKey = yield* decodeKey(key, "Settings.update")
         const raw = yield* kvGet(kv, valueKey(namespace, validatedKey), "Settings.update")
         const current = Option.isSome(raw)
@@ -554,7 +556,7 @@ const makeStore = (
           key: validatedKey,
           oldValue: optionToOptional(raw),
           newValue: encoded,
-          source: options?.source ?? "update"
+          source: resolvedOptions?.source ?? "update"
         })
         return next
       }).pipe(Effect.withSpan("Settings.update", { attributes: { namespace, key } })),
@@ -791,10 +793,11 @@ const resolveSettingSetInput = <A>(
     }
     const schema = yield* resolveSettingSchema<A>(schemaOrValue, operation)
     const resolved = yield* resolveSettingKey(key, schema, operation)
+    const resolvedOptions = yield* decodeMutationOptions(options, operation)
     return {
       ...resolved,
       value: valueOrOptions,
-      options
+      options: resolvedOptions
     }
   })
 
@@ -803,7 +806,7 @@ const decodeMutationOptions = (
   operation: string
 ): Effect.Effect<SettingsMutationOptions | undefined, SettingsInvalidArgumentError, never> => {
   if (options === undefined) {
-    return Effect.succeed(undefined as SettingsMutationOptions | undefined)
+    return Effect.void.pipe(Effect.as(undefined))
   }
 
   return Schema.decodeUnknownEffect(SettingsMutationOptionsSchema)(options).pipe(

@@ -24,6 +24,7 @@ import {
   Settings,
   SettingsInvalidArgumentError,
   SettingsMigrationFailedError,
+  type SettingsMutationOptions,
   type SettingsError,
   type SettingsMigrationContext,
   type SettingsStore
@@ -80,6 +81,17 @@ const provideBunServices = <A, E>(
   effect: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path>
 ): Effect.Effect<A, E, never> =>
   Effect.promise(() => BunServicesRuntime.runPromise(effect)) as Effect.Effect<A, E, never>
+
+test("Settings mutation option decoding does not assert absent options", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        Bun.file(new URL("./settings.ts", import.meta.url)).text()
+      )
+
+      expect(source).not.toContain("undefined as SettingsMutationOptions | undefined")
+    })
+  ))
 
 describe("Settings", () => {
   test("set then get returns a schema-validated value", () =>
@@ -169,6 +181,56 @@ describe("Settings", () => {
 
         expectFailure(exit, SettingsInvalidArgumentError)
         expect(Option.isNone(stored)).toBe(true)
+      })
+    ))
+
+  test("raw set rejects invalid mutation options before writing", () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const { store } = yield* makeFixture()
+
+        const exit = yield* Effect.exit(
+          store.set("user.name", UserName, "alice", malformedMutationOptions())
+        )
+        const stored = yield* store.get("user.name", UserName)
+
+        expectFailure(exit, SettingsInvalidArgumentError)
+        expect(Option.isNone(stored)).toBe(true)
+      })
+    ))
+
+  test("delete rejects invalid mutation options before deleting", () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const { store } = yield* makeFixture()
+
+        yield* store.set("api.token", UserName, "secret")
+        const exit = yield* Effect.exit(store.delete("api.token", malformedMutationOptions()))
+        const stored = yield* store.get("api.token", UserName)
+
+        expectFailure(exit, SettingsInvalidArgumentError)
+        expect(Option.getOrUndefined(stored)).toBe("secret")
+      })
+    ))
+
+  test("update rejects invalid mutation options before writing", () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const { store } = yield* makeFixture()
+
+        yield* store.set("user.name", UserName, "alice")
+        const exit = yield* Effect.exit(
+          store.update(
+            "user.name",
+            UserName,
+            () => Effect.succeed("ada"),
+            malformedMutationOptions()
+          )
+        )
+        const stored = yield* store.get("user.name", UserName)
+
+        expectFailure(exit, SettingsInvalidArgumentError)
+        expect(Option.getOrUndefined(stored)).toBe("alice")
       })
     ))
 
@@ -605,6 +667,15 @@ const makeFixture = (
 
     return { store }
   })
+
+const malformedMutationOptions = (): SettingsMutationOptions => {
+  const options: SettingsMutationOptions = {}
+  Object.defineProperty(options, "source", {
+    enumerable: true,
+    value: 123
+  })
+  return options
+}
 
 function expectFailure<E>(
   exit: Exit.Exit<unknown, E>,
