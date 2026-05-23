@@ -1,7 +1,11 @@
 import { expect, test } from "bun:test"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { BunServices } from "@effect/platform-bun"
-import { HostProtocolResponseEnvelope, type HostProtocolEnvelope } from "@orika/bridge"
+import {
+  HostProtocolRequestEnvelope,
+  HostProtocolResponseEnvelope,
+  type HostProtocolEnvelope
+} from "@orika/bridge"
 import {
   Clock,
   Deferred,
@@ -27,6 +31,7 @@ import {
   makeDesktopRendererRpcLayer,
   makeDesktopRendererRpcTestLayer,
   makeDesktopRendererRpcTransportLayer,
+  getGlobalDesktopRendererRpcTransport,
   type DesktopRendererRpcTransport
 } from "./renderer-rpc-client.js"
 import { makeRendererInspectorCollector } from "./inspector-events.js"
@@ -104,6 +109,87 @@ test("RendererRpcClients layer fails missing transport as a typed layer error", 
       if (exit._tag === "Failure") {
         const failure = exit.cause.reasons.find((reason) => reason._tag === "Fail")
         expect(failure?.error).toBeInstanceOf(MissingDesktopRpcClientError)
+      }
+    })
+  ))
+
+test("global renderer RPC transport wraps the host-installed WebView transport", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const key = "__ORIKA_HOST_RPC_TRANSPORT__"
+      type HostInstalledTransport = {
+        readonly send: (envelope: HostProtocolEnvelope) => void
+        readonly subscribe: (listener: (envelope: unknown) => void) => () => void
+      }
+      const target = globalThis as typeof globalThis & {
+        [key]?: HostInstalledTransport | undefined
+      }
+      const sent: HostProtocolEnvelope[] = []
+      let listener: ((envelope: unknown) => void) | undefined
+
+      target[key] = Object.freeze({
+        send: (envelope: HostProtocolEnvelope) => {
+          sent.push(envelope)
+        },
+        subscribe: (next: (envelope: unknown) => void) => {
+          listener = next
+          return () => {
+            listener = undefined
+          }
+        }
+      })
+
+      try {
+        const transport = getGlobalDesktopRendererRpcTransport()
+        expect(transport).toBeDefined()
+        if (transport === undefined) {
+          throw new Error("expected host-installed renderer RPC transport")
+        }
+
+        const received = yield* Deferred.make<HostProtocolEnvelope>()
+        const fiber = yield* Effect.forkChild(
+          transport.run((envelope) => Deferred.succeed(received, envelope).pipe(Effect.asVoid)),
+          { startImmediately: true }
+        )
+        while (listener === undefined) {
+          yield* Effect.yieldNow
+        }
+        const inbound = new HostProtocolResponseEnvelope({
+          kind: "response",
+          id: "request-1",
+          timestamp: 1,
+          traceId: "trace-response",
+          payload: "pong"
+        })
+
+        listener?.(inbound)
+        yield* transport.send(
+          new HostProtocolRequestEnvelope({
+            kind: "request",
+            id: "request-1",
+            method: "Notes.Ping",
+            timestamp: 1,
+            traceId: "trace-request"
+          })
+        )
+
+        expect(sent).toHaveLength(1)
+        expect(sent[0]).toMatchObject({
+          kind: "request",
+          id: "request-1",
+          method: "Notes.Ping",
+          traceId: "trace-request"
+        })
+        expect(yield* Deferred.await(received)).toMatchObject({
+          kind: "response",
+          id: "request-1",
+          payload: "pong"
+        })
+
+        yield* Fiber.interrupt(fiber)
+        expect(listener).toBeUndefined()
+      } finally {
+        delete target[key]
       }
     })
   ))

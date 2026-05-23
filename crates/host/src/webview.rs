@@ -1,6 +1,6 @@
 use crate::{runtime, scheme};
 use anyhow::Context;
-use host_protocol::HostProtocolError;
+use host_protocol::{HostProtocolEnvelope, HostProtocolError};
 use std::borrow::Cow;
 use std::path::Path;
 use tao::window::Window;
@@ -16,6 +16,9 @@ const WEBVIEW_OPENED_EVENT: &str = "host.webview.opened";
 const WEBVIEW_CHILD_OPENED_EVENT: &str = "host.webview.child_opened";
 const DEV_URL_ENV: &str = "EFFECT_DESKTOP_DEV_URL";
 const WEBVIEW_CREATE_OPERATION: &str = host_protocol::WINDOW_CREATE_METHOD;
+const APP_RENDERER_RPC_IPC_KIND: &str = "orika.renderer-rpc";
+const APP_RENDERER_RPC_OPERATION: &str = "host.rendererRpcTransport";
+const APP_RENDERER_RPC_TRANSPORT_KEY: &str = "__ORIKA_HOST_RPC_TRANSPORT__";
 #[cfg(any(not(any(debug_assertions, feature = "devtools")), test))]
 const WEBVIEW_DEVTOOLS_BUILD_GATED_REASON: &str = "host-devtools-build-gated";
 #[cfg(any(target_os = "windows", test))]
@@ -25,6 +28,7 @@ const WEBVIEW_CLOSE_DEVTOOLS_WINDOWS_UNAVAILABLE_REASON: &str =
 pub(crate) type HostWebView = WebView;
 pub(crate) type HostWebContext = WebContext;
 type WebViewResult<T> = std::result::Result<T, Box<HostProtocolError>>;
+type RendererTransportResult<T> = std::result::Result<T, Box<HostProtocolError>>;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum WebEngineKind {
@@ -51,6 +55,12 @@ trait WebEngineProvider {
 struct WebViewRequest {
     url: Cow<'static, str>,
     chrome_runtime_path: Option<String>,
+    transport: AppWebViewTransport,
+}
+
+pub(crate) struct AppWebViewTransport {
+    pub(crate) initialization_script: String,
+    pub(crate) ipc_handler: Box<dyn Fn(wry::http::Request<String>)>,
 }
 
 pub(crate) struct ChildWebViewRequest<'a> {
@@ -79,8 +89,10 @@ impl WebEngineProvider for SystemWebEngineProvider {
         window: &Window,
         request: WebViewRequest,
     ) -> WebViewResult<HostWebView> {
-        let builder =
-            scheme::register_app_scheme(WebViewBuilder::new()).with_url(request.url.to_string());
+        let builder = scheme::register_app_scheme(WebViewBuilder::new())
+            .with_url(request.url.to_string())
+            .with_initialization_script(request.transport.initialization_script)
+            .with_ipc_handler(request.transport.ipc_handler);
         build_webview(builder, window).map_err(|error| {
             Box::new(HostProtocolError::internal(
                 format!("failed to attach system WebView provider: {error}"),
@@ -140,6 +152,7 @@ fn chrome_provider_missing_error_for_operation(
 pub(crate) fn attach_app_webview(
     window: &Window,
     renderer_route: Option<&str>,
+    transport: AppWebViewTransport,
 ) -> WebViewResult<HostWebView> {
     let selection = selected_web_engine()?;
     let url = renderer_url(std::env::var(DEV_URL_ENV).ok(), renderer_route);
@@ -147,6 +160,7 @@ pub(crate) fn attach_app_webview(
     let request = WebViewRequest {
         url,
         chrome_runtime_path: selection.chrome_runtime_path,
+        transport,
     };
     let provider = provider_for(selection.kind);
     let capabilities = provider.capabilities();
@@ -516,6 +530,129 @@ fn append_renderer_route(base: &str, route: Option<&str>) -> String {
     }
 }
 
+pub(crate) fn app_webview_transport_script(window_id: &str) -> String {
+    let window_id_json = serde_json::json!(window_id).to_string();
+    format!(
+        r#"(() => {{
+  const rawIpc = window.ipc;
+  if (rawIpc === undefined || typeof rawIpc.postMessage !== "function") {{
+    return;
+  }}
+  const windowId = {window_id_json};
+  const listeners = new Set();
+  const transport = Object.freeze({{
+    send(envelope) {{
+      const outgoing = envelope && typeof envelope === "object" && !Array.isArray(envelope)
+        ? {{ ...envelope }}
+        : envelope;
+      if (
+        outgoing &&
+        typeof outgoing === "object" &&
+        outgoing.kind === "request" &&
+        outgoing.windowId === undefined
+      ) {{
+        outgoing.windowId = windowId;
+      }}
+      rawIpc.postMessage(JSON.stringify({{
+        kind: "{APP_RENDERER_RPC_IPC_KIND}",
+        envelope: outgoing
+      }}));
+    }},
+    subscribe(listener) {{
+      if (typeof listener !== "function") {{
+        throw new TypeError("renderer RPC listener must be a function");
+      }}
+      listeners.add(listener);
+      return () => {{
+        listeners.delete(listener);
+      }};
+    }},
+    receive(envelope) {{
+      for (const listener of Array.from(listeners)) {{
+        listener(envelope);
+      }}
+    }}
+  }});
+  Object.defineProperty(window, "{APP_RENDERER_RPC_TRANSPORT_KEY}", {{
+    configurable: false,
+    enumerable: false,
+    writable: false,
+    value: transport
+  }});
+  try {{
+    Object.defineProperty(window, "ipc", {{
+      configurable: false,
+      enumerable: false,
+      writable: false,
+      value: undefined
+    }});
+  }} catch (_error) {{}}
+}})();"#
+    )
+}
+
+pub(crate) fn decode_app_webview_transport_ipc(
+    body: &str,
+) -> RendererTransportResult<Option<HostProtocolEnvelope>> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(body) else {
+        return Ok(None);
+    };
+    let Some(object) = value.as_object() else {
+        return Ok(None);
+    };
+    if object.get("kind").and_then(serde_json::Value::as_str) != Some(APP_RENDERER_RPC_IPC_KIND) {
+        return Ok(None);
+    }
+    let Some(envelope_value) = object.get("envelope") else {
+        return Err(Box::new(HostProtocolError::invalid_argument(
+            "envelope",
+            "missing renderer transport envelope",
+            APP_RENDERER_RPC_OPERATION,
+        )));
+    };
+    let envelope = serde_json::from_value::<HostProtocolEnvelope>(envelope_value.clone()).map_err(
+        |error| {
+            Box::new(HostProtocolError::invalid_argument(
+                "envelope",
+                format!("invalid renderer transport envelope: {error}"),
+                APP_RENDERER_RPC_OPERATION,
+            ))
+        },
+    )?;
+    match &envelope {
+        HostProtocolEnvelope::Request { .. } | HostProtocolEnvelope::Cancel { .. } => {
+            Ok(Some(envelope))
+        }
+        _ => Err(Box::new(HostProtocolError::invalid_argument(
+            "envelope.kind",
+            "must be request or cancel",
+            APP_RENDERER_RPC_OPERATION,
+        ))),
+    }
+}
+
+pub(crate) fn renderer_transport_delivery_script(
+    frames: &[HostProtocolEnvelope],
+) -> RendererTransportResult<String> {
+    let frames_json = serde_json::to_string(frames).map_err(|error| {
+        Box::new(HostProtocolError::invalid_output(
+            APP_RENDERER_RPC_OPERATION,
+            error.to_string(),
+        ))
+    })?;
+    Ok(format!(
+        r#"(() => {{
+  const transport = window.{APP_RENDERER_RPC_TRANSPORT_KEY};
+  if (transport === undefined || typeof transport.receive !== "function") {{
+    return;
+  }}
+  for (const envelope of {frames_json}) {{
+    transport.receive(envelope);
+  }}
+}})();"#
+    ))
+}
+
 #[cfg(not(target_os = "linux"))]
 fn build_webview(builder: WebViewBuilder<'_>, window: &Window) -> anyhow::Result<WebView> {
     builder
@@ -540,17 +677,72 @@ fn build_webview(builder: WebViewBuilder<'_>, window: &Window) -> anyhow::Result
 #[cfg(test)]
 mod tests {
     use super::{
-        chrome_provider_missing_error, devtools_unsupported, renderer_url,
-        web_engine_from_manifest_str, WebEngineKind,
+        app_webview_transport_script, chrome_provider_missing_error,
+        decode_app_webview_transport_ipc, devtools_unsupported, renderer_transport_delivery_script,
+        renderer_url, web_engine_from_manifest_str, WebEngineKind,
         WEBVIEW_CLOSE_DEVTOOLS_WINDOWS_UNAVAILABLE_REASON, WEBVIEW_DEVTOOLS_BUILD_GATED_REASON,
     };
     use crate::scheme::{APP_PROTOCOL_SOURCE_KIND, APP_URL};
-    use host_protocol::HostProtocolError;
+    use host_protocol::{HostProtocolEnvelope, HostProtocolError};
 
     #[test]
     fn webview_source_identifies_the_app_protocol_path() {
         assert_eq!(APP_PROTOCOL_SOURCE_KIND, "app-protocol");
         assert_eq!(APP_URL, "app://localhost/");
+    }
+
+    #[test]
+    fn app_webview_transport_script_installs_renderer_rpc_transport_before_app_code() {
+        let script = app_webview_transport_script("window-1");
+
+        assert!(script.contains("__ORIKA_HOST_RPC_TRANSPORT__"));
+        assert!(script.contains("orika.renderer-rpc"));
+        assert!(script.contains(r#""window-1""#));
+        assert!(script.contains("window.ipc"));
+        assert!(script.contains(r#"Object.defineProperty(window, "ipc""#));
+    }
+
+    #[test]
+    fn app_webview_transport_ipc_decodes_renderer_protocol_frames() {
+        let decoded = decode_app_webview_transport_ipc(
+            r#"{"kind":"orika.renderer-rpc","envelope":{"kind":"request","id":"request-1","method":"Window.getCurrent","timestamp":1,"traceId":"trace-request"}}"#,
+        )
+        .expect("renderer transport ipc should decode")
+        .expect("renderer transport ipc should carry an envelope");
+
+        assert_eq!(
+            decoded,
+            HostProtocolEnvelope::Request {
+                id: "request-1".to_string(),
+                method: host_protocol::WINDOW_GET_CURRENT_METHOD.to_string(),
+                timestamp: 1,
+                trace_id: "trace-request".to_string(),
+                window_id: None,
+                origin_token: None,
+                payload: None,
+            }
+        );
+        assert!(
+            decode_app_webview_transport_ipc(r#"{"kind":"effect-desktop.webview-api"}"#)
+                .expect("unrelated ipc should not fail")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn renderer_transport_delivery_script_forwards_frames_to_installed_transport() {
+        let script = renderer_transport_delivery_script(&[HostProtocolEnvelope::Response {
+            id: "request-1".to_string(),
+            timestamp: 2,
+            trace_id: "trace-response".to_string(),
+            payload: Some(serde_json::json!("pong")),
+            error: None,
+        }])
+        .expect("renderer transport delivery script should encode");
+
+        assert!(script.contains("__ORIKA_HOST_RPC_TRANSPORT__"));
+        assert!(script.contains(r#""kind":"response""#));
+        assert!(script.contains(".receive(envelope)"));
     }
 
     #[test]

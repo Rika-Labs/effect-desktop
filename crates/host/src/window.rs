@@ -4,7 +4,7 @@
 
 use crate::methods::{
     resident_lifecycle::{self, ResidentWindowCloseAction},
-    session_profile,
+    session_profile, HostMethodRouter,
 };
 use crate::{linux, macos, webview, windows};
 use anyhow::Result;
@@ -48,7 +48,7 @@ use tao::platform::windows::WindowExtWindows;
 use tao::{
     dpi::{LogicalPosition, LogicalSize, PhysicalPosition},
     event::{Event, WindowEvent},
-    event_loop::{ControlFlow, EventLoopBuilder, EventLoopWindowTarget},
+    event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy, EventLoopWindowTarget},
     monitor::MonitorHandle,
     window::{
         Fullscreen, ProgressBarState, ProgressState, UserAttentionType, Window, WindowBuilder,
@@ -900,7 +900,82 @@ impl ContextMenuShowRequest {
     }
 }
 
-enum HostEvent {}
+enum HostEvent {
+    RendererProtocolFrames {
+        window_id: String,
+        frames: Vec<HostProtocolEnvelope>,
+    },
+}
+
+fn app_webview_transport(
+    window_id: &str,
+    method_router: HostMethodRouter,
+    event_proxy: EventLoopProxy<HostEvent>,
+) -> webview::AppWebViewTransport {
+    let window_id = window_id.to_string();
+    webview::AppWebViewTransport {
+        initialization_script: webview::app_webview_transport_script(&window_id),
+        ipc_handler: Box::new(move |request| {
+            handle_app_webview_transport_ipc(
+                &window_id,
+                method_router.clone(),
+                event_proxy.clone(),
+                request.body(),
+            );
+        }),
+    }
+}
+
+fn handle_app_webview_transport_ipc(
+    window_id: &str,
+    method_router: HostMethodRouter,
+    event_proxy: EventLoopProxy<HostEvent>,
+    body: &str,
+) {
+    let envelope = match webview::decode_app_webview_transport_ipc(body) {
+        Ok(Some(envelope)) => envelope,
+        Ok(None) => return,
+        Err(error) => {
+            warn!(
+                event = "host.renderer_rpc.ipc_invalid",
+                error = ?error,
+                window_id,
+                "invalid renderer RPC IPC frame"
+            );
+            return;
+        }
+    };
+    let window_id = window_id.to_string();
+    let window_id_for_event = window_id.clone();
+    if let Err(error) = std::thread::Builder::new()
+        .name("orika-renderer-rpc".to_string())
+        .spawn(move || {
+            let frames = method_router.dispatch_renderer_frames(envelope);
+            if frames.is_empty() {
+                return;
+            }
+            if event_proxy
+                .send_event(HostEvent::RendererProtocolFrames {
+                    window_id: window_id_for_event,
+                    frames,
+                })
+                .is_err()
+            {
+                warn!(
+                    event = "host.renderer_rpc.dispatch_failed",
+                    "failed to deliver renderer RPC frames to window event loop"
+                );
+            }
+        })
+    {
+        warn!(
+            event = "host.renderer_rpc.thread_spawn_failed",
+            error = %error,
+            window_id,
+            "failed to spawn renderer RPC dispatch thread"
+        );
+    }
+}
 
 enum WindowCommand {
     Quit {
@@ -3301,6 +3376,8 @@ impl WindowRegistry {
         target: &EventLoopWindowTarget<HostEvent>,
         request: WindowCreateRequest,
         mode: RunMode,
+        method_router: &HostMethodRouter,
+        event_proxy: &EventLoopProxy<HostEvent>,
     ) -> std::result::Result<WindowCreateResponse, HostProtocolError> {
         let window_id = Uuid::now_v7().to_string();
         let mut builder = WindowBuilder::new()
@@ -3337,8 +3414,12 @@ impl WindowRegistry {
             "host window opened"
         );
 
-        let webview =
-            webview::attach_app_webview(&window, request.renderer()).map_err(|error| *error)?;
+        let webview = webview::attach_app_webview(
+            &window,
+            request.renderer(),
+            app_webview_transport(&window_id, method_router.clone(), event_proxy.clone()),
+        )
+        .map_err(|error| *error)?;
         let native_window_id = window.id();
         self.windows.insert(
             window_id.clone(),
@@ -3368,6 +3449,43 @@ impl WindowRegistry {
         }
 
         Ok(WindowCreateResponse::new(window_id))
+    }
+
+    fn deliver_renderer_protocol_frames(&self, window_id: &str, frames: &[HostProtocolEnvelope]) {
+        if frames.is_empty() {
+            return;
+        }
+        let Some(window) = self.windows.get(window_id) else {
+            warn!(
+                event = "host.renderer_rpc.window_missing",
+                window_id,
+                frame_count = frames.len(),
+                "renderer RPC response window is no longer open"
+            );
+            return;
+        };
+        let script = match webview::renderer_transport_delivery_script(frames) {
+            Ok(script) => script,
+            Err(error) => {
+                warn!(
+                    event = "host.renderer_rpc.delivery_encode_failed",
+                    error = ?error,
+                    window_id,
+                    frame_count = frames.len(),
+                    "failed to encode renderer RPC response frames"
+                );
+                return;
+            }
+        };
+        if let Err(error) = window._webview.evaluate_script(&script) {
+            warn!(
+                event = "host.renderer_rpc.delivery_failed",
+                error = ?error,
+                window_id,
+                frame_count = frames.len(),
+                "failed to deliver renderer RPC response frames"
+            );
+        }
     }
 
     fn destroy(&mut self, window_id: &str) -> std::result::Result<(), HostProtocolError> {
@@ -5190,8 +5308,16 @@ impl WindowRegistry {
         target: &EventLoopWindowTarget<HostEvent>,
         mode: RunMode,
         window_methods: &WindowMethodPort,
+        method_router: &HostMethodRouter,
+        event_proxy: &EventLoopProxy<HostEvent>,
     ) -> WindowLifecycleEvent {
-        self.handle_window_commands(target, mode, window_methods.take_pending_commands())
+        self.handle_window_commands(
+            target,
+            mode,
+            window_methods.take_pending_commands(),
+            method_router,
+            event_proxy,
+        )
     }
 
     fn handle_window_commands(
@@ -5199,11 +5325,13 @@ impl WindowRegistry {
         target: &EventLoopWindowTarget<HostEvent>,
         mode: RunMode,
         commands: impl IntoIterator<Item = WindowCommand>,
+        method_router: &HostMethodRouter,
+        event_proxy: &EventLoopProxy<HostEvent>,
     ) -> WindowLifecycleEvent {
         let mut lifecycle = WindowLifecycleEvent::Other;
 
         for command in commands {
-            match self.handle_window_command(target, mode, command) {
+            match self.handle_window_command(target, mode, command, method_router, event_proxy) {
                 WindowLifecycleEvent::WindowCreateFailed => {
                     lifecycle = WindowLifecycleEvent::WindowCreateFailed;
                 }
@@ -5244,6 +5372,8 @@ impl WindowRegistry {
         target: &EventLoopWindowTarget<HostEvent>,
         mode: RunMode,
         command: WindowCommand,
+        method_router: &HostMethodRouter,
+        event_proxy: &EventLoopProxy<HostEvent>,
     ) -> WindowLifecycleEvent {
         match command {
             WindowCommand::Quit { exit_code, reply } => {
@@ -5261,7 +5391,7 @@ impl WindowRegistry {
                 }
             },
             WindowCommand::Create { request, reply } => {
-                let result = self.create(target, request, mode);
+                let result = self.create(target, request, mode, method_router, event_proxy);
                 let lifecycle = match &result {
                     Ok(created) if matches!(mode, RunMode::ResidentLifecycleSmokeTest) => {
                         self.run_resident_lifecycle_smoke(created.window_id())
@@ -8499,13 +8629,18 @@ fn show_platform_context_menu(
     }
 }
 
-pub(crate) fn run_main_window(mode: RunMode, window_methods: WindowMethodPort) -> Result<()> {
+pub(crate) fn run_main_window(
+    mode: RunMode,
+    window_methods: WindowMethodPort,
+    method_router: HostMethodRouter,
+) -> Result<()> {
     let windows_polish =
         windows::WindowsProcessPolish::from_env().map_err(|error| anyhow::anyhow!("{error:?}"))?;
     windows::apply_process_polish(windows_polish.as_ref())
         .map_err(|error| anyhow::anyhow!("{error:?}"))?;
     let mut event_loop_builder = EventLoopBuilder::<HostEvent>::with_user_event();
     let event_loop = event_loop_builder.build();
+    let event_proxy = event_loop.create_proxy();
     let command_source = window_methods.clone();
     let mut registry = WindowRegistry::new();
     let smoke_deadline = smoke_deadline_for_mode(mode, Instant::now());
@@ -8515,8 +8650,16 @@ pub(crate) fn run_main_window(mode: RunMode, window_methods: WindowMethodPort) -
 
     event_loop.run(move |event, target, control_flow| {
         let lifecycle_event = match event {
-            Event::NewEvents(_) => {
-                registry.handle_pending_window_commands(target, mode, &command_source)
+            Event::NewEvents(_) => registry.handle_pending_window_commands(
+                target,
+                mode,
+                &command_source,
+                &method_router,
+                &event_proxy,
+            ),
+            Event::UserEvent(HostEvent::RendererProtocolFrames { window_id, frames }) => {
+                registry.deliver_renderer_protocol_frames(&window_id, &frames);
+                WindowLifecycleEvent::Other
             }
             Event::WindowEvent {
                 window_id,

@@ -76,6 +76,10 @@ use std::{
     sync::{mpsc::Sender, Arc, Mutex},
 };
 
+const RENDERER_WINDOW_CLOSE_METHOD: &str = "Window.close";
+
+type RendererDispatchResult<T> = Result<T, Box<HostProtocolError>>;
+
 type RealtimeMediaHandler = fn(
     &str,
     Option<serde_json::Value>,
@@ -1414,6 +1418,15 @@ fn dispatch_result_frame(
     response_frame(id, timestamp, trace_id, payload, error)
 }
 
+fn dispatch_boxed_result_frame(
+    id: String,
+    timestamp: u64,
+    trace_id: String,
+    result: RendererDispatchResult<Option<serde_json::Value>>,
+) -> Vec<HostProtocolEnvelope> {
+    dispatch_result_frame(id, timestamp, trace_id, result.map_err(|error| *error))
+}
+
 fn response_frame(
     id: String,
     timestamp: u64,
@@ -1428,6 +1441,96 @@ fn response_frame(
         payload,
         error,
     }]
+}
+
+fn renderer_current_window_resource(
+    window_id: Option<&str>,
+) -> RendererDispatchResult<Option<serde_json::Value>> {
+    let Some(window_id) = window_id.filter(|window_id| !window_id.is_empty()) else {
+        return Err(Box::new(HostProtocolError::invalid_argument(
+            "windowId",
+            "renderer Window.getCurrent request missing window id",
+            host_protocol::WINDOW_GET_CURRENT_METHOD,
+        )));
+    };
+    Ok(Some(renderer_window_resource(window_id)))
+}
+
+fn renderer_window_create_payload(
+    payload: Option<serde_json::Value>,
+) -> RendererDispatchResult<Option<serde_json::Value>> {
+    let Some(payload) = payload else {
+        return Ok(None);
+    };
+    let serde_json::Value::Object(mut object) = payload else {
+        return Err(Box::new(HostProtocolError::invalid_argument(
+            "payload",
+            "Window.create renderer payload must be an object",
+            host_protocol::WINDOW_CREATE_METHOD,
+        )));
+    };
+
+    if let Some(parent) = object.remove("parent") {
+        let Some(parent_id) = parent
+            .get("id")
+            .and_then(serde_json::Value::as_str)
+            .filter(|id| !id.is_empty())
+        else {
+            return Err(Box::new(HostProtocolError::invalid_argument(
+                "payload.parent",
+                "Window.create parent must be a Window resource",
+                host_protocol::WINDOW_CREATE_METHOD,
+            )));
+        };
+        object.insert(
+            "parentWindowId".to_string(),
+            serde_json::Value::String(parent_id.to_string()),
+        );
+    }
+
+    Ok(Some(serde_json::Value::Object(object)))
+}
+
+fn renderer_window_destroy_payload(
+    payload: Option<serde_json::Value>,
+    operation: &str,
+) -> RendererDispatchResult<serde_json::Value> {
+    let Some(serde_json::Value::Object(mut object)) = payload else {
+        return Err(Box::new(HostProtocolError::invalid_argument(
+            "payload",
+            "renderer window payload must be an object",
+            operation,
+        )));
+    };
+    let Some(window) = object.remove("window") else {
+        return Err(Box::new(HostProtocolError::invalid_argument(
+            "payload.window",
+            "renderer window payload missing window resource",
+            operation,
+        )));
+    };
+    let Some(window_id) = window
+        .get("id")
+        .and_then(serde_json::Value::as_str)
+        .filter(|id| !id.is_empty())
+    else {
+        return Err(Box::new(HostProtocolError::invalid_argument(
+            "payload.window.id",
+            "renderer window resource id must be non-empty",
+            operation,
+        )));
+    };
+    Ok(serde_json::json!({ "windowId": window_id }))
+}
+
+fn renderer_window_resource(window_id: &str) -> serde_json::Value {
+    serde_json::json!({
+        "kind": "window",
+        "id": window_id,
+        "generation": 0,
+        "ownerScope": format!("window:{window_id}"),
+        "state": "open",
+    })
 }
 
 #[derive(Clone)]
@@ -1455,6 +1558,13 @@ impl HostMethodRouter {
         envelope: HostProtocolEnvelope,
     ) -> Vec<HostProtocolEnvelope> {
         self.dispatch_frames_at(envelope, timestamp_millis())
+    }
+
+    pub(crate) fn dispatch_renderer_frames(
+        &self,
+        envelope: HostProtocolEnvelope,
+    ) -> Vec<HostProtocolEnvelope> {
+        self.dispatch_renderer_frames_at(envelope, timestamp_millis())
     }
 
     fn dispatch_cancel(&self, envelope: &HostProtocolEnvelope) -> Result<(), String> {
@@ -1680,6 +1790,97 @@ impl HostMethodRouter {
                 timestamp,
             },
         )
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
+    fn dispatch_renderer_frames_at(
+        &self,
+        envelope: HostProtocolEnvelope,
+        timestamp: u64,
+    ) -> Vec<HostProtocolEnvelope> {
+        if matches!(envelope, HostProtocolEnvelope::Cancel { .. }) {
+            let _ = self.dispatch_cancel(&envelope);
+            return Vec::new();
+        }
+
+        let HostProtocolEnvelope::Request {
+            id,
+            method,
+            trace_id,
+            window_id,
+            origin_token,
+            payload,
+            ..
+        } = envelope
+        else {
+            return Vec::new();
+        };
+
+        match method.as_str() {
+            host_protocol::WINDOW_GET_CURRENT_METHOD => dispatch_boxed_result_frame(
+                id,
+                timestamp,
+                trace_id,
+                renderer_current_window_resource(window_id.as_deref()),
+            ),
+            host_protocol::WINDOW_CREATE_METHOD => dispatch_boxed_result_frame(
+                id,
+                timestamp,
+                trace_id,
+                self.dispatch_renderer_window_create(payload),
+            ),
+            RENDERER_WINDOW_CLOSE_METHOD | host_protocol::WINDOW_DESTROY_METHOD => {
+                dispatch_boxed_result_frame(
+                    id,
+                    timestamp,
+                    trace_id,
+                    self.dispatch_renderer_window_destroy(payload, &method),
+                )
+            }
+            _ => self.dispatch_frames_at(
+                HostProtocolEnvelope::Request {
+                    id,
+                    method,
+                    timestamp,
+                    trace_id,
+                    window_id,
+                    origin_token,
+                    payload,
+                },
+                timestamp,
+            ),
+        }
+    }
+
+    fn dispatch_renderer_window_create(
+        &self,
+        payload: Option<serde_json::Value>,
+    ) -> RendererDispatchResult<Option<serde_json::Value>> {
+        let payload = renderer_window_create_payload(payload)?;
+        let response = window::create(self.window.as_ref(), payload).map_err(Box::new)?;
+        let Some(response) = response else {
+            return Err(Box::new(HostProtocolError::invalid_output(
+                host_protocol::WINDOW_CREATE_METHOD,
+                "Window.create returned no window id",
+            )));
+        };
+        let Some(window_id) = response.get("windowId").and_then(serde_json::Value::as_str) else {
+            return Err(Box::new(HostProtocolError::invalid_output(
+                host_protocol::WINDOW_CREATE_METHOD,
+                "Window.create response missing windowId",
+            )));
+        };
+        Ok(Some(renderer_window_resource(window_id)))
+    }
+
+    fn dispatch_renderer_window_destroy(
+        &self,
+        payload: Option<serde_json::Value>,
+        operation: &str,
+    ) -> RendererDispatchResult<Option<serde_json::Value>> {
+        let payload = renderer_window_destroy_payload(payload, operation)?;
+        window::destroy(self.window.as_ref(), Some(payload)).map_err(Box::new)?;
+        Ok(None)
     }
 
     fn dispatch_realtime_media_session(
@@ -2034,7 +2235,7 @@ fn local_tool_runtime_payload_id(payload: Option<&serde_json::Value>) -> Option<
 
 #[cfg(test)]
 mod tests {
-    use super::{autostart, resident_lifecycle, HostMethodRouter};
+    use super::{autostart, renderer_window_resource, resident_lifecycle, HostMethodRouter};
     use crate::window::{
         ContextMenuShowRequest, TrayCreateRequest, WindowCreateRequest, WindowMethodHandler,
     };
@@ -4102,6 +4303,74 @@ mod tests {
         );
 
         assert_eq!(fake.lookup_ids(), vec!["window-1".to_string()]);
+    }
+
+    #[test]
+    fn renderer_window_get_current_returns_the_webview_window_resource() {
+        let router = test_router();
+        let frames = router.dispatch_renderer_frames_at(
+            HostProtocolEnvelope::Request {
+                id: "request-renderer-window-current".to_string(),
+                method: host_protocol::WINDOW_GET_CURRENT_METHOD.to_string(),
+                timestamp: 1,
+                trace_id: "trace-renderer-window-current".to_string(),
+                window_id: Some("renderer-window-1".to_string()),
+                origin_token: None,
+                payload: None,
+            },
+            1710000000200,
+        );
+
+        assert_eq!(
+            frames,
+            vec![HostProtocolEnvelope::Response {
+                id: "request-renderer-window-current".to_string(),
+                timestamp: 1710000000200,
+                trace_id: "trace-renderer-window-current".to_string(),
+                payload: Some(renderer_window_resource("renderer-window-1")),
+                error: None,
+            }]
+        );
+    }
+
+    #[test]
+    fn renderer_window_create_translates_parent_resources_to_host_payloads() {
+        let fake = Arc::new(FakeWindowHandler::new(
+            Ok(WindowCreateResponse::new("child-window-1")),
+            Ok(()),
+        ));
+        let router = HostMethodRouter::new(fake.clone());
+        let frames = router.dispatch_renderer_frames_at(
+            HostProtocolEnvelope::Request {
+                id: "request-renderer-window-create".to_string(),
+                method: host_protocol::WINDOW_CREATE_METHOD.to_string(),
+                timestamp: 1,
+                trace_id: "trace-renderer-window-create".to_string(),
+                window_id: Some("renderer-window-1".to_string()),
+                origin_token: None,
+                payload: Some(serde_json::json!({
+                    "title": "Child",
+                    "width": 320,
+                    "height": 240,
+                    "parent": renderer_window_resource("renderer-window-1")
+                })),
+            },
+            1710000000201,
+        );
+
+        assert_eq!(
+            frames,
+            vec![HostProtocolEnvelope::Response {
+                id: "request-renderer-window-create".to_string(),
+                timestamp: 1710000000201,
+                trace_id: "trace-renderer-window-create".to_string(),
+                payload: Some(renderer_window_resource("child-window-1")),
+                error: None,
+            }]
+        );
+        let created = fake.created();
+        assert_eq!(created.len(), 1);
+        assert_eq!(created[0].parent_window_id(), Some("renderer-window-1"));
     }
 
     #[test]

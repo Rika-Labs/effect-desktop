@@ -1,10 +1,12 @@
 import {
+  decodeHostProtocolEnvelope,
   makeDesktopClientProtocol,
   type DesktopProtocolOptions,
+  type HostProtocolEnvelope,
   type DesktopTransportRun,
   type DesktopTransportSend
 } from "@orika/bridge"
-import { Clock, Context, Effect, Exit, Layer, Scope, Stream } from "effect"
+import { Clock, Context, Effect, Exit, Layer, Queue, Scope, Stream } from "effect"
 import { Rpc, RpcClient, RpcGroup, RpcTest } from "effect/unstable/rpc"
 
 import type {
@@ -67,6 +69,12 @@ export interface DesktopRendererRpcLayerOptions extends DesktopRendererRpcClient
 }
 
 const GlobalTransportKey = "__EFFECT_DESKTOP_RPC_TRANSPORT__"
+const HostInstalledTransportKey = "__ORIKA_HOST_RPC_TRANSPORT__"
+
+interface HostInstalledRendererRpcTransport {
+  readonly send: (envelope: HostProtocolEnvelope) => void
+  readonly subscribe: (listener: (envelope: unknown) => void) => () => void
+}
 
 export const makeDesktopRendererRpcLayer = (
   app: DesktopAppManifest,
@@ -120,12 +128,23 @@ export const setGlobalDesktopRendererRpcTransport = (
   target[GlobalTransportKey] = transport
 }
 
-export const getGlobalDesktopRendererRpcTransport = (): DesktopRendererRpcTransport | undefined =>
-  (
+export const getGlobalDesktopRendererRpcTransport = (): DesktopRendererRpcTransport | undefined => {
+  const explicitTransport = (
     globalThis as typeof globalThis & {
       [GlobalTransportKey]?: DesktopRendererRpcTransport | undefined
     }
   )[GlobalTransportKey]
+  if (explicitTransport !== undefined) {
+    return explicitTransport
+  }
+
+  const hostInstalledTransport = (
+    globalThis as typeof globalThis & {
+      [HostInstalledTransportKey]?: HostInstalledRendererRpcTransport | undefined
+    }
+  )[HostInstalledTransportKey]
+  return makeHostInstalledRendererRpcTransport(hostInstalledTransport)
+}
 
 export const makeDesktopRendererRpcTransportLayer = (
   transport: DesktopRendererRpcTransport
@@ -154,6 +173,39 @@ const missingRendererRpcTransportLayer = (
       )
     )
   )
+
+const makeHostInstalledRendererRpcTransport = (
+  transport: HostInstalledRendererRpcTransport | undefined
+): DesktopRendererRpcTransport | undefined => {
+  if (!isHostInstalledRendererRpcTransport(transport)) {
+    return undefined
+  }
+
+  return Object.freeze({
+    send: (envelope) => Effect.sync(() => transport.send(envelope)),
+    run: (onEnvelope) =>
+      Stream.callback<HostProtocolEnvelope>((queue) =>
+        Effect.acquireRelease(
+          Effect.sync(() =>
+            transport.subscribe((input) => {
+              Queue.offerUnsafe(queue, decodeHostProtocolEnvelope(input))
+            })
+          ),
+          (unsubscribe) => Effect.sync(unsubscribe)
+        )
+      ).pipe(Stream.runForEach(onEnvelope), Effect.andThen(Effect.never))
+  } satisfies DesktopRendererRpcTransport)
+}
+
+const isHostInstalledRendererRpcTransport = (
+  value: unknown
+): value is HostInstalledRendererRpcTransport =>
+  typeof value === "object" &&
+  value !== null &&
+  "send" in value &&
+  "subscribe" in value &&
+  typeof value.send === "function" &&
+  typeof value.subscribe === "function"
 
 const acquireDesktopRendererRpcClients = (
   app: DesktopAppManifest,

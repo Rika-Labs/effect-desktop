@@ -87,8 +87,11 @@ fn main() -> Result<()> {
     let runtime_policy = runtime::RestartPolicy::for_profile(runtime_profile);
     let window_methods = window::WindowMethodPort::new();
     let method_router = methods::HostMethodRouter::new(Arc::new(window_methods.clone()));
-    let mut runtime_supervisor =
-        runtime::Supervisor::spawn(runtime_config(run_mode)?, runtime_policy, method_router)?;
+    let mut runtime_supervisor = runtime::Supervisor::spawn(
+        runtime_config(run_mode)?,
+        runtime_policy,
+        method_router.clone(),
+    )?;
     let runtime_ready = runtime::await_ready(&mut runtime_supervisor, RUNTIME_READY_TIMEOUT)?;
     info!(
         event = "runtime.ready",
@@ -96,7 +99,7 @@ fn main() -> Result<()> {
         "runtime ready"
     );
 
-    window::run_main_window(run_mode, window_methods)
+    window::run_main_window(run_mode, window_methods, method_router)
 }
 
 fn serve_host_protocol_stdio() -> Result<()> {
