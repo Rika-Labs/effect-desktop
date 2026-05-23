@@ -30,6 +30,7 @@ import {
 } from "./permission-registry.js"
 import { PermissionInterceptor, makePermissionInterceptorLayer } from "./permission-interceptor.js"
 import type { NormalizedCapability } from "./permission-registry.js"
+import { CapabilityKind as CapabilityKindSchema } from "./permission-contracts.js"
 import {
   ProviderCapability,
   ProviderRegistryError,
@@ -327,19 +328,7 @@ export class DesktopConfigError extends Data.TaggedError("DesktopConfigError")<{
   readonly cause?: unknown
 }> {}
 
-const NormalizedCapabilityKinds = new Set<NormalizedCapability["kind"]>([
-  "filesystem.read",
-  "filesystem.write",
-  "filesystem.delete",
-  "process.spawn",
-  "pty.spawn",
-  "network.connect",
-  "secrets.read",
-  "secrets.write",
-  "safeStorage.read",
-  "safeStorage.write",
-  "native.invoke"
-])
+const isCapabilityKind = Schema.is(CapabilityKindSchema)
 
 export interface DesktopAppApi {
   readonly appId: string
@@ -1104,7 +1093,7 @@ const decodeRpcCapability = (
   if (Option.isSome(decoded)) {
     return decoded.value
   }
-  if (NormalizedCapabilityKinds.has(value.kind as NormalizedCapability["kind"])) {
+  if (isCapabilityKind(value.kind)) {
     return Effect.fail(
       new DesktopConfigError({
         appId,

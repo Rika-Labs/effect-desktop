@@ -162,6 +162,17 @@ test("Desktop.describeRpcs synthetic manifest does not assert config shape", () 
     })
   ))
 
+test("Desktop.layer RPC capability decoding does not assert capability kinds", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        Bun.file(new URL("./runtime/desktop-app.ts", import.meta.url)).text()
+      )
+
+      expect(source).not.toContain('value.kind as NormalizedCapability["kind"]')
+    })
+  ))
+
 test("Desktop.runtime does not erase the runtime spine Layer type", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -1235,6 +1246,90 @@ test("Desktop.layer rejects RpcGroup methods that declare known capability kinds
           reason: "invalid-config",
           method: "Network.Connect",
           permission: "network.connect"
+        })
+      }
+    })
+  )
+})
+
+test("Desktop.layer rejects malformed sqlite RPC capability metadata as invalid config", () => {
+  const Open = Rpc.make("Database.Open").pipe(
+    RpcCapability({
+      kind: "sqlite.open"
+    })
+  )
+  const DatabaseRpcs = RpcGroup.make(Open)
+  const definition = core.Desktop.make({
+    id: "database-app",
+    windows: core.Desktop.window("main", { title: "Database" }),
+    rpcs: core.Desktop.rpc(
+      DatabaseRpcs,
+      DatabaseRpcs.toLayer({
+        "Database.Open": () => Effect.void
+      })
+    )
+  })
+
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const exit = yield* Effect.exit(
+        Effect.scoped(
+          Layer.build(
+            core.Desktop.layer(definition).pipe(Layer.provide(makeNoopRpcServerProtocolLayer()))
+          )
+        )
+      )
+
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const failure = exit.cause.reasons.find(Cause.isFailReason)
+        expect(failure?.error).toMatchObject({
+          _tag: "DesktopConfigError",
+          reason: "invalid-config",
+          method: "Database.Open",
+          permission: "sqlite.open"
+        })
+      }
+    })
+  )
+})
+
+test("Desktop.layer treats unknown RPC capability kinds as missing permissions", () => {
+  const Export = Rpc.make("Custom.Export").pipe(
+    RpcCapability({
+      kind: "custom.export"
+    })
+  )
+  const CustomRpcs = RpcGroup.make(Export)
+  const definition = core.Desktop.make({
+    id: "custom-app",
+    windows: core.Desktop.window("main", { title: "Custom" }),
+    rpcs: core.Desktop.rpc(
+      CustomRpcs,
+      CustomRpcs.toLayer({
+        "Custom.Export": () => Effect.void
+      })
+    )
+  })
+
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const exit = yield* Effect.exit(
+        Effect.scoped(
+          Layer.build(
+            core.Desktop.layer(definition).pipe(Layer.provide(makeNoopRpcServerProtocolLayer()))
+          )
+        )
+      )
+
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const failure = exit.cause.reasons.find(Cause.isFailReason)
+        expect(failure?.error).toMatchObject({
+          _tag: "DesktopConfigError",
+          reason: "missing-permission",
+          method: "Custom.Export",
+          permission: "custom.export"
         })
       }
     })
