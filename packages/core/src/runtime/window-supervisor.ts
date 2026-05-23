@@ -24,19 +24,22 @@ const StartupWindowsSchema = Schema.Record(Schema.String, WindowSpecSchema)
 const StartupWindowsJsonSchema = Schema.fromJsonString(StartupWindowsSchema)
 const DesktopWindowRegistrationSchema = Schema.Struct({
   id: Schema.String,
-  spec: WindowSpecSchema
+  spec: WindowSpecSchema,
+  services: Schema.optionalKey(Schema.Unknown)
 })
 const DesktopAppDescriptorSchema = Schema.TaggedStruct("DesktopAppDescriptor", {
   windowRegistrations: Schema.Array(DesktopWindowRegistrationSchema)
 })
 
 type DecodedStartupWindows = Schema.Schema.Type<typeof StartupWindowsSchema>
+type DecodedDesktopWindowRegistration = Schema.Schema.Type<typeof DesktopWindowRegistrationSchema>
 type StartupEnvironmentSource = {
   readonly appModule: Option.Option<string>
   readonly appExport: string
   readonly startupWindows: Option.Option<string>
   readonly smokeTest: Option.Option<string>
 }
+type ImportedWindowServices = Layer.Layer<never, never, SupervisedWindowDeps | Scope.Scope>
 const emptyStartupWindows: ReadonlyArray<DesktopWindowRegistration<SupervisedWindowDeps>> =
   Object.freeze([])
 
@@ -301,28 +304,47 @@ const decodeDesktopAppDescriptor = (
       validateWindowNames(
         Object.fromEntries(app.windowRegistrations.map((reg) => [reg.id, reg.spec])),
         APP_MODULE_ENV
-      ).pipe(Effect.map(() => projectRegistrationsWithServices(value, app.windowRegistrations)))
+      ).pipe(Effect.flatMap(() => projectRegistrationsWithServices(app.windowRegistrations)))
     )
   )
 
 const projectRegistrationsWithServices = (
-  rawDescriptor: unknown,
-  validated: ReadonlyArray<{ readonly id: string; readonly spec: WindowSpec }>
-): ReadonlyArray<DesktopWindowRegistration<SupervisedWindowDeps>> => {
-  const raw =
-    (rawDescriptor as { windowRegistrations?: ReadonlyArray<{ services?: unknown }> })
-      .windowRegistrations ?? []
-  return Object.freeze(
-    validated.map((reg, index) =>
-      Object.freeze({
-        _tag: "DesktopWindowRegistration",
-        id: reg.id,
-        spec: Object.freeze({ ...reg.spec }),
-        services: (raw[index]?.services ??
-          undefined) as DesktopWindowRegistration<SupervisedWindowDeps>["services"]
-      } satisfies DesktopWindowRegistration<SupervisedWindowDeps>)
+  registrations: ReadonlyArray<DecodedDesktopWindowRegistration>
+): Effect.Effect<
+  ReadonlyArray<DesktopWindowRegistration<SupervisedWindowDeps>>,
+  StartupWindowConfigError,
+  never
+> =>
+  Effect.forEach(registrations, (reg) =>
+    decodeRegistrationServices(reg.services, reg.id).pipe(
+      Effect.map((services) =>
+        Object.freeze({
+          _tag: "DesktopWindowRegistration",
+          id: reg.id,
+          spec: Object.freeze({ ...reg.spec }),
+          services
+        } satisfies DesktopWindowRegistration<SupervisedWindowDeps>)
+      )
     )
-  )
+  ).pipe(Effect.map((registrations) => Object.freeze(registrations)))
+
+const isImportedWindowServices = (value: unknown): value is ImportedWindowServices =>
+  Layer.isLayer(value)
+
+const decodeRegistrationServices = (
+  value: unknown,
+  id: string
+): Effect.Effect<ImportedWindowServices | undefined, StartupWindowConfigError, never> => {
+  if (value === undefined) {
+    return Effect.void.pipe(Effect.as(undefined))
+  }
+  if (!isImportedWindowServices(value)) {
+    return invalidStartupWindows(APP_MODULE_ENV, `window "${id}" services must be an Effect Layer`)
+  }
+
+  // App modules are dynamic executable descriptors. Layer.isLayer proves runtime shape;
+  // Desktop.window is the typed constructor that supplies this stronger service contract.
+  return Effect.succeed(value)
 }
 
 const decodeSmokeTest = (

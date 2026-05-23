@@ -35,6 +35,18 @@ test("startup environment empty window lists do not assert registration arrays",
     })
   ))
 
+test("startup environment imported app services projection does not assert service shape", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        Bun.file(new URL("./window-supervisor.ts", import.meta.url)).text()
+      )
+
+      expect(source).not.toContain('as DesktopWindowRegistration<SupervisedWindowDeps>["services"]')
+      expect(source).not.toContain("rawDescriptor as")
+    })
+  ))
+
 const runScoped = <A, E, R, LE>(
   effect: Effect.Effect<A, E, R>,
   layer: Layer.Layer<R, LE, never>
@@ -426,6 +438,99 @@ test("startup environment decodes module exports and gives app modules precedenc
               services: undefined
             }
           ])
+        })
+      ),
+      BunServices.layer
+    )
+  ))
+
+test("startup environment preserves imported app window services", () =>
+  Effect.runPromise(
+    runScoped(
+      withTempDirectory("effect-desktop-startup-services-", (directory) =>
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem
+          const path = yield* Path.Path
+          const modulePath = path.join(directory, "app.mjs")
+          const layerKey = "__effectDesktopWindowSupervisorServiceLayer"
+          const events: string[] = []
+          Object.defineProperty(globalThis, layerKey, {
+            configurable: true,
+            value: Layer.effectDiscard(
+              Effect.sync(() => {
+                events.push("module:acquired")
+              })
+            )
+          })
+
+          try {
+            yield* fs
+              .writeFileString(
+                modulePath,
+                [
+                  "export default {",
+                  '  _tag: "DesktopAppDescriptor",',
+                  "  windowRegistrations: [",
+                  "    {",
+                  '      id: "module",',
+                  '      spec: { title: "Module" },',
+                  `      services: globalThis.${layerKey}`,
+                  "    }",
+                  "  ]",
+                  "}"
+                ].join("\n")
+              )
+              .pipe(Effect.orDie)
+
+            const config = yield* readStartupEnvironment(
+              provider({ [APP_MODULE_ENV]: pathToFileURL(modulePath).href })
+            )
+            const windows = yield* readStartupWindows(config)
+            expect(Layer.isLayer(windows[0]?.services)).toBe(true)
+
+            yield* Effect.scoped(
+              openDeclaredWindows(makeHostWindowClient(), windows, { smokeTest: true })
+            )
+            expect(events).toEqual(["module:acquired"])
+          } finally {
+            Reflect.deleteProperty(globalThis, layerKey)
+          }
+        })
+      ),
+      BunServices.layer
+    )
+  ))
+
+test("startup environment rejects imported app window services that are not Layers", () =>
+  Effect.runPromise(
+    runScoped(
+      withTempDirectory("effect-desktop-startup-invalid-services-", (directory) =>
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem
+          const path = yield* Path.Path
+          const modulePath = path.join(directory, "app.mjs")
+          yield* fs
+            .writeFileString(
+              modulePath,
+              [
+                "export default {",
+                '  _tag: "DesktopAppDescriptor",',
+                "  windowRegistrations: [",
+                '    { id: "module", spec: { title: "Module" }, services: "not-a-layer" }',
+                "  ]",
+                "}"
+              ].join("\n")
+            )
+            .pipe(Effect.orDie)
+
+          const config = yield* readStartupEnvironment(
+            provider({ [APP_MODULE_ENV]: pathToFileURL(modulePath).href })
+          )
+          const exit = yield* Effect.exit(readStartupWindows(config))
+
+          const error = getFailure(exit)
+          expect(error).toBeInstanceOf(StartupWindowConfigError)
+          expect(error?.message).toContain("services")
         })
       ),
       BunServices.layer
