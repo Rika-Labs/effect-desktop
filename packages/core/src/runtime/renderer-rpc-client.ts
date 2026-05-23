@@ -318,7 +318,7 @@ const effectRpcGroup = (
   // Desktop manifests erase heterogeneous group type parameters, but store the original Effect RpcGroup value.
   group as RpcGroup.RpcGroup<Rpc.AnyWithProps>
 
-type RawRendererRpcInvocation = (
+type RendererRpcInvocation = (
   tag: string,
   input: unknown
 ) =>
@@ -331,7 +331,9 @@ const callRendererRpcFlatClient = (
   input: unknown,
   framework: DesktopFramework
 ): DesktopRendererRpcScopedResult => {
-  const result = (rpcClient as unknown as RawRendererRpcInvocation)(tag, input)
+  // Effect's flat RPC client is callable, but Desktop manifests erase the concrete
+  // Rpc union. Keep the assertion at this boundary until manifests preserve it.
+  const result = (rpcClient as RendererRpcInvocation)(tag, input)
   return Effect.isEffect(result)
     ? Effect.mapError(result, (cause) => new RendererRpcError({ framework, tag, cause }))
     : Stream.mapError(result, (cause) => new RendererRpcError({ framework, tag, cause }))

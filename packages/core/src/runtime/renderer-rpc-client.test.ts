@@ -45,6 +45,7 @@ const DialogMessage = Rpc.make("Dialog.message", {
 const workspaceRootUrl = new URL("../../../../", import.meta.url)
 const bundleScratchRootUrl = new URL("build/orika-bundle-tests/", workspaceRootUrl)
 const rendererEntrypointUrl = new URL("renderer.ts", import.meta.url)
+const rendererRpcClientUrl = new URL("renderer-rpc-client.ts", import.meta.url)
 const PlatformRuntime = ManagedRuntime.make(BunServices.layer)
 
 const runQueuedTransport = (
@@ -61,6 +62,18 @@ test("@orika/core/renderer entrypoint avoids host descriptor modules", () =>
 
       expect(source).not.toContain("./rpc-descriptors.js")
       expect(source).not.toContain("./desktop-app.js")
+    })
+  ))
+
+test("RendererRpcClients invokes flat RpcClient without an unknown-erased function assertion", () =>
+  PlatformRuntime.runPromise(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const source = yield* fs.readFileString(fileURLToPath(rendererRpcClientUrl))
+
+      expect(source).not.toContain("RawRendererRpcInvocation")
+      expect(source).not.toContain("as unknown as")
+      expect(source).toContain("Desktop manifests erase the concrete")
     })
   ))
 
