@@ -151,7 +151,6 @@ export {
   NativeNetworkHandlersLive,
   NativeNetworkLive,
   NativeNetworkMethodNames,
-  NativeNetworkRpcEvents,
   NativeNetworkRpcs,
   NativeNetworkSurface,
   type NativeNetworkClientApi,

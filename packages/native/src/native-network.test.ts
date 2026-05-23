@@ -5,6 +5,7 @@ import {
   HostProtocolInvalidOutputError
 } from "@orika/bridge"
 import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Schema, Stream } from "effect"
+import { RpcSchema } from "effect/unstable/rpc"
 
 import { makeNativeCapabilityManifest } from "./capabilities.js"
 import { NativeNetworkEvent, NativeNetworkSupportedResult } from "./contracts/native-network.js"
@@ -37,12 +38,32 @@ const UnsupportedSupport = {
   ]
 } as const
 
-test("NativeNetwork exposes only isSupported as a callable RPC", () => {
+test("NativeNetwork exposes isSupported and its event stream as callable RPCs", () => {
   const callableTags = Array.from(NativeNetworkRpcs.requests.keys()).toSorted()
-  expect(callableTags).toEqual(["NativeNetwork.isSupported"])
+  expect(callableTags).toEqual(["NativeNetwork.events.Event", "NativeNetwork.isSupported"])
   for (const method of UnsupportedMethods) {
     expect(callableTags).not.toContain(`NativeNetwork.${method}`)
   }
+})
+
+test("NativeNetwork event schema is owned by the RPC stream contract", async () => {
+  const nativeNetworkModule = await import("./native-network.js")
+  const eventRpc = NativeNetworkRpcs.requests.get("NativeNetwork.events.Event")
+
+  expect("NativeNetworkRpcEvents" in nativeNetworkModule).toBe(false)
+  expect(eventRpc).toBeDefined()
+  expect(eventRpc === undefined ? false : RpcSchema.isStreamSchema(eventRpc.successSchema)).toBe(
+    true
+  )
+  if (eventRpc !== undefined && RpcSchema.isStreamSchema(eventRpc.successSchema)) {
+    expect(eventRpc.successSchema.success).toBe(NativeNetworkEvent)
+  }
+
+  const eventDoc = NativeNetworkSurface.schemaDocs.find(
+    (doc) => doc.tag === "NativeNetwork.events.Event"
+  )
+  expect(eventDoc?.kind).toBe("stream")
+  expect(eventDoc?.callable).toBe(true)
 })
 
 test("NativeNetwork isSupported reports supported result through the service", () =>
@@ -148,7 +169,9 @@ test("NativeNetwork capability facts surface in the manifest and stay non-callab
       const callableFactTags = NativeNetworkSurface.schemaDocs
         .filter((doc) => doc.callable)
         .map((doc) => doc.tag)
-      expect(callableFactTags).toEqual(["NativeNetwork.isSupported"])
+      expect(callableFactTags).toEqual(["NativeNetwork.isSupported", "NativeNetwork.events.Event"])
+      expect(byTag.get("NativeNetwork.events.Event")?.capability.kind).toBe("none")
+      expect(byTag.get("NativeNetwork.events.Event")?.support).toEqual({ status: "supported" })
 
       const nonCallableTags = NativeNetworkSurface.schemaDocs
         .filter((doc) => !doc.callable)
@@ -330,6 +353,48 @@ test("NativeNetwork bridge client rejects invalid byte progress events as Invali
       )
 
       expectInvalidOutput(exit)
+    })
+  ))
+
+test("NativeNetwork bridge client validates event payloads through the RPC stream contract", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const eventMethods: string[] = []
+      const exchange: BridgeClientExchange = {
+        request: () =>
+          Effect.die("NativeNetwork event contract test does not issue bridge requests"),
+        subscribe: (method) => {
+          eventMethods.push(method)
+          return Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              method,
+              timestamp: 1_710_000_000_000,
+              traceId: "native-network-event-trace",
+              payload: {
+                type: "native-network-event",
+                timestamp: 1_710_000_000_000,
+                phase: "fetch-completed",
+                request: requestHandle(),
+                url: "https://example.test/data",
+                unexpected: "must be rejected by strict contract decode"
+              }
+            })
+          )
+        }
+      }
+      const exit = yield* runScoped(
+        Effect.gen(function* () {
+          const client = yield* NativeNetworkClient
+          return yield* Effect.exit(
+            client.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+          )
+        }),
+        NativeNetworkSurface.bridgeClientLayer(exchange)
+      )
+
+      expectInvalidOutput(exit)
+      expect(eventMethods).toEqual(["NativeNetwork.Event"])
     })
   ))
 

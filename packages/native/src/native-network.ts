@@ -10,7 +10,6 @@ import { type DesktopRpcClient, P, type PermissionRegistry } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeNetworkEvent, NativeNetworkSupportedResult } from "./contracts/native-network.js"
-import { subscribeNativeEvent } from "./event-stream.js"
 import { runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 
@@ -55,11 +54,12 @@ export const NativeNetworkCapabilityFacts = Object.freeze([
   nativeNetworkCapabilityFact("localhostUrl")
 ])
 
-export const NativeNetworkRpcEvents = Object.freeze({
-  Event: { payload: NativeNetworkEvent }
+const NativeNetworkEventStream = NativeSurface.event(Surface, "Event", {
+  payload: NativeNetworkEvent,
+  support: NativeSurface.support.supported
 })
 
-const NativeNetworkRpcGroup = RpcGroup.make(NativeNetworkIsSupported)
+const NativeNetworkRpcGroup = RpcGroup.make(NativeNetworkIsSupported, NativeNetworkEventStream)
 
 export const NativeNetworkRpcs: RpcGroup.RpcGroup<NativeNetworkRpc> = NativeNetworkRpcGroup
 
@@ -101,7 +101,14 @@ export const NativeNetworkHandlersLive = NativeNetworkRpcGroup.toLayer({
     Effect.gen(function* () {
       const network = yield* NativeNetwork
       return yield* network.isSupported()
-    })
+    }),
+  "NativeNetwork.events.Event": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const network = yield* NativeNetwork
+        return network.events()
+      })
+    )
 })
 
 export const NativeNetworkSurface = NativeSurface.make(Surface, NativeNetworkRpcGroup, {
@@ -155,7 +162,7 @@ const nativeNetworkClientFromRpcClient = (
         client["NativeNetwork.isSupported"](undefined),
         "NativeNetwork.isSupported"
       ),
-    events: () => subscribeNativeEvent(exchange, EventMethod, NativeNetworkEvent)
+    events: () => NativeSurface.subscribeEvent(exchange, NativeNetworkEventStream)
   } satisfies NativeNetworkClientApi)
 
 const runNativeNetworkRpc = <A, E>(

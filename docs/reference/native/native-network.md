@@ -10,7 +10,7 @@ effect_version: 4
 
 `NativeNetwork` declares permission-gated native transport helpers for HTTP fetches, uploads, WebSocket connections, and localhost URL construction. It is the transport surface; policy decisions such as allow/deny rules still belong in `EgressPolicy`.
 
-The public service is Layer-first and test-substitutable. The TypeScript service validates Schema contracts before transport, checks `native.invoke` permissions before client side effects, and exposes typed `NativeNetwork.Event` progress/lifecycle events. The transport methods (`fetch`, `upload`, `connectWebSocket`, `closeWebSocket`, `localhostUrl`) are currently non-callable capability facts; only `isSupported` and the event stream are invocable.
+The public service is Layer-first and test-substitutable. The TypeScript service validates Schema contracts before transport, checks `native.invoke` permissions before client side effects, and exposes typed `NativeNetwork.Event` progress/lifecycle events. The payload schema is owned by the canonical `NativeNetwork.events.Event` RPC stream contract; the native bridge lowers that event contract to the existing `NativeNetwork.Event` wire method. The transport methods (`fetch`, `upload`, `connectWebSocket`, `closeWebSocket`, `localhostUrl`) are currently non-callable capability facts; only `isSupported` and the event stream are invocable.
 
 ## Methods
 
