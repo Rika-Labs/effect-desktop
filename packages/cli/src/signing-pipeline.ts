@@ -6,6 +6,7 @@ import { Data, Effect } from "effect"
 
 import { makeSecretString, unsafeSecretString } from "@orika/bridge"
 import { decodeDesktopConfig } from "@orika/config"
+import type { DesktopConfig } from "@orika/config"
 
 import {
   decodePackageArtifactMetadataJson,
@@ -138,36 +139,6 @@ export interface DesktopSignReport {
   readonly steps: readonly SignStepReport[]
 }
 
-interface AppConfig {
-  readonly app?: {
-    readonly id?: unknown
-    readonly name?: unknown
-    readonly version?: unknown
-  }
-  readonly security?: {
-    readonly permissions?: unknown
-  }
-  readonly permissions?: unknown
-  readonly signing?: {
-    readonly macos?: {
-      readonly identity?: unknown
-      readonly teamId?: unknown
-      readonly entitlements?: unknown
-    }
-    readonly windows?: {
-      readonly thumbprint?: unknown
-      readonly timestampUrl?: unknown
-      readonly pfx?: {
-        readonly path?: unknown
-        readonly passwordEnv?: unknown
-      }
-    }
-    readonly linux?: {
-      readonly gpgKey?: unknown
-    }
-  }
-}
-
 interface SignPlan {
   readonly appId: string
   readonly appName: string
@@ -177,7 +148,7 @@ interface SignPlan {
   readonly target: SignTarget
   readonly platform: SignPlatform
   readonly safeAppName: string
-  readonly config: AppConfig
+  readonly config: DesktopConfig
 }
 
 interface PackagedArtifact {
@@ -313,8 +284,9 @@ const signMacosApp = (
   never
 > =>
   Effect.gen(function* () {
+    const macos = signingSection(plan.config, "macos")
     const identity = yield* readRequiredString(
-      plan.config.signing?.macos?.identity,
+      macos?.["identity"],
       "signing.macos.identity",
       "Configure signing.macos.identity with a Developer ID Application identity."
     )
@@ -368,8 +340,9 @@ const signMacosDmg = (
   never
 > =>
   Effect.gen(function* () {
+    const macos = signingSection(plan.config, "macos")
     const identity = yield* readRequiredString(
-      plan.config.signing?.macos?.identity,
+      macos?.["identity"],
       "signing.macos.identity",
       "Configure signing.macos.identity with a Developer ID Application identity."
     )
@@ -401,8 +374,8 @@ const signWindowsArtifact = (
   never
 > =>
   Effect.gen(function* () {
-    const windows = plan.config.signing?.windows
-    const timestampUrl = yield* readWindowsTimestampUrl(windows?.timestampUrl)
+    const windows = signingSection(plan.config, "windows")
+    const timestampUrl = yield* readWindowsTimestampUrl(windows?.["timestampUrl"])
     const credential = yield* windowsCredentialArgs(windows, options.env ?? {})
     const steps: SignStepReport[] = []
     const unblockStep = yield* runToolStep(
@@ -464,8 +437,9 @@ const signLinuxAppImage = (
   never
 > =>
   Effect.gen(function* () {
+    const linux = signingSection(plan.config, "linux")
     const gpgKey = yield* readRequiredString(
-      plan.config.signing?.linux?.gpgKey,
+      linux?.["gpgKey"],
       "signing.linux.gpgKey",
       "Configure signing.linux.gpgKey before signing Linux AppImages."
     )
@@ -580,7 +554,7 @@ const normalizeSignPlan = (
   options: { readonly configPath: string; readonly target: SignTarget }
 ): Effect.Effect<SignPlan, SignConfigError, never> =>
   Effect.gen(function* () {
-    const config = yield* readConfigObject(rawConfig)
+    const config = yield* decodeSignConfig(rawConfig)
     const appRoot = dirname(options.configPath)
     const appId = yield* readSafeAppId(config.app?.id, "app.id")
     const appName = yield* readRequiredString(
@@ -764,11 +738,7 @@ const macosSignablePaths = (
   }).pipe(Effect.map((files) => files.filter((file) => !file.endsWith(".json"))))
 
 const windowsCredentialArgs = (
-  windows: AppConfig["signing"] extends infer Signing
-    ? Signing extends { readonly windows?: infer Windows }
-      ? Windows | undefined
-      : never
-    : never,
+  windows: Readonly<Record<PropertyKey, unknown>> | undefined,
   env: Readonly<Record<string, string | undefined>>
 ): Effect.Effect<
   { readonly args: readonly string[]; readonly reportArgs: readonly string[] },
@@ -776,14 +746,18 @@ const windowsCredentialArgs = (
   never
 > =>
   Effect.gen(function* () {
-    const thumbprint = yield* readOptionalString(windows?.thumbprint, "signing.windows.thumbprint")
+    const thumbprint = yield* readOptionalString(
+      windows?.["thumbprint"],
+      "signing.windows.thumbprint"
+    )
     if (thumbprint !== undefined) {
       yield* validateWindowsThumbprint(thumbprint)
       return { args: ["/sha1", thumbprint], reportArgs: ["/sha1", thumbprint] }
     }
-    const pfxPath = yield* readOptionalString(windows?.pfx?.path, "signing.windows.pfx.path")
+    const pfx = recordSection(windows?.["pfx"])
+    const pfxPath = yield* readOptionalString(pfx?.["path"], "signing.windows.pfx.path")
     const passwordEnv = yield* readOptionalString(
-      windows?.pfx?.passwordEnv,
+      pfx?.["passwordEnv"],
       "signing.windows.pfx.passwordEnv"
     )
     if (pfxPath !== undefined && passwordEnv !== undefined) {
@@ -860,7 +834,9 @@ const validateWindowsThumbprint = (
         })
       )
 
-const macosEntitlementsPlist = (config: AppConfig): Effect.Effect<string, SignConfigError, never> =>
+const macosEntitlementsPlist = (
+  config: DesktopConfig
+): Effect.Effect<string, SignConfigError, never> =>
   Effect.gen(function* () {
     const permissions = yield* permissionNames(config)
     return plist({
@@ -876,7 +852,7 @@ const macosEntitlementsPlist = (config: AppConfig): Effect.Effect<string, SignCo
   })
 
 const permissionNames = (
-  config: AppConfig
+  config: DesktopConfig
 ): Effect.Effect<ReadonlySet<string>, SignConfigError, never> => {
   const permissions = config.permissions ?? config.security?.permissions
   if (permissions === undefined) {
@@ -959,9 +935,10 @@ ${entries}
 `
 }
 
-const readConfigObject = (rawConfig: unknown): Effect.Effect<AppConfig, SignConfigError, never> =>
+const decodeSignConfig = (
+  rawConfig: unknown
+): Effect.Effect<DesktopConfig, SignConfigError, never> =>
   decodeDesktopConfig(rawConfig, "desktop sign config").pipe(
-    Effect.map((config) => config as AppConfig),
     Effect.mapError(
       (error) =>
         new SignConfigError({
@@ -971,6 +948,17 @@ const readConfigObject = (rawConfig: unknown): Effect.Effect<AppConfig, SignConf
         })
     )
   )
+
+const signingSection = (
+  config: DesktopConfig,
+  section: string
+): Readonly<Record<PropertyKey, unknown>> | undefined => {
+  const signing = recordSection(config.signing)
+  return recordSection(signing?.[section])
+}
+
+const recordSection = (value: unknown): Readonly<Record<PropertyKey, unknown>> | undefined =>
+  isRecord(value) ? value : undefined
 
 const readRequiredString = (
   value: unknown,

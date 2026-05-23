@@ -212,6 +212,7 @@ export interface DesktopConfig extends Omit<ProductionSecurityConfig, "permissio
     readonly channel?: "stable" | "beta" | "canary"
     readonly publicKey?: string
     readonly feedUrl?: string
+    readonly privateKeyEnv?: string
     readonly minVersion?: string
     readonly maxVersion?: string | undefined
     readonly keyVersion?: number
@@ -388,6 +389,7 @@ export class DesktopUpdateConfig extends Schema.Class<DesktopUpdateConfig>("Desk
   channel: Schema.optionalKey(Schema.Literals(["stable", "beta", "canary"])),
   publicKey: Schema.optionalKey(Schema.String),
   feedUrl: Schema.optionalKey(Schema.String),
+  privateKeyEnv: Schema.optionalKey(Schema.String),
   minVersion: Schema.optionalKey(Schema.String),
   maxVersion: Schema.optionalKey(Schema.Union([Schema.String, Schema.Undefined])),
   keyVersion: Schema.optionalKey(Schema.Number),

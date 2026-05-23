@@ -10,6 +10,9 @@ import { pathToFileURL } from "node:url"
 
 import { Data, Effect, Option, Schema } from "effect"
 
+import { decodeDesktopConfig } from "@orika/config"
+import type { DesktopConfig } from "@orika/config"
+
 import {
   ReleaseFileSystem,
   runReleaseFileSystem,
@@ -110,24 +113,6 @@ export interface DesktopPublishReport {
   readonly manifestPath: string
   readonly canonicalBytes: string
   readonly artifacts: readonly UpdateArtifactManifest[]
-}
-
-interface AppConfig {
-  readonly app?: {
-    readonly id?: unknown
-    readonly name?: unknown
-    readonly version?: unknown
-  }
-  readonly update?: {
-    readonly channel?: unknown
-    readonly feedUrl?: unknown
-    readonly publicKey?: unknown
-    readonly privateKeyEnv?: unknown
-    readonly keyVersion?: unknown
-    readonly minVersion?: unknown
-    readonly maxVersion?: unknown
-    readonly rollback?: unknown
-  }
 }
 
 interface PublishPlan {
@@ -279,7 +264,7 @@ const normalizePublishPlan = (
   options: { readonly configPath: string; readonly platform: string | undefined }
 ): Effect.Effect<PublishPlan, PublishConfigError, never> =>
   Effect.gen(function* () {
-    const config = yield* readConfigObject(rawConfig)
+    const config = yield* decodePublishConfig(rawConfig)
     const appRoot = dirname(options.configPath)
     const appId = yield* readAppId(config.app?.id, "app.id")
     const appName = yield* readRequiredString(config.app?.name, "app.name", "Set app.name.")
@@ -747,18 +732,19 @@ const validateFeedUrl = (feedUrl: string): Effect.Effect<void, PublishConfigErro
     }
   })
 
-const readConfigObject = (
+const decodePublishConfig = (
   rawConfig: unknown
-): Effect.Effect<AppConfig, PublishConfigError, never> =>
-  isRecord(rawConfig)
-    ? Effect.succeed(rawConfig as AppConfig)
-    : Effect.fail(
+): Effect.Effect<DesktopConfig, PublishConfigError, never> =>
+  decodeDesktopConfig(rawConfig, "desktop publish config").pipe(
+    Effect.mapError(
+      (error) =>
         new PublishConfigError({
           field: "default",
-          message: "desktop config must export an object",
-          remediation: "Export a default object from desktop.config.ts."
+          message: error.message,
+          remediation: "Fix desktop.config.ts before publishing."
         })
-      )
+    )
+  )
 
 const readRequiredString = (
   value: unknown,

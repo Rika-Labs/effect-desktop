@@ -5855,6 +5855,50 @@ test("desktop notarize rejects stale artifacts from a different app identity", (
     })
   ))
 
+test("desktop notarize decodes canonical config before notarytool side effects", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-notarize-canonical-config-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, {
+          renderer: {
+            framework: "vue",
+            entry: "src/renderer/main.tsx",
+            dist: "dist"
+          },
+          signing: { macos: { teamId: "ABCD1234", notarytoolProfile: "release-profile" } }
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "app")
+        const calls: string[] = []
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["notarize", "--config", "apps/inspector/desktop.config.ts", "--json"],
+          cwd: directory,
+          hostTarget: "macos-arm64",
+          notarizeCommandRunner: (invocation) =>
+            Effect.sync(() => {
+              calls.push(invocation.step)
+              return { stdout: `${invocation.step} ok`, stderr: "", exitCode: 0 }
+            }),
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        expect(calls).toEqual([])
+        const error = decodeCliJsonError(stderr.join(""))
+        expect(error.tag).toBe("NotarizeConfigError")
+        expect(error.message).toContain("renderer")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
 test("desktop notarize submits staples and assesses unstapled macOS artifacts", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -6502,6 +6546,59 @@ test("desktop publish writes a byte-stable Ed25519-signed update manifest", () =
           url: "https://updates.example.invalid/macos-arm64/ORIKA-Playground-0.0.0-macos-arm64.dmg",
           signature: expect.stringContaining("ed25519:")
         })
+      } finally {
+        if (previousPrivateKey === undefined) {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
+        } else {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
+        }
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop publish decodes canonical config before signing manifests", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-canonical-config-"))
+      )
+      const key = testEd25519Key()
+      const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, key.privateKeyPem))
+      try {
+        yield* writePlaygroundFixture(directory, {
+          renderer: {
+            framework: "vue",
+            entry: "src/renderer/main.tsx",
+            dist: "dist"
+          },
+          update: {
+            channel: "stable",
+            feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+            publicKey: key.publicKey,
+            privateKeyEnv,
+            keyVersion: 5
+          }
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
+          cwd: directory,
+          now: () => 1_772_923_200_000,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(exitCode).toBe(1)
+        const error = decodeCliJsonError(stderr.join(""))
+        expect(error.tag).toBe("PublishConfigError")
+        expect(error.message).toContain("renderer")
       } finally {
         if (previousPrivateKey === undefined) {
           yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
@@ -9200,21 +9297,25 @@ test("desktop package --help exits zero with usage", () =>
     })
   ))
 
-test("CLI build and package planning rely on the canonical desktop config shape", () =>
+test("CLI planning relies on the canonical desktop config shape", () =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const cliSource = yield* Effect.promise(() =>
-        readFile(join(import.meta.dir, "index.ts"), "utf8")
-      )
-      const packageSource = yield* Effect.promise(() =>
-        readFile(join(import.meta.dir, "package-pipeline.ts"), "utf8")
-      )
+      for (const sourcePath of [
+        "index.ts",
+        "package-pipeline.ts",
+        "signing-pipeline.ts",
+        "notarization-pipeline.ts",
+        "update-manifest.ts"
+      ]) {
+        const source = yield* Effect.promise(() =>
+          readFile(join(import.meta.dir, sourcePath), "utf8")
+        )
 
-      expect(cliSource).not.toContain("interface AppConfig")
-      expect(cliSource).not.toContain("as AppConfig")
-      expect(packageSource).not.toContain("interface AppConfig")
-      expect(packageSource).not.toContain("readConfigObject")
-      expect(packageSource).not.toContain("rawConfig as AppConfig")
+        expect(source).not.toContain("interface AppConfig")
+        expect(source).not.toContain("as AppConfig")
+        expect(source).not.toContain("readConfigObject")
+        expect(source).not.toContain("rawConfig as AppConfig")
+      }
     })
   ))
 

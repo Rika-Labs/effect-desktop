@@ -5,6 +5,8 @@ import { pathToFileURL } from "node:url"
 import { Data, Effect, Schema } from "effect"
 
 import { makeSecretString, unsafeSecretString } from "@orika/bridge"
+import { decodeDesktopConfig } from "@orika/config"
+import type { DesktopConfig } from "@orika/config"
 
 import {
   decodePackageArtifactMetadataJson,
@@ -144,22 +146,6 @@ export interface DesktopNotarizeReport {
   readonly steps: readonly NotarizeStepReport[]
 }
 
-interface AppConfig {
-  readonly app?: {
-    readonly id?: unknown
-    readonly name?: unknown
-    readonly version?: unknown
-  }
-  readonly signing?: {
-    readonly macos?: {
-      readonly teamId?: unknown
-      readonly notarytoolProfile?: unknown
-      readonly appleId?: unknown
-      readonly passwordEnv?: unknown
-    }
-  }
-}
-
 interface NotarizePlan {
   readonly appId: string
   readonly appName: string
@@ -167,7 +153,7 @@ interface NotarizePlan {
   readonly appRoot: string
   readonly outputPath: string
   readonly target: NotarizeTarget
-  readonly config: AppConfig
+  readonly config: DesktopConfig
 }
 
 interface PackagedArtifact {
@@ -466,7 +452,7 @@ const normalizeNotarizePlan = (
   options: { readonly configPath: string; readonly target: NotarizeTarget }
 ): Effect.Effect<NotarizePlan, NotarizeConfigError, never> =>
   Effect.gen(function* () {
-    const config = yield* readConfigObject(rawConfig)
+    const config = yield* decodeNotarizeConfig(rawConfig)
     const appRoot = dirname(options.configPath)
     const appId = yield* readRequiredString(config.app?.id, "app.id", "Set app.id.")
     const appName = yield* readRequiredString(config.app?.name, "app.name", "Set app.name.")
@@ -487,14 +473,16 @@ const normalizeNotarizePlan = (
   })
 
 const resolveCredentials = (
-  config: AppConfig,
+  config: DesktopConfig,
   env: Readonly<Record<string, string | undefined>>
 ): Effect.Effect<NotaryCredentials, NotarizeConfigError, never> =>
   Effect.gen(function* () {
-    const macos = config.signing?.macos
+    const macos = signingSection(config, "macos")
     const profile =
-      (yield* readOptionalString(macos?.notarytoolProfile, "signing.macos.notarytoolProfile")) ??
-      env["APPLE_NOTARYTOOL_PROFILE"]
+      (yield* readOptionalString(
+        macos?.["notarytoolProfile"],
+        "signing.macos.notarytoolProfile"
+      )) ?? env["APPLE_NOTARYTOOL_PROFILE"]
     if (profile !== undefined && profile.length > 0) {
       return {
         args: ["--keychain-profile", profile],
@@ -502,11 +490,11 @@ const resolveCredentials = (
       }
     }
     const appleId =
-      (yield* readOptionalString(macos?.appleId, "signing.macos.appleId")) ?? env["APPLE_ID"]
+      (yield* readOptionalString(macos?.["appleId"], "signing.macos.appleId")) ?? env["APPLE_ID"]
     const teamId =
-      (yield* readOptionalString(macos?.teamId, "signing.macos.teamId")) ?? env["APPLE_TEAM_ID"]
+      (yield* readOptionalString(macos?.["teamId"], "signing.macos.teamId")) ?? env["APPLE_TEAM_ID"]
     const passwordEnv =
-      (yield* readOptionalString(macos?.passwordEnv, "signing.macos.passwordEnv")) ??
+      (yield* readOptionalString(macos?.["passwordEnv"], "signing.macos.passwordEnv")) ??
       "APPLE_APP_SPECIFIC_PASSWORD"
     const password = env[passwordEnv]
     if (
@@ -667,18 +655,30 @@ const readPackagedArtifacts = (
     return artifacts
   })
 
-const readConfigObject = (
+const decodeNotarizeConfig = (
   rawConfig: unknown
-): Effect.Effect<AppConfig, NotarizeConfigError, never> =>
-  isRecord(rawConfig)
-    ? Effect.succeed(rawConfig as AppConfig)
-    : Effect.fail(
+): Effect.Effect<DesktopConfig, NotarizeConfigError, never> =>
+  decodeDesktopConfig(rawConfig, "desktop notarize config").pipe(
+    Effect.mapError(
+      (error) =>
         new NotarizeConfigError({
           field: "default",
-          message: "desktop config must export an object",
-          remediation: "Export a default object from desktop.config.ts."
+          message: error.message,
+          remediation: "Fix desktop.config.ts before notarizing."
         })
-      )
+    )
+  )
+
+const signingSection = (
+  config: DesktopConfig,
+  section: string
+): Readonly<Record<PropertyKey, unknown>> | undefined => {
+  const signing = recordSection(config.signing)
+  return recordSection(signing?.[section])
+}
+
+const recordSection = (value: unknown): Readonly<Record<PropertyKey, unknown>> | undefined =>
+  isRecord(value) ? value : undefined
 
 const readRequiredString = (
   value: unknown,

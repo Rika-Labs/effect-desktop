@@ -98,6 +98,7 @@ test("defineDesktopConfig accepts the documented app config shape", () => {
       channel: "stable",
       publicKey: "ed25519:abc",
       feedUrl: "https://updates.example.dev/{platform}/{channel}.json",
+      privateKeyEnv: "ORIKA_UPDATE_PRIVATE_KEY",
       maxVersion: undefined,
       keyVersion: 2
     },
@@ -125,6 +126,22 @@ test("defineDesktopConfig accepts the documented app config shape", () => {
   expect(config.runtime.engine).toBe("node")
   expect(config.web.engine).toBe("chrome")
 })
+
+test("decodeDesktopConfig preserves the publish private key environment field", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const config = yield* decodeDesktopConfig({
+        update: {
+          channel: "stable",
+          publicKey: "ed25519:abc",
+          feedUrl: "https://updates.example.dev/{platform}/{channel}.json",
+          privateKeyEnv: "ORIKA_UPDATE_PRIVATE_KEY"
+        }
+      })
+
+      expect(config.update?.privateKeyEnv).toBe("ORIKA_UPDATE_PRIVATE_KEY")
+    })
+  ))
 
 test("defineDesktopConfig rejects invalid app metadata types at compile time", () => {
   const config = defineDesktopConfig({
