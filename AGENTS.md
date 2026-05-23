@@ -24,7 +24,7 @@ Track follow-up issues in the roadmap when they unblock or simplify later work. 
 
 ## Project Structure & Module Organization
 
-ORIKA is a Bun/TypeScript monorepo with Rust host crates. Framework packages live in `packages/*`, example and docs apps in `apps/*`, reusable starters in `templates/*`, Rust code in `crates/*`, repo-level tests in `tests/*`, and API snapshots in `api/snapshots`. Design notes, ADRs, milestones, and operational docs live under `docs/`. External reference repositories are vendored as read-only git subtrees under `repos/`; do not import from or edit them unless explicitly updating a subtree.
+ORIKA is a Bun/TypeScript monorepo with Rust host crates. Framework packages live in `packages/*`, the checked-in app surface currently lives in `apps/inspector`, Rust code lives in `crates/*`, repo-level tests live in `tests/*`, and API snapshots live in `api/snapshots`. `apps/examples/*` and `templates/*` are not current tracked starter surfaces; treat them as absent unless tracked source files are restored. Design notes, ADRs, milestones, and operational docs live under `docs/`. External reference repositories are vendored as read-only git subtrees under `repos/`; do not import from or edit them unless explicitly updating a subtree.
 
 ## Build, Test, and Development Commands
 
