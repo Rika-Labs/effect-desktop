@@ -64,7 +64,7 @@ export const TodoHandlersLive = TodoRpcs.toLayer({
 
 Forgetting a method is a compile error. Returning the wrong type is a compile error. The contract is enforced.
 
-## 3. Add to the manifest
+## 3. Add to the runtime app
 
 ```ts
 import { Desktop } from "@orika/core"
@@ -76,17 +76,33 @@ export const App = Desktop.make({
   windows: Desktop.window("main", { title: "Todos" }),
   rpcs: Desktop.rpc(TodoRpcs, TodoHandlersLive)
 })
-
-export const Manifest = Desktop.manifest(App)
 ```
 
-The `rpcs` array is a list of `{ group, handlers }` pairs. You can register many groups; each is independent.
+Keep the renderer manifest in a separate browser-safe module:
+
+```ts
+import { TodoRpcs } from "./contracts.js"
+
+export const Manifest = {
+  _tag: "DesktopAppManifest",
+  id: "dev.example.todos",
+  windows: {
+    main: { title: "Todos", renderer: "/" }
+  },
+  rpcGroups: [{ _tag: "DesktopRpcGroup", group: TodoRpcs }]
+} as const
+```
+
+The `rpcs` array is a list of `{ group, handlers }` pairs. You can register many
+groups; each is independent. Renderer code must import only the manifest data
+and RPC descriptors. Do not import the runtime module that calls
+`Desktop.make(...)` into a browser bundle.
 
 ## 4. Call from the renderer
 
 ```tsx
 import { ReactDesktop } from "@orika/react"
-import { Manifest } from "./manifest.js"
+import { Manifest } from "./renderer-manifest.js"
 import { TodoRpcs } from "./contracts.js"
 
 const DesktopApp = ReactDesktop.from(Manifest)

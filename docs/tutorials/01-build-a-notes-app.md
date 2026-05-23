@@ -159,9 +159,9 @@ What's happening here:
 - The SQL tagged template binds parameters safely. `Schema.decodeUnknownEffect(NoteSchema)` keeps rows typed at the boundary.
 - The delete handler returns `Effect.fail(new NoteNotFound({ id }))` for the domain failure. TypeScript knows this is the only failure in the contract.
 
-## Step 3 — Wire into the manifest
+## Step 3 — Wire into the runtime app
 
-Edit the inspector's manifest (or your own app's equivalent). Find where `Desktop.make({ ... })` is called, and add `NotesRpcs` and `NotesHandlersLive` to the `rpcs` array:
+Edit the inspector's runtime app module (or your own app's equivalent). Find where `Desktop.make({ ... })` is called, and add `NotesRpcs` and `NotesHandlersLive` to the `rpcs` array:
 
 ```ts
 import { Desktop } from "@orika/core"
@@ -177,11 +177,27 @@ export const App = Desktop.make({
   //   windows: Desktop.windows(Desktop.window("main", ...), Desktop.window("compose", ...))
   //   rpcs:    Desktop.rpcs(Desktop.rpc(NotesRpcs, NotesHandlersLive), Desktop.rpc(...))
 })
-
-export const Manifest = Desktop.manifest(App)
 ```
 
-`Desktop.make` builds the runtime graph — SQLite, permission registry, your handlers. `Desktop.manifest` produces the value the renderer reads to know what's callable.
+Then expose a browser-safe renderer manifest from a separate module:
+
+```ts
+import { NotesRpcs } from "./notes/contracts.js"
+
+export const Manifest = {
+  _tag: "DesktopAppManifest",
+  id: "dev.example.notes",
+  windows: {
+    main: { title: "Notes", renderer: "/" }
+  },
+  rpcGroups: [{ _tag: "DesktopRpcGroup", group: NotesRpcs }]
+} as const
+```
+
+`Desktop.make` builds the runtime graph — SQLite, permission registry, your
+handlers. The renderer manifest is plain data plus RPC descriptors; keep it out
+of the runtime module so Vite does not bundle `@orika/core` runtime dependencies
+into the browser.
 
 ## Step 4 — The React panel
 
@@ -191,7 +207,7 @@ Create `apps/inspector/src/notes/NotesPanel.tsx`:
 import { useState } from "react"
 import { Exit, Option } from "effect"
 import { AsyncResult, ReactDesktop } from "@orika/react"
-import { Manifest } from "../manifest.js"
+import { Manifest } from "../renderer-manifest.js"
 import { NotesRpcs } from "./contracts.js"
 
 const DesktopApp = ReactDesktop.from(Manifest)

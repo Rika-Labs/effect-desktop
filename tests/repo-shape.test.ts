@@ -33,6 +33,12 @@ const CURRENT_WINDOW_VOID_MUTATION_PAYLOAD_PATTERN =
 const AWAITED_MUTATION_RUN_PATTERN = /\bawait\s+[A-Za-z_$][\w$]*\.run\(/
 const MARKDOWN_CODE_BLOCK_PATTERN = /```[^\n]*\n([\s\S]*?)```/g
 const RAW_DESKTOP_MAKE_WINDOWS_PATTERN = /Desktop\.make\(\s*\{[\s\S]{0,600}\bwindows:\s*\{/m
+const RUNTIME_MANIFEST_MODULE_PATTERN =
+  /export\s+const\s+App\s*=\s*Desktop\.make\([\s\S]*?export\s+const\s+Manifest\s*=\s*Desktop\.manifest\(App\)/m
+const RENDERER_MANIFEST_IMPORT_PATTERN =
+  /import\s*\{\s*Manifest\s*\}\s*from\s+["'][^"']*manifest\.js["']/m
+const RENDERER_MANIFEST_IMPORT_GLOBAL_PATTERN =
+  /import\s*\{\s*Manifest\s*\}\s*from\s+["']([^"']*manifest\.js)["']/g
 const CURRENT_WINDOW_ID_LITERAL_ROUTING_PATTERN =
   /useCurrentWindowId\(\)[\s\S]{0,500}onSome:\s*\(\s*([A-Za-z_$][\w$]*)\s*\)\s*=>[\s\S]{0,220}\b\1\s*===\s*["']/m
 const STALE_PACKAGE_README_PHRASES = [
@@ -369,6 +375,46 @@ describe("Desktop API docs", () => {
           `${path.slice(
             REPO_ROOT.length + 1
           )}: use Desktop.window(...) or Desktop.windows(...), not raw windows records`
+        )
+      }
+    }
+
+    expect(violations).toEqual([])
+  })
+
+  test("renderer examples do not import runtime manifest modules", () => {
+    const violations: string[] = []
+
+    for (const path of collectMarkdownFiles(join(REPO_ROOT, "docs"))) {
+      const markdown = readFileSync(path, "utf8")
+      if (
+        RUNTIME_MANIFEST_MODULE_PATTERN.test(markdown) &&
+        RENDERER_MANIFEST_IMPORT_PATTERN.test(markdown)
+      ) {
+        violations.push(
+          `${path.slice(
+            REPO_ROOT.length + 1
+          )}: split runtime Desktop.make modules from browser-safe renderer manifests`
+        )
+      }
+    }
+
+    expect(violations).toEqual([])
+  })
+
+  test("renderer examples import browser-safe renderer manifests", () => {
+    const violations: string[] = []
+
+    for (const path of collectMarkdownFiles(join(REPO_ROOT, "docs"))) {
+      const markdown = readFileSync(path, "utf8")
+      for (const match of markdown.matchAll(RENDERER_MANIFEST_IMPORT_GLOBAL_PATTERN)) {
+        const specifier = match[1]
+        if (specifier === undefined || specifier.endsWith("renderer-manifest.js")) {
+          continue
+        }
+
+        violations.push(
+          `${path.slice(REPO_ROOT.length + 1)}: import Manifest from renderer-manifest.js`
         )
       }
     }

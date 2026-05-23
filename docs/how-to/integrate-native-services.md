@@ -30,6 +30,9 @@ export const App = Desktop.make({
 ```
 
 `Desktop.native(...)` registers the required native surfaces. `Desktop.permissions(...)` grants only the selected privileged calls.
+Renderer examples below assume `Manifest` comes from a browser-safe module that
+contains plain manifest data and renderer RPC descriptors. Do not import the
+runtime module that calls `Desktop.make(...)` into renderer code.
 
 ## The pattern
 
@@ -48,7 +51,7 @@ You never construct the host call directly. (See [boundary rule](../explanation/
 ```tsx
 import { ReactDesktop } from "@orika/react"
 import { ClipboardRpcs } from "@orika/native/renderer"
-import { Manifest } from "./manifest.js"
+import { Manifest } from "./renderer-manifest.js"
 
 const DesktopApp = ReactDesktop.from(Manifest)
 

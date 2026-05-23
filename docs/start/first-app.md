@@ -65,9 +65,10 @@ export const AppHandlersLive = AppRpcs.toLayer({
 
 `RpcGroup.toLayer` produces a `Layer` that registers handlers for every method. If you forget one, TypeScript fails the build — that is your contract enforcement.
 
-## 3. The desktop manifest
+## 3. The desktop app and renderer manifest
 
-Create `app/manifest.ts`:
+Create `app/runtime-app.ts`. This file is runtime-only; do not import it from
+renderer code.
 
 ```ts
 import { Desktop } from "@orika/core"
@@ -79,11 +80,29 @@ export const App = Desktop.make({
   windows: Desktop.window("main", { title: "First App" }),
   rpcs: Desktop.rpc(AppRpcs, AppHandlersLive)
 })
+```
 
-export const Manifest = Desktop.manifest(App)
+Create `app/renderer-manifest.ts` with only browser-safe data and RPC
+descriptors:
+
+```ts
+import { AppRpcs } from "./contracts.js"
+
+export const Manifest = {
+  _tag: "DesktopAppManifest",
+  id: "dev.example.first-app",
+  windows: {
+    main: { title: "First App", renderer: "/" }
+  },
+  rpcGroups: [{ _tag: "DesktopRpcGroup", group: AppRpcs }]
+} as const
 ```
 
 `Desktop.make` ties everything together: app id, declared windows, RPC surfaces, providers, permissions. Each `Desktop.window(id, spec, services?)` self-registers with the framework; compose multiple via `Desktop.windows(Desktop.window(...), Desktop.window(...))`. `Desktop.manifest` produces the value the renderer needs to know which contracts to expose.
+Keep the renderer manifest's `id`, `windows`, and `rpcGroups` aligned with the
+runtime app, but keep it in a browser-safe module. Importing the runtime app
+module into a Vite renderer pulls runtime-only dependencies into the browser
+bundle.
 
 ## 4. The renderer
 
@@ -92,7 +111,7 @@ Create `app/Greeter.tsx`:
 ```tsx
 import { Option } from "effect"
 import { AsyncResult, ReactDesktop } from "@orika/react"
-import { Manifest } from "./manifest.js"
+import { Manifest } from "./renderer-manifest.js"
 import { AppRpcs } from "./contracts.js"
 
 const DesktopApp = ReactDesktop.from(Manifest)

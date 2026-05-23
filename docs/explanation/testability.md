@@ -93,7 +93,7 @@ A renderer test (with React Testing Library):
 import { render, screen, fireEvent } from "@testing-library/react"
 import { ReactDesktop } from "@orika/react"
 import { makeMockBridge } from "@orika/test"
-import { Manifest } from "../src/manifest.js"
+import { Manifest } from "../src/renderer-manifest.js"
 
 test("renders the greeting", async () => {
   const bridge = makeMockBridge()

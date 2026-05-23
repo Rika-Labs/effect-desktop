@@ -131,7 +131,7 @@ Create `apps/inspector/src/notes/ImportPanel.tsx`:
 ```tsx
 import { useState } from "react"
 import { ReactDesktop } from "@orika/react"
-import { Manifest } from "../manifest.js"
+import { Manifest } from "../renderer-manifest.js"
 import { NotesRpcs } from "./contracts.js"
 
 const DesktopApp = ReactDesktop.from(Manifest)

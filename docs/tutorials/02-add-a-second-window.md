@@ -27,7 +27,7 @@ Each window the app opens is a scoped resource. The scope is named from the host
 
 Two windows in the same app share global services — `Settings`, `Secrets`, `Telemetry` — but not their per-window scopes. State that should "follow the user across windows" goes through a shared service. State that "only matters while this window is open" goes through the window's own scope.
 
-## Step 1 — Declare both windows in the manifest
+## Step 1 — Declare both windows in the runtime app
 
 Update your `Desktop.make` call to declare two windows:
 
@@ -51,15 +51,33 @@ export const App = Desktop.make({
   native: Desktop.native(Native.Window),
   rpcs: Desktop.rpc(NotesRpcs, NotesHandlersLive)
 })
+```
 
-export const Manifest = Desktop.manifest(App)
+Keep the renderer manifest as browser-safe data in a separate module:
+
+```ts
+import { WindowRendererRpcs } from "@orika/native/renderer"
+import { NotesRpcs } from "./notes/contracts.js"
+
+export const Manifest = {
+  _tag: "DesktopAppManifest",
+  id: "dev.example.notes",
+  windows: {
+    main: { title: "Notes", width: 720, height: 520, renderer: "/" },
+    compose: { title: "Compose Note", width: 480, height: 360, renderer: "/compose" }
+  },
+  rpcGroups: [
+    { _tag: "DesktopRpcGroup", group: NotesRpcs },
+    { _tag: "DesktopRpcGroup", group: WindowRendererRpcs }
+  ]
+} as const
 ```
 
 Each `Desktop.window(id, spec)` returns a `Layer` that self-registers the window with the framework. Compose multiple windows with `Desktop.windows(...)`. The window ids (`"main"`, `"compose"`) are what runtime services use to scope declarations; renderer view selection uses the renderer route. The `compose` window is declared so the runtime knows about it; we'll open it on demand from the renderer rather than at launch.
 
-If your renderer owns a separate manifest value, include
-`WindowRendererRpcs` from `@orika/native/renderer` there. Keep `WindowRpcs` from
-`@orika/native` on the runtime side.
+Keep `WindowRendererRpcs` from `@orika/native/renderer` in the renderer
+manifest and `WindowRpcs`/`Native.Window` on the runtime side. Do not import the
+runtime module that calls `Desktop.make(...)` into renderer code.
 
 ### Optional: bind window-scoped resources
 
@@ -130,7 +148,7 @@ The compose window needs its own renderer entry. In `apps/inspector/src/notes/Co
 import { useState } from "react"
 import { Exit } from "effect"
 import { ReactDesktop, useCloseCurrentWindowMutation } from "@orika/react"
-import { Manifest } from "../manifest.js"
+import { Manifest } from "../renderer-manifest.js"
 import { NotesRpcs } from "./contracts.js"
 
 const DesktopApp = ReactDesktop.from(Manifest)
