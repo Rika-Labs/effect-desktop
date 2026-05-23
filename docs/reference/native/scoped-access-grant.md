@@ -8,9 +8,9 @@ effect_version: 4
 
 # `ScopedAccessGrant`
 
-Product-neutral scoped access grant service for file and directory access. Callers ask for a narrow path scope, resolve that grant after restart only when the host revalidates it, and revoke it when the scope is no longer needed.
+Product-neutral scoped access grant service for future file and directory access grants.
 
-The public service is Layer-first and test-substitutable. The TypeScript service validates Schema contracts before transport, checks declared native and filesystem permissions before privileged work, emits typed events, and records audit rows for privileged use and denial.
+The public service is Layer-first and test-substitutable. The current callable boundary reports support status and exposes typed events. Persistent grant mutation is intentionally absent until the host owns real OS grant material.
 
 ## Methods
 
@@ -26,32 +26,22 @@ The surface exposes only the genuinely callable methods below.
 `grant`, `resolve`, and `revoke` are **not callable**. They are advertised in the native capability manifest as capability facts with `support.status: "unsupported"`, so callers can discover the intended contract, but the surface does not register them as invocable RPCs.
 
 `grant` remains unsupported as an explicit v1 native capability decision. The
-request shape names an arbitrary path, actor, and access mode, but a real
-persistent grant must be produced by an OS-mediated consent mechanism and stored
-as revalidatable host-owned grant material. The current host has no macOS
-security-scoped bookmark adapter, no Windows access-list or picker-backed grant
-adapter, no Linux document-portal adapter, and no grant store tying those
-platform tokens to `resolve` and `revoke`.
+native capability exists to reserve support metadata, not to define a request or
+response payload. A real persistent grant must be produced by an OS-mediated
+consent mechanism and stored as revalidatable host-owned grant material. The
+current host has no macOS security-scoped bookmark adapter, no Windows
+access-list or picker-backed grant adapter, no Linux document-portal adapter,
+and no grant store tying those platform tokens to `resolve` and `revoke`.
 
-| Capability fact | Intended payload                       | Status        |
-| --------------- | -------------------------------------- | ------------- |
-| `grant`         | `{ actor, scope, grantId?, traceId? }` | `unsupported` |
-| `resolve`       | `{ grantId, traceId? }`                | `unsupported` |
-| `revoke`        | `{ grantId, traceId? }`                | `unsupported` |
-
-## Scope
-
-The scope is data:
-
-- `path`
-- `kind`: `"file"` or `"directory"`
-- `access`: `"read"`, `"write"`, or `"read-write"`
-
-The `grant` capability fact declares `native.invoke` authority for `ScopedAccessGrant.grant`. Its intended contract also checks `filesystem.read` for every grant and `filesystem.write` when `access` is `"write"` or `"read-write"`. These constraints describe the intended contract; the method cannot currently be invoked.
+| Capability fact | Status        |
+| --------------- | ------------- |
+| `grant`         | `unsupported` |
+| `resolve`       | `unsupported` |
+| `revoke`        | `unsupported` |
 
 ## Persistence
 
-Persistent grants are valid only after host revalidation. The `resolve` capability fact's intended contract rejects a host response with `revalidated: false`; callers must treat that as a failed grant recovery, not as access. `resolve` is currently a non-callable capability fact.
+Persistent grants will be valid only after host revalidation. `resolve` is currently a non-callable capability fact and has no request or response payload contract.
 
 `resolve` remains unsupported as an explicit v1 native capability decision. A
 resolver would need a persisted grant store, platform-specific token decoding,

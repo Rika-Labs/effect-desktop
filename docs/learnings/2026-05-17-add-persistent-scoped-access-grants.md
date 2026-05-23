@@ -4,11 +4,11 @@ Issue: #1382
 
 ## What Changed
 
-Added a `ScopedAccessGrant` native surface with Schema contracts, Layer-first service wiring, bridge client helpers, memory and unsupported clients, public exports, host-protocol payloads, Rust host routing, reference docs, tests, and API snapshots.
+Added a `ScopedAccessGrant` native surface with Schema contracts, Layer-first service wiring, bridge client helpers, memory and unsupported clients, public exports, Rust host routing, reference docs, tests, and API snapshots.
 
 ## Safety Boundary
 
-The Rust host adapter is fail-closed. It decodes and validates scoped access grant payloads, then returns typed `Unsupported` for mutating operations until an OS adapter can revalidate real persistent grants. The TypeScript service rejects `resolve` responses with `revalidated: false` so restart recovery cannot silently become access.
+The Rust host adapter is fail-closed. It exposes support status while mutating grant operations remain non-callable capability facts until an OS adapter can revalidate real persistent grants. The TypeScript service does not expose grant, resolve, or revoke request/result payload contracts without host-owned grant material behind them.
 
 ## Verification
 

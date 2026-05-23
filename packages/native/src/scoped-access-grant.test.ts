@@ -25,6 +25,28 @@ test("ScopedAccessGrant exposes only isSupported as a callable RPC", () => {
   }
 })
 
+test("ScopedAccessGrant contract module does not export unsupported operation payload schemas", async () => {
+  const contractExports = Object.keys(await import("./contracts/scoped-access-grant.js"))
+  for (const exportedName of [
+    "ScopedAccessGrantActorKind",
+    "ScopedAccessGrantActor",
+    "ScopedAccessGrantScopeKind",
+    "ScopedAccessGrantScope",
+    "ScopedAccessGrantAccess",
+    "ScopedAccessGrantGrantRequest",
+    "ScopedAccessGrantGrantInput",
+    "ScopedAccessGrantGrantResult",
+    "ScopedAccessGrantResolveRequest",
+    "ScopedAccessGrantResolveInput",
+    "ScopedAccessGrantResolveResult",
+    "ScopedAccessGrantRevokeRequest",
+    "ScopedAccessGrantRevokeInput",
+    "ScopedAccessGrantRevokeResult"
+  ]) {
+    expect(contractExports).not.toContain(exportedName)
+  }
+})
+
 test("ScopedAccessGrant declares grant/resolve/revoke as non-callable capability facts", () => {
   const factTags = ScopedAccessGrantCapabilityFacts.map((fact) => fact.tag).toSorted()
   expect(factTags).toEqual(
