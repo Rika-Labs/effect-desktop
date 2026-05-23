@@ -126,6 +126,29 @@ test("Desktop.rpc registration storage does not erase handler services", () =>
     })
   ))
 
+test("Desktop.rpc registration storage does not assert group shape", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        Bun.file(new URL("./runtime/desktop-app.ts", import.meta.url)).text()
+      )
+
+      expect(source).not.toContain("group: group as TypedDesktopRpcRegistrationGroup<Rpcs>")
+    })
+  ))
+
+test("Desktop.rpc registration types use Effect RpcGroup directly", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        Bun.file(new URL("./runtime/renderer-types.ts", import.meta.url)).text()
+      )
+
+      expect(source).not.toContain("TypedDesktopRpcRegistrationGroup")
+      expect(source).toContain("readonly group: RpcGroup.RpcGroup<Rpcs>")
+    })
+  ))
+
 test("Desktop.runtime does not erase the runtime spine Layer type", () =>
   Effect.runPromise(
     Effect.gen(function* () {

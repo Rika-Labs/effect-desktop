@@ -44,8 +44,7 @@ import type { DesktopRpcContractLaw, DesktopRpcSchemaDoc } from "./desktop-rpc-s
 import type {
   AnyDesktopRpcRegistration,
   DesktopAppManifest,
-  DesktopRpcsLayer,
-  TypedDesktopRpcRegistrationGroup
+  DesktopRpcsLayer
 } from "./renderer-types.js"
 export type {
   AnyDesktopRpcRegistration,
@@ -53,8 +52,7 @@ export type {
   DesktopRpcGroupDescriptor,
   DesktopRpcRegistration,
   DesktopRpcRegistrationGroup,
-  DesktopRpcsLayer,
-  TypedDesktopRpcRegistrationGroup
+  DesktopRpcsLayer
 } from "./renderer-types.js"
 
 export interface WindowSpec {
@@ -704,7 +702,7 @@ export const rpc = <Rpcs extends Rpc.Any, E, R>(
   Object.freeze([
     Object.freeze({
       _tag: "DesktopRpcRegistration" as const,
-      group: group as TypedDesktopRpcRegistrationGroup<Rpcs>,
+      group,
       handlers,
       serverLayer: bindRpcGroup(group, handlers)
     })
