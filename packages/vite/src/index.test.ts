@@ -39,3 +39,45 @@ test("virtual module source contains HMR reconnect handler", () => {
   expect(source).toContain("effect-desktop:runtime-restart")
   expect(source).toContain("import.meta.hot")
 })
+
+test("desktop plugin emits runtime chunk for legacy Vite build contexts", () => {
+  const emitted: unknown[] = []
+  const plugin = desktop({ entry: "src/runtime.ts" })
+  const configResolved = plugin.configResolved as (config: { readonly root: string }) => void
+  const buildStart = plugin.buildStart as (this: {
+    readonly emitFile: (file: unknown) => void
+  }) => void
+
+  configResolved({ root: "/workspace/app" })
+  buildStart.call({
+    emitFile: (file) => {
+      emitted.push(file)
+    }
+  })
+
+  expect(emitted).toEqual([
+    {
+      type: "chunk",
+      id: "/workspace/app/src/runtime.ts",
+      name: "runtime"
+    }
+  ])
+})
+
+test("desktop plugin skips runtime chunk for non-client Vite environments", () => {
+  const emitted: unknown[] = []
+  const plugin = desktop({ entry: "src/runtime.ts" })
+  const buildStart = plugin.buildStart as (this: {
+    readonly environment: { readonly name: string }
+    readonly emitFile: (file: unknown) => void
+  }) => void
+
+  buildStart.call({
+    environment: { name: "ssr" },
+    emitFile: (file) => {
+      emitted.push(file)
+    }
+  })
+
+  expect(emitted).toEqual([])
+})

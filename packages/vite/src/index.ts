@@ -55,7 +55,8 @@ export default function desktop(options: DesktopPluginOptions): Plugin {
     },
 
     buildStart() {
-      if (this.environment?.name === "client") {
+      const environmentName = this.environment?.name
+      if (environmentName === undefined || environmentName === "client") {
         const id = pathRuntime.runSync(
           Effect.gen(function* () {
             const path = yield* Path.Path
