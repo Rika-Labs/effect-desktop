@@ -167,48 +167,59 @@ export class FocusedApplicationContextSupportedResult extends Schema.Class<Focus
   reason: Schema.optionalKey(BridgeSafeString)
 }) {}
 
-const FocusedApplicationContextEventPhasePayload = Schema.makeFilter<{
-  readonly phase: FocusedApplicationContextEventPhase
-  readonly watchId?: string | undefined
-  readonly snapshot?: FocusedApplicationContextSnapshotResult | undefined
-  readonly reason?: FocusedApplicationContextFailureReason | undefined
-  readonly message?: string | undefined
-}>((value) => {
-  switch (value.phase) {
-    case "focus-changed":
-      return (
-        (value.snapshot !== undefined &&
-          value.reason === undefined &&
-          value.message === undefined) ||
-        "focus-changed focused application context events require snapshot and no failure metadata"
-      )
-    case "watch-started":
-    case "watch-stopped":
-      return (
-        (value.watchId !== undefined &&
-          value.snapshot === undefined &&
-          value.reason === undefined &&
-          value.message === undefined) ||
-        `${value.phase} focused application context events require watchId only`
-      )
-    case "failed":
-      return (
-        (value.reason !== undefined && value.snapshot === undefined) ||
-        "failed focused application context events require reason and no snapshot"
-      )
-  }
-})
+const FocusedApplicationContextEventBase = {
+  type: FocusedApplicationContextEventType,
+  timestamp: FocusedApplicationContextTimestamp
+}
 
-export class FocusedApplicationContextEvent extends Schema.Class<FocusedApplicationContextEvent>(
-  "FocusedApplicationContextEvent"
-)(
-  Schema.Struct({
-    type: FocusedApplicationContextEventType,
-    timestamp: FocusedApplicationContextTimestamp,
-    phase: FocusedApplicationContextEventPhase,
-    watchId: Schema.optionalKey(BridgeSafeNonEmptyString),
-    snapshot: Schema.optionalKey(FocusedApplicationContextSnapshotResult),
-    reason: Schema.optionalKey(FocusedApplicationContextFailureReason),
-    message: Schema.optionalKey(BridgeSafeString)
-  }).check(FocusedApplicationContextEventPhasePayload)
-) {}
+export class FocusedApplicationContextFocusChangedEvent extends Schema.Class<FocusedApplicationContextFocusChangedEvent>(
+  "FocusedApplicationContextFocusChangedEvent"
+)({
+  ...FocusedApplicationContextEventBase,
+  phase: Schema.Literal("focus-changed"),
+  watchId: Schema.optionalKey(BridgeSafeNonEmptyString),
+  snapshot: FocusedApplicationContextSnapshotResult,
+  reason: Schema.optionalKey(Schema.Never),
+  message: Schema.optionalKey(Schema.Never)
+}) {}
+
+export class FocusedApplicationContextWatchStartedEvent extends Schema.Class<FocusedApplicationContextWatchStartedEvent>(
+  "FocusedApplicationContextWatchStartedEvent"
+)({
+  ...FocusedApplicationContextEventBase,
+  phase: Schema.Literal("watch-started"),
+  watchId: BridgeSafeNonEmptyString,
+  snapshot: Schema.optionalKey(Schema.Never),
+  reason: Schema.optionalKey(Schema.Never),
+  message: Schema.optionalKey(Schema.Never)
+}) {}
+
+export class FocusedApplicationContextWatchStoppedEvent extends Schema.Class<FocusedApplicationContextWatchStoppedEvent>(
+  "FocusedApplicationContextWatchStoppedEvent"
+)({
+  ...FocusedApplicationContextEventBase,
+  phase: Schema.Literal("watch-stopped"),
+  watchId: BridgeSafeNonEmptyString,
+  snapshot: Schema.optionalKey(Schema.Never),
+  reason: Schema.optionalKey(Schema.Never),
+  message: Schema.optionalKey(Schema.Never)
+}) {}
+
+export class FocusedApplicationContextFailedEvent extends Schema.Class<FocusedApplicationContextFailedEvent>(
+  "FocusedApplicationContextFailedEvent"
+)({
+  ...FocusedApplicationContextEventBase,
+  phase: Schema.Literal("failed"),
+  watchId: Schema.optionalKey(BridgeSafeNonEmptyString),
+  reason: FocusedApplicationContextFailureReason,
+  message: Schema.optionalKey(BridgeSafeString),
+  snapshot: Schema.optionalKey(Schema.Never)
+}) {}
+
+export const FocusedApplicationContextEvent = Schema.Union([
+  FocusedApplicationContextFocusChangedEvent,
+  FocusedApplicationContextWatchStartedEvent,
+  FocusedApplicationContextWatchStoppedEvent,
+  FocusedApplicationContextFailedEvent
+])
+export type FocusedApplicationContextEvent = typeof FocusedApplicationContextEvent.Type

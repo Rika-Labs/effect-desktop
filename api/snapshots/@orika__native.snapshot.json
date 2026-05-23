@@ -1606,7 +1606,7 @@
     {
       "name": "FocusedApplicationContextRpcEvents",
       "kind": "value",
-      "signature": "const FocusedApplicationContextRpcEvents: Readonly<{ Event: { payload: typeof FocusedApplicationContextEvent; }; }>"
+      "signature": "const FocusedApplicationContextRpcEvents: Readonly<{ Event: { payload: Schema.Union<readonly [typeof import(\"./contracts/focused-application-context.js\").FocusedApplicationContextFocusChangedEvent, typeof import(\"./contracts/focused-application-context.js\").FocusedApplicationContextWatchStartedEvent, typeof import(\"./contracts/focused-application-context.js\").FocusedApplicationContextWatchStoppedEvent, typeof import(\"./contracts/focused-application-context.js\").FocusedApplicationContextFailedEvent]>; }; }>"
     },
     {
       "name": "FocusedApplicationContextRpcHandlers",

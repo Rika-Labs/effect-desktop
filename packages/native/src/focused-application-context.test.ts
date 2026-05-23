@@ -23,6 +23,7 @@ import {
 } from "./contracts/focused-application-context.js"
 
 const UnsupportedMethods = ["watch", "stopWatching"] as const
+type FocusedApplicationContextEventValue = typeof FocusedApplicationContextEvent.Type
 
 test("FocusedApplicationContext exposes only snapshot and isSupported as callable RPCs", () => {
   const callableTags = Array.from(FocusedApplicationContextRpcs.requests.keys()).toSorted()
@@ -152,6 +153,52 @@ test("FocusedApplicationContext events reject inconsistent phase payloads", () =
     )
     expect(exit._tag).toBe("Success")
   }
+})
+
+test("FocusedApplicationContext event types reject impossible phase payloads", () => {
+  const snapshot = focusedSnapshot()
+  const validEvents: ReadonlyArray<FocusedApplicationContextEventValue> = [
+    {
+      ...eventBase(),
+      phase: "focus-changed",
+      snapshot
+    },
+    {
+      ...eventBase(),
+      phase: "watch-started",
+      watchId: "watch-1"
+    },
+    {
+      ...eventBase(),
+      phase: "failed",
+      watchId: "watch-1",
+      reason: "host-failed",
+      message: "host failed"
+    }
+  ]
+
+  // @ts-expect-error failed focused application context events cannot carry snapshots.
+  const rejectedFailedEvent: FocusedApplicationContextEventValue = {
+    ...eventBase(),
+    phase: "failed",
+    reason: "host-failed",
+    snapshot
+  }
+  // @ts-expect-error watch events cannot carry failure metadata.
+  const rejectedWatchEvent: FocusedApplicationContextEventValue = {
+    ...eventBase(),
+    phase: "watch-stopped",
+    watchId: "watch-1",
+    message: "stopped"
+  }
+
+  void rejectedFailedEvent
+  void rejectedWatchEvent
+  expect(validEvents.map((event) => event.phase)).toEqual([
+    "focus-changed",
+    "watch-started",
+    "failed"
+  ])
 })
 
 test("FocusedApplicationContext snapshots expose focused surface metadata only", () =>
@@ -369,10 +416,11 @@ const memoryAudit = (rows: AuditEvent[]) => ({
 
 const actor = () => new FocusedApplicationContextActor({ kind: "workspace", id: "workspace-1" })
 
-const eventBase = () => ({
-  type: "focused-application-context-event",
-  timestamp: 1_710_000_000_100
-})
+const eventBase = () =>
+  ({
+    type: "focused-application-context-event",
+    timestamp: 1_710_000_000_100
+  }) as const
 
 const focusedSnapshot = () => ({
   application: {
