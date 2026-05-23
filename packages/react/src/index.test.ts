@@ -54,6 +54,7 @@ import {
   useAtomValue,
   usePermission
 } from "./index.js"
+import { stableEndpointInputDependency } from "./endpoints.js"
 import { layerLocalStorage, layerSessionStorage } from "./storage/kv.js"
 import { makeDatabase, makeMigration, makeTable, makeVersion } from "./storage/idb.js"
 import { disposeRuntime } from "./provider.js"
@@ -836,6 +837,29 @@ test("AsyncResult is re-exported from package index", () => {
   expect(typeof AsyncResult.isInitial).toBe("function")
   expect(typeof AsyncResult.isSuccess).toBe("function")
   expect(typeof AsyncResult.isFailure).toBe("function")
+})
+
+test("React endpoint hooks memoize object inputs by stable value", () =>
+  PlatformRuntime.runPromise(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const source = yield* fs.readFileString(urlToPath(new URL("./endpoints.ts", import.meta.url)))
+
+      expect(source).toContain("const inputDependency = stableEndpointInputDependency(input)")
+      expect(source).toContain("[inputDependency, makeEffect]")
+      expect(source).toContain("[inputDependency, makeStream]")
+      expect(source).not.toContain("[input, makeEffect]")
+      expect(source).not.toContain("[input, makeStream]")
+    })
+  ))
+
+test("endpoint input dependencies are stable for equivalent object payloads", () => {
+  expect(stableEndpointInputDependency({ capability: "text" })).toBe(
+    stableEndpointInputDependency({ capability: "text" })
+  )
+  expect(stableEndpointInputDependency({ capability: "text" })).not.toBe(
+    stableEndpointInputDependency({ capability: "selection" })
+  )
 })
 
 test("storage/idb exposes migration builder helper", () => {

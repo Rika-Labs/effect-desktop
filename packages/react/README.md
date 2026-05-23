@@ -44,6 +44,7 @@ transport and the adapter derives clients from the manifest.
 ```tsx
 import { Desktop } from "@orika/core"
 import { ReactDesktop } from "@orika/react"
+import { AsyncResult } from "effect/unstable/reactivity"
 import { App, NotesRpcs } from "./desktop"
 
 const NotesDesktop = ReactDesktop.from(Desktop.manifest(App))
@@ -62,7 +63,7 @@ function NotesView() {
       disabled={!create.isSupported || create.status === "running"}
       onClick={() => create.run({ title: "Untitled" })}
     >
-      {list.status === "success" ? list.value.length : 0}
+      {AsyncResult.isSuccess(list) ? list.value.length : 0}
     </button>
   )
 }

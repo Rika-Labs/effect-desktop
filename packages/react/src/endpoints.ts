@@ -42,13 +42,26 @@ export type ReactEndpoint =
   | MutationEndpoint<unknown, unknown, unknown>
   | StreamEndpoint<unknown, unknown, unknown>
 
+export const stableEndpointInputDependency = (input: unknown): unknown => {
+  if (input === null || typeof input !== "object") {
+    return input
+  }
+
+  try {
+    return JSON.stringify(input)
+  } catch {
+    return input
+  }
+}
+
 export const query = <R, ER, I, A, E>(
   runtime: FrameworkRuntime<R, ER>,
   makeEffect: (input: I) => Effect.Effect<A, E, R>
 ): QueryEndpoint<I, A, E | ER> =>
   Object.freeze({
     useQuery: ((input?: I) => {
-      const effect = useMemo(() => makeEffect(input as I), [input, makeEffect])
+      const inputDependency = stableEndpointInputDependency(input)
+      const effect = useMemo(() => makeEffect(input as I), [inputDependency, makeEffect])
       return useEffectResult(effect, undefined, runtime)
     }) as QueryHook<I, A, E>
   })
@@ -78,7 +91,8 @@ export const stream = <R, ER, I, A, E>(
         : isDesktopStreamOptions(inputOrOptions)
           ? inputOrOptions
           : streamOptions
-      const effectStream = useMemo(() => makeStream(input as I), [input, makeStream])
+      const inputDependency = stableEndpointInputDependency(input)
+      const effectStream = useMemo(() => makeStream(input as I), [inputDependency, makeStream])
       return useDesktopStream(effectStream, resolvedOptions, runtime)
     }) as StreamHook<I, A, E>
   })
