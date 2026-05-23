@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
@@ -8,7 +7,7 @@ import {
   RpcGroup
 } from "@orika/bridge"
 import { type DesktopRpcClient, P, type PermissionRegistry } from "@orika/core"
-import { Context, Effect, Layer, Schema, Stream } from "effect"
+import { Context, Effect, Schema, Stream } from "effect"
 
 import {
   NetworkAuthEvent,
@@ -99,45 +98,9 @@ export interface NetworkAuthClientApi {
   ) => Stream.Stream<NetworkAuthEvent, NetworkAuthError, never>
 }
 
-export class NetworkAuthClient extends Context.Service<NetworkAuthClient, NetworkAuthClientApi>()(
-  "@orika/native/NetworkAuthClient"
-) {}
-
-export interface NetworkAuthServiceApi {
-  readonly isSupported: () => Effect.Effect<NetworkAuthSupportedResult, NetworkAuthError, never>
-  readonly setProxy: (
-    input: NetworkAuthSetProxyInput
-  ) => Effect.Effect<NetworkAuthProxyResult, NetworkAuthError, never>
-  readonly events: (
-    profile?: SessionProfileHandle
-  ) => Stream.Stream<NetworkAuthEvent, NetworkAuthError, never>
-}
-
-export class NetworkAuth extends Context.Service<NetworkAuth, NetworkAuthServiceApi>()(
+export class NetworkAuth extends Context.Service<NetworkAuth, NetworkAuthClientApi>()(
   "@orika/native/NetworkAuth"
-) {
-  static readonly layer = Layer.effect(NetworkAuth)(
-    Effect.gen(function* () {
-      const client = yield* NetworkAuthClient
-      return makeNetworkAuthService(client)
-    })
-  )
-}
-
-export const NetworkAuthLive = NetworkAuth.layer
-
-export const makeNetworkAuthClientLayer = (
-  client: NetworkAuthClientApi
-): Layer.Layer<NetworkAuthClient> => Layer.succeed(NetworkAuthClient)(client)
-
-export const makeNetworkAuthServiceLayer = (
-  client: NetworkAuthClientApi
-): Layer.Layer<NetworkAuth> => Layer.succeed(NetworkAuth)(makeNetworkAuthService(client))
-
-export const makeNetworkAuthBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<NetworkAuthClient> => NetworkAuthSurface.bridgeClientLayer(exchange, options)
+) {}
 
 export type NetworkAuthRpc = RpcGroup.Rpcs<typeof NetworkAuthRpcGroup>
 export type NetworkAuthRpcHandlers = RpcGroup.HandlersFrom<NetworkAuthRpc>
@@ -156,7 +119,7 @@ export const NetworkAuthHandlersLive = NetworkAuthRpcGroup.toLayer({
 })
 
 export const NetworkAuthSurface = NativeSurface.make(Surface, NetworkAuthRpcGroup, {
-  service: NetworkAuthClient,
+  service: NetworkAuth,
   capabilities: NetworkAuthMethodNames,
   handlers: NetworkAuthHandlersLive,
   capabilityFacts: NetworkAuthCapabilityFacts,
@@ -204,13 +167,6 @@ export const makeNetworkAuthUnsupportedClient = (): NetworkAuthClientApi =>
     setProxy: () => Effect.fail(unsupportedError("NetworkAuth.setProxy")),
     events: () => Stream.fail(unsupportedError(EventMethod))
   } satisfies NetworkAuthClientApi)
-
-const makeNetworkAuthService = (client: NetworkAuthClientApi): NetworkAuthServiceApi =>
-  Object.freeze({
-    isSupported: () => client.isSupported(),
-    setProxy: (input) => client.setProxy(input),
-    events: (profile) => client.events(profile)
-  } satisfies NetworkAuthServiceApi)
 
 const networkAuthClientFromRpcClient = (
   client: DesktopRpcClient<NetworkAuthRpc>,

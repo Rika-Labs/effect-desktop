@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
 import {
   type BridgeClientExchange,
   HostProtocolEventEnvelope,
@@ -11,13 +12,11 @@ import { makeNativeCapabilityManifest } from "./capabilities.js"
 import { NetworkAuthEvent } from "./contracts/network-auth.js"
 import type { SessionProfileHandle } from "./contracts/session-profile.js"
 import {
-  makeNetworkAuthBridgeClientLayer,
   makeNetworkAuthMemoryClient,
-  makeNetworkAuthServiceLayer,
   makeNetworkAuthUnsupportedClient,
   NetworkAuth,
   NetworkAuthCapabilityFacts,
-  NetworkAuthLive,
+  type NetworkAuthClientApi,
   NetworkAuthRpcs,
   NetworkAuthSurface
 } from "./network-auth.js"
@@ -40,6 +39,38 @@ const Profile = {
   ownerScope: "workspace:1",
   state: "open"
 } satisfies SessionProfileHandle
+const OtherProfile = {
+  kind: "session-profile",
+  id: makeResourceId("session-profile:workspace-2"),
+  generation: 0,
+  ownerScope: "workspace:2",
+  state: "open"
+} satisfies SessionProfileHandle
+
+test("NetworkAuth public surface omits shallow service and layer helpers", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        readFile(new URL("network-auth.ts", import.meta.url), "utf8")
+      )
+      const indexSource = yield* Effect.promise(() =>
+        readFile(new URL("index.ts", import.meta.url), "utf8")
+      )
+
+      for (const removedName of [
+        "NetworkAuthServiceApi",
+        "class NetworkAuthClient",
+        "NetworkAuthLive",
+        "makeNetworkAuthClientLayer",
+        "makeNetworkAuthServiceLayer",
+        "makeNetworkAuthBridgeClientLayer",
+        "makeNetworkAuthService"
+      ]) {
+        expect(source).not.toContain(removedName)
+        expect(indexSource).not.toContain(removedName)
+      }
+    })
+  ))
 
 test("NetworkAuth exposes isSupported and setProxy as callable RPCs", () => {
   const callableTags = Array.from(NetworkAuthRpcs.requests.keys()).toSorted()
@@ -61,7 +92,7 @@ test("NetworkAuth isSupported reports supported result through the service", () 
           const networkAuth = yield* NetworkAuth
           return yield* networkAuth.isSupported()
         }),
-        makeNetworkAuthServiceLayer(client)
+        networkAuthLayer(client)
       )
       expect(result.supported).toBe(true)
     })
@@ -76,7 +107,7 @@ test("NetworkAuth unsupported client reports the host-unavailable reason", () =>
           const networkAuth = yield* NetworkAuth
           return yield* networkAuth.isSupported()
         }),
-        makeNetworkAuthServiceLayer(client)
+        networkAuthLayer(client)
       )
       expect(result.supported).toBe(false)
       expect(result.reason).toBe("host-network-auth-unavailable")
@@ -96,7 +127,7 @@ test("NetworkAuth setProxy returns the stored proxy policy through the service",
             server: "http://proxy.example.test:8080"
           })
         }),
-        makeNetworkAuthServiceLayer(client)
+        networkAuthLayer(client)
       )
       expect(result).toEqual({
         profile: Profile,
@@ -218,10 +249,66 @@ test("NetworkAuth bridge client rejects inconsistent event phase payloads as Inv
             networkAuth.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
           )
         }),
-        Layer.provide(NetworkAuthLive, makeNetworkAuthBridgeClientLayer(exchange))
+        NetworkAuthSurface.bridgeClientLayer(exchange)
       )
 
       expectInvalidOutput(exit)
+    })
+  ))
+
+test("NetworkAuth bridge client filters event streams by session profile", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const subscriptions: string[] = []
+      const exchange: BridgeClientExchange = {
+        request: () => Effect.die("NetworkAuth event filter test does not issue bridge requests"),
+        subscribe: (method) => {
+          subscriptions.push(method)
+          return Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              method,
+              timestamp: 1_710_000_000_000,
+              traceId: "network-auth-other-profile",
+              payload: {
+                type: "network-auth-event",
+                timestamp: 1_710_000_000_000,
+                phase: "proxy-updated",
+                profile: OtherProfile
+              }
+            }),
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              method,
+              timestamp: 1_710_000_000_001,
+              traceId: "network-auth-target-profile",
+              payload: {
+                type: "network-auth-event",
+                timestamp: 1_710_000_000_001,
+                phase: "proxy-updated",
+                profile: Profile
+              }
+            })
+          )
+        }
+      }
+      const events = yield* runScoped(
+        Effect.gen(function* () {
+          const networkAuth = yield* NetworkAuth
+          return yield* networkAuth.events(Profile).pipe(Stream.take(1), Stream.runCollect)
+        }),
+        NetworkAuthSurface.bridgeClientLayer(exchange)
+      )
+
+      expect(Array.from(events)).toEqual([
+        new NetworkAuthEvent({
+          type: "network-auth-event",
+          timestamp: 1_710_000_000_001,
+          phase: "proxy-updated",
+          profile: Profile
+        })
+      ])
+      expect(subscriptions).toEqual(["NetworkAuth.Event"])
     })
   ))
 
@@ -282,6 +369,9 @@ const runScoped = <A, E, R>(
     yield* Effect.promise(() => runtime.dispose())
     return result
   })
+
+const networkAuthLayer = (client: NetworkAuthClientApi): Layer.Layer<NetworkAuth> =>
+  Layer.succeed(NetworkAuth)(client)
 
 const expectInvalidOutput = <A, E>(exit: Exit.Exit<A, E>): void => {
   expect(exit._tag).toBe("Failure")

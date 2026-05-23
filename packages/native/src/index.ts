@@ -755,16 +755,11 @@ export {
 } from "./menu.js"
 export {
   makeHostNetworkAuthRpcRuntime,
-  makeNetworkAuthBridgeClientLayer,
-  makeNetworkAuthClientLayer,
   makeNetworkAuthMemoryClient,
-  makeNetworkAuthServiceLayer,
   makeNetworkAuthUnsupportedClient,
   NetworkAuth,
   NetworkAuthCapabilityFacts,
-  NetworkAuthClient,
   NetworkAuthHandlersLive,
-  NetworkAuthLive,
   NetworkAuthMethodNames,
   NetworkAuthRpcEvents,
   NetworkAuthRpcs,
@@ -772,8 +767,7 @@ export {
   type NetworkAuthClientApi,
   type NetworkAuthError,
   type NetworkAuthRpc,
-  type NetworkAuthRpcHandlers,
-  type NetworkAuthServiceApi
+  type NetworkAuthRpcHandlers
 } from "./network-auth.js"
 export {
   makeHostWebRequestRpcRuntime,
