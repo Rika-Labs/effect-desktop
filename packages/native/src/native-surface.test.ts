@@ -76,9 +76,11 @@ test("native service files construct RPCs through NativeSurface", () =>
       const glob = new Bun.Glob("*.ts")
       const offenders: string[] = []
       for (const entry of glob.scanSync({ cwd: sourceDir, onlyFiles: true })) {
+        // The renderer client owns a browser-safe boundary group and cannot import NativeSurface.
         if (
           entry.endsWith(".test.ts") ||
           entry === "desktop-http-api.ts" ||
+          entry === "window-renderer-client.ts" ||
           entry === "native-surface.ts"
         ) {
           continue

@@ -15,7 +15,7 @@ import {
   WindowLive,
   WindowClient
 } from "./window.js"
-import { makeWindowRendererClient } from "./window-renderer-client.js"
+import { makeWindowRendererClient, WindowRendererRpcs } from "./window-renderer-client.js"
 
 import type { WindowHandle } from "./contracts/window.js"
 
@@ -191,6 +191,22 @@ test("WindowRpcs exposes only host-implemented methods through RpcGroup lowering
       { platform: "linux", status: "unsupported", reason: "simple-fullscreen-macos-only" }
     ]
   })
+})
+
+test("WindowRendererRpcs exposes the renderer-callable Window subset", () => {
+  const rendererMethods = Array.from(WindowRendererRpcs.requests.keys()).toSorted()
+
+  expect(rendererMethods).toEqual([
+    "Window.close",
+    "Window.create",
+    "Window.destroy",
+    "Window.getCurrent"
+  ])
+
+  for (const method of rendererMethods) {
+    expect(WindowRpcs.requests.has(method)).toBe(true)
+    expect(request(method).pipe(rpcSupport)).toEqual({ status: "supported" })
+  }
 })
 
 test("Window renderer client constructor derives service from renderer RPC client map", () => {

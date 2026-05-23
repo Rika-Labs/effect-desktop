@@ -8,7 +8,7 @@ effect_version: 4
 
 # `Window`
 
-Native window lifecycle and state controls. The runtime calls `Window.create` to open windows; the renderer calls through `useDesktop(WindowSupportedRpcs)` or the React adapter's window mutations.
+Native window lifecycle and state controls. Runtime and host code use `WindowRpcs` and `WindowSupportedRpcs`; browser renderer manifests use `WindowRendererRpcs` from `@orika/native/renderer`; React renderers normally call through the window mutation hooks.
 
 ## Import
 
@@ -27,6 +27,7 @@ import {
   type WindowSize,
   type WindowError
 } from "@orika/native"
+import { WindowRendererRpcs } from "@orika/native/renderer"
 ```
 
 ## Methods

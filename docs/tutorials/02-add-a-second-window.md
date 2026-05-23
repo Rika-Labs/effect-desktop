@@ -33,6 +33,7 @@ Update your `Desktop.make` call to declare two windows:
 
 ```ts
 import { Desktop } from "@orika/core"
+import { Native } from "@orika/native"
 import { NotesRpcs } from "./notes/contracts.js"
 import { NotesHandlersLive } from "./notes/handlers.js"
 
@@ -42,6 +43,7 @@ export const App = Desktop.make({
     Desktop.window("main", { title: "Notes", width: 720, height: 520 }),
     Desktop.window("compose", { title: "Compose Note", width: 480, height: 360 })
   ),
+  native: Desktop.native(Native.Window),
   rpcs: Desktop.rpc(NotesRpcs, NotesHandlersLive)
 })
 
@@ -49,6 +51,10 @@ export const Manifest = Desktop.manifest(App)
 ```
 
 Each `Desktop.window(id, spec)` returns a `Layer` that self-registers the window with the framework. Compose multiple windows with `Desktop.windows(...)`. The window ids (`"main"`, `"compose"`) are what the runtime uses to address them. The `compose` window is declared so the runtime knows about it; we'll open it on demand from the renderer rather than at launch.
+
+If your renderer owns a separate manifest value, include
+`WindowRendererRpcs` from `@orika/native/renderer` there. Keep `WindowRpcs` from
+`@orika/native` on the runtime side.
 
 ### Optional: bind window-scoped resources
 

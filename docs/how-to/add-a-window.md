@@ -16,17 +16,24 @@ In your `Desktop.make`:
 
 ```ts
 import { Desktop } from "@orika/core"
+import { Native } from "@orika/native"
 
 export const App = Desktop.make({
   id: "dev.example.app",
   windows: {
     main: { title: "App", width: 1024, height: 720 },
     preferences: { title: "Preferences", width: 480, height: 360 }
-  }
+  },
+  native: Desktop.native(Native.Window)
 })
 ```
 
 `windows` is a `Record<string, WindowSpec>` — the keys are the window ids the runtime uses. Declaring a window in this record lets the framework know about it; opening on launch vs. on demand is decided by your app's startup flow.
+
+Renderer bundles that construct their own manifest should import
+`WindowRendererRpcs` from `@orika/native/renderer`. `WindowRpcs` from
+`@orika/native` is the full runtime/host contract, not the browser manifest
+contract.
 
 ## 2. Open from the renderer
 

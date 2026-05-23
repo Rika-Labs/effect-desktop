@@ -84,6 +84,7 @@ const reactCurrentWindowSourceUrl = new URL("current-window.ts", import.meta.url
 const reactWindowsSourceUrl = new URL("windows.ts", import.meta.url)
 const workspaceRootUrl = new URL("../../../", import.meta.url)
 const reactRootBundleEntryUrl = new URL(".tmp-react-root-bundle-entry.tsx", workspaceRootUrl)
+const reactWindowBundleEntryUrl = new URL(".tmp-react-window-bundle-entry.tsx", reactPackageRootUrl)
 
 const urlToPath = (url: URL): string => fileURLToPath(url)
 
@@ -168,22 +169,37 @@ test("ReactDesktop delegates native Window helpers to the native renderer client
     })
   ))
 
-test("React package root hooks browser-bundle without host modules", () =>
+test("React package browser-bundles root hooks and renderer-safe Window RPCs", () =>
   PlatformRuntime.runPromise(
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
-      const entryPath = urlToPath(reactRootBundleEntryUrl)
-      const outdir = yield* fs.makeTempDirectory({ prefix: "orika-react-root-bundle-" })
+      const rootEntryPath = urlToPath(reactRootBundleEntryUrl)
+      const windowEntryPath = urlToPath(reactWindowBundleEntryUrl)
+      const outdir = yield* fs.makeTempDirectory({ prefix: "orika-react-browser-bundle-" })
 
       try {
         yield* fs.writeFileString(
-          entryPath,
+          rootEntryPath,
           'import { useDesktopQuery } from "@orika/react"\nvoid useDesktopQuery\n'
+        )
+        yield* fs.writeFileString(
+          windowEntryPath,
+          [
+            'import { ReactDesktop } from "@orika/react"',
+            'import { WindowRendererRpcs } from "@orika/native/renderer"',
+            "const Manifest = {",
+            '  _tag: "DesktopAppManifest",',
+            '  id: "dev.orika.react-window-renderer-bundle",',
+            "  windows: {},",
+            '  rpcGroups: [{ _tag: "DesktopRpcGroup", group: WindowRendererRpcs }]',
+            "}",
+            "globalThis.__orikaReactWindowBundleSmoke = ReactDesktop.from(Manifest)"
+          ].join("\n")
         )
 
         const result = yield* Effect.promise(() =>
           Bun.build({
-            entrypoints: [entryPath],
+            entrypoints: [rootEntryPath, windowEntryPath],
             format: "esm",
             outdir,
             target: "browser"
@@ -193,7 +209,8 @@ test("React package root hooks browser-bundle without host modules", () =>
         expect(result.logs.map((log) => log.message)).toEqual([])
         expect(result.success).toBe(true)
       } finally {
-        yield* fs.remove(entryPath, { force: true })
+        yield* fs.remove(rootEntryPath, { force: true })
+        yield* fs.remove(windowEntryPath, { force: true })
         yield* fs.remove(outdir, { recursive: true, force: true })
       }
     })

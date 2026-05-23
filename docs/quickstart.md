@@ -14,22 +14,27 @@ Five steps from a freshly installed workspace to a typed RPC call returning to a
 
 1. Define an `RpcGroup` (the contract).
 2. Implement handlers via `RpcGroup.toLayer(...)`.
-3. Build a `Desktop.make({...})` and `Desktop.manifest(App)`.
+3. Build a `Desktop.make({...})` runtime app and expose a renderer manifest.
 4. Render with `ReactDesktop.from(Manifest).useDesktop(group)`.
 5. `bun run dev` from `apps/inspector` (or your own renderer).
 
 ## Renderer call shape
 
 ```tsx
-import { Desktop } from "@orika/core"
-import { WindowRpcs } from "@orika/native"
+import { WindowRendererRpcs } from "@orika/native/renderer"
 import { ReactDesktop } from "@orika/react"
-import { App } from "./app"
 
-const DesktopApp = ReactDesktop.from(Desktop.manifest(App))
+const Manifest = {
+  _tag: "DesktopAppManifest",
+  id: "dev.example.quickstart",
+  windows: {},
+  rpcGroups: [{ _tag: "DesktopRpcGroup", group: WindowRendererRpcs }]
+} as const
+
+const DesktopApp = ReactDesktop.from(Manifest)
 
 export function Toolbar() {
-  const window = DesktopApp.useDesktop(WindowRpcs)
+  const window = DesktopApp.useDesktop(WindowRendererRpcs)
   const createWindow = window.create.useMutation()
 
   return (
@@ -47,10 +52,10 @@ export function Toolbar() {
 
 ```ts run
 import { ReactDesktop } from "../packages/react/src/index.js"
-import { WindowRpcs } from "../packages/native/src/index.js"
+import { WindowRendererRpcs } from "../packages/native/src/renderer.js"
 
-if (typeof ReactDesktop.from !== "function" || WindowRpcs === undefined) {
-  throw new Error("ReactDesktop or WindowRpcs is unavailable")
+if (typeof ReactDesktop.from !== "function" || WindowRendererRpcs === undefined) {
+  throw new Error("ReactDesktop or WindowRendererRpcs is unavailable")
 }
 ```
 

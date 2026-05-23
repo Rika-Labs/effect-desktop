@@ -1,8 +1,11 @@
 import {
+  HostProtocolError as HostProtocolErrorSchema,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
   makeHostProtocolInvalidStateError,
+  RpcEndpoint,
+  RpcSupport,
   type HostProtocolError
 } from "@orika/bridge"
 import type {
@@ -10,6 +13,7 @@ import type {
   DesktopRendererRpcClientMap
 } from "@orika/core/runtime/renderer-rpc-client"
 import { Effect, Option, Schema } from "effect"
+import { Rpc, RpcGroup } from "effect/unstable/rpc"
 
 import {
   WindowCreateInput,
@@ -20,6 +24,39 @@ import {
 } from "./contracts/window.js"
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
+
+const WindowRendererCreate = Rpc.make("Window.create", {
+  payload: WindowCreateInput,
+  success: WindowResource,
+  error: HostProtocolErrorSchema
+}).pipe(RpcEndpoint.mutation, RpcSupport.supported)
+
+const WindowRendererClose = Rpc.make("Window.close", {
+  payload: WindowHandleInput,
+  success: Schema.Void,
+  error: HostProtocolErrorSchema
+}).pipe(RpcEndpoint.mutation, RpcSupport.supported)
+
+const WindowRendererDestroy = Rpc.make("Window.destroy", {
+  payload: WindowHandleInput,
+  success: Schema.Void,
+  error: HostProtocolErrorSchema
+}).pipe(RpcEndpoint.mutation, RpcSupport.supported)
+
+const WindowRendererGetCurrent = Rpc.make("Window.getCurrent", {
+  payload: Schema.Void,
+  success: WindowResource,
+  error: HostProtocolErrorSchema
+}).pipe(RpcEndpoint.mutation, RpcSupport.supported)
+
+export const WindowRendererRpcs = RpcGroup.make(
+  WindowRendererCreate,
+  WindowRendererClose,
+  WindowRendererDestroy,
+  WindowRendererGetCurrent
+)
+
+export type WindowRendererRpc = RpcGroup.Rpcs<typeof WindowRendererRpcs>
 
 const WindowRendererRpcTags = Object.freeze([
   "Window.create",

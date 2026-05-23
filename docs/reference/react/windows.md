@@ -8,7 +8,7 @@ effect_version: 4
 
 # Window hooks
 
-React adapter wrappers over the `Window` RPC. Saves you from writing `useDesktop(WindowSupportedRpcs).create.useMutation()` everywhere.
+React adapter wrappers over the `Window` RPC. Saves you from writing `useDesktop(WindowRendererRpcs).create.useMutation()` everywhere.
 
 ## Imports
 
@@ -23,6 +23,23 @@ import {
   useDestroyWindowMutation
 } from "@orika/react"
 ```
+
+If you build the renderer manifest by hand, include the browser-safe Window
+group from the renderer subpath:
+
+```ts
+import { WindowRendererRpcs } from "@orika/native/renderer"
+
+export const Manifest = {
+  _tag: "DesktopAppManifest",
+  id: "dev.example.app",
+  windows: {},
+  rpcGroups: [{ _tag: "DesktopRpcGroup", group: WindowRendererRpcs }]
+} as const
+```
+
+Use `WindowRpcs` from `@orika/native` in runtime and host code. Browser
+renderers should use `WindowRendererRpcs`.
 
 ## `useCurrentWindow()`
 
@@ -49,7 +66,7 @@ Mutation that opens a new window:
 
 ```tsx
 const createWindow = useCreateWindowMutation()
-createWindow.run({ id: "preferences", title: "Preferences" })
+createWindow.run({ title: "Preferences" })
 ```
 
 ## `useCloseWindowMutation()` / `useCloseCurrentWindowMutation()`

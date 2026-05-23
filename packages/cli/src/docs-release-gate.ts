@@ -139,7 +139,7 @@ const REQUIRED_SPEC_PAGES: ReadonlyMap<string, string> = new Map([
 ])
 const REQUIRED_PAGE_COVERAGE_TOKENS: ReadonlyMap<string, readonly string[]> = new Map([
   ["installation", ["runCli", "desktop --help"]],
-  ["quickstart", ["ReactDesktop", "WindowRpcs"]],
+  ["quickstart", ["ReactDesktop", "WindowRendererRpcs"]],
   ["concepts", ["Desktop", "HostProtocolEnvelope"]],
   ["architecture-overview", ["HostProtocolRequestEnvelope", "Desktop"]],
   ["app-config", ["defineDesktopConfig"]],

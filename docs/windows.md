@@ -16,13 +16,17 @@ Windows are native resources owned by the host and described to the runtime thro
 
 `@orika/native` exports:
 
-- `WindowRpcs` — canonical renderer-callable RPC group.
+- `WindowRpcs` — canonical runtime and host Window RPC group.
 - `WindowSupportedRpcs` — host-backed supported slice.
 - `Window` — Effect service for runtime code.
 - `WindowClient` — client-side service.
 - `WindowPersistence` — native service that saves, restores, clears, and observes per-window geometry state.
 - `WindowLive`, `WindowHandlersLive`, `makeWindow*Layer` helpers.
 - `WindowMethodNames` for contract metadata and support checks.
+
+Browser renderer manifests use `WindowRendererRpcs` from
+`@orika/native/renderer`. That subpath carries only the renderer-callable
+Window RPC tags and avoids host/runtime modules.
 
 ## Common operations
 
@@ -41,9 +45,14 @@ export function NewWindowButton() {
 
 ```ts run
 import { WindowMethodNames, WindowRpcs } from "../packages/native/src/index.js"
+import { WindowRendererRpcs } from "../packages/native/src/renderer.js"
 
-if (WindowRpcs === undefined || !WindowMethodNames.includes("create")) {
-  throw new Error("WindowRpcs or WindowMethodNames is unavailable")
+if (
+  WindowRpcs === undefined ||
+  WindowRendererRpcs === undefined ||
+  !WindowMethodNames.includes("create")
+) {
+  throw new Error("Window RPC exports are unavailable")
 }
 ```
 
