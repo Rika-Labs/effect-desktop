@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   HostProtocolAlreadyExistsError,
@@ -238,18 +237,10 @@ export class JobRuntime extends Context.Service<JobRuntime, JobRuntimeApi>()(
 
 export const JobRuntimeLive = JobRuntime.layer
 
-export const makeJobClientLayer = (client: JobClientApi): Layer.Layer<JobClient> =>
-  Layer.succeed(JobClient)(client)
-
 export const makeJobServiceLayer = (
   client: JobClientApi,
   options: JobServiceOptions
 ): Layer.Layer<Job> => Layer.effect(Job)(makeJobService(client, options))
-
-export const makeJobBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<JobClient> => JobSurface.bridgeClientLayer(exchange, options)
 
 export const JobHandlersLive = JobRpcGroup.toLayer({
   "Job.start": (input) =>

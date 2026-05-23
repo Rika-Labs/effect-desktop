@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   HostProtocolPermissionDeniedError,
@@ -171,22 +170,11 @@ export class FocusedApplicationContext extends Context.Service<
 
 export const FocusedApplicationContextLive = FocusedApplicationContext.layer
 
-export const makeFocusedApplicationContextClientLayer = (
-  client: FocusedApplicationContextClientApi
-): Layer.Layer<FocusedApplicationContextClient> =>
-  Layer.succeed(FocusedApplicationContextClient)(client)
-
 export const makeFocusedApplicationContextServiceLayer = (
   client: FocusedApplicationContextClientApi,
   options: FocusedApplicationContextServiceOptions
 ): Layer.Layer<FocusedApplicationContext> =>
   Layer.succeed(FocusedApplicationContext)(makeFocusedApplicationContextService(client, options))
-
-export const makeFocusedApplicationContextBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<FocusedApplicationContextClient> =>
-  FocusedApplicationContextSurface.bridgeClientLayer(exchange, options)
 
 export type FocusedApplicationContextRpc = RpcGroup.Rpcs<typeof FocusedApplicationContextRpcGroup>
 export type FocusedApplicationContextRpcHandlers =

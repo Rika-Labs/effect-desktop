@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
@@ -101,21 +100,6 @@ export class ScopedAccessGrant extends Context.Service<
 }
 
 export const ScopedAccessGrantLive = ScopedAccessGrant.layer
-
-export const makeScopedAccessGrantClientLayer = (
-  client: ScopedAccessGrantClientApi
-): Layer.Layer<ScopedAccessGrantClient> => Layer.succeed(ScopedAccessGrantClient)(client)
-
-export const makeScopedAccessGrantServiceLayer = (
-  client: ScopedAccessGrantClientApi
-): Layer.Layer<ScopedAccessGrant> =>
-  Layer.succeed(ScopedAccessGrant)(makeScopedAccessGrantService(client))
-
-export const makeScopedAccessGrantBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<ScopedAccessGrantClient> =>
-  ScopedAccessGrantSurface.bridgeClientLayer(exchange, options)
 
 export type ScopedAccessGrantRpc = RpcGroup.Rpcs<typeof ScopedAccessGrantRpcGroup>
 

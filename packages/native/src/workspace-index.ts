@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   HostProtocolPermissionDeniedError,
@@ -172,20 +171,11 @@ export class WorkspaceIndex extends Context.Service<WorkspaceIndex, WorkspaceInd
 
 export const WorkspaceIndexLive = WorkspaceIndex.layer
 
-export const makeWorkspaceIndexClientLayer = (
-  client: WorkspaceIndexClientApi
-): Layer.Layer<WorkspaceIndexClient> => Layer.succeed(WorkspaceIndexClient)(client)
-
 export const makeWorkspaceIndexServiceLayer = (
   client: WorkspaceIndexClientApi,
   options: WorkspaceIndexServiceOptions
 ): Layer.Layer<WorkspaceIndex> =>
   Layer.effect(WorkspaceIndex)(makeWorkspaceIndexService(client, options))
-
-export const makeWorkspaceIndexBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<WorkspaceIndexClient> => WorkspaceIndexSurface.bridgeClientLayer(exchange, options)
 
 export type WorkspaceIndexRpc = RpcGroup.Rpcs<typeof WorkspaceIndexRpcGroup>
 

@@ -5,7 +5,7 @@ import {
   makeHostProtocolInternalError
 } from "@orika/bridge"
 import { makeResourceId } from "@orika/core"
-import { Effect, Exit, type Layer, ManagedRuntime, Schema, Stream } from "effect"
+import { Effect, Exit, Layer, ManagedRuntime, Schema, Stream } from "effect"
 
 import {
   BrowsingData,
@@ -14,9 +14,8 @@ import {
   BrowsingDataRpcs,
   BrowsingDataSurface,
   makeBrowsingDataMemoryClient,
-  makeBrowsingDataServiceLayer,
-  makeBrowsingDataBridgeClientLayer,
-  makeBrowsingDataUnsupportedClient
+  makeBrowsingDataUnsupportedClient,
+  BrowsingDataLive
 } from "./browsing-data.js"
 import { makeNativeCapabilityManifest } from "./capabilities.js"
 import { BrowsingDataEvent } from "./contracts/browsing-data.js"
@@ -57,7 +56,7 @@ test("BrowsingData isSupported reports supported result through the service", ()
           const browsingData = yield* BrowsingData
           return yield* browsingData.isSupported()
         }),
-        makeBrowsingDataServiceLayer(client)
+        Layer.provide(BrowsingDataLive, Layer.succeed(BrowsingDataClient)(client))
       )
       expect(result.supported).toBe(true)
     })
@@ -75,7 +74,7 @@ test("BrowsingData memory client clears requested portable data types", () =>
             types: ["cache", "cookies"]
           })
         }),
-        makeBrowsingDataServiceLayer(client)
+        Layer.provide(BrowsingDataLive, Layer.succeed(BrowsingDataClient)(client))
       )
 
       expect(result).toEqual({ cleared: ["cache", "cookies"], unsupported: [] })
@@ -91,7 +90,7 @@ test("BrowsingData memory client lists portable data types", () =>
           const browsingData = yield* BrowsingData
           return yield* browsingData.listTypes()
         }),
-        makeBrowsingDataServiceLayer(client)
+        Layer.provide(BrowsingDataLive, Layer.succeed(BrowsingDataClient)(client))
       )
 
       expect(result).toEqual({ types: Array.from(PortableBrowsingDataTypes) })
@@ -107,7 +106,7 @@ test("BrowsingData unsupported client reports the host-unavailable reason", () =
           const browsingData = yield* BrowsingData
           return yield* browsingData.isSupported()
         }),
-        makeBrowsingDataServiceLayer(client)
+        Layer.provide(BrowsingDataLive, Layer.succeed(BrowsingDataClient)(client))
       )
       expect(result.supported).toBe(false)
       expect(result.reason).toBe("host-browsing-data-unavailable")
@@ -237,7 +236,7 @@ test("BrowsingData rejects inconsistent event phase payloads before exposing nat
           const client = yield* BrowsingDataClient
           return yield* Effect.exit(client.events().pipe(Stream.runHead))
         }),
-        makeBrowsingDataBridgeClientLayer(exchange)
+        BrowsingDataSurface.bridgeClientLayer(exchange)
       )
 
       expect(Exit.isFailure(bridgeDecode)).toBe(true)

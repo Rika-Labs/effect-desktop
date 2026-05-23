@@ -1,6 +1,4 @@
 import {
-  type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   HostProtocolUnsupportedError,
@@ -131,19 +129,6 @@ export class SafeStorage extends Context.Service<SafeStorage, SafeStorageService
 }
 
 export const SafeStorageLive = SafeStorage.layer
-
-export const makeSafeStorageClientLayer = (
-  client: SafeStorageClientApi
-): Layer.Layer<SafeStorageClient> => Layer.succeed(SafeStorageClient)(client)
-
-export const makeSafeStorageServiceLayer = (
-  client: SafeStorageClientApi
-): Layer.Layer<SafeStorage> => Layer.provide(SafeStorageLive, makeSafeStorageClientLayer(client))
-
-export const makeSafeStorageBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<SafeStorageClient> => SafeStorageSurface.bridgeClientLayer(exchange, options)
 
 export type SafeStorageRpc = RpcGroup.Rpcs<typeof SafeStorageRpcGroup>
 

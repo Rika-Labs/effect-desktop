@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
@@ -100,21 +99,6 @@ export class ExecutionSandbox extends Context.Service<
 }
 
 export const ExecutionSandboxLive = ExecutionSandbox.layer
-
-export const makeExecutionSandboxClientLayer = (
-  client: ExecutionSandboxClientApi
-): Layer.Layer<ExecutionSandboxClient> => Layer.succeed(ExecutionSandboxClient)(client)
-
-export const makeExecutionSandboxServiceLayer = (
-  client: ExecutionSandboxClientApi
-): Layer.Layer<ExecutionSandbox> =>
-  Layer.succeed(ExecutionSandbox)(makeExecutionSandboxService(client))
-
-export const makeExecutionSandboxBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<ExecutionSandboxClient> =>
-  ExecutionSandboxSurface.bridgeClientLayer(exchange, options)
 
 export type ExecutionSandboxRpc = RpcGroup.Rpcs<typeof ExecutionSandboxRpcGroup>
 

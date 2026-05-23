@@ -1,6 +1,4 @@
 import {
-  type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   makeHostProtocolInternalError,
@@ -107,17 +105,6 @@ export class Protocol extends Context.Service<Protocol, ProtocolServiceApi>()(
 }
 
 export const ProtocolLive = Protocol.layer
-
-export const makeProtocolClientLayer = (client: ProtocolClientApi): Layer.Layer<ProtocolClient> =>
-  Layer.succeed(ProtocolClient)(client)
-
-export const makeProtocolServiceLayer = (client: ProtocolClientApi): Layer.Layer<Protocol> =>
-  Layer.provide(ProtocolLive, makeProtocolClientLayer(client))
-
-export const makeProtocolBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<ProtocolClient> => ProtocolSurface.bridgeClientLayer(exchange, options)
 
 export type ProtocolRpc = RpcGroup.Rpcs<typeof ProtocolRpcGroup>
 

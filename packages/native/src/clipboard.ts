@@ -1,6 +1,4 @@
 import {
-  type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   makeHostProtocolInvalidArgumentError,
@@ -179,18 +177,6 @@ export class Clipboard extends Context.Service<Clipboard, ClipboardServiceApi>()
 }
 
 export const ClipboardLive = Clipboard.layer
-
-export const makeClipboardClientLayer = (
-  client: ClipboardClientApi
-): Layer.Layer<ClipboardClient> => Layer.succeed(ClipboardClient)(client)
-
-export const makeClipboardServiceLayer = (client: ClipboardClientApi): Layer.Layer<Clipboard> =>
-  Layer.provide(ClipboardLive, makeClipboardClientLayer(client))
-
-export const makeClipboardBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<ClipboardClient> => ClipboardSurface.bridgeClientLayer(exchange, options)
 
 export type ClipboardRpcHandlers = RpcGroup.HandlersFrom<ClipboardRpc>
 

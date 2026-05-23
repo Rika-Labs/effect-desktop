@@ -19,10 +19,10 @@ import {
   DistributionParity,
   DistributionParityClient,
   type DistributionParityClientApi,
-  makeDistributionParityBridgeClientLayer,
   makeDistributionParityMemoryClient,
   makeDistributionParityServiceLayer,
-  makeDistributionParityUnsupportedClient
+  makeDistributionParityUnsupportedClient,
+  DistributionParitySurface
 } from "./distribution-parity.js"
 import {
   DistributionParityEvidence,
@@ -138,7 +138,7 @@ test("DistributionParity bridge client rejects inconsistent event phase payloads
         Effect.gen(function* () {
           return yield* DistributionParityClient
         }),
-        makeDistributionParityBridgeClientLayer(exchange)
+        DistributionParitySurface.bridgeClientLayer(exchange)
       )
 
       const exit = yield* runScoped(
@@ -216,7 +216,7 @@ test("DistributionParity rejects mismatched capability evidence before transport
           const c = yield* DistributionParityClient
           return c
         }),
-        makeDistributionParityBridgeClientLayer(exchange)
+        DistributionParitySurface.bridgeClientLayer(exchange)
       )
 
       const exit = yield* runScoped(

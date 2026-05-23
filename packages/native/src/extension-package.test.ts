@@ -20,7 +20,6 @@ import {
   ExtensionPackage,
   ExtensionPackageClient,
   ExtensionPackageSurface,
-  makeExtensionPackageBridgeClientLayer,
   makeExtensionPackageMemoryClient,
   makeExtensionPackageServiceLayer,
   makeExtensionPackageUnsupportedClient,
@@ -190,7 +189,7 @@ test("ExtensionPackage rejects malformed manifests before host transport", () =>
             )
           )
         }),
-        makeExtensionPackageBridgeClientLayer(exchange)
+        ExtensionPackageSurface.bridgeClientLayer(exchange)
       )
 
       expect(requests).toEqual([])
@@ -276,7 +275,7 @@ test("ExtensionPackage rejects malformed SemVer before host transport", () =>
             )
           )
         }),
-        makeExtensionPackageBridgeClientLayer(exchange)
+        ExtensionPackageSurface.bridgeClientLayer(exchange)
       )
 
       expect(requests).toEqual([])
@@ -322,7 +321,7 @@ test("ExtensionPackage rejects dot-segment package ids before host transport", (
             )
           )
         }),
-        makeExtensionPackageBridgeClientLayer(exchange)
+        ExtensionPackageSurface.bridgeClientLayer(exchange)
       )
 
       expect(requests).toEqual([])
@@ -527,7 +526,7 @@ test("ExtensionPackage bridge client decodes native lifecycle events", () =>
           const client = yield* ExtensionPackageClient
           return yield* client.events().pipe(Stream.runHead)
         }),
-        makeExtensionPackageBridgeClientLayer(exchange)
+        ExtensionPackageSurface.bridgeClientLayer(exchange)
       )
 
       expect(event._tag).toBe("Some")
@@ -567,7 +566,7 @@ test("ExtensionPackage bridge client rejects inconsistent lifecycle events as In
           const client = yield* ExtensionPackageClient
           return yield* Effect.exit(client.events().pipe(Stream.runHead))
         }),
-        makeExtensionPackageBridgeClientLayer(exchange)
+        ExtensionPackageSurface.bridgeClientLayer(exchange)
       )
 
       expectInvalidOutput(exit)

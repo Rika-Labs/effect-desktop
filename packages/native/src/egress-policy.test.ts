@@ -11,10 +11,10 @@ import { Cause, Effect, Exit, ManagedRuntime, Option, Stream } from "effect"
 import {
   EgressPolicy,
   EgressPolicyClient,
-  makeEgressPolicyBridgeClientLayer,
   makeEgressPolicyMemoryClient,
   makeEgressPolicyServiceLayer,
-  makeEgressPolicyUnsupportedClient
+  makeEgressPolicyUnsupportedClient,
+  EgressPolicySurface
 } from "./egress-policy.js"
 import {
   EgressPolicyActor,
@@ -282,7 +282,7 @@ test("EgressPolicy bridge client rejects malformed input before native transport
     },
     subscribe: () => Stream.empty
   }
-  const runtime = ManagedRuntime.make(makeEgressPolicyBridgeClientLayer(exchange))
+  const runtime = ManagedRuntime.make(EgressPolicySurface.bridgeClientLayer(exchange))
   return runtime.runPromise(
     Effect.gen(function* () {
       const policy = yield* EgressPolicyClient
@@ -336,7 +336,7 @@ test("EgressPolicy bridge client does not forward caller-supplied rules", () => 
     },
     subscribe: () => Stream.empty
   }
-  const runtime = ManagedRuntime.make(makeEgressPolicyBridgeClientLayer(exchange))
+  const runtime = ManagedRuntime.make(EgressPolicySurface.bridgeClientLayer(exchange))
   return runtime.runPromise(
     Effect.gen(function* () {
       const policy = yield* EgressPolicyClient
@@ -362,7 +362,7 @@ test("EgressPolicy bridge client records issued decisions through the native pay
     },
     subscribe: () => Stream.empty
   }
-  const runtime = ManagedRuntime.make(makeEgressPolicyBridgeClientLayer(exchange))
+  const runtime = ManagedRuntime.make(EgressPolicySurface.bridgeClientLayer(exchange))
   return runtime.runPromise(
     Effect.gen(function* () {
       const policy = yield* EgressPolicyClient
@@ -390,7 +390,7 @@ test("EgressPolicy bridge client rejects malformed record input before native tr
     },
     subscribe: () => Stream.empty
   }
-  const runtime = ManagedRuntime.make(makeEgressPolicyBridgeClientLayer(exchange))
+  const runtime = ManagedRuntime.make(EgressPolicySurface.bridgeClientLayer(exchange))
   return runtime.runPromise(
     Effect.gen(function* () {
       const policy = yield* EgressPolicyClient

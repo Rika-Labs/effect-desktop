@@ -13,7 +13,6 @@ import {
 } from "@orika/core"
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   HostProtocolAlreadyExistsError,
@@ -259,20 +258,6 @@ const logGlobalShortcutCleanupFailure =
       ),
       Effect.ignore
     )
-
-export const makeGlobalShortcutClientLayer = (
-  client: GlobalShortcutClientApi
-): Layer.Layer<GlobalShortcutClient> => Layer.succeed(GlobalShortcutClient)(client)
-
-export const makeGlobalShortcutServiceLayer = (
-  client: GlobalShortcutClientApi
-): Layer.Layer<GlobalShortcut> =>
-  Layer.provide(GlobalShortcutLive, makeGlobalShortcutClientLayer(client))
-
-export const makeGlobalShortcutBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<GlobalShortcutClient> => GlobalShortcutSurface.bridgeClientLayer(exchange, options)
 
 export type GlobalShortcutRpc = RpcGroup.Rpcs<typeof GlobalShortcutRpcGroup>
 

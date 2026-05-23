@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   HostProtocolPermissionDeniedError,
@@ -179,21 +178,11 @@ export class AttachmentIntake extends Context.Service<
 
 export const AttachmentIntakeLive = AttachmentIntake.layer
 
-export const makeAttachmentIntakeClientLayer = (
-  client: AttachmentIntakeClientApi
-): Layer.Layer<AttachmentIntakeClient> => Layer.succeed(AttachmentIntakeClient)(client)
-
 export const makeAttachmentIntakeServiceLayer = (
   client: AttachmentIntakeClientApi,
   options: AttachmentIntakeServiceOptions
 ): Layer.Layer<AttachmentIntake> =>
   Layer.effect(AttachmentIntake)(makeAttachmentIntakeService(client, options))
-
-export const makeAttachmentIntakeBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<AttachmentIntakeClient> =>
-  AttachmentIntakeSurface.bridgeClientLayer(exchange, options)
 
 export type AttachmentIntakeRpc = RpcGroup.Rpcs<typeof AttachmentIntakeRpcGroup>
 export type AttachmentIntakeRpcHandlers = RpcGroup.HandlersFrom<AttachmentIntakeRpc>

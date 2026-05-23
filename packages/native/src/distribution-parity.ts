@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   HostProtocolPermissionDeniedError,
@@ -118,21 +117,11 @@ export class DistributionParity extends Context.Service<
 
 export const DistributionParityLive = DistributionParity.layer
 
-export const makeDistributionParityClientLayer = (
-  client: DistributionParityClientApi
-): Layer.Layer<DistributionParityClient> => Layer.succeed(DistributionParityClient)(client)
-
 export const makeDistributionParityServiceLayer = (
   client: DistributionParityClientApi,
   options: DistributionParityServiceOptions
 ): Layer.Layer<DistributionParity> =>
   Layer.effect(DistributionParity)(makeDistributionParityService(client, options))
-
-export const makeDistributionParityBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<DistributionParityClient> =>
-  DistributionParitySurface.bridgeClientLayer(exchange, options)
 
 export const DistributionParityHandlersLive = DistributionParityRpcGroup.toLayer({
   "DistributionParity.verify": (input) =>

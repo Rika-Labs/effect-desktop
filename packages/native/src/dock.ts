@@ -1,6 +1,4 @@
 import {
-  type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   HostProtocolUnsupportedError,
@@ -181,17 +179,6 @@ export class Dock extends Context.Service<Dock, DockServiceApi>()("@orika/native
 }
 
 export const DockLive = Dock.layer
-
-export const makeDockClientLayer = (client: DockClientApi): Layer.Layer<DockClient> =>
-  Layer.succeed(DockClient)(client)
-
-export const makeDockServiceLayer = (client: DockClientApi): Layer.Layer<Dock> =>
-  Layer.provide(DockLive, makeDockClientLayer(client))
-
-export const makeDockBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<DockClient> => DockSurface.bridgeClientLayer(exchange, options)
 
 export type DockRpc = RpcGroup.Rpcs<typeof DockRpcGroup>
 

@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   makeHostProtocolInternalError,
@@ -176,22 +175,13 @@ export class Notification extends Context.Service<Notification, NotificationServ
 
 export const NotificationLive = Notification.layer
 
-export const makeNotificationClientLayer = (
-  client: NotificationClientApi
-): Layer.Layer<NotificationClient> => Layer.succeed(NotificationClient)(client)
-
 export const makeNotificationServiceLayer = (
   client: NotificationClientApi,
   options?: NotificationServiceOptions
 ): Layer.Layer<Notification> =>
   options === undefined
-    ? Layer.provide(NotificationLive, makeNotificationClientLayer(client))
+    ? Layer.provide(NotificationLive, Layer.succeed(NotificationClient)(client))
     : Layer.succeed(Notification, makeNotificationService(client, options))
-
-export const makeNotificationBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<NotificationClient> => NotificationSurface.bridgeClientLayer(exchange, options)
 
 export type NotificationRpc = RpcGroup.Rpcs<typeof NotificationRpcGroup>
 

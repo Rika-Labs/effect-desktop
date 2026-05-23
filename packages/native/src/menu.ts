@@ -14,7 +14,6 @@ import {
 } from "@orika/core"
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   makeHostProtocolInternalError,
@@ -159,17 +158,6 @@ export class Menu extends Context.Service<Menu, MenuServiceApi>()("@orika/native
 }
 
 export const MenuLive = Menu.layer
-
-export const makeMenuClientLayer = (client: MenuClientApi): Layer.Layer<MenuClient> =>
-  Layer.succeed(MenuClient)(client)
-
-export const makeMenuServiceLayer = (client: MenuClientApi): Layer.Layer<Menu> =>
-  Layer.provide(MenuLive, makeMenuClientLayer(client))
-
-export const makeMenuBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<MenuClient> => MenuSurface.bridgeClientLayer(exchange, options)
 
 export type MenuRpc = RpcGroup.Rpcs<typeof MenuRpcGroup>
 

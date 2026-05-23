@@ -32,7 +32,6 @@ import {
   LocalToolRuntimeClient,
   type LocalToolRuntimeClientApi,
   LocalToolRuntimeSurface,
-  makeLocalToolRuntimeBridgeClientLayer,
   makeLocalToolRuntimeMemoryClient,
   makeLocalToolRuntimeServiceLayer,
   makeLocalToolRuntimeUnsupportedClient
@@ -189,7 +188,7 @@ hostProtocolStdioTest(
             Effect.gen(function* () {
               let runSequence = 0
               const clientContext = yield* Layer.build(
-                makeLocalToolRuntimeBridgeClientLayer(host.exchange, {
+                LocalToolRuntimeSurface.bridgeClientLayer(host.exchange, {
                   nextRequestId: () => `request-${globalThis.crypto.randomUUID()}`,
                   nextTraceId: () => `trace-${globalThis.crypto.randomUUID()}`,
                   now: () => 1_710_000_000_000
@@ -390,7 +389,7 @@ test("LocalToolRuntime rejects malformed manifests before bridge transport", () 
           subscribe: () => Stream.empty
         }
 
-        const runtime = ManagedRuntime.make(makeLocalToolRuntimeBridgeClientLayer(exchange))
+        const runtime = ManagedRuntime.make(LocalToolRuntimeSurface.bridgeClientLayer(exchange))
         const exit = yield* Effect.promise(() =>
           runtime.runPromise(
             Effect.gen(function* () {

@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   makeHostProtocolInternalError,
@@ -208,21 +207,6 @@ export class SystemAppearance extends Context.Service<
 }
 
 export const SystemAppearanceLive = SystemAppearance.layer
-
-export const makeSystemAppearanceClientLayer = (
-  client: SystemAppearanceClientApi
-): Layer.Layer<SystemAppearanceClient> => Layer.succeed(SystemAppearanceClient)(client)
-
-export const makeSystemAppearanceServiceLayer = (
-  client: SystemAppearanceClientApi
-): Layer.Layer<SystemAppearance> =>
-  Layer.provide(SystemAppearanceLive, makeSystemAppearanceClientLayer(client))
-
-export const makeSystemAppearanceBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<SystemAppearanceClient> =>
-  SystemAppearanceSurface.bridgeClientLayer(exchange, options)
 
 export type SystemAppearanceRpc = RpcGroup.Rpcs<typeof SystemAppearanceRpcGroup>
 

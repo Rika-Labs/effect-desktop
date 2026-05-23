@@ -11,10 +11,10 @@ import {
   AttachmentIntake,
   type AttachmentIntakeClientApi,
   AttachmentIntakeClient,
-  makeAttachmentIntakeBridgeClientLayer,
   makeAttachmentIntakeMemoryClient,
   makeAttachmentIntakeServiceLayer,
-  makeAttachmentIntakeUnsupportedClient
+  makeAttachmentIntakeUnsupportedClient,
+  AttachmentIntakeSurface
 } from "./attachment-intake.js"
 import {
   AttachmentIntakeActor,
@@ -298,7 +298,7 @@ test("AttachmentIntake rejects inconsistent event phase payloads before exposing
           const client = yield* AttachmentIntakeClient
           return yield* Effect.exit(client.events().pipe(Stream.runHead))
         }),
-        makeAttachmentIntakeBridgeClientLayer(exchange)
+        AttachmentIntakeSurface.bridgeClientLayer(exchange)
       )
 
       expectExitFailure(bridgeDecode, (error) => {

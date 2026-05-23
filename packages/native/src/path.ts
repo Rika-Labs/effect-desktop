@@ -1,6 +1,4 @@
 import {
-  type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   makeHostProtocolInternalError,
@@ -86,17 +84,6 @@ export class Path extends Context.Service<Path, PathServiceApi>()("@orika/native
 }
 
 export const PathLive = Path.layer
-
-export const makePathClientLayer = (client: PathClientApi): Layer.Layer<PathClient> =>
-  Layer.succeed(PathClient)(client)
-
-export const makePathServiceLayer = (client: PathClientApi): Layer.Layer<Path> =>
-  Layer.provide(PathLive, makePathClientLayer(client))
-
-export const makePathBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<PathClient> => PathSurface.bridgeClientLayer(exchange, options)
 
 export type PathRpc = RpcGroup.Rpcs<typeof PathRpcGroup>
 

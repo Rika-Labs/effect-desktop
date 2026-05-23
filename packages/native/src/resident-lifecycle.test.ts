@@ -28,12 +28,12 @@ import { EventJournal } from "effect/unstable/eventlog"
 
 import {
   makeResidentLifecycleMemoryClient,
-  makeResidentLifecycleBridgeClientLayer,
   makeResidentLifecycleServiceLayer,
   makeResidentLifecycleUnsupportedClient,
   ResidentLifecycle,
   ResidentLifecycleClient,
-  type ResidentLifecycleClientApi
+  type ResidentLifecycleClientApi,
+  ResidentLifecycleSurface
 } from "./resident-lifecycle.js"
 import {
   ResidentLifecycleEnableRequest,
@@ -130,7 +130,7 @@ test("ResidentLifecycle bridge client validates before transport and decodes eve
           const events = yield* client.events().pipe(Stream.take(1), Stream.runCollect)
           return { enabled, events, invalidExit }
         }),
-        makeResidentLifecycleBridgeClientLayer(exchange)
+        ResidentLifecycleSurface.bridgeClientLayer(exchange)
       )
 
       expect(requests.map((request) => [request.method, request.payload])).toEqual([
@@ -240,7 +240,7 @@ test("ResidentLifecycle bridge client rejects inconsistent event reasons as Inva
           const client = yield* ResidentLifecycleClient
           return yield* Effect.exit(client.events().pipe(Stream.take(1), Stream.runCollect))
         }),
-        makeResidentLifecycleBridgeClientLayer(exchange)
+        ResidentLifecycleSurface.bridgeClientLayer(exchange)
       )
 
       expectExitFailure(exit, (error) => {

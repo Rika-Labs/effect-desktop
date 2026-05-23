@@ -6,7 +6,7 @@ import {
 } from "@orika/bridge"
 import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Schema, Stream } from "effect"
 
-import { Autostart, AutostartLive, makeAutostartBridgeClientLayer } from "./autostart.js"
+import { Autostart, AutostartLive, AutostartSurface } from "./autostart.js"
 import { AutostartEvent } from "./contracts/autostart.js"
 
 test("Autostart contracts reject inconsistent event phase payloads", () => {
@@ -66,7 +66,7 @@ test("Autostart bridge client rejects inconsistent event phase payloads as Inval
             autostart.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
           )
         }),
-        Layer.provide(AutostartLive, makeAutostartBridgeClientLayer(exchange))
+        Layer.provide(AutostartLive, AutostartSurface.bridgeClientLayer(exchange))
       )
 
       expectInvalidOutput(exit)

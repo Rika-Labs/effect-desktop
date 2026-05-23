@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   HostProtocolPermissionDeniedError,
@@ -191,22 +190,11 @@ export class TransactionalFileMutation extends Context.Service<
 
 export const TransactionalFileMutationLive = TransactionalFileMutation.layer
 
-export const makeTransactionalFileMutationClientLayer = (
-  client: TransactionalFileMutationClientApi
-): Layer.Layer<TransactionalFileMutationClient> =>
-  Layer.succeed(TransactionalFileMutationClient)(client)
-
 export const makeTransactionalFileMutationServiceLayer = (
   client: TransactionalFileMutationClientApi,
   options: TransactionalFileMutationServiceOptions
 ): Layer.Layer<TransactionalFileMutation> =>
   Layer.effect(TransactionalFileMutation)(makeTransactionalFileMutationService(client, options))
-
-export const makeTransactionalFileMutationBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<TransactionalFileMutationClient> =>
-  TransactionalFileMutationSurface.bridgeClientLayer(exchange, options)
 
 export type TransactionalFileMutationRpc = RpcGroup.Rpcs<typeof TransactionalFileMutationRpcGroup>
 

@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   HostProtocolPermissionDeniedError,
@@ -194,21 +193,6 @@ export class RealtimeMediaSession extends Context.Service<
 }
 
 export const RealtimeMediaSessionLive = RealtimeMediaSession.layer
-
-export const makeRealtimeMediaSessionClientLayer = (
-  client: RealtimeMediaSessionClientApi
-): Layer.Layer<RealtimeMediaSessionClient> => Layer.succeed(RealtimeMediaSessionClient)(client)
-
-export const makeRealtimeMediaSessionServiceLayer = (
-  client: RealtimeMediaSessionClientApi
-): Layer.Layer<RealtimeMediaSession> =>
-  Layer.provide(RealtimeMediaSessionLive, makeRealtimeMediaSessionClientLayer(client))
-
-export const makeRealtimeMediaSessionBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<RealtimeMediaSessionClient> =>
-  RealtimeMediaSessionSurface.bridgeClientLayer(exchange, options)
 
 export type RealtimeMediaSessionRpc = RpcGroup.Rpcs<typeof RealtimeMediaSessionRpcGroup>
 

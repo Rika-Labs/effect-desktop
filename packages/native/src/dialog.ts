@@ -1,6 +1,4 @@
 import {
-  type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type RpcCapabilityMetadata,
@@ -141,17 +139,6 @@ export class Dialog extends Context.Service<Dialog, DialogServiceApi>()("@orika/
 }
 
 export const DialogLive = Dialog.layer
-
-export const makeDialogClientLayer = (client: DialogClientApi): Layer.Layer<DialogClient> =>
-  Layer.succeed(DialogClient)(client)
-
-export const makeDialogServiceLayer = (client: DialogClientApi): Layer.Layer<Dialog> =>
-  Layer.provide(DialogLive, makeDialogClientLayer(client))
-
-export const makeDialogBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<DialogClient> => DialogSurface.bridgeClientLayer(exchange, options)
 
 export type DialogRpcHandlers = RpcGroup.HandlersFrom<DialogRpc>
 

@@ -10,7 +10,6 @@ import {
   FocusedApplicationContextClient,
   FocusedApplicationContextRpcs,
   FocusedApplicationContextSurface,
-  makeFocusedApplicationContextBridgeClientLayer,
   makeFocusedApplicationContextMemoryClient,
   makeFocusedApplicationContextServiceLayer,
   makeFocusedApplicationContextUnsupportedClient,
@@ -382,7 +381,7 @@ test("FocusedApplicationContext bridge client fails event stream as unsupported 
           const client = yield* FocusedApplicationContextClient
           return yield* Effect.exit(client.events().pipe(Stream.take(1), Stream.runCollect))
         }),
-        makeFocusedApplicationContextBridgeClientLayer(exchange)
+        FocusedApplicationContextSurface.bridgeClientLayer(exchange)
       )
 
       expectExitFailure(exit, (error) => {

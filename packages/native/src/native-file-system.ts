@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
@@ -151,21 +150,6 @@ export class NativeFileSystem extends Context.Service<
 }
 
 export const NativeFileSystemLive = NativeFileSystem.layer
-
-export const makeNativeFileSystemClientLayer = (
-  client: NativeFileSystemClientApi
-): Layer.Layer<NativeFileSystemClient> => Layer.succeed(NativeFileSystemClient)(client)
-
-export const makeNativeFileSystemServiceLayer = (
-  client: NativeFileSystemClientApi
-): Layer.Layer<NativeFileSystem> =>
-  Layer.provide(NativeFileSystemLive, makeNativeFileSystemClientLayer(client))
-
-export const makeNativeFileSystemBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<NativeFileSystemClient> =>
-  NativeFileSystemSurface.bridgeClientLayer(exchange, options)
 
 export type NativeFileSystemRpc = RpcGroup.Rpcs<typeof NativeFileSystemRpcGroup>
 export type NativeFileSystemRpcHandlers = RpcGroup.HandlersFrom<NativeFileSystemRpc>

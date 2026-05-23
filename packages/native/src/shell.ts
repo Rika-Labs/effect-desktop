@@ -1,6 +1,4 @@
 import {
-  type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   HostProtocolPermissionDeniedError,
@@ -129,17 +127,6 @@ export class Shell extends Context.Service<Shell, ShellServiceApi>()("@orika/nat
 }
 
 export const ShellLive = Shell.layer
-
-export const makeShellClientLayer = (client: ShellClientApi): Layer.Layer<ShellClient> =>
-  Layer.succeed(ShellClient)(client)
-
-export const makeShellServiceLayer = (client: ShellClientApi): Layer.Layer<Shell> =>
-  Layer.provide(ShellLive, makeShellClientLayer(client))
-
-export const makeShellBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<ShellClient> => ShellSurface.bridgeClientLayer(exchange, options)
 
 export type ShellRpc = RpcGroup.Rpcs<typeof ShellRpcGroup>
 

@@ -13,15 +13,14 @@ import {
   WebRequestInterceptorSnapshot
 } from "./contracts/web-request.js"
 import {
-  makeWebRequestBridgeClientLayer,
   makeWebRequestMemoryClient,
-  makeWebRequestServiceLayer,
   makeWebRequestUnsupportedClient,
   WebRequest,
   WebRequestCapabilityFacts,
   WebRequestClient,
   WebRequestRpcs,
-  WebRequestSurface
+  WebRequestSurface,
+  WebRequestLive
 } from "./web-request.js"
 
 const UnsupportedMethods = ["onBeforeRequest", "onHeadersReceived", "removeListener"] as const
@@ -256,7 +255,7 @@ test("WebRequest isSupported reports supported result through the service", () =
           const service = yield* WebRequest
           return yield* service.isSupported()
         }),
-        makeWebRequestServiceLayer(client)
+        Layer.provide(WebRequestLive, Layer.succeed(WebRequestClient)(client))
       )
       expect(result.supported).toBe(true)
     })
@@ -271,7 +270,7 @@ test("WebRequest unsupported client reports the host-unavailable reason", () =>
           const service = yield* WebRequest
           return yield* service.isSupported()
         }),
-        makeWebRequestServiceLayer(client)
+        Layer.provide(WebRequestLive, Layer.succeed(WebRequestClient)(client))
       )
       expect(result.supported).toBe(false)
       expect(result.reason).toBe("host-web-request-unavailable")
@@ -287,7 +286,7 @@ test("WebRequest unsupported client fails the event stream as unsupported", () =
           const service = yield* WebRequest
           return yield* Effect.exit(service.events().pipe(Stream.take(1), Stream.runCollect))
         }),
-        makeWebRequestServiceLayer(client)
+        Layer.provide(WebRequestLive, Layer.succeed(WebRequestClient)(client))
       )
 
       expectExitFailure(exit, (error) => {
@@ -317,7 +316,7 @@ test("WebRequest bridge client subscribes to the host event channel", () =>
           const client = yield* WebRequestClient
           return yield* client.events().pipe(Stream.runCollect)
         }),
-        makeWebRequestBridgeClientLayer(exchange)
+        WebRequestSurface.bridgeClientLayer(exchange)
       )
 
       expect(Array.from(collected)).toEqual([])
@@ -353,7 +352,7 @@ test("WebRequest bridge client rejects inconsistent event messages as InvalidOut
             webRequest.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
           )
         }),
-        Layer.provide(WebRequest.layer, makeWebRequestBridgeClientLayer(exchange))
+        Layer.provide(WebRequest.layer, WebRequestSurface.bridgeClientLayer(exchange))
       )
 
       expectInvalidOutput(exit)

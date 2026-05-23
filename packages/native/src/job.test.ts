@@ -32,11 +32,11 @@ import {
   JobRuntimeLive,
   JobSupportedResult,
   type JobClientApi,
-  makeJobBridgeClientLayer,
   makeHostJobRpcRuntime,
   makeJobMemoryClient,
   makeJobServiceLayer,
-  makeJobUnsupportedClient
+  makeJobUnsupportedClient,
+  JobSurface
 } from "./job.js"
 
 test("Job contracts reject completed progress greater than total progress", async () => {
@@ -132,7 +132,7 @@ test("Job contracts reject event phases that contradict job state", async () => 
     Effect.gen(function* () {
       const client = yield* JobClient
       return yield* Effect.exit(client.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow)))
-    }).pipe(Effect.provide(makeJobBridgeClientLayer(exchange)))
+    }).pipe(Effect.provide(JobSurface.bridgeClientLayer(exchange)))
   )
   expectInvalidOutput(bridgeExit)
 })
@@ -165,13 +165,13 @@ test("Job bridge client rejects invalid progress from host output and events", a
     Effect.gen(function* () {
       const client = yield* JobClient
       return yield* Effect.exit(client.get({ jobId: "job-1" }))
-    }).pipe(Effect.provide(makeJobBridgeClientLayer(exchange)))
+    }).pipe(Effect.provide(JobSurface.bridgeClientLayer(exchange)))
   )
   const eventExit = await Effect.runPromise(
     Effect.gen(function* () {
       const client = yield* JobClient
       return yield* Effect.exit(client.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow)))
-    }).pipe(Effect.provide(makeJobBridgeClientLayer(exchange)))
+    }).pipe(Effect.provide(JobSurface.bridgeClientLayer(exchange)))
   )
 
   expectInvalidOutput(resultExit)
@@ -458,7 +458,7 @@ test("Job bridge client rejects invalid progress before transport", async () => 
     Effect.gen(function* () {
       const client = yield* JobClient
       return yield* Effect.exit(client.reportProgress({ jobId: "job-1", completed: 11, total: 10 }))
-    }).pipe(Effect.provide(makeJobBridgeClientLayer(exchange)))
+    }).pipe(Effect.provide(JobSurface.bridgeClientLayer(exchange)))
   )
 
   expect(requests).toEqual([])

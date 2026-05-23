@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   makeHostProtocolInternalError,
@@ -243,21 +242,13 @@ const makeTrayService = (client: TrayClientApi, options: TrayServiceOptions): Tr
 
 export const TrayLive = Tray.layer
 
-export const makeTrayClientLayer = (client: TrayClientApi): Layer.Layer<TrayClient> =>
-  Layer.succeed(TrayClient)(client)
-
 export const makeTrayServiceLayer = (
   client: TrayClientApi,
   options?: TrayServiceOptions
 ): Layer.Layer<Tray> =>
   options === undefined
-    ? Layer.provide(TrayLive, makeTrayClientLayer(client))
+    ? Layer.provide(TrayLive, Layer.succeed(TrayClient)(client))
     : Layer.succeed(Tray, makeTrayService(client, options))
-
-export const makeTrayBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<TrayClient> => TraySurface.bridgeClientLayer(exchange, options)
 
 export type TrayRpc = RpcGroup.Rpcs<typeof TrayRpcGroup>
 

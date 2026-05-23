@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
@@ -99,20 +98,6 @@ export class RecentDocuments extends Context.Service<RecentDocuments, RecentDocu
 }
 
 export const RecentDocumentsLive = RecentDocuments.layer
-
-export const makeRecentDocumentsClientLayer = (
-  client: RecentDocumentsClientApi
-): Layer.Layer<RecentDocumentsClient> => Layer.succeed(RecentDocumentsClient)(client)
-
-export const makeRecentDocumentsServiceLayer = (
-  client: RecentDocumentsClientApi
-): Layer.Layer<RecentDocuments> =>
-  Layer.provide(RecentDocumentsLive, makeRecentDocumentsClientLayer(client))
-
-export const makeRecentDocumentsBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<RecentDocumentsClient> => RecentDocumentsSurface.bridgeClientLayer(exchange, options)
 
 export type RecentDocumentsRpc = RpcGroup.Rpcs<typeof RecentDocumentsRpcGroup>
 export type RecentDocumentsRpcHandlers = RpcGroup.HandlersFrom<RecentDocumentsRpc>

@@ -4,7 +4,7 @@ import type {
   HostProtocolError,
   HostProtocolRequestEnvelope
 } from "@orika/bridge"
-import { Cause, Effect, Exit, type Layer, ManagedRuntime, Schema, Stream } from "effect"
+import { Cause, Effect, Exit, Layer, ManagedRuntime, Schema, Stream } from "effect"
 
 import {
   ExecutionSandbox,
@@ -12,10 +12,9 @@ import {
   ExecutionSandboxClient,
   ExecutionSandboxRpcs,
   ExecutionSandboxSurface,
-  makeExecutionSandboxBridgeClientLayer,
   makeExecutionSandboxMemoryClient,
-  makeExecutionSandboxServiceLayer,
-  makeExecutionSandboxUnsupportedClient
+  makeExecutionSandboxUnsupportedClient,
+  ExecutionSandboxLive
 } from "./execution-sandbox.js"
 import {
   ExecutionSandboxEvent,
@@ -93,7 +92,7 @@ test("ExecutionSandbox isSupported reports supported result through the service"
           const sandbox = yield* ExecutionSandbox
           return yield* sandbox.isSupported()
         }),
-        makeExecutionSandboxServiceLayer(client)
+        Layer.provide(ExecutionSandboxLive, Layer.succeed(ExecutionSandboxClient)(client))
       )
       expect(result).toEqual(new ExecutionSandboxSupportedResult({ supported: true }))
     })
@@ -108,7 +107,7 @@ test("ExecutionSandbox unsupported client reports the host-unavailable reason", 
           const sandbox = yield* ExecutionSandbox
           return yield* sandbox.isSupported()
         }),
-        makeExecutionSandboxServiceLayer(client)
+        Layer.provide(ExecutionSandboxLive, Layer.succeed(ExecutionSandboxClient)(client))
       )
       expect(result.supported).toBe(false)
       expect(result.reason).toBe("host-adapter-unimplemented")
@@ -127,7 +126,7 @@ test("ExecutionSandbox bridge client fails event stream as unsupported before su
         }
       }
 
-      const runtime = ManagedRuntime.make(makeExecutionSandboxBridgeClientLayer(exchange))
+      const runtime = ManagedRuntime.make(ExecutionSandboxSurface.bridgeClientLayer(exchange))
       const exit = yield* Effect.promise(() =>
         runtime.runPromise(
           Effect.gen(function* () {
@@ -164,7 +163,7 @@ test("ExecutionSandbox bridge client sends a typed isSupported envelope", () =>
         subscribe: () => Stream.empty
       }
 
-      const runtime = ManagedRuntime.make(makeExecutionSandboxBridgeClientLayer(exchange))
+      const runtime = ManagedRuntime.make(ExecutionSandboxSurface.bridgeClientLayer(exchange))
       const result = yield* Effect.promise(() =>
         runtime.runPromise(
           Effect.gen(function* () {

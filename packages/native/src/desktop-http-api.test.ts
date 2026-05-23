@@ -10,7 +10,7 @@ import {
   DesktopHttpApiRoutes,
   DesktopHttpWindowCreateCapability
 } from "./desktop-http-api.js"
-import { makeWindowServiceLayer, type WindowClientApi } from "./window.js"
+import { type WindowClientApi, WindowLive, WindowClient } from "./window.js"
 
 const windowHandle = Schema.decodeUnknownSync(WindowResource)({
   id: "window-1",
@@ -79,7 +79,7 @@ const windowCreateRequest = (): Request =>
 const makeHandler = (permissions: Layer.Layer<PermissionRegistry>) =>
   HttpRouter.toWebHandler(
     DesktopHttpApiRoutes.pipe(
-      Layer.provide(makeWindowServiceLayer(windowClient)),
+      Layer.provide(Layer.provide(WindowLive, Layer.succeed(WindowClient)(windowClient))),
       Layer.provide(permissions),
       Layer.provide(HttpServer.layerServices)
     )

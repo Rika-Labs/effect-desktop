@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
@@ -138,19 +137,6 @@ export class BrowsingData extends Context.Service<BrowsingData, BrowsingDataServ
 }
 
 export const BrowsingDataLive = BrowsingData.layer
-
-export const makeBrowsingDataClientLayer = (
-  client: BrowsingDataClientApi
-): Layer.Layer<BrowsingDataClient> => Layer.succeed(BrowsingDataClient)(client)
-
-export const makeBrowsingDataServiceLayer = (
-  client: BrowsingDataClientApi
-): Layer.Layer<BrowsingData> => Layer.succeed(BrowsingData)(makeBrowsingDataService(client))
-
-export const makeBrowsingDataBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<BrowsingDataClient> => BrowsingDataSurface.bridgeClientLayer(exchange, options)
 
 export type BrowsingDataRpc = RpcGroup.Rpcs<typeof BrowsingDataRpcGroup>
 export type BrowsingDataRpcHandlers = RpcGroup.HandlersFrom<BrowsingDataRpc>

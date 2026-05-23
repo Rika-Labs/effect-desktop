@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   makeHostProtocolInternalError,
@@ -475,17 +474,6 @@ export class WebView extends Context.Service<WebView, WebViewServiceApi>()(
 }
 
 export const WebViewLive = WebView.layer
-
-export const makeWebViewClientLayer = (client: WebViewClientApi): Layer.Layer<WebViewClient> =>
-  Layer.succeed(WebViewClient)(client)
-
-export const makeWebViewServiceLayer = (client: WebViewClientApi): Layer.Layer<WebView> =>
-  Layer.provide(WebViewLive, makeWebViewClientLayer(client))
-
-export const makeWebViewBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<WebViewClient> => WebViewSurface.bridgeClientLayer(exchange, options)
 
 export type WebViewRpc = RpcGroup.Rpcs<typeof WebViewRpcGroup>
 

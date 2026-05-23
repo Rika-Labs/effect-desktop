@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   HostProtocolAlreadyExistsError,
@@ -191,21 +190,11 @@ export class ExtensionPackage extends Context.Service<
 
 export const ExtensionPackageLive = ExtensionPackage.layer
 
-export const makeExtensionPackageClientLayer = (
-  client: ExtensionPackageClientApi
-): Layer.Layer<ExtensionPackageClient> => Layer.succeed(ExtensionPackageClient)(client)
-
 export const makeExtensionPackageServiceLayer = (
   client: ExtensionPackageClientApi,
   options: ExtensionPackageServiceOptions
 ): Layer.Layer<ExtensionPackage> =>
   Layer.effect(ExtensionPackage)(makeExtensionPackageService(client, options))
-
-export const makeExtensionPackageBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<ExtensionPackageClient> =>
-  ExtensionPackageSurface.bridgeClientLayer(exchange, options)
 
 export type ExtensionPackageRpc = RpcGroup.Rpcs<typeof ExtensionPackageRpcGroup>
 

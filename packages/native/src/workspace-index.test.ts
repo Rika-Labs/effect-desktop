@@ -10,7 +10,6 @@ import { type AuditEvent, type AuditEventsApi, makePermissionRegistry, P } from 
 import { Cause, Effect, Exit, type Layer, ManagedRuntime, Option, Schema, Stream } from "effect"
 
 import {
-  makeWorkspaceIndexBridgeClientLayer,
   makeWorkspaceIndexMemoryClient,
   makeWorkspaceIndexServiceLayer,
   makeWorkspaceIndexUnsupportedClient,
@@ -245,7 +244,7 @@ test("WorkspaceIndex rejects malformed scopes before bridge transport", () =>
             )
           )
         }),
-        makeWorkspaceIndexBridgeClientLayer(exchange)
+        WorkspaceIndexSurface.bridgeClientLayer(exchange)
       )
 
       expect(requests).toEqual([])
@@ -316,7 +315,7 @@ test("WorkspaceIndex accepts root read grants and rejects noncanonical scope pat
           )
           return { accepted, rejected, rejectedGrant, rejectedRoot }
         }),
-        makeWorkspaceIndexBridgeClientLayer(exchange)
+        WorkspaceIndexSurface.bridgeClientLayer(exchange)
       )
 
       expect(exit.accepted.indexId).toBe("workspace-index-1")
@@ -365,7 +364,7 @@ test("WorkspaceIndex bridge client decodes native index events", () =>
           const client = yield* WorkspaceIndexClient
           return yield* client.events().pipe(Stream.runHead)
         }),
-        makeWorkspaceIndexBridgeClientLayer(exchange)
+        WorkspaceIndexSurface.bridgeClientLayer(exchange)
       )
 
       expect(event._tag).toBe("Some")
@@ -412,7 +411,7 @@ test("WorkspaceIndex rejects contradictory event phase states before exposing na
           const client = yield* WorkspaceIndexClient
           return yield* Effect.exit(client.events().pipe(Stream.runHead))
         }),
-        makeWorkspaceIndexBridgeClientLayer(exchange)
+        WorkspaceIndexSurface.bridgeClientLayer(exchange)
       )
 
       expect(Exit.isFailure(directDecode)).toBe(true)

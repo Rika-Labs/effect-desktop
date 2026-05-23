@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
@@ -96,18 +95,6 @@ export class Autostart extends Context.Service<Autostart, AutostartServiceApi>()
 }
 
 export const AutostartLive = Autostart.layer
-
-export const makeAutostartClientLayer = (
-  client: AutostartClientApi
-): Layer.Layer<AutostartClient> => Layer.succeed(AutostartClient)(client)
-
-export const makeAutostartServiceLayer = (client: AutostartClientApi): Layer.Layer<Autostart> =>
-  Layer.provide(AutostartLive, makeAutostartClientLayer(client))
-
-export const makeAutostartBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<AutostartClient> => AutostartSurface.bridgeClientLayer(exchange, options)
 
 export type AutostartRpc = RpcGroup.Rpcs<typeof AutostartRpcGroup>
 export type AutostartRpcHandlers = RpcGroup.HandlersFrom<AutostartRpc>

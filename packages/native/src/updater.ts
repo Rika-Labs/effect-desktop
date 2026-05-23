@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   makeHostProtocolInternalError,
@@ -188,17 +187,6 @@ export class Updater extends Context.Service<Updater, UpdaterServiceApi>()(
 }
 
 export const UpdaterLive = Updater.layer
-
-export const makeUpdaterClientLayer = (client: UpdaterClientApi): Layer.Layer<UpdaterClient> =>
-  Layer.succeed(UpdaterClient)(client)
-
-export const makeUpdaterServiceLayer = (client: UpdaterClientApi): Layer.Layer<Updater> =>
-  Layer.provide(UpdaterLive, makeUpdaterClientLayer(client))
-
-export const makeUpdaterBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<UpdaterClient> => UpdaterSurface.bridgeClientLayer(exchange, options)
 
 export type UpdaterRpc = RpcGroup.Rpcs<typeof UpdaterRpcGroup>
 

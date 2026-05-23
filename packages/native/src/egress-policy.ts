@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   HostProtocolPermissionDeniedError,
@@ -160,19 +159,10 @@ export class EgressPolicy extends Context.Service<EgressPolicy, EgressPolicyServ
 
 export const EgressPolicyLive = EgressPolicy.layer
 
-export const makeEgressPolicyClientLayer = (
-  client: EgressPolicyClientApi
-): Layer.Layer<EgressPolicyClient> => Layer.succeed(EgressPolicyClient)(client)
-
 export const makeEgressPolicyServiceLayer = (
   client: EgressPolicyClientApi,
   options: EgressPolicyServiceOptions
 ): Layer.Layer<EgressPolicy> => Layer.effect(EgressPolicy)(makeEgressPolicyService(client, options))
-
-export const makeEgressPolicyBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<EgressPolicyClient> => EgressPolicySurface.bridgeClientLayer(exchange, options)
 
 export type EgressPolicyRpc = RpcGroup.Rpcs<typeof EgressPolicyRpcGroup>
 

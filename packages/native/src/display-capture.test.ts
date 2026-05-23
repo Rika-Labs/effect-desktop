@@ -6,12 +6,12 @@ import { Cause, Effect, Exit, ManagedRuntime, Option, Schema, Stream } from "eff
 import {
   DisplayCapture,
   DisplayCaptureClient,
-  makeDisplayCaptureBridgeClientLayer,
   makeDisplayCaptureGrantAuthority,
   makeDisplayCaptureMemoryClient,
   makeDisplayCaptureServiceLayer,
   makeDisplayCaptureUnsupportedClient,
-  type DisplayCaptureClientApi
+  type DisplayCaptureClientApi,
+  DisplayCaptureSurface
 } from "./display-capture.js"
 import {
   DisplayCaptureActor,
@@ -383,7 +383,7 @@ test("DisplayCapture bridge client fails event stream as unsupported before subs
       return Stream.empty
     }
   }
-  const runtime = ManagedRuntime.make(makeDisplayCaptureBridgeClientLayer(exchange))
+  const runtime = ManagedRuntime.make(DisplayCaptureSurface.bridgeClientLayer(exchange))
   return runtime.runPromise(
     Effect.gen(function* () {
       const client = yield* DisplayCaptureClient

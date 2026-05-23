@@ -7,7 +7,7 @@ import {
 import { Cause, Effect, Exit, Schema, Stream } from "effect"
 
 import { WebViewFrameEvent, WebViewRuntimeEvent } from "./contracts/webview.js"
-import { makeWebViewBridgeClientLayer, WebViewClient } from "./webview.js"
+import { WebViewClient, WebViewSurface } from "./webview.js"
 
 const webviewHandle = {
   kind: "webview",
@@ -222,7 +222,7 @@ test("WebView frame bridge events reject inconsistent payloads as InvalidOutput"
       const exit = yield* Effect.gen(function* () {
         const client = yield* WebViewClient
         return yield* Effect.exit(client.onFrameEvent().pipe(Stream.take(1), Stream.runCollect))
-      }).pipe(Effect.provide(makeWebViewBridgeClientLayer(exchange)))
+      }).pipe(Effect.provide(WebViewSurface.bridgeClientLayer(exchange)))
 
       expect(Exit.isFailure(exit)).toBe(true)
       if (Exit.isFailure(exit)) {

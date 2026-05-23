@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
@@ -107,21 +106,6 @@ export class SessionPermission extends Context.Service<
 }
 
 export const SessionPermissionLive = SessionPermission.layer
-
-export const makeSessionPermissionClientLayer = (
-  client: SessionPermissionClientApi
-): Layer.Layer<SessionPermissionClient> => Layer.succeed(SessionPermissionClient)(client)
-
-export const makeSessionPermissionServiceLayer = (
-  client: SessionPermissionClientApi
-): Layer.Layer<SessionPermission> =>
-  Layer.succeed(SessionPermission)(makeSessionPermissionService(client))
-
-export const makeSessionPermissionBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<SessionPermissionClient> =>
-  SessionPermissionSurface.bridgeClientLayer(exchange, options)
 
 export type SessionPermissionRpc = RpcGroup.Rpcs<typeof SessionPermissionRpcGroup>
 export type SessionPermissionRpcHandlers = RpcGroup.HandlersFrom<SessionPermissionRpc>

@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   HostProtocolPermissionDeniedError,
@@ -166,21 +165,11 @@ export class DiagnosticsBundle extends Context.Service<
 
 export const DiagnosticsBundleLive = DiagnosticsBundle.layer
 
-export const makeDiagnosticsBundleClientLayer = (
-  client: DiagnosticsBundleClientApi
-): Layer.Layer<DiagnosticsBundleClient> => Layer.succeed(DiagnosticsBundleClient)(client)
-
 export const makeDiagnosticsBundleServiceLayer = (
   client: DiagnosticsBundleClientApi,
   options: DiagnosticsBundleServiceOptions = {}
 ): Layer.Layer<DiagnosticsBundle> =>
   Layer.effect(DiagnosticsBundle)(Effect.succeed(makeDiagnosticsBundleService(client, options)))
-
-export const makeDiagnosticsBundleBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<DiagnosticsBundleClient> =>
-  DiagnosticsBundleSurface.bridgeClientLayer(exchange, options)
 
 export type DiagnosticsBundleRpc = RpcGroup.Rpcs<typeof DiagnosticsBundleRpcGroup>
 

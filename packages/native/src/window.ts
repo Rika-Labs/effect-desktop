@@ -740,12 +740,6 @@ export class Window extends Context.Service<Window, WindowServiceApi>()("@orika/
 
 export const WindowLive = Window.layer
 
-export const makeWindowClientLayer = (client: WindowClientApi): Layer.Layer<WindowClient> =>
-  Layer.succeed(WindowClient)(client)
-
-export const makeWindowServiceLayer = (client: WindowClientApi): Layer.Layer<Window> =>
-  Layer.provide(WindowLive, makeWindowClientLayer(client))
-
 export const makeWindowBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: WindowBridgeClientOptions = {}

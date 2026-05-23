@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   makeHostProtocolInternalError,
@@ -188,17 +187,6 @@ export class App extends Context.Service<App, AppServiceApi>()("@orika/native/Ap
 }
 
 export const AppLive = App.layer
-
-export const makeAppClientLayer = (client: AppClientApi): Layer.Layer<AppClient> =>
-  Layer.succeed(AppClient)(client)
-
-export const makeAppServiceLayer = (client: AppClientApi): Layer.Layer<App> =>
-  Layer.provide(AppLive, makeAppClientLayer(client))
-
-export const makeAppBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<AppClient> => AppSurface.bridgeClientLayer(exchange, options)
 
 export type AppRpc = RpcGroup.Rpcs<typeof AppRpcGroup>
 

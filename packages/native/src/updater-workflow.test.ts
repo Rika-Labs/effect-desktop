@@ -3,7 +3,7 @@ import { Effect, Exit, type Layer as LayerType, Layer, ManagedRuntime, Stream } 
 import { HttpClient, HttpClientResponse } from "effect/unstable/http"
 import { WorkflowEngine } from "effect/unstable/workflow"
 
-import { makeUpdaterServiceLayer } from "./updater.js"
+import { Updater, UpdaterClient, UpdaterLive } from "./updater.js"
 import {
   UpdateError,
   UpdatePayload,
@@ -21,7 +21,7 @@ const makeHttpLayer = (respond: (url: string) => Response): Layer.Layer<HttpClie
 
 const makeUpdateLayer = (
   httpLayer: Layer.Layer<HttpClient.HttpClient>,
-  updaterLayer: ReturnType<typeof makeUpdaterServiceLayer>
+  updaterLayer: Layer.Layer<Updater>
 ) =>
   UpdateWorkflowLayer.pipe(
     Layer.provide(Layer.mergeAll(httpLayer, updaterLayer)),
@@ -60,19 +60,22 @@ test("UpdateWorkflow fails when host update availability is not confirmed", () =
       })
 
       let installCalled = false
-      const updaterLayer = makeUpdaterServiceLayer({
-        check: () => Effect.succeed({ available: false, version: "2.0.0" }),
-        download: () => Effect.die("unexpected download"),
-        install: () => Effect.die("unexpected install"),
-        installAndRestart: () =>
-          Effect.sync(() => {
-            installCalled = true
-            return { state: "idle" }
-          }),
-        getStatus: () => Effect.succeed({ state: "idle" }),
-        readyForRestart: () => Effect.void,
-        onPreparingRestart: () => Stream.empty
-      })
+      const updaterLayer = Layer.provide(
+        UpdaterLive,
+        Layer.succeed(UpdaterClient)({
+          check: () => Effect.succeed({ available: false, version: "2.0.0" }),
+          download: () => Effect.die("unexpected download"),
+          install: () => Effect.die("unexpected install"),
+          installAndRestart: () =>
+            Effect.sync(() => {
+              installCalled = true
+              return { state: "idle" }
+            }),
+          getStatus: () => Effect.succeed({ state: "idle" }),
+          readyForRestart: () => Effect.void,
+          onPreparingRestart: () => Stream.empty
+        })
+      )
 
       const layers = makeUpdateLayer(httpLayer, updaterLayer)
       const exit = yield* runScopedExit(
@@ -121,15 +124,18 @@ test("UpdateWorkflow rejects manifest versions that are not safe filename segmen
         return new Response(new TextEncoder().encode("bundle"))
       })
 
-      const updaterLayer = makeUpdaterServiceLayer({
-        check: () => Effect.succeed({ available: true, version: "../escape" }),
-        download: () => Effect.die("unexpected download"),
-        install: () => Effect.die("unexpected install"),
-        installAndRestart: () => Effect.die("unexpected installAndRestart"),
-        getStatus: () => Effect.succeed({ state: "idle" }),
-        readyForRestart: () => Effect.void,
-        onPreparingRestart: () => Stream.empty
-      })
+      const updaterLayer = Layer.provide(
+        UpdaterLive,
+        Layer.succeed(UpdaterClient)({
+          check: () => Effect.succeed({ available: true, version: "../escape" }),
+          download: () => Effect.die("unexpected download"),
+          install: () => Effect.die("unexpected install"),
+          installAndRestart: () => Effect.die("unexpected installAndRestart"),
+          getStatus: () => Effect.succeed({ state: "idle" }),
+          readyForRestart: () => Effect.void,
+          onPreparingRestart: () => Stream.empty
+        })
+      )
 
       const layers = makeUpdateLayer(httpLayer, updaterLayer)
       const exit = yield* runScopedExit(

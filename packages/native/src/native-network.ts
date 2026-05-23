@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
@@ -93,19 +92,6 @@ export class NativeNetwork extends Context.Service<NativeNetwork, NativeNetworkS
 }
 
 export const NativeNetworkLive = NativeNetwork.layer
-
-export const makeNativeNetworkClientLayer = (
-  client: NativeNetworkClientApi
-): Layer.Layer<NativeNetworkClient> => Layer.succeed(NativeNetworkClient)(client)
-
-export const makeNativeNetworkServiceLayer = (
-  client: NativeNetworkClientApi
-): Layer.Layer<NativeNetwork> => Layer.succeed(NativeNetwork)(makeNativeNetworkService(client))
-
-export const makeNativeNetworkBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<NativeNetworkClient> => NativeNetworkSurface.bridgeClientLayer(exchange, options)
 
 export type NativeNetworkRpc = RpcGroup.Rpcs<typeof NativeNetworkRpcGroup>
 export type NativeNetworkRpcHandlers = RpcGroup.HandlersFrom<NativeNetworkRpc>

@@ -29,13 +29,13 @@ import {
 import { EventJournal } from "effect/unstable/eventlog"
 
 import {
-  makeTransactionalFileMutationBridgeClientLayer,
   makeTransactionalFileMutationMemoryClient,
   makeTransactionalFileMutationServiceLayer,
   makeTransactionalFileMutationUnsupportedClient,
   TransactionalFileMutation,
   TransactionalFileMutationClient,
-  type TransactionalFileMutationClientApi
+  type TransactionalFileMutationClientApi,
+  TransactionalFileMutationSurface
 } from "./transactional-file-mutation.js"
 import {
   TransactionalFileMutationActor,
@@ -103,7 +103,7 @@ test("TransactionalFileMutation events reject phases that contradict state", () 
       const bridgeExit = yield* Effect.gen(function* () {
         const client = yield* TransactionalFileMutationClient
         return yield* Effect.exit(client.events().pipe(Stream.runHead))
-      }).pipe(provideScopedLayer(makeTransactionalFileMutationBridgeClientLayer(exchange)))
+      }).pipe(provideScopedLayer(TransactionalFileMutationSurface.bridgeClientLayer(exchange)))
 
       expectInvalidOutput(bridgeExit)
     })
@@ -1054,7 +1054,7 @@ test("TransactionalFileMutation rejects malformed paths before bridge transport"
               })
             )
           )
-        }).pipe(provideScopedLayer(makeTransactionalFileMutationBridgeClientLayer(exchange)))
+        }).pipe(provideScopedLayer(TransactionalFileMutationSurface.bridgeClientLayer(exchange)))
 
         expectExitFailure(exit, (error) => {
           expect(error).toMatchObject({

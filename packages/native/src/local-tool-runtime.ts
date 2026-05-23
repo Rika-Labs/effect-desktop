@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   HostProtocolPermissionDeniedError,
@@ -209,21 +208,11 @@ export class LocalToolRuntime extends Context.Service<
 
 export const LocalToolRuntimeLive = LocalToolRuntime.layer
 
-export const makeLocalToolRuntimeClientLayer = (
-  client: LocalToolRuntimeClientApi
-): Layer.Layer<LocalToolRuntimeClient> => Layer.succeed(LocalToolRuntimeClient)(client)
-
 export const makeLocalToolRuntimeServiceLayer = (
   client: LocalToolRuntimeClientApi,
   options: LocalToolRuntimeServiceOptions
 ): Layer.Layer<LocalToolRuntime> =>
   Layer.effect(LocalToolRuntime)(makeLocalToolRuntimeService(client, options))
-
-export const makeLocalToolRuntimeBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<LocalToolRuntimeClient> =>
-  LocalToolRuntimeSurface.bridgeClientLayer(exchange, options)
 
 export type LocalToolRuntimeRpc = RpcGroup.Rpcs<typeof LocalToolRuntimeRpcGroup>
 

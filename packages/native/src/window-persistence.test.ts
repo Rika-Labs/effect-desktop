@@ -29,11 +29,11 @@ import {
   WindowPersistenceRestoreResult,
   ScreenLive,
   WindowLive,
-  makeScreenServiceLayer,
   makeWindowPersistenceLayer,
-  makeWindowServiceLayer,
   type ScreenClientApi,
-  type WindowClientApi
+  type WindowClientApi,
+  WindowClient,
+  ScreenClient
 } from "./index.js"
 import { makeScreenBridgeClientLayer } from "./screen.js"
 import { makeWindowBridgeClientLayer } from "./window.js"
@@ -477,8 +477,8 @@ const fixtureLayer = (options: {
   return Layer.provide(
     makeWindowPersistenceLayer({ path: `window-persistence-test-${String(fixtureSequence)}.json` }),
     Layer.mergeAll(
-      makeWindowServiceLayer(windowClient),
-      makeScreenServiceLayer(screenClient),
+      Layer.provide(WindowLive, Layer.succeed(WindowClient)(windowClient)),
+      Layer.provide(ScreenLive, Layer.succeed(ScreenClient)(screenClient)),
       KeyValueStore.layerMemory
     )
   )

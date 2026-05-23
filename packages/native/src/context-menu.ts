@@ -14,7 +14,6 @@ import {
 } from "@orika/core"
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   RpcGroup,
@@ -164,19 +163,6 @@ const invokeContextMenuCommand = (
       ),
       Effect.ignore
     )
-
-export const makeContextMenuClientLayer = (
-  client: ContextMenuClientApi
-): Layer.Layer<ContextMenuClient> => Layer.succeed(ContextMenuClient)(client)
-
-export const makeContextMenuServiceLayer = (
-  client: ContextMenuClientApi
-): Layer.Layer<ContextMenu> => Layer.provide(ContextMenuLive, makeContextMenuClientLayer(client))
-
-export const makeContextMenuBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<ContextMenuClient> => ContextMenuSurface.bridgeClientLayer(exchange, options)
 
 export type ContextMenuRpc = RpcGroup.Rpcs<typeof ContextMenuRpcGroup>
 

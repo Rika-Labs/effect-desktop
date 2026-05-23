@@ -1,6 +1,4 @@
 import {
-  type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   HostProtocolPermissionDeniedError,
@@ -150,20 +148,11 @@ export class CrashReporter extends Context.Service<CrashReporter, CrashReporterS
 
 export const CrashReporterLive = CrashReporter.layer
 
-export const makeCrashReporterClientLayer = (
-  client: CrashReporterClientApi
-): Layer.Layer<CrashReporterClient> => Layer.succeed(CrashReporterClient)(client)
-
 export const makeCrashReporterServiceLayer = (
   client: CrashReporterClientApi,
   options: CrashReporterServiceOptions
 ): Layer.Layer<CrashReporter> =>
   Layer.effect(CrashReporter)(Effect.succeed(makeCrashReporterService(client, options)))
-
-export const makeCrashReporterBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<CrashReporterClient> => CrashReporterSurface.bridgeClientLayer(exchange, options)
 
 export type CrashReporterRpc = RpcGroup.Rpcs<typeof CrashReporterRpcGroup>
 

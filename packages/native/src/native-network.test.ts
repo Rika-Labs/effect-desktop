@@ -4,20 +4,19 @@ import {
   HostProtocolEventEnvelope,
   HostProtocolInvalidOutputError
 } from "@orika/bridge"
-import { Cause, Effect, Exit, type Layer, ManagedRuntime, Option, Schema, Stream } from "effect"
+import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Schema, Stream } from "effect"
 
 import { makeNativeCapabilityManifest } from "./capabilities.js"
 import { NativeNetworkEvent, NativeNetworkSupportedResult } from "./contracts/native-network.js"
 import {
   makeNativeNetworkMemoryClient,
-  makeNativeNetworkBridgeClientLayer,
-  makeNativeNetworkServiceLayer,
   makeNativeNetworkUnsupportedClient,
   NativeNetwork,
   NativeNetworkCapabilityFacts,
   NativeNetworkClient,
   NativeNetworkRpcs,
-  NativeNetworkSurface
+  NativeNetworkSurface,
+  NativeNetworkLive
 } from "./native-network.js"
 
 const UnsupportedMethods = [
@@ -55,7 +54,7 @@ test("NativeNetwork isSupported reports supported result through the service", (
           const network = yield* NativeNetwork
           return yield* network.isSupported()
         }),
-        makeNativeNetworkServiceLayer(client)
+        Layer.provide(NativeNetworkLive, Layer.succeed(NativeNetworkClient)(client))
       )
       expect(result.supported).toBe(true)
     })
@@ -70,7 +69,7 @@ test("NativeNetwork unsupported client reports the host-unavailable reason", () 
           const network = yield* NativeNetwork
           return yield* network.isSupported()
         }),
-        makeNativeNetworkServiceLayer(client)
+        Layer.provide(NativeNetworkLive, Layer.succeed(NativeNetworkClient)(client))
       )
       expect(result.supported).toBe(false)
       expect(result.reason).toBe("host-native-network-unavailable")
@@ -115,7 +114,7 @@ test("NativeNetwork bridge client rejects inconsistent isSupported output as Inv
             const client = yield* NativeNetworkClient
             return yield* Effect.exit(client.isSupported())
           }),
-          makeNativeNetworkBridgeClientLayer(exchange)
+          NativeNetworkSurface.bridgeClientLayer(exchange)
         )
 
         expectInvalidOutput(exit)
@@ -289,7 +288,7 @@ test("NativeNetwork bridge client rejects inconsistent event phase payloads as I
             client.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
           )
         }),
-        makeNativeNetworkBridgeClientLayer(exchange)
+        NativeNetworkSurface.bridgeClientLayer(exchange)
       )
 
       expectInvalidOutput(exit)
@@ -327,7 +326,7 @@ test("NativeNetwork bridge client rejects invalid byte progress events as Invali
             client.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
           )
         }),
-        makeNativeNetworkBridgeClientLayer(exchange)
+        NativeNetworkSurface.bridgeClientLayer(exchange)
       )
 
       expectInvalidOutput(exit)

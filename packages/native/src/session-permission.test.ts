@@ -1,16 +1,17 @@
 import { expect, test } from "bun:test"
-import { Effect, Exit, type Layer, ManagedRuntime, Schema } from "effect"
+import { Effect, Exit, Layer, ManagedRuntime, Schema } from "effect"
 
 import { makeNativeCapabilityManifest } from "./capabilities.js"
 import { SessionPermissionEvent } from "./contracts/session-permission.js"
 import {
   makeSessionPermissionMemoryClient,
-  makeSessionPermissionServiceLayer,
   makeSessionPermissionUnsupportedClient,
   SessionPermission,
   SessionPermissionCapabilityFacts,
   SessionPermissionRpcs,
-  SessionPermissionSurface
+  SessionPermissionSurface,
+  SessionPermissionLive,
+  SessionPermissionClient
 } from "./session-permission.js"
 
 const UnsupportedMethods = ["request", "decide", "listDecisions"] as const
@@ -32,7 +33,7 @@ test("SessionPermission isSupported reports supported result through the service
           const sessionPermission = yield* SessionPermission
           return yield* sessionPermission.isSupported()
         }),
-        makeSessionPermissionServiceLayer(client)
+        Layer.provide(SessionPermissionLive, Layer.succeed(SessionPermissionClient)(client))
       )
       expect(result.supported).toBe(true)
     })
@@ -47,7 +48,7 @@ test("SessionPermission unsupported client reports the host-unavailable reason",
           const sessionPermission = yield* SessionPermission
           return yield* sessionPermission.isSupported()
         }),
-        makeSessionPermissionServiceLayer(client)
+        Layer.provide(SessionPermissionLive, Layer.succeed(SessionPermissionClient)(client))
       )
       expect(result.supported).toBe(false)
       expect(result.reason).toBe("host-session-permission-unavailable")

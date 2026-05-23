@@ -1,19 +1,18 @@
 import { expect, test } from "bun:test"
 import { type BridgeClientExchange } from "@orika/bridge"
-import { Cause, Effect, Exit, type Layer, ManagedRuntime, Schema, Stream } from "effect"
+import { Cause, Effect, Exit, Layer, ManagedRuntime, Schema, Stream } from "effect"
 
 import { makeNativeCapabilityManifest } from "./capabilities.js"
 import {
-  makeScopedAccessGrantBridgeClientLayer,
   makeScopedAccessGrantMemoryClient,
-  makeScopedAccessGrantServiceLayer,
   makeScopedAccessGrantUnsupportedClient,
   ScopedAccessGrant,
   ScopedAccessGrantCapabilityFacts,
   ScopedAccessGrantClient,
   ScopedAccessGrantEvent,
   ScopedAccessGrantRpcs,
-  ScopedAccessGrantSurface
+  ScopedAccessGrantSurface,
+  ScopedAccessGrantLive
 } from "./scoped-access-grant.js"
 
 const UnsupportedMethods = ["grant", "resolve", "revoke"] as const
@@ -74,7 +73,7 @@ test("ScopedAccessGrant isSupported reports supported result through the service
           const service = yield* ScopedAccessGrant
           return yield* service.isSupported()
         }),
-        makeScopedAccessGrantServiceLayer(client)
+        Layer.provide(ScopedAccessGrantLive, Layer.succeed(ScopedAccessGrantClient)(client))
       )
       expect(result.supported).toBe(true)
     })
@@ -89,7 +88,7 @@ test("ScopedAccessGrant unsupported client reports the host-adapter-unimplemente
           const service = yield* ScopedAccessGrant
           return yield* service.isSupported()
         }),
-        makeScopedAccessGrantServiceLayer(client)
+        Layer.provide(ScopedAccessGrantLive, Layer.succeed(ScopedAccessGrantClient)(client))
       )
       expect(result.supported).toBe(false)
       expect(result.reason).toBe("host-adapter-unimplemented")
@@ -113,7 +112,7 @@ test("ScopedAccessGrant bridge client fails event stream as unsupported before s
           const client = yield* ScopedAccessGrantClient
           return yield* Effect.exit(client.events().pipe(Stream.take(1), Stream.runCollect))
         }),
-        makeScopedAccessGrantBridgeClientLayer(exchange)
+        ScopedAccessGrantSurface.bridgeClientLayer(exchange)
       )
 
       expectExitFailure(exit, (error) => {

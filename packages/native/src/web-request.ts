@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
@@ -95,18 +94,6 @@ export class WebRequest extends Context.Service<WebRequest, WebRequestServiceApi
 }
 
 export const WebRequestLive = WebRequest.layer
-
-export const makeWebRequestClientLayer = (
-  client: WebRequestClientApi
-): Layer.Layer<WebRequestClient> => Layer.succeed(WebRequestClient)(client)
-
-export const makeWebRequestServiceLayer = (client: WebRequestClientApi): Layer.Layer<WebRequest> =>
-  Layer.succeed(WebRequest)(makeWebRequestService(client))
-
-export const makeWebRequestBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<WebRequestClient> => WebRequestSurface.bridgeClientLayer(exchange, options)
 
 export type WebRequestRpc = RpcGroup.Rpcs<typeof WebRequestRpcGroup>
 export type WebRequestRpcHandlers = RpcGroup.HandlersFrom<WebRequestRpc>

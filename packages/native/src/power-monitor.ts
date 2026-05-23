@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   makeHostProtocolInternalError,
@@ -114,19 +113,6 @@ export class PowerMonitor extends Context.Service<PowerMonitor, PowerMonitorServ
 }
 
 export const PowerMonitorLive = PowerMonitor.layer
-
-export const makePowerMonitorClientLayer = (
-  client: PowerMonitorClientApi
-): Layer.Layer<PowerMonitorClient> => Layer.succeed(PowerMonitorClient)(client)
-
-export const makePowerMonitorServiceLayer = (
-  client: PowerMonitorClientApi
-): Layer.Layer<PowerMonitor> => Layer.provide(PowerMonitorLive, makePowerMonitorClientLayer(client))
-
-export const makePowerMonitorBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<PowerMonitorClient> => PowerMonitorSurface.bridgeClientLayer(exchange, options)
 
 export type PowerMonitorRpc = RpcGroup.Rpcs<typeof PowerMonitorRpcGroup>
 

@@ -281,34 +281,15 @@ import {
   WindowClient,
   WindowLive,
   WindowMethodNames,
-  makeAppServiceLayer,
-  makeAutostartServiceLayer,
-  makeClipboardServiceLayer,
-  makeContextMenuServiceLayer,
   makeCrashReporterMemoryClient,
   makeCrashReporterServiceLayer,
-  makeDialogServiceLayer,
-  makeDockServiceLayer,
   makeGlobalShortcutAlreadyRegisteredError,
   makeLinuxDockClient,
   makeLinuxGlobalShortcutClient,
   makeLinuxSafeStorageClient,
-  makeGlobalShortcutServiceLayer,
-  makeScreenServiceLayer,
   makeSecretBytes,
-  makeSystemAppearanceServiceLayer,
-  makeUpdaterServiceLayer,
-  makeMenuServiceLayer,
-  makeNativeFileSystemServiceLayer,
   makeNotificationServiceLayer,
-  makePathServiceLayer,
-  makeProtocolServiceLayer,
-  makeRecentDocumentsServiceLayer,
-  makeSafeStorageServiceLayer,
-  makeShellServiceLayer,
   makeTrayServiceLayer,
-  makeWebViewServiceLayer,
-  makeWindowServiceLayer,
   unsafeSecretBytes,
   wipeSecretBytes,
   type AppClientApi,
@@ -333,48 +314,46 @@ import {
   type TrayClientApi,
   type UpdaterClientApi,
   type WebViewClientApi,
-  type WindowClientApi
+  type WindowClientApi,
+  AppClient,
+  WebViewClient,
+  MenuClient,
+  ContextMenuClient,
+  PathClient,
+  ProtocolClient,
+  AutostartClient,
+  RecentDocumentsClient,
+  NativeFileSystemClient,
+  SafeStorageClient,
+  UpdaterClient,
+  ShellClient,
+  SystemAppearanceClient,
+  DockClient,
+  GlobalShortcutClient
 } from "./index.js"
 import { makeHostAppMetadataRpcRuntime } from "./app-metadata.js"
-import { makeAppBridgeClientLayer, makeHostAppRpcRuntime } from "./app.js"
+import { makeHostAppRpcRuntime } from "./app.js"
 import { makeHostAssociationRpcRuntime } from "./association.js"
-import { makeAutostartBridgeClientLayer, makeHostAutostartRpcRuntime } from "./autostart.js"
-import { makeClipboardBridgeClientLayer, makeHostClipboardRpcRuntime } from "./clipboard.js"
-import { makeContextMenuBridgeClientLayer } from "./context-menu.js"
-import { makeCrashReporterBridgeClientLayer } from "./crash-reporter.js"
-import { makeDialogBridgeClientLayer, makeHostDialogRpcRuntime } from "./dialog.js"
-import { makeDockBridgeClientLayer, makeHostDockRpcRuntime } from "./dock.js"
-import { makeGlobalShortcutBridgeClientLayer } from "./global-shortcut.js"
-import { makeMenuBridgeClientLayer } from "./menu.js"
-import {
-  makeHostNativeFileSystemRpcRuntime,
-  makeNativeFileSystemBridgeClientLayer
-} from "./native-file-system.js"
-import {
-  makeHostNotificationRpcRuntime,
-  makeNotificationBridgeClientLayer
-} from "./notification.js"
-import { makeHostPathRpcRuntime, makePathBridgeClientLayer } from "./path.js"
-import {
-  makeHostPowerMonitorRpcRuntime,
-  makePowerMonitorBridgeClientLayer
-} from "./power-monitor.js"
-import { makeHostProtocolRpcRuntime, makeProtocolBridgeClientLayer } from "./protocol.js"
-import {
-  makeHostRecentDocumentsRpcRuntime,
-  makeRecentDocumentsBridgeClientLayer
-} from "./recent-documents.js"
-import { makeHostSafeStorageRpcRuntime, makeSafeStorageBridgeClientLayer } from "./safe-storage.js"
+import { makeHostAutostartRpcRuntime, AutostartSurface } from "./autostart.js"
+import { makeHostClipboardRpcRuntime } from "./clipboard.js"
+
+import { makeHostDialogRpcRuntime } from "./dialog.js"
+import { makeHostDockRpcRuntime } from "./dock.js"
+
+import { makeHostNativeFileSystemRpcRuntime } from "./native-file-system.js"
+import { makeHostNotificationRpcRuntime } from "./notification.js"
+import { makeHostPathRpcRuntime } from "./path.js"
+import { makeHostPowerMonitorRpcRuntime } from "./power-monitor.js"
+import { makeHostProtocolRpcRuntime } from "./protocol.js"
+import { makeHostRecentDocumentsRpcRuntime, RecentDocumentsSurface } from "./recent-documents.js"
+import { makeHostSafeStorageRpcRuntime } from "./safe-storage.js"
 import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
 import { makeHostScreenRpcRuntime, makeScreenBridgeClientLayer } from "./screen.js"
-import { makeHostShellRpcRuntime, makeShellBridgeClientLayer } from "./shell.js"
-import {
-  makeHostSystemAppearanceRpcRuntime,
-  makeSystemAppearanceBridgeClientLayer
-} from "./system-appearance.js"
-import { makeHostTrayRpcRuntime, makeTrayBridgeClientLayer } from "./tray.js"
-import { makeUpdaterBridgeClientLayer } from "./updater.js"
-import { makeWebViewBridgeClientLayer, webViewCapability } from "./webview.js"
+import { makeHostShellRpcRuntime } from "./shell.js"
+import { makeHostSystemAppearanceRpcRuntime } from "./system-appearance.js"
+import { makeHostTrayRpcRuntime } from "./tray.js"
+
+import { webViewCapability } from "./webview.js"
 import { makeHostWindowRpcRuntime, makeWindowBridgeClientLayer } from "./window.js"
 import {
   AssociationEvent,
@@ -1341,7 +1320,7 @@ test("App service delegates through a substitutable AppClient port", () =>
 
             return { protocolEvents }
           }),
-          makeAppServiceLayer(appClient(calls))
+          Layer.provide(AppLive, Layer.succeed(AppClient)(appClient(calls)))
         )
       )
 
@@ -1385,7 +1364,7 @@ test("App bridge client sends typed host envelopes and decodes event streams", (
 
             return { openFiles }
           }),
-          Layer.provide(AppLive, makeAppBridgeClientLayer(exchange))
+          Layer.provide(AppLive, AppSurface.bridgeClientLayer(exchange))
         )
       )
 
@@ -1493,14 +1472,14 @@ test("App single-instance service propagates unsupported platform and host failu
           const app = yield* App
           return yield* Effect.exit(app.requestSingleInstanceLock())
         }),
-        makeAppServiceLayer(unsupportedClient)
+        Layer.provide(AppLive, Layer.succeed(AppClient)(unsupportedClient))
       )
       const hostFailureExit = yield* runScoped(
         Effect.gen(function* () {
           const app = yield* App
           return yield* Effect.exit(app.releaseSingleInstanceLock())
         }),
-        makeAppServiceLayer(hostFailureClient)
+        Layer.provide(AppLive, Layer.succeed(AppClient)(hostFailureClient))
       )
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
@@ -1533,7 +1512,7 @@ test("App bridge client decodes event streams without host requests", () =>
 
       const app = yield* runScoped(
         App.asEffect(),
-        Layer.provide(AppLive, makeAppBridgeClientLayer(exchange))
+        Layer.provide(AppLive, AppSurface.bridgeClientLayer(exchange))
       )
 
       const eventResult = yield* app.onOpenFile().pipe(Stream.take(1), Stream.runCollect)
@@ -1604,7 +1583,7 @@ test("App bridge client rejects lifecycle events with excess fields as InvalidOu
               app.onSecondInstance().pipe(Stream.take(1), Stream.runCollect)
             )
           }),
-          Layer.provide(AppLive, makeAppBridgeClientLayer(exchange))
+          Layer.provide(AppLive, AppSurface.bridgeClientLayer(exchange))
         )
 
         expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
@@ -1635,7 +1614,7 @@ test("App bridge client rejects event envelopes for the wrong method", () =>
             const app = yield* App
             return yield* app.onOpenFile().pipe(Stream.take(1), Stream.runCollect)
           }),
-          Layer.provide(AppLive, makeAppBridgeClientLayer(exchange))
+          Layer.provide(AppLive, AppSurface.bridgeClientLayer(exchange))
         )
       )
 
@@ -1672,7 +1651,7 @@ test("App bridge client decodes second-instance activation reasons", () =>
           const app = yield* App
           return yield* app.onSecondInstance().pipe(Stream.take(1), Stream.runCollect)
         }),
-        Layer.provide(AppLive, makeAppBridgeClientLayer(exchange))
+        Layer.provide(AppLive, AppSurface.bridgeClientLayer(exchange))
       )
 
       expect(Array.from(events)).toEqual([
@@ -1703,7 +1682,7 @@ test("App single-instance lock rejects invalid primary pid results", () =>
           }),
           Layer.provide(
             AppLive,
-            makeAppBridgeClientLayer(
+            AppSurface.bridgeClientLayer(
               appExchange(requests, (request) =>
                 request.method === "App.requestSingleInstanceLock"
                   ? { kind: "success", payload }
@@ -1784,7 +1763,7 @@ test("App bridge client rejects malformed App lifecycle event payloads as Invali
         }),
         Layer.provide(
           AppLive,
-          makeAppBridgeClientLayer(invalidUrlExchange, {
+          AppSurface.bridgeClientLayer(invalidUrlExchange, {
             nextRequestId: nextId(["unused"]),
             nextTraceId: nextId(["unused"]),
             now: nextNumber([1710000000000])
@@ -1799,7 +1778,7 @@ test("App bridge client rejects malformed App lifecycle event payloads as Invali
         }),
         Layer.provide(
           AppLive,
-          makeAppBridgeClientLayer(invalidSecondInstanceExchange, {
+          AppSurface.bridgeClientLayer(invalidSecondInstanceExchange, {
             nextRequestId: nextId(["unused"]),
             nextTraceId: nextId(["unused"]),
             now: nextNumber([1710000000000])
@@ -1814,7 +1793,7 @@ test("App bridge client rejects malformed App lifecycle event payloads as Invali
         }),
         Layer.provide(
           AppLive,
-          makeAppBridgeClientLayer(invalidBeforeQuitExchange, {
+          AppSurface.bridgeClientLayer(invalidBeforeQuitExchange, {
             nextRequestId: nextId(["unused"]),
             nextTraceId: nextId(["unused"]),
             now: nextNumber([1710000000000])
@@ -1862,7 +1841,7 @@ test("App bridge client accepts safe absolute onOpenFile paths", () =>
           }),
           Layer.provide(
             AppLive,
-            makeAppBridgeClientLayer(exchange, {
+            AppSurface.bridgeClientLayer(exchange, {
               nextRequestId: nextId(["unused"]),
               nextTraceId: nextId(["unused"]),
               now: nextNumber([1710000000000])
@@ -1915,7 +1894,7 @@ test("App bridge client rejects unsafe onOpenFile paths as InvalidOutput", () =>
           }),
           Layer.provide(
             AppLive,
-            makeAppBridgeClientLayer(exchange, {
+            AppSurface.bridgeClientLayer(exchange, {
               nextRequestId: nextId(["unused"]),
               nextTraceId: nextId(["unused"]),
               now: nextNumber([1710000000000])
@@ -1963,7 +1942,7 @@ test("App bridge client rejects dangerous onOpenUrl schemes as InvalidOutput", (
             const app = yield* App
             return yield* Effect.exit(app.onOpenUrl().pipe(Stream.take(1), Stream.runCollect))
           }),
-          Layer.provide(AppLive, makeAppBridgeClientLayer(exchange))
+          Layer.provide(AppLive, AppSurface.bridgeClientLayer(exchange))
         )
 
         expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
@@ -1979,7 +1958,7 @@ test("App bridge client rejects empty or NUL-bearing lifecycle args as InvalidAr
         App.asEffect(),
         Layer.provide(
           AppLive,
-          makeAppBridgeClientLayer(
+          AppSurface.bridgeClientLayer(
             appExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -2010,7 +1989,7 @@ test("App bridge client rejects non-portable quit exit codes as InvalidArgument"
         App.asEffect(),
         Layer.provide(
           AppLive,
-          makeAppBridgeClientLayer(
+          AppSurface.bridgeClientLayer(
             appExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -2512,7 +2491,7 @@ test("WebView service delegates through a substitutable WebViewClient port", () 
             runtimeEvents
           }
         }),
-        makeWebViewServiceLayer(webViewClient(calls))
+        Layer.provide(WebViewLive, Layer.succeed(WebViewClient)(webViewClient(calls)))
       )
 
       expect(result.created).toMatchObject(webviewHandle)
@@ -2595,14 +2574,14 @@ test("WebView service propagates unsupported platform and host failure", () =>
           const webview = yield* WebView
           return yield* Effect.exit(webview.create(windowHandle))
         }),
-        makeWebViewServiceLayer(unsupportedClient)
+        Layer.provide(WebViewLive, Layer.succeed(WebViewClient)(unsupportedClient))
       )
       const hostFailureExit = yield* runScoped(
         Effect.gen(function* () {
           const webview = yield* WebView
           return yield* Effect.exit(webview.create(windowHandle))
         }),
-        makeWebViewServiceLayer(hostFailureClient)
+        Layer.provide(WebViewLive, Layer.succeed(WebViewClient)(hostFailureClient))
       )
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
@@ -2620,7 +2599,7 @@ test("WebView document controls propagate success, unsupported, and host failure
           yield* webview.print(webviewHandle)
           yield* webview.setZoom(webviewHandle, 1.25)
         }),
-        makeWebViewServiceLayer(webViewClient(calls))
+        Layer.provide(WebViewLive, Layer.succeed(WebViewClient)(webViewClient(calls)))
       )
 
       expect(success).toBeUndefined()
@@ -2647,14 +2626,14 @@ test("WebView document controls propagate success, unsupported, and host failure
           const webview = yield* WebView
           return yield* Effect.exit(webview.print(webviewHandle))
         }),
-        makeWebViewServiceLayer(unsupportedClient)
+        Layer.provide(WebViewLive, Layer.succeed(WebViewClient)(unsupportedClient))
       )
       const hostFailureExit = yield* runScoped(
         Effect.gen(function* () {
           const webview = yield* WebView
           return yield* Effect.exit(webview.print(webviewHandle))
         }),
-        makeWebViewServiceLayer(hostFailureClient)
+        Layer.provide(WebViewLive, Layer.succeed(WebViewClient)(hostFailureClient))
       )
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
@@ -2672,7 +2651,7 @@ test("WebView devtools controls propagate success, unsupported, and host failure
           yield* webview.openDevTools(webviewHandle)
           yield* webview.closeDevTools(webviewHandle)
         }),
-        makeWebViewServiceLayer(webViewClient(calls))
+        Layer.provide(WebViewLive, Layer.succeed(WebViewClient)(webViewClient(calls)))
       )
       expect(successResult).toBeUndefined()
       expect(calls).toEqual(["openDevTools", "closeDevTools"])
@@ -2699,14 +2678,14 @@ test("WebView devtools controls propagate success, unsupported, and host failure
           const webview = yield* WebView
           return yield* Effect.exit(webview.openDevTools(webviewHandle))
         }),
-        makeWebViewServiceLayer(unsupportedClient)
+        Layer.provide(WebViewLive, Layer.succeed(WebViewClient)(unsupportedClient))
       )
       const hostFailureExit = yield* runScoped(
         Effect.gen(function* () {
           const webview = yield* WebView
           return yield* Effect.exit(webview.closeDevTools(webviewHandle))
         }),
-        makeWebViewServiceLayer(hostFailureClient)
+        Layer.provide(WebViewLive, Layer.succeed(WebViewClient)(hostFailureClient))
       )
 
       expectExitFailure(devtoolsExit, (error) => hasErrorTag(error, "Unsupported"))
@@ -2831,7 +2810,7 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
             runtimeEvents
           }
         }),
-        Layer.provide(WebViewLive, makeWebViewBridgeClientLayer(exchange))
+        Layer.provide(WebViewLive, WebViewSurface.bridgeClientLayer(exchange))
       )
 
       expect(result.created).toMatchObject(webviewHandle)
@@ -2914,7 +2893,7 @@ test("WebView getNavigationState rejects malformed host output", () =>
         }),
         Layer.provide(
           WebViewLive,
-          makeWebViewBridgeClientLayer(
+          WebViewSurface.bridgeClientLayer(
             webViewExchange(requests, (request) => ({
               kind: "success",
               payload:
@@ -2980,7 +2959,7 @@ test("WebView bridge client rejects control-byte navigation-blocked reasons", ()
             }),
             Layer.provide(
               WebViewLive,
-              makeWebViewBridgeClientLayer(exchange, { nextTraceId: () => "trace" })
+              WebViewSurface.bridgeClientLayer(exchange, { nextTraceId: () => "trace" })
             )
           )
         )
@@ -3026,7 +3005,7 @@ test("WebView bridge client rejects invalid navigation-blocked event URLs", () =
           }),
           Layer.provide(
             WebViewLive,
-            makeWebViewBridgeClientLayer(exchange, { nextTraceId: () => "trace" })
+            WebViewSurface.bridgeClientLayer(exchange, { nextTraceId: () => "trace" })
           )
         )
       )
@@ -3072,7 +3051,7 @@ test("WebView bridge client rejects undeclared API-call event names", () =>
           }),
           Layer.provide(
             WebViewLive,
-            makeWebViewBridgeClientLayer(exchange, { nextTraceId: () => "trace" })
+            WebViewSurface.bridgeClientLayer(exchange, { nextTraceId: () => "trace" })
           )
         )
       )
@@ -3118,7 +3097,7 @@ test("WebView bridge client rejects control-byte runtime event paths", () =>
         }),
         Layer.provide(
           WebViewLive,
-          makeWebViewBridgeClientLayer(unsafeExchange, { nextTraceId: () => "trace" })
+          WebViewSurface.bridgeClientLayer(unsafeExchange, { nextTraceId: () => "trace" })
         )
       )
 
@@ -3136,7 +3115,7 @@ test("WebView bridge client rejects unsafe navigation inputs before transport", 
       }))
       const client = yield* runScoped(
         WebView.asEffect(),
-        Layer.provide(WebViewLive, makeWebViewBridgeClientLayer(exchange))
+        Layer.provide(WebViewLive, WebViewSurface.bridgeClientLayer(exchange))
       )
 
       const javascriptCreateExit = yield* Effect.exit(
@@ -3245,7 +3224,10 @@ test("Menu service delegates through a substitutable MenuClient port", () =>
 
           return { activated, linuxAppMenu }
         }),
-        Layer.mergeAll(makeMenuServiceLayer(menuClient(calls)), commandLayer)
+        Layer.mergeAll(
+          Layer.provide(MenuLive, Layer.succeed(MenuClient)(menuClient(calls))),
+          commandLayer
+        )
       )
       yield* Effect.sleep("10 millis")
 
@@ -3281,7 +3263,10 @@ test("Menu bindCommand does not duplicate listeners for identical bindings", () 
           const second = yield* menu.bindCommand("file.open", "app.file.open")
           return { first, second }
         }),
-        Layer.mergeAll(makeMenuServiceLayer(menuClient(calls)), commandLayer)
+        Layer.mergeAll(
+          Layer.provide(MenuLive, Layer.succeed(MenuClient)(menuClient(calls))),
+          commandLayer
+        )
       )
       yield* Effect.sleep("10 millis")
 
@@ -3328,10 +3313,13 @@ test("Menu bindCommand closes the command listener with its resource scope", () 
           return yield* menu.bindCommand("file.open", "app.file.open")
         }),
         Layer.mergeAll(
-          makeMenuServiceLayer({
-            ...menuClient(calls),
-            onActivated: () => Stream.fromQueue(activated)
-          }),
+          Layer.provide(
+            MenuLive,
+            Layer.succeed(MenuClient)({
+              ...menuClient(calls),
+              onActivated: () => Stream.fromQueue(activated)
+            })
+          ),
           Layer.succeed(ResourceRegistry)(resources),
           Layer.succeed(CommandRegistry)(commands)
         )
@@ -3399,10 +3387,13 @@ test("Menu bindCommand keeps listening after a command invocation failure", () =
           return yield* menu.bindCommand("file.open", "app.file.open")
         }),
         Layer.mergeAll(
-          makeMenuServiceLayer({
-            ...menuClient(calls),
-            onActivated: () => Stream.fromQueue(activated)
-          }),
+          Layer.provide(
+            MenuLive,
+            Layer.succeed(MenuClient)({
+              ...menuClient(calls),
+              onActivated: () => Stream.fromQueue(activated)
+            })
+          ),
           Layer.succeed(ResourceRegistry)(resources),
           Layer.succeed(CommandRegistry)(commands)
         )
@@ -3443,7 +3434,10 @@ test("Menu bridge client validates templates, sends host envelopes, and decodes 
 
           return { activated, bindExit }
         }),
-        Layer.mergeAll(Layer.provide(MenuLive, makeMenuBridgeClientLayer(exchange)), commandLayer)
+        Layer.mergeAll(
+          Layer.provide(MenuLive, MenuSurface.bridgeClientLayer(exchange)),
+          commandLayer
+        )
       )
 
       expect(Exit.isSuccess(result.bindExit)).toBe(true)
@@ -3509,7 +3503,7 @@ test("Menu bridge client rejects empty activation event identifiers as InvalidOu
           Layer.mergeAll(
             Layer.provide(
               MenuLive,
-              makeMenuBridgeClientLayer(exchange, {
+              MenuSurface.bridgeClientLayer(exchange, {
                 nextRequestId: nextId(["unused"]),
                 nextTraceId: nextId(["unused"]),
                 now: nextNumber([1710000000000])
@@ -3552,7 +3546,7 @@ test("Menu bridge client decodes activation events with no windowId field", () =
         Layer.mergeAll(
           Layer.provide(
             MenuLive,
-            makeMenuBridgeClientLayer(exchange, {
+            MenuSurface.bridgeClientLayer(exchange, {
               nextRequestId: nextId(["unused"]),
               nextTraceId: nextId(["unused"]),
               now: nextNumber([1710000000000])
@@ -3576,7 +3570,7 @@ test("Menu bridge client returns invalid templates as typed Effect failures", ()
         Menu.asEffect(),
         Layer.provide(
           MenuLive,
-          makeMenuBridgeClientLayer(
+          MenuSurface.bridgeClientLayer(
             menuExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -3682,7 +3676,7 @@ test("Menu bridge client rejects NUL-bearing accelerators before transport", () 
         Menu.asEffect(),
         Layer.provide(
           MenuLive,
-          makeMenuBridgeClientLayer(
+          MenuSurface.bridgeClientLayer(
             menuExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -3736,7 +3730,7 @@ test("Menu bridge client rejects application menu root items before transport", 
         Menu.asEffect(),
         Layer.provide(
           MenuLive,
-          makeMenuBridgeClientLayer(
+          MenuSurface.bridgeClientLayer(
             menuExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -3803,7 +3797,13 @@ test("ContextMenu service delegates through a substitutable ContextMenuClient po
 
           return { activated }
         }),
-        Layer.mergeAll(makeContextMenuServiceLayer(contextMenuClient(calls)), commandLayer)
+        Layer.mergeAll(
+          Layer.provide(
+            ContextMenuLive,
+            Layer.succeed(ContextMenuClient)(contextMenuClient(calls))
+          ),
+          commandLayer
+        )
       )
       yield* Effect.sleep("10 millis")
 
@@ -3836,7 +3836,13 @@ test("ContextMenu bindCommand does not duplicate listeners for identical binding
           const second = yield* contextMenu.bindCommand("file.open", "app.file.open")
           return { first, second }
         }),
-        Layer.mergeAll(makeContextMenuServiceLayer(contextMenuClient(calls)), commandLayer)
+        Layer.mergeAll(
+          Layer.provide(
+            ContextMenuLive,
+            Layer.succeed(ContextMenuClient)(contextMenuClient(calls))
+          ),
+          commandLayer
+        )
       )
       yield* Effect.sleep("10 millis")
 
@@ -3883,10 +3889,13 @@ test("ContextMenu bindCommand closes the command listener with its resource scop
           return yield* contextMenu.bindCommand("file.open", "app.file.open")
         }),
         Layer.mergeAll(
-          makeContextMenuServiceLayer({
-            ...contextMenuClient(calls),
-            onActivated: () => Stream.fromQueue(activated)
-          }),
+          Layer.provide(
+            ContextMenuLive,
+            Layer.succeed(ContextMenuClient)({
+              ...contextMenuClient(calls),
+              onActivated: () => Stream.fromQueue(activated)
+            })
+          ),
           Layer.succeed(ResourceRegistry)(resources),
           Layer.succeed(CommandRegistry)(commands)
         )
@@ -3946,7 +3955,7 @@ test("ContextMenu bridge client routes show and keeps local helpers off transpor
         Layer.mergeAll(
           Layer.provide(
             ContextMenuLive,
-            makeContextMenuBridgeClientLayer(exchange, {
+            ContextMenuSurface.bridgeClientLayer(exchange, {
               nextRequestId: nextId(["context-menu-show"]),
               nextTraceId: nextId(["trace-context-menu-show"]),
               now: nextNumber([1710000000000, 1710000000001])
@@ -4011,7 +4020,7 @@ test("ContextMenu bridge client rejects invalid popup positions before transport
           Layer.mergeAll(
             Layer.provide(
               ContextMenuLive,
-              makeContextMenuBridgeClientLayer(exchange, {
+              ContextMenuSurface.bridgeClientLayer(exchange, {
                 nextRequestId: nextId(["unused"]),
                 nextTraceId: nextId(["unused"]),
                 now: nextNumber([1710000000000])
@@ -4066,7 +4075,7 @@ test("ContextMenu bridge client rejects empty activation event identifiers as In
           Layer.mergeAll(
             Layer.provide(
               ContextMenuLive,
-              makeContextMenuBridgeClientLayer(exchange, {
+              ContextMenuSurface.bridgeClientLayer(exchange, {
                 nextRequestId: nextId(["unused"]),
                 nextTraceId: nextId(["unused"]),
                 now: nextNumber([1710000000000])
@@ -4192,7 +4201,7 @@ test("Tray bridge client sends typed host envelopes and decodes activation event
 
           return { activated, created }
         }),
-        Layer.provide(TrayLive, makeTrayBridgeClientLayer(exchange))
+        Layer.provide(TrayLive, TraySurface.bridgeClientLayer(exchange))
       )
 
       expect(result.created).toMatchObject(trayHandle)
@@ -4246,7 +4255,7 @@ test("Tray bridge client rejects empty activation event identifiers as InvalidOu
             const tray = yield* Tray
             return yield* Effect.exit(tray.onActivated().pipe(Stream.take(1), Stream.runCollect))
           }),
-          Layer.provide(TrayLive, makeTrayBridgeClientLayer(exchange))
+          Layer.provide(TrayLive, TraySurface.bridgeClientLayer(exchange))
         )
 
         expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
@@ -4278,7 +4287,7 @@ test("Tray bridge client decodes activation events with no ownerWindowId field",
           const tray = yield* Tray
           return yield* tray.onActivated().pipe(Stream.take(1), Stream.runCollect)
         }),
-        Layer.provide(TrayLive, makeTrayBridgeClientLayer(exchange))
+        Layer.provide(TrayLive, TraySurface.bridgeClientLayer(exchange))
       )
 
       expect(Array.from(events)).toEqual([new TrayActivatedEvent({ tray: trayHandle })])
@@ -4293,7 +4302,7 @@ test("Tray bridge client rejects invalid icon and tooltip metadata before transp
         Tray.asEffect(),
         Layer.provide(
           TrayLive,
-          makeTrayBridgeClientLayer(
+          TraySurface.bridgeClientLayer(
             trayExchange(requests, () => ({ kind: "success", payload: trayHandle }))
           )
         )
@@ -4324,7 +4333,7 @@ test("Tray bridge client rejects stale destroy handles before host transport", (
         Tray.asEffect(),
         Layer.provide(
           TrayLive,
-          makeTrayBridgeClientLayer(
+          TraySurface.bridgeClientLayer(
             trayExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -4478,7 +4487,7 @@ test("Dialog service delegates through a substitutable DialogClient port", () =>
 
           return { confirmed, directories, files, savePath }
         }),
-        makeDialogServiceLayer(dialogClient(calls))
+        Layer.provide(DialogLive, Layer.succeed(DialogClient)(dialogClient(calls)))
       )
 
       expect(result.files).toEqual(["/canonical/file-a.txt", "/canonical/file-b.txt"])
@@ -4526,7 +4535,7 @@ test("Dialog bridge client sends typed host envelopes and decodes outputs", () =
 
           return { confirmed, directories, files, savePath }
         }),
-        Layer.provide(DialogLive, makeDialogBridgeClientLayer(exchange))
+        Layer.provide(DialogLive, DialogSurface.bridgeClientLayer(exchange))
       )
 
       expect(result.files).toEqual(["/canonical/file.txt"])
@@ -4554,7 +4563,7 @@ test("Dialog bridge client represents save cancellation as data", () =>
           const dialog = yield* Dialog
           return yield* dialog.saveFile({ defaultPath: "/tmp/cancel.txt" })
         }),
-        Layer.provide(DialogLive, makeDialogBridgeClientLayer(exchange))
+        Layer.provide(DialogLive, DialogSurface.bridgeClientLayer(exchange))
       )
 
       expect(result).toBeUndefined()
@@ -4579,7 +4588,7 @@ test("Dialog bridge client preserves host failure errors", () =>
             const dialog = yield* Dialog
             return yield* dialog.openFile({ defaultPath: "/tmp/input.txt" })
           }),
-          Layer.provide(DialogLive, makeDialogBridgeClientLayer(exchange))
+          Layer.provide(DialogLive, DialogSurface.bridgeClientLayer(exchange))
         )
       )
 
@@ -4596,7 +4605,7 @@ test("Dialog bridge client returns invalid input as typed Effect failures", () =
         Dialog.asEffect(),
         Layer.provide(
           DialogLive,
-          makeDialogBridgeClientLayer(
+          DialogSurface.bridgeClientLayer(
             dialogExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -4676,7 +4685,7 @@ test("Clipboard service delegates through a substitutable ClipboardClient port",
 
           return { html, image, supported, text }
         }),
-        makeClipboardServiceLayer(clipboardClient(calls))
+        Layer.provide(ClipboardLive, Layer.succeed(ClipboardClient)(clipboardClient(calls)))
       )
 
       expect(result.text).toBe("hello")
@@ -4725,7 +4734,7 @@ test("Clipboard bridge client sends typed host envelopes and decodes outputs", (
 
           return { html, image, text }
         }),
-        Layer.provide(ClipboardLive, makeClipboardBridgeClientLayer(exchange))
+        Layer.provide(ClipboardLive, ClipboardSurface.bridgeClientLayer(exchange))
       )
 
       expect(result.text).toBe("from host")
@@ -4752,7 +4761,7 @@ test("Clipboard bridge client preserves unsupported support reasons from host", 
           const client = yield* ClipboardClient
           return yield* client.isSupported("selection")
         }),
-        makeClipboardBridgeClientLayer(
+        ClipboardSurface.bridgeClientLayer(
           clipboardExchange(requests, () => ({
             kind: "success",
             payload: { supported: false, reason: "host-adapter-unimplemented" }
@@ -4779,14 +4788,17 @@ test("Clipboard handlers preserve unsupported support reasons from the service b
       const supportReason = "host-clipboard-unavailable"
       const testLayer = Layer.provide(
         ClipboardSurface.testClientLayer,
-        makeClipboardServiceLayer({
-          ...clipboardClient(calls),
-          isSupported: (capability) =>
-            Effect.sync(() => {
-              calls.push(`isSupported:${capability}`)
-              return new ClipboardSupportedResult({ supported: false, reason: supportReason })
-            })
-        })
+        Layer.provide(
+          ClipboardLive,
+          Layer.succeed(ClipboardClient)({
+            ...clipboardClient(calls),
+            isSupported: (capability) =>
+              Effect.sync(() => {
+                calls.push(`isSupported:${capability}`)
+                return new ClipboardSupportedResult({ supported: false, reason: supportReason })
+              })
+          })
+        )
       )
 
       const result = yield* runScoped(
@@ -4834,7 +4846,7 @@ test("Clipboard bridge client rejects inconsistent isSupported output as Invalid
             const client = yield* ClipboardClient
             return yield* Effect.exit(client.isSupported("selection"))
           }),
-          makeClipboardBridgeClientLayer(
+          ClipboardSurface.bridgeClientLayer(
             clipboardExchange([], () => ({
               kind: "success",
               payload
@@ -4855,7 +4867,7 @@ test("Clipboard bridge client rejects mismatched image mime before transport", (
         Clipboard.asEffect(),
         Layer.provide(
           ClipboardLive,
-          makeClipboardBridgeClientLayer(
+          ClipboardSurface.bridgeClientLayer(
             clipboardExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -4885,7 +4897,7 @@ test("Clipboard bridge client rejects malformed image headers from host as Inval
           }),
           Layer.provide(
             ClipboardLive,
-            makeClipboardBridgeClientLayer(
+            ClipboardSurface.bridgeClientLayer(
               clipboardExchange(requests, (request) => ({
                 kind: "success",
                 payload: request.method === "Clipboard.readImage" ? payload : undefined
@@ -4911,7 +4923,7 @@ test("Clipboard bridge client rejects NUL bytes in writeText as InvalidArgument"
         }),
         Layer.provide(
           ClipboardLive,
-          makeClipboardBridgeClientLayer(
+          ClipboardSurface.bridgeClientLayer(
             clipboardExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -4926,7 +4938,7 @@ test("Clipboard bridge client rejects NUL bytes in writeText as InvalidArgument"
         }),
         Layer.provide(
           ClipboardLive,
-          makeClipboardBridgeClientLayer(
+          ClipboardSurface.bridgeClientLayer(
             clipboardExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -4946,7 +4958,7 @@ test("Clipboard bridge client runs generated methods inside the layer scope", ()
         }),
         Layer.provide(
           ClipboardLive,
-          makeClipboardBridgeClientLayer(
+          ClipboardSurface.bridgeClientLayer(
             clipboardExchange(requests, (request) => ({
               kind: "success",
               payload: request.method === "Clipboard.readText" ? { text: "after scope" } : undefined
@@ -5117,7 +5129,7 @@ test("Notification bridge client sends typed host envelopes and decodes events",
 
           return { action, requested, shown, status, supported }
         }),
-        Layer.provide(NotificationLive, makeNotificationBridgeClientLayer(exchange))
+        Layer.provide(NotificationLive, NotificationSurface.bridgeClientLayer(exchange))
       )
 
       expect(result.supported).toBe(true)
@@ -5176,7 +5188,7 @@ test("Notification bridge client returns invalid input as typed Effect failures"
           Notification.asEffect(),
           Layer.provide(
             NotificationLive,
-            makeNotificationBridgeClientLayer(
+            NotificationSurface.bridgeClientLayer(
               notificationExchange(requests, () => ({ kind: "success", payload: undefined }))
             )
           )
@@ -5211,7 +5223,7 @@ test("Notification bridge client rejects invalid action ids and labels before tr
           Notification.asEffect(),
           Layer.provide(
             NotificationLive,
-            makeNotificationBridgeClientLayer(
+            NotificationSurface.bridgeClientLayer(
               notificationExchange(requests, () => ({ kind: "success", payload: undefined }))
             )
           )
@@ -5264,7 +5276,7 @@ test("Notification action stream rejects malformed actionId payloads as InvalidO
               notification.onAction().pipe(Stream.take(1), Stream.runCollect)
             )
           }),
-          Layer.provide(NotificationLive, makeNotificationBridgeClientLayer(exchange))
+          Layer.provide(NotificationLive, NotificationSurface.bridgeClientLayer(exchange))
         )
 
         expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
@@ -5411,7 +5423,7 @@ test("Path service delegates through a substitutable PathClient port", () =>
             downloads: yield* path.downloads()
           }
         }),
-        makePathServiceLayer(pathClient(calls))
+        Layer.provide(PathLive, Layer.succeed(PathClient)(pathClient(calls)))
       )
 
       expect(result).toEqual({
@@ -5447,7 +5459,7 @@ test("Path bridge client sends typed host envelopes and decodes canonical paths"
             downloads: yield* path.downloads()
           }
         }),
-        Layer.provide(PathLive, makePathBridgeClientLayer(exchange))
+        Layer.provide(PathLive, PathSurface.bridgeClientLayer(exchange))
       )
 
       expect(result).toEqual({
@@ -5534,14 +5546,14 @@ test("Path service propagates unsupported platform and host failure", () =>
           const path = yield* Path
           return yield* Effect.exit(path.home())
         }),
-        makePathServiceLayer(unsupportedClient)
+        Layer.provide(PathLive, Layer.succeed(PathClient)(unsupportedClient))
       )
       const hostFailureExit = yield* runScoped(
         Effect.gen(function* () {
           const path = yield* Path
           return yield* Effect.exit(path.home())
         }),
-        makePathServiceLayer(hostFailureClient)
+        Layer.provide(PathLive, Layer.succeed(PathClient)(hostFailureClient))
       )
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
@@ -5579,7 +5591,7 @@ test("Path bridge client rejects NUL-bearing host output as InvalidOutput", () =
           }),
           Layer.provide(
             PathLive,
-            makePathBridgeClientLayer(exchange, {
+            PathSurface.bridgeClientLayer(exchange, {
               nextRequestId: nextId([`${name}-request`]),
               nextTraceId: nextId([`${name}-trace`]),
               now: nextNumber([1710000000000])
@@ -5610,7 +5622,7 @@ test("Path bridge client rejects relative canonical paths from host as InvalidOu
         }),
         Layer.provide(
           PathLive,
-          makePathBridgeClientLayer(
+          PathSurface.bridgeClientLayer(
             pathExchange([], () => ({ kind: "success", payload: { path: "relative/path" } }))
           )
         )
@@ -5643,7 +5655,7 @@ test("Protocol service delegates through a substitutable ProtocolClient port", (
           yield* protocol.serveRoute({ scheme: "myapp", route: "/settings" })
           yield* protocol.deny({ scheme: "assets", path: "/private" })
         }),
-        makeProtocolServiceLayer(protocolClient(calls))
+        Layer.provide(ProtocolLive, Layer.succeed(ProtocolClient)(protocolClient(calls)))
       )
 
       expect(calls).toEqual([
@@ -5703,7 +5715,7 @@ test("Protocol bridge client validates custom schemes and path boundaries", () =
         }),
         Layer.provide(
           ProtocolLive,
-          makeProtocolBridgeClientLayer(
+          ProtocolSurface.bridgeClientLayer(
             protocolExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -5742,7 +5754,7 @@ test("Protocol bridge client rejects control characters in paths as InvalidArgum
         Protocol.asEffect(),
         Layer.provide(
           ProtocolLive,
-          makeProtocolBridgeClientLayer(
+          ProtocolSurface.bridgeClientLayer(
             protocolExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -5825,14 +5837,14 @@ test("Protocol service propagates unsupported platform and host failure", () =>
           const protocol = yield* Protocol
           return yield* Effect.exit(protocol.registerAppProtocol({ scheme: "myapp" }))
         }),
-        makeProtocolServiceLayer(unsupportedClient)
+        Layer.provide(ProtocolLive, Layer.succeed(ProtocolClient)(unsupportedClient))
       )
       const hostFailureExit = yield* runScoped(
         Effect.gen(function* () {
           const protocol = yield* Protocol
           return yield* Effect.exit(protocol.registerAppProtocol({ scheme: "myapp" }))
         }),
-        makeProtocolServiceLayer(hostFailureClient)
+        Layer.provide(ProtocolLive, Layer.succeed(ProtocolClient)(hostFailureClient))
       )
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
@@ -6166,7 +6178,7 @@ test("Autostart service delegates through a substitutable AutostartClient port",
 
             return { disabled, enabled, events, initial }
           }),
-          makeAutostartServiceLayer(autostartClient(calls))
+          Layer.provide(AutostartLive, Layer.succeed(AutostartClient)(autostartClient(calls)))
         )
       )
 
@@ -6208,7 +6220,7 @@ test("Autostart bridge client sends typed host envelopes and decodes events and 
 
             return { disabled, enabled, initial }
           }),
-          Layer.provide(AutostartLive, makeAutostartBridgeClientLayer(exchange))
+          Layer.provide(AutostartLive, AutostartSurface.bridgeClientLayer(exchange))
         )
       )
 
@@ -6255,7 +6267,7 @@ test("Autostart bridge client subscribes to native autostart events", () =>
             const autostart = yield* Autostart
             return yield* autostart.events().pipe(Stream.take(1), Stream.runCollect)
           }),
-          Layer.provide(AutostartLive, makeAutostartBridgeClientLayer(exchange))
+          Layer.provide(AutostartLive, AutostartSurface.bridgeClientLayer(exchange))
         )
       )
 
@@ -6275,7 +6287,7 @@ test("Autostart bridge client rejects invalid launch args before transport", () 
         Autostart.asEffect(),
         Layer.provide(
           AutostartLive,
-          makeAutostartBridgeClientLayer(
+          AutostartSurface.bridgeClientLayer(
             autostartExchange(requests, () => ({
               kind: "success",
               payload: { enabled: true, mechanism: "linux-xdg-autostart" }
@@ -6367,14 +6379,14 @@ test("Autostart service propagates unsupported platform and host failure", () =>
           const autostart = yield* Autostart
           return yield* Effect.exit(autostart.enable({ args: ["--hidden"] }))
         }),
-        makeAutostartServiceLayer(unsupportedClient)
+        Layer.provide(AutostartLive, Layer.succeed(AutostartClient)(unsupportedClient))
       )
       const hostFailureExit = yield* runScoped(
         Effect.gen(function* () {
           const autostart = yield* Autostart
           return yield* Effect.exit(autostart.enable({ args: ["--hidden"] }))
         }),
-        makeAutostartServiceLayer(hostFailureClient)
+        Layer.provide(AutostartLive, Layer.succeed(AutostartClient)(hostFailureClient))
       )
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
@@ -6410,7 +6422,10 @@ test("RecentDocuments service delegates through a substitutable RecentDocumentsC
 
             return { documents, events }
           }),
-          makeRecentDocumentsServiceLayer(recentDocumentsClient(calls))
+          Layer.provide(
+            RecentDocumentsLive,
+            Layer.succeed(RecentDocumentsClient)(recentDocumentsClient(calls))
+          )
         )
       )
 
@@ -6453,7 +6468,7 @@ test("RecentDocuments bridge client sends typed host envelopes and decodes event
 
             return { documents, events }
           }),
-          Layer.provide(RecentDocumentsLive, makeRecentDocumentsBridgeClientLayer(exchange))
+          Layer.provide(RecentDocumentsLive, RecentDocumentsSurface.bridgeClientLayer(exchange))
         )
       )
 
@@ -6500,7 +6515,7 @@ test("RecentDocuments bridge client accepts safe absolute document paths", () =>
             }),
             Layer.provide(
               RecentDocumentsLive,
-              makeRecentDocumentsBridgeClientLayer(
+              RecentDocumentsSurface.bridgeClientLayer(
                 recentDocumentsExchange(
                   requests,
                   (request) =>
@@ -6538,7 +6553,7 @@ test("RecentDocuments bridge client rejects invalid paths before transport", () 
         RecentDocuments.asEffect(),
         Layer.provide(
           RecentDocumentsLive,
-          makeRecentDocumentsBridgeClientLayer(
+          RecentDocumentsSurface.bridgeClientLayer(
             recentDocumentsExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -6586,7 +6601,7 @@ test("RecentDocuments bridge client rejects unsafe list and event paths as Inval
         }),
         Layer.provide(
           RecentDocumentsLive,
-          makeRecentDocumentsBridgeClientLayer(invalidListExchange)
+          RecentDocumentsSurface.bridgeClientLayer(invalidListExchange)
         )
       )
       const eventExit = yield* runScoped(
@@ -6598,7 +6613,7 @@ test("RecentDocuments bridge client rejects unsafe list and event paths as Inval
         }),
         Layer.provide(
           RecentDocumentsLive,
-          makeRecentDocumentsBridgeClientLayer(invalidEventExchange)
+          RecentDocumentsSurface.bridgeClientLayer(invalidEventExchange)
         )
       )
 
@@ -6653,7 +6668,7 @@ test("RecentDocuments rejects inconsistent event phase payloads before exposing 
             recentDocuments.events().pipe(Stream.take(1), Stream.runCollect)
           )
         }),
-        Layer.provide(RecentDocumentsLive, makeRecentDocumentsBridgeClientLayer(exchange))
+        Layer.provide(RecentDocumentsLive, RecentDocumentsSurface.bridgeClientLayer(exchange))
       )
 
       expectExitFailure(bridgeExit, (error) => hasErrorTag(error, "InvalidOutput"))
@@ -6725,7 +6740,7 @@ test("RecentDocuments service propagates unsupported platform and host failure",
             recentDocuments.add({ path: new CanonicalPath({ path: "/tmp/report.txt" }) })
           )
         }),
-        makeRecentDocumentsServiceLayer(unsupportedClient)
+        Layer.provide(RecentDocumentsLive, Layer.succeed(RecentDocumentsClient)(unsupportedClient))
       )
       const hostFailureExit = yield* runScoped(
         Effect.gen(function* () {
@@ -6734,7 +6749,7 @@ test("RecentDocuments service propagates unsupported platform and host failure",
             recentDocuments.add({ path: new CanonicalPath({ path: "/tmp/report.txt" }) })
           )
         }),
-        makeRecentDocumentsServiceLayer(hostFailureClient)
+        Layer.provide(RecentDocumentsLive, Layer.succeed(RecentDocumentsClient)(hostFailureClient))
       )
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
@@ -6784,7 +6799,10 @@ test("NativeFileSystem service delegates through a substitutable NativeFileSyste
 
             return { events, metadata, opened, stopped, support, watch }
           }),
-          makeNativeFileSystemServiceLayer(nativeFileSystemClient(calls))
+          Layer.provide(
+            NativeFileSystemLive,
+            Layer.succeed(NativeFileSystemClient)(nativeFileSystemClient(calls))
+          )
         )
       )
 
@@ -6878,7 +6896,7 @@ test("NativeFileSystem bridge client sends typed host envelopes and decodes even
 
             return { events, metadata, opened, stopped, support, watch }
           }),
-          Layer.provide(NativeFileSystemLive, makeNativeFileSystemBridgeClientLayer(exchange))
+          Layer.provide(NativeFileSystemLive, NativeFileSystemSurface.bridgeClientLayer(exchange))
         )
       )
 
@@ -7023,7 +7041,7 @@ test("NativeFileSystem bridge client rejects inconsistent event phase payloads a
             filesystem.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
           )
         }),
-        Layer.provide(NativeFileSystemLive, makeNativeFileSystemBridgeClientLayer(exchange))
+        Layer.provide(NativeFileSystemLive, NativeFileSystemSurface.bridgeClientLayer(exchange))
       )
 
       expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
@@ -7038,7 +7056,7 @@ test("NativeFileSystem bridge client rejects invalid inputs before transport", (
         NativeFileSystem.asEffect(),
         Layer.provide(
           NativeFileSystemLive,
-          makeNativeFileSystemBridgeClientLayer(
+          NativeFileSystemSurface.bridgeClientLayer(
             nativeFileSystemExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -7184,7 +7202,10 @@ test("NativeFileSystem service propagates unsupported platform and host failure"
             filesystem.open({ path: new CanonicalPath({ path: "/tmp/report.txt" }) })
           )
         }),
-        makeNativeFileSystemServiceLayer(unsupportedClient)
+        Layer.provide(
+          NativeFileSystemLive,
+          Layer.succeed(NativeFileSystemClient)(unsupportedClient)
+        )
       )
       const hostFailureExit = yield* runScoped(
         Effect.gen(function* () {
@@ -7193,7 +7214,10 @@ test("NativeFileSystem service propagates unsupported platform and host failure"
             filesystem.open({ path: new CanonicalPath({ path: "/tmp/report.txt" }) })
           )
         }),
-        makeNativeFileSystemServiceLayer(hostFailureClient)
+        Layer.provide(
+          NativeFileSystemLive,
+          Layer.succeed(NativeFileSystemClient)(hostFailureClient)
+        )
       )
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
@@ -7235,7 +7259,7 @@ test("SafeStorage service delegates through a substitutable SafeStorageClient po
           yield* storage.delete("token")
           return { available, keys, secret }
         }),
-        makeSafeStorageServiceLayer(safeStorageClient(calls))
+        Layer.provide(SafeStorageLive, Layer.succeed(SafeStorageClient)(safeStorageClient(calls)))
       )
 
       expect(result.available).toBe(true)
@@ -7272,7 +7296,7 @@ test("SafeStorage bridge client validates keys and redacts decoded values", () =
           const emptyKeyExit = yield* Effect.exit(storage.set("", makeSafeStorageTestSecret()))
           return { available, emptyKeyExit, keys, secret }
         }),
-        Layer.provide(SafeStorageLive, makeSafeStorageBridgeClientLayer(exchange))
+        Layer.provide(SafeStorageLive, SafeStorageSurface.bridgeClientLayer(exchange))
       )
 
       expect(result.secret.pipe(encodeUnknownJson)).toBe('"<redacted:SecretBytes>"')
@@ -7311,7 +7335,7 @@ test("SafeStorage bridge client rejects control-byte keys as InvalidArgument", (
         }))
         const client = yield* runScoped(
           SafeStorage.asEffect(),
-          Layer.provide(SafeStorageLive, makeSafeStorageBridgeClientLayer(exchange))
+          Layer.provide(SafeStorageLive, SafeStorageSurface.bridgeClientLayer(exchange))
         )
 
         const setExit = yield* Effect.exit(client.set(key, makeSafeStorageTestSecret()))
@@ -7346,7 +7370,7 @@ test("SafeStorage bridge client rejects invalid keys in list output as InvalidOu
             const storage = yield* SafeStorage
             return yield* Effect.exit(storage.list())
           }),
-          Layer.provide(SafeStorageLive, makeSafeStorageBridgeClientLayer(exchange))
+          Layer.provide(SafeStorageLive, SafeStorageSurface.bridgeClientLayer(exchange))
         )
 
         expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
@@ -7367,7 +7391,7 @@ test("SafeStorage bridge client decodes valid printable keys in list output", ()
           const storage = yield* SafeStorage
           return yield* storage.list()
         }),
-        Layer.provide(SafeStorageLive, makeSafeStorageBridgeClientLayer(exchange))
+        Layer.provide(SafeStorageLive, SafeStorageSurface.bridgeClientLayer(exchange))
       )
 
       expect(keys).toEqual(["token", "session"])
@@ -7453,14 +7477,14 @@ test("SafeStorage service propagates unsupported platform and host failure witho
           const storage = yield* SafeStorage
           return yield* Effect.exit(storage.set("token", makeSafeStorageTestSecret()))
         }),
-        makeSafeStorageServiceLayer(unsupportedClient)
+        Layer.provide(SafeStorageLive, Layer.succeed(SafeStorageClient)(unsupportedClient))
       )
       const hostFailureExit = yield* runScoped(
         Effect.gen(function* () {
           const storage = yield* SafeStorage
           return yield* Effect.exit(storage.set("token", makeSafeStorageTestSecret()))
         }),
-        makeSafeStorageServiceLayer(hostFailureClient)
+        Layer.provide(SafeStorageLive, Layer.succeed(SafeStorageClient)(hostFailureClient))
       )
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
@@ -7483,7 +7507,10 @@ test("Linux SafeStorage client reports unimplemented adapter as unavailable with
           const keys = yield* storage.list()
           return { available, deleteExit, getExit, keys, setExit }
         }),
-        makeSafeStorageServiceLayer(makeLinuxSafeStorageClient())
+        Layer.provide(
+          SafeStorageLive,
+          Layer.succeed(SafeStorageClient)(makeLinuxSafeStorageClient())
+        )
       )
 
       expect(result.available).toBe(false)
@@ -7570,7 +7597,7 @@ test("Updater service delegates through a substitutable UpdaterClient port", () 
           const status = yield* updater.getStatus()
           return { check, downloaded, installed, restarted, status }
         }),
-        makeUpdaterServiceLayer(updaterClient(calls))
+        Layer.provide(UpdaterLive, Layer.succeed(UpdaterClient)(updaterClient(calls)))
       )
 
       expect(result.check.available).toBe(true)
@@ -7610,7 +7637,7 @@ test("Updater bridge client sends typed host envelopes and decodes status values
           const status = yield* updater.getStatus()
           return { check, downloaded, status }
         }),
-        Layer.provide(UpdaterLive, makeUpdaterBridgeClientLayer(exchange))
+        Layer.provide(UpdaterLive, UpdaterSurface.bridgeClientLayer(exchange))
       )
 
       expect(result.check.available).toBe(true)
@@ -7643,7 +7670,7 @@ test("Updater bridge client sends signed manifest check inputs", () =>
             trustAnchors: [{ keyVersion: 7, publicKey: "ed25519:public-key" }]
           })
         }),
-        Layer.provide(UpdaterLive, makeUpdaterBridgeClientLayer(exchange))
+        Layer.provide(UpdaterLive, UpdaterSurface.bridgeClientLayer(exchange))
       )
 
       expect(requests).toEqual([
@@ -7667,7 +7694,7 @@ test("Updater bridge client rejects empty signed manifest trust anchors", () =>
         Updater.asEffect(),
         Layer.provide(
           UpdaterLive,
-          makeUpdaterBridgeClientLayer(
+          UpdaterSurface.bridgeClientLayer(
             updaterExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -7694,7 +7721,7 @@ test("Updater service exposes the restart readiness handshake", () =>
           yield* updater.readyForRestart()
           return { events, restartStatus }
         }),
-        makeUpdaterServiceLayer(updaterClient(calls))
+        Layer.provide(UpdaterLive, Layer.succeed(UpdaterClient)(updaterClient(calls)))
       )
 
       expect(result.restartStatus.state).toBe("installing")
@@ -7753,7 +7780,7 @@ test("CrashReporter service denies native invoke before host transport", () =>
           return yield* Effect.exit(reporter.start())
         }),
         Layer.provide(
-          Layer.provide(CrashReporterLive, makeCrashReporterBridgeClientLayer(exchange)),
+          Layer.provide(CrashReporterLive, CrashReporterSurface.bridgeClientLayer(exchange)),
           Layer.succeed(PermissionRegistry)(permissions)
         )
       )
@@ -7835,7 +7862,7 @@ test("CrashReporter rejects invalid breadcrumb timestamps before host transport"
             )
           }),
           Layer.provide(
-            Layer.provide(CrashReporterLive, makeCrashReporterBridgeClientLayer(exchange)),
+            Layer.provide(CrashReporterLive, CrashReporterSurface.bridgeClientLayer(exchange)),
             Layer.succeed(PermissionRegistry)(permissions)
           )
         )
@@ -7903,7 +7930,7 @@ test("CrashReporter bridge client records breadcrumbs", () =>
           return { flush, reports }
         }).pipe(Effect.provideService(Clock.Clock, fixedClock(timestamp))),
         Layer.provide(
-          Layer.provide(CrashReporterLive, makeCrashReporterBridgeClientLayer(exchange)),
+          Layer.provide(CrashReporterLive, CrashReporterSurface.bridgeClientLayer(exchange)),
           Layer.succeed(PermissionRegistry)(permissions)
         )
       )
@@ -7952,7 +7979,7 @@ test("CrashReporter bridge client rejects cyclic breadcrumb details before host 
           )
         }),
         Layer.provide(
-          Layer.provide(CrashReporterLive, makeCrashReporterBridgeClientLayer(exchange)),
+          Layer.provide(CrashReporterLive, CrashReporterSurface.bridgeClientLayer(exchange)),
           Layer.succeed(PermissionRegistry)(permissions)
         )
       )
@@ -7980,7 +8007,7 @@ test("CrashReporter bridge client rejects invalid flush counts as InvalidOutput"
             return yield* Effect.exit(reporter.flush())
           }),
           Layer.provide(
-            Layer.provide(CrashReporterLive, makeCrashReporterBridgeClientLayer(exchange)),
+            Layer.provide(CrashReporterLive, CrashReporterSurface.bridgeClientLayer(exchange)),
             Layer.succeed(PermissionRegistry)(permissions)
           )
         )
@@ -8019,7 +8046,7 @@ test("CrashReporter bridge client rejects invalid report timestamps as InvalidOu
           return yield* Effect.exit(reporter.getReports())
         }),
         Layer.provide(
-          Layer.provide(CrashReporterLive, makeCrashReporterBridgeClientLayer(exchange)),
+          Layer.provide(CrashReporterLive, CrashReporterSurface.bridgeClientLayer(exchange)),
           Layer.succeed(PermissionRegistry)(permissions)
         )
       )
@@ -8062,7 +8089,7 @@ test("CrashReporter bridge client rejects control bytes in report metadata as In
             return yield* Effect.exit(reporter.getReports())
           }),
           Layer.provide(
-            Layer.provide(CrashReporterLive, makeCrashReporterBridgeClientLayer(exchange)),
+            Layer.provide(CrashReporterLive, CrashReporterSurface.bridgeClientLayer(exchange)),
             Layer.succeed(PermissionRegistry)(permissions)
           )
         )
@@ -8093,7 +8120,7 @@ test("Shell service delegates through a substitutable ShellClient port", () =>
           yield* shell.openPath("/tmp/report.txt")
           yield* shell.trashItem("/tmp/old-report.txt")
         }),
-        makeShellServiceLayer(shellClient(calls))
+        Layer.provide(ShellLive, Layer.succeed(ShellClient)(shellClient(calls)))
       )
 
       expect(calls).toEqual([
@@ -8129,14 +8156,14 @@ test("Shell service propagates unsupported platform and host failure", () =>
           const shell = yield* Shell
           return yield* Effect.exit(shell.openExternal("https://example.com/docs"))
         }),
-        makeShellServiceLayer(unsupportedClient)
+        Layer.provide(ShellLive, Layer.succeed(ShellClient)(unsupportedClient))
       )
       const hostFailureExit = yield* runScoped(
         Effect.gen(function* () {
           const shell = yield* Shell
           return yield* Effect.exit(shell.openExternal("https://example.com/docs"))
         }),
-        makeShellServiceLayer(hostFailureClient)
+        Layer.provide(ShellLive, Layer.succeed(ShellClient)(hostFailureClient))
       )
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
@@ -8162,7 +8189,7 @@ test("Shell bridge client validates schemes and path argv before transport", () 
         }),
         Layer.provide(
           ShellLive,
-          makeShellBridgeClientLayer(
+          ShellSurface.bridgeClientLayer(
             shellExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -8196,7 +8223,7 @@ test("Shell bridge client validates external URL schemes", () =>
         }),
         Layer.provide(
           ShellLive,
-          makeShellBridgeClientLayer(
+          ShellSurface.bridgeClientLayer(
             shellExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -8218,7 +8245,7 @@ test("Shell bridge client rejects control characters in external URLs before tra
         Shell.asEffect(),
         Layer.provide(
           ShellLive,
-          makeShellBridgeClientLayer(
+          ShellSurface.bridgeClientLayer(
             shellExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -8572,7 +8599,7 @@ test("ClipboardSurface test client layer runs Clipboard RPCs through the generat
       const calls: string[] = []
       const testLayer = Layer.provide(
         ClipboardSurface.testClientLayer,
-        makeClipboardServiceLayer(clipboardClient(calls))
+        Layer.provide(ClipboardLive, Layer.succeed(ClipboardClient)(clipboardClient(calls)))
       )
       const result = yield* runScoped(
         Effect.gen(function* () {
@@ -8608,7 +8635,7 @@ test("DialogSurface test client layer runs Dialog RPCs through the generated ser
       const calls: string[] = []
       const testLayer = Layer.provide(
         DialogSurface.testClientLayer,
-        makeDialogServiceLayer(dialogClient(calls))
+        Layer.provide(DialogLive, Layer.succeed(DialogClient)(dialogClient(calls)))
       )
       const result = yield* runScoped(
         Effect.gen(function* () {
@@ -8642,7 +8669,7 @@ test("ScreenSurface test client layer runs Screen RPCs through the generated ser
       const calls: string[] = []
       const testLayer = Layer.provide(
         ScreenSurface.testClientLayer,
-        makeScreenServiceLayer(screenClient(calls))
+        Layer.provide(ScreenLive, Layer.succeed(ScreenClient)(screenClient(calls)))
       )
       const result = yield* runScoped(
         Effect.gen(function* () {
@@ -8685,7 +8712,7 @@ test("Screen service delegates through a substitutable ScreenClient port", () =>
             pointerSupported: yield* screen.isSupported("getPointerPoint")
           }
         }),
-        makeScreenServiceLayer(screenClient(calls))
+        Layer.provide(ScreenLive, Layer.succeed(ScreenClient)(screenClient(calls)))
       )
 
       expect(result.displays).toEqual([primaryDisplay])
@@ -8729,14 +8756,14 @@ test("Screen service propagates unsupported platform and host failure", () =>
           const screen = yield* Screen
           return yield* Effect.exit(screen.getDisplays())
         }),
-        makeScreenServiceLayer(unsupportedClient)
+        Layer.provide(ScreenLive, Layer.succeed(ScreenClient)(unsupportedClient))
       )
       const hostFailureExit = yield* runScoped(
         Effect.gen(function* () {
           const screen = yield* Screen
           return yield* Effect.exit(screen.getDisplays())
         }),
-        makeScreenServiceLayer(hostFailureClient)
+        Layer.provide(ScreenLive, Layer.succeed(ScreenClient)(hostFailureClient))
       )
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
@@ -9336,7 +9363,10 @@ test("SystemAppearance service maps result wrappers to public values", () =>
             changeSupported: yield* appearance.isSupported("onAppearanceChanged")
           }
         }),
-        makeSystemAppearanceServiceLayer(systemAppearanceClient(calls))
+        Layer.provide(
+          SystemAppearanceLive,
+          Layer.succeed(SystemAppearanceClient)(systemAppearanceClient(calls))
+        )
       )
 
       expect(result.mode).toBe("dark")
@@ -9394,7 +9424,7 @@ test("SystemAppearance bridge client decodes nullable accent color and events", 
             accentSupported: yield* appearance.isSupported("getAccentColor")
           }
         }),
-        Layer.provide(SystemAppearanceLive, makeSystemAppearanceBridgeClientLayer(exchange))
+        Layer.provide(SystemAppearanceLive, SystemAppearanceSurface.bridgeClientLayer(exchange))
       )
 
       expect(result.mode).toBe("dark")
@@ -9494,7 +9524,7 @@ test("SystemAppearance bridge client rejects invalid color channels as InvalidOu
             )
           }
         }),
-        Layer.provide(SystemAppearanceLive, makeSystemAppearanceBridgeClientLayer(exchange))
+        Layer.provide(SystemAppearanceLive, SystemAppearanceSurface.bridgeClientLayer(exchange))
       )
 
       expectExitFailure(result.accent, (error) => hasErrorTag(error, "InvalidOutput"))
@@ -9536,7 +9566,7 @@ test("SystemAppearance bridge client rejects partial appearance events as Invali
           }),
           Layer.provide(
             SystemAppearanceLive,
-            makeSystemAppearanceBridgeClientLayer(systemAppearanceEventExchange(payload))
+            SystemAppearanceSurface.bridgeClientLayer(systemAppearanceEventExchange(payload))
           )
         )
 
@@ -9570,7 +9600,7 @@ test("SystemAppearance bridge client fails unsupported appearance events before 
             appearance.onAppearanceChanged().pipe(Stream.take(1), Stream.runCollect)
           )
         }),
-        Layer.provide(SystemAppearanceLive, makeSystemAppearanceBridgeClientLayer(exchange))
+        Layer.provide(SystemAppearanceLive, SystemAppearanceSurface.bridgeClientLayer(exchange))
       )
 
       expectExitFailure(result, (error) => hasErrorTag(error, "Unsupported"))
@@ -9673,7 +9703,10 @@ test("PowerMonitor bridge client decodes power event streams", () =>
             sourceSupported: yield* power.isSupported("onPowerSourceChanged")
           }
         }),
-        Layer.provide(PowerMonitorLive, makePowerMonitorBridgeClientLayer(powerMonitorExchange()))
+        Layer.provide(
+          PowerMonitorLive,
+          PowerMonitorSurface.bridgeClientLayer(powerMonitorExchange())
+        )
       )
 
       expect(Array.from(result.suspend)).toEqual([
@@ -9749,7 +9782,7 @@ test("PowerMonitor bridge client rejects blank event reasons as InvalidOutput", 
                       : power.onUnlockScreen().pipe(Stream.take(1), Stream.runCollect)
             )
           }),
-          Layer.provide(PowerMonitorLive, makePowerMonitorBridgeClientLayer(exchange))
+          Layer.provide(PowerMonitorLive, PowerMonitorSurface.bridgeClientLayer(exchange))
         )
 
         expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
@@ -9780,7 +9813,7 @@ test("PowerMonitor bridge client fails unsupported event streams before subscrip
           const power = yield* PowerMonitor
           return yield* Effect.exit(power.onSuspend().pipe(Stream.take(1), Stream.runCollect))
         }),
-        Layer.provide(PowerMonitorLive, makePowerMonitorBridgeClientLayer(exchange))
+        Layer.provide(PowerMonitorLive, PowerMonitorSurface.bridgeClientLayer(exchange))
       )
 
       expectExitFailure(exit, (error) => hasErrorTag(error, "Unsupported"))
@@ -9867,7 +9900,7 @@ test("Dock service delegates through a substitutable DockClient port", () =>
           yield* dock.requestAttention({ critical: true })
           return yield* dock.isSupported("setBadgeText")
         }),
-        makeDockServiceLayer(dockClient(calls))
+        Layer.provide(DockLive, Layer.succeed(DockClient)(dockClient(calls)))
       )
 
       expect(supported).toBe(true)
@@ -9900,7 +9933,7 @@ test("Dock bridge client sends typed host envelopes and maps support result", ()
           yield* dock.requestAttention()
           return yield* dock.isSupported("setJumpList")
         }),
-        Layer.provide(DockLive, makeDockBridgeClientLayer(exchange))
+        Layer.provide(DockLive, DockSurface.bridgeClientLayer(exchange))
       )
 
       expect(supported).toBe(true)
@@ -9926,7 +9959,7 @@ test("Dock bridge client rejects invalid badge text before transport", () =>
 
       const dock = yield* runScoped(
         Dock.asEffect(),
-        Layer.provide(DockLive, makeDockBridgeClientLayer(exchange))
+        Layer.provide(DockLive, DockSurface.bridgeClientLayer(exchange))
       )
 
       const nulExit = yield* Effect.exit(dock.setBadgeText("bad\u0000text"))
@@ -9951,7 +9984,7 @@ test("Dock bridge client rejects invalid numeric state before transport", () =>
 
       const dock = yield* runScoped(
         Dock.asEffect(),
-        Layer.provide(DockLive, makeDockBridgeClientLayer(exchange))
+        Layer.provide(DockLive, DockSurface.bridgeClientLayer(exchange))
       )
 
       const negativeBadgeExit = yield* Effect.exit(dock.setBadgeCount(-1))
@@ -10046,14 +10079,14 @@ test("Dock service propagates unsupported platform and host failure", () =>
           const dock = yield* Dock
           return yield* Effect.exit(dock.setBadgeCount(1))
         }),
-        makeDockServiceLayer(unsupportedClient)
+        Layer.provide(DockLive, Layer.succeed(DockClient)(unsupportedClient))
       )
       const hostFailureExit = yield* runScoped(
         Effect.gen(function* () {
           const dock = yield* Dock
           return yield* Effect.exit(dock.setProgress(0.5))
         }),
-        makeDockServiceLayer(hostFailureClient)
+        Layer.provide(DockLive, Layer.succeed(DockClient)(hostFailureClient))
       )
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
@@ -10088,7 +10121,7 @@ test("Linux Dock client reports unimplemented partial methods as unsupported", (
             textExit
           }
         }),
-        makeDockServiceLayer(makeLinuxDockClient())
+        Layer.provide(DockLive, Layer.succeed(DockClient)(makeLinuxDockClient()))
       )
 
       expect(result.badgeCountSupported).toBe(false)
@@ -10162,7 +10195,10 @@ test("GlobalShortcut service delegates through a substitutable GlobalShortcutCli
 
           return { pressed, registered, supported }
         }),
-        makeGlobalShortcutServiceLayer(globalShortcutClient(calls))
+        Layer.provide(
+          GlobalShortcutLive,
+          Layer.succeed(GlobalShortcutClient)(globalShortcutClient(calls))
+        )
       )
 
       expect(result.supported).toEqual(new GlobalShortcutSupportedResult({ supported: true }))
@@ -10216,7 +10252,7 @@ test("GlobalShortcut bridge client sends typed host envelopes and decodes presse
             unregisterExit
           }
         }),
-        Layer.provide(GlobalShortcutLive, makeGlobalShortcutBridgeClientLayer(exchange))
+        Layer.provide(GlobalShortcutLive, GlobalShortcutSurface.bridgeClientLayer(exchange))
       )
 
       expect(result.supported).toEqual(new GlobalShortcutSupportedResult({ supported: true }))
@@ -10255,7 +10291,7 @@ test("GlobalShortcut bridge client rejects inconsistent isSupported output as In
             const client = yield* GlobalShortcut
             return yield* Effect.exit(client.isSupported())
           }),
-          Layer.provide(GlobalShortcutLive, makeGlobalShortcutBridgeClientLayer(exchange))
+          Layer.provide(GlobalShortcutLive, GlobalShortcutSurface.bridgeClientLayer(exchange))
         )
 
         expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
@@ -10291,7 +10327,7 @@ test("GlobalShortcut bridge client decodes valid isSupported outputs", () =>
             const shortcuts = yield* GlobalShortcut
             return yield* shortcuts.isSupported()
           }),
-          Layer.provide(GlobalShortcutLive, makeGlobalShortcutBridgeClientLayer(exchange))
+          Layer.provide(GlobalShortcutLive, GlobalShortcutSurface.bridgeClientLayer(exchange))
         )
 
         expect(result).toEqual(expected)
@@ -10332,7 +10368,7 @@ test("GlobalShortcut bridge client rejects invalid pressed event identifiers as 
             const shortcuts = yield* GlobalShortcut
             return yield* Effect.exit(shortcuts.onPressed().pipe(Stream.take(1), Stream.runCollect))
           }),
-          Layer.provide(GlobalShortcutLive, makeGlobalShortcutBridgeClientLayer(exchange))
+          Layer.provide(GlobalShortcutLive, GlobalShortcutSurface.bridgeClientLayer(exchange))
         )
 
         expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
@@ -10349,7 +10385,7 @@ test("GlobalShortcut bridge client rejects empty and NUL-bearing accelerators as
         GlobalShortcut.asEffect(),
         Layer.provide(
           GlobalShortcutLive,
-          makeGlobalShortcutBridgeClientLayer(
+          GlobalShortcutSurface.bridgeClientLayer(
             globalShortcutExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -10417,10 +10453,13 @@ test("GlobalShortcut bindCommand invokes CommandRegistry for matching registrar 
           return yield* shortcuts.bindCommand("CmdOrCtrl+K", "openProject", windowHandle)
         }),
         Layer.mergeAll(
-          makeGlobalShortcutServiceLayer({
-            ...globalShortcutClient(calls),
-            onPressed: () => Stream.fromQueue(pressed)
-          }),
+          Layer.provide(
+            GlobalShortcutLive,
+            Layer.succeed(GlobalShortcutClient)({
+              ...globalShortcutClient(calls),
+              onPressed: () => Stream.fromQueue(pressed)
+            })
+          ),
           Layer.succeed(ResourceRegistry)(resources),
           Layer.succeed(CommandRegistry)(commands)
         )
@@ -10542,10 +10581,13 @@ test("GlobalShortcut bindCommand invokes CommandRegistry for matching registrar 
           return yield* shortcuts.bindCommand("CmdOrCtrl+K", "openProject", windowHandle)
         }),
         Layer.mergeAll(
-          makeGlobalShortcutServiceLayer({
-            ...globalShortcutClient(calls),
-            onPressed: () => Stream.fromQueue(pressed)
-          }),
+          Layer.provide(
+            GlobalShortcutLive,
+            Layer.succeed(GlobalShortcutClient)({
+              ...globalShortcutClient(calls),
+              onPressed: () => Stream.fromQueue(pressed)
+            })
+          ),
           Layer.succeed(ResourceRegistry)(resources),
           Layer.succeed(CommandRegistry)(commands)
         )
@@ -10612,11 +10654,14 @@ test("GlobalShortcut conflicts are typed Effect values", () =>
           const shortcuts = yield* GlobalShortcut
           return yield* Effect.exit(shortcuts.register("CmdOrCtrl+K", windowHandle))
         }),
-        makeGlobalShortcutServiceLayer({
-          ...globalShortcutClient([]),
-          register: (accelerator) =>
-            Effect.fail(makeGlobalShortcutAlreadyRegisteredError(accelerator))
-        })
+        Layer.provide(
+          GlobalShortcutLive,
+          Layer.succeed(GlobalShortcutClient)({
+            ...globalShortcutClient([]),
+            register: (accelerator) =>
+              Effect.fail(makeGlobalShortcutAlreadyRegisteredError(accelerator))
+          })
+        )
       )
       const bindConflictExit = yield* runScoped(
         Effect.gen(function* () {
@@ -10626,11 +10671,14 @@ test("GlobalShortcut conflicts are typed Effect values", () =>
           )
         }),
         Layer.mergeAll(
-          makeGlobalShortcutServiceLayer({
-            ...globalShortcutClient([]),
-            register: (accelerator) =>
-              Effect.fail(makeGlobalShortcutAlreadyRegisteredError(accelerator))
-          }),
+          Layer.provide(
+            GlobalShortcutLive,
+            Layer.succeed(GlobalShortcutClient)({
+              ...globalShortcutClient([]),
+              register: (accelerator) =>
+                Effect.fail(makeGlobalShortcutAlreadyRegisteredError(accelerator))
+            })
+          ),
           bindingCoreLayer
         )
       )
@@ -10663,14 +10711,14 @@ test("GlobalShortcut service propagates unsupported platform and host failure", 
           const shortcuts = yield* GlobalShortcut
           return yield* Effect.exit(shortcuts.register("CmdOrCtrl+K", windowHandle))
         }),
-        makeGlobalShortcutServiceLayer(unsupportedClient)
+        Layer.provide(GlobalShortcutLive, Layer.succeed(GlobalShortcutClient)(unsupportedClient))
       )
       const hostFailureExit = yield* runScoped(
         Effect.gen(function* () {
           const shortcuts = yield* GlobalShortcut
           return yield* Effect.exit(shortcuts.register("CmdOrCtrl+K", windowHandle))
         }),
-        makeGlobalShortcutServiceLayer(hostFailureClient)
+        Layer.provide(GlobalShortcutLive, Layer.succeed(GlobalShortcutClient)(hostFailureClient))
       )
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
@@ -10689,7 +10737,10 @@ test("Linux GlobalShortcut client reports missing host adapters as typed unsuppo
           const x11Supported = yield* makeLinuxGlobalShortcutClient("x11").isSupported()
           return { registerExit, supported, x11Supported }
         }),
-        makeGlobalShortcutServiceLayer(makeLinuxGlobalShortcutClient("wayland"))
+        Layer.provide(
+          GlobalShortcutLive,
+          Layer.succeed(GlobalShortcutClient)(makeLinuxGlobalShortcutClient("wayland"))
+        )
       )
 
       expect(result.supported).toEqual(
@@ -11112,7 +11163,7 @@ test("Window service delegates through a substitutable WindowClient port", () =>
 
           return { bounds, byId, children, created, current, event, parent, state, windows }
         }),
-        makeWindowServiceLayer(client)
+        Layer.provide(WindowLive, Layer.succeed(WindowClient)(client))
       )
 
       expect(result.created).toEqual(windowHandle)
@@ -12716,14 +12767,14 @@ test("Window service propagates owned child unsupported platform and host failur
           const window = yield* Window
           return yield* Effect.exit(window.create({ parent }))
         }),
-        makeWindowServiceLayer(unsupportedClient)
+        Layer.provide(WindowLive, Layer.succeed(WindowClient)(unsupportedClient))
       )
       const hostFailureExit = yield* runScoped(
         Effect.gen(function* () {
           const window = yield* Window
           return yield* Effect.exit(window.create({ parent }))
         }),
-        makeWindowServiceLayer(hostFailureClient)
+        Layer.provide(WindowLive, Layer.succeed(WindowClient)(hostFailureClient))
       )
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
@@ -13642,7 +13693,7 @@ test("Shell bridge client rejects empty path strings as InvalidArgument", () =>
         Shell.asEffect(),
         Layer.provide(
           ShellLive,
-          makeShellBridgeClientLayer(
+          ShellSurface.bridgeClientLayer(
             shellExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -13667,7 +13718,7 @@ test("Shell bridge client rejects control characters in path inputs as InvalidAr
         Shell.asEffect(),
         Layer.provide(
           ShellLive,
-          makeShellBridgeClientLayer(
+          ShellSurface.bridgeClientLayer(
             shellExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -13692,7 +13743,7 @@ test("Shell bridge client rejects unsafe path argv shapes as InvalidArgument", (
         Shell.asEffect(),
         Layer.provide(
           ShellLive,
-          makeShellBridgeClientLayer(
+          ShellSurface.bridgeClientLayer(
             shellExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -13721,7 +13772,7 @@ test("Path bridge client rejects empty canonical path strings from host as Inval
         }),
         Layer.provide(
           PathLive,
-          makePathBridgeClientLayer(
+          PathSurface.bridgeClientLayer(
             pathExchange([], () => ({ kind: "success", payload: { path: "" } }))
           )
         )
@@ -13739,7 +13790,7 @@ test("Updater bridge client rejects empty version strings as InvalidArgument", (
         Updater.asEffect(),
         Layer.provide(
           UpdaterLive,
-          makeUpdaterBridgeClientLayer(
+          UpdaterSurface.bridgeClientLayer(
             updaterExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -13767,7 +13818,7 @@ test("Updater bridge client rejects check responses missing version when availab
         }),
         Layer.provide(
           UpdaterLive,
-          makeUpdaterBridgeClientLayer(
+          UpdaterSurface.bridgeClientLayer(
             updaterExchange(requests, () => ({ kind: "success", payload: { available: true } }))
           )
         )
@@ -13797,7 +13848,7 @@ test("Updater bridge client requires version for update-bearing status states", 
           }),
           Layer.provide(
             UpdaterLive,
-            makeUpdaterBridgeClientLayer(
+            UpdaterSurface.bridgeClientLayer(
               updaterExchange([], () => ({
                 kind: "success",
                 payload: { state }
@@ -13821,7 +13872,7 @@ test("Updater bridge client rejects out-of-bounds progress values from host as I
         }),
         Layer.provide(
           UpdaterLive,
-          makeUpdaterBridgeClientLayer(
+          UpdaterSurface.bridgeClientLayer(
             updaterExchange([], () => ({
               kind: "success",
               payload: { state: "downloading", progress: 1.5 }
@@ -13842,7 +13893,7 @@ test("Updater bridge client rejects control-byte versions as InvalidArgument", (
         Updater.asEffect(),
         Layer.provide(
           UpdaterLive,
-          makeUpdaterBridgeClientLayer(
+          UpdaterSurface.bridgeClientLayer(
             updaterExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -13874,7 +13925,7 @@ test("Updater bridge client rejects control-byte versions from host output", () 
         }),
         Layer.provide(
           UpdaterLive,
-          makeUpdaterBridgeClientLayer(
+          UpdaterSurface.bridgeClientLayer(
             updaterExchange(checkRequests, () => ({
               kind: "success",
               payload: { available: true, version: "1.2.3\n", notes: "update" }
@@ -13890,7 +13941,7 @@ test("Updater bridge client rejects control-byte versions from host output", () 
         }),
         Layer.provide(
           UpdaterLive,
-          makeUpdaterBridgeClientLayer(
+          UpdaterSurface.bridgeClientLayer(
             updaterExchange(statusRequests, () => ({
               kind: "success",
               payload: { state: "downloading", version: "2.0.0\u007f", progress: 0.5 }
@@ -13914,7 +13965,7 @@ test("Dialog bridge client rejects empty message strings as InvalidArgument", ()
         Dialog.asEffect(),
         Layer.provide(
           DialogLive,
-          makeDialogBridgeClientLayer(
+          DialogSurface.bridgeClientLayer(
             dialogExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )
@@ -13937,7 +13988,7 @@ test("Dialog bridge client rejects NUL bytes in defaultPath as InvalidArgument",
         Dialog.asEffect(),
         Layer.provide(
           DialogLive,
-          makeDialogBridgeClientLayer(
+          DialogSurface.bridgeClientLayer(
             dialogExchange(requests, () => ({
               kind: "success",
               payload: { paths: [] }
@@ -13965,7 +14016,7 @@ test("Dialog bridge client rejects malformed file filters before transport", () 
         Dialog.asEffect(),
         Layer.provide(
           DialogLive,
-          makeDialogBridgeClientLayer(
+          DialogSurface.bridgeClientLayer(
             dialogExchange(requests, () => ({
               kind: "success",
               payload: { paths: ["/canonical/file.txt"] }
@@ -14043,7 +14094,7 @@ test("Dialog bridge client rejects malformed host output paths as InvalidOutput"
               }
               return yield* Effect.exit(dialog.openDirectory({ defaultPath: "/tmp/seed.txt" }))
             }),
-            Layer.provide(DialogLive, makeDialogBridgeClientLayer(exchange))
+            Layer.provide(DialogLive, DialogSurface.bridgeClientLayer(exchange))
           )
 
           expectExitFailure(
@@ -14076,7 +14127,7 @@ test("Dialog bridge client runs generated methods inside the layer scope", () =>
         }),
         Layer.provide(
           DialogLive,
-          makeDialogBridgeClientLayer(
+          DialogSurface.bridgeClientLayer(
             dialogExchange(requests, (request) => ({
               kind: "success",
               payload: request.method === "Dialog.confirm" ? { confirmed: true } : undefined
@@ -14098,7 +14149,7 @@ test("Dialog bridge client rejects invalid native UI text before transport", () 
         Dialog.asEffect(),
         Layer.provide(
           DialogLive,
-          makeDialogBridgeClientLayer(
+          DialogSurface.bridgeClientLayer(
             dialogExchange(requests, () => ({
               kind: "success",
               payload: { paths: [] }

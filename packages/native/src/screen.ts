@@ -167,12 +167,6 @@ export const ScreenSurface = NativeSurface.make("Screen", ScreenRpcGroup, {
   bridgeClient: (client, exchange) => screenClientFromRpcClient(client, exchange)
 })
 
-export const makeScreenClientLayer = (client: ScreenClientApi): Layer.Layer<ScreenClient> =>
-  Layer.succeed(ScreenClient)(client)
-
-export const makeScreenServiceLayer = (client: ScreenClientApi): Layer.Layer<Screen> =>
-  Layer.provide(ScreenLive, makeScreenClientLayer(client))
-
 export const makeScreenBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: ScreenBridgeClientOptions = {}

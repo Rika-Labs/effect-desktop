@@ -9,10 +9,11 @@ import { Effect, Exit, Layer, Option, Schema, Stream } from "effect"
 
 import { WindowRegistryEvent } from "./contracts/window.js"
 import {
-  makeWindowServiceLayer,
   WindowHandlersLive,
   WindowRpcs,
-  type WindowClientApi
+  type WindowClientApi,
+  WindowLive,
+  WindowClient
 } from "./window.js"
 import { makeWindowRendererClient } from "./window-renderer-client.js"
 
@@ -197,7 +198,10 @@ test("Window renderer client constructor derives service from renderer RPC clien
   const window = makeTestWindowHandle("window-main")
   const rpcs = Desktop.rpc(
     WindowRpcs,
-    Layer.provide(WindowHandlersLive, makeWindowServiceLayer(makeTestWindowClient(window, calls)))
+    Layer.provide(
+      WindowHandlersLive,
+      Layer.provide(WindowLive, Layer.succeed(WindowClient)(makeTestWindowClient(window, calls)))
+    )
   )
 
   return Effect.runPromise(

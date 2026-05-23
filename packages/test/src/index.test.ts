@@ -95,14 +95,12 @@ import {
   ScreenLive,
   Window,
   type DialogClientApi,
-  makeClipboardClientLayer,
-  makeClipboardServiceLayer,
-  makeDialogServiceLayer,
-  makeScreenClientLayer,
   type ClipboardClientApi,
   type DialogError,
   type ScreenClientApi,
-  type ScreenError
+  type ScreenError,
+  DialogClient,
+  ScreenClient
 } from "@orika/native"
 import {
   ClipboardImage,
@@ -1866,7 +1864,9 @@ test("makeMemorySecretsSafeStorage models unavailable platform storage as typed 
   ))
 
 test("FailureAssertions matches tagged failures through Exit", () => {
-  const runtime = ManagedRuntime.make(makeClipboardServiceLayer(makeUnavailableClipboardClient()))
+  const runtime = ManagedRuntime.make(
+    Layer.provide(ClipboardLive, Layer.succeed(ClipboardClient)(makeUnavailableClipboardClient()))
+  )
   return runtime.runPromise(
     Effect.gen(function* () {
       const exit = yield* Effect.exit(
@@ -1881,7 +1881,9 @@ test("FailureAssertions matches tagged failures through Exit", () => {
 })
 
 test("Clipboard unavailable platform layer reports unsupported selection capability", () => {
-  const runtime = ManagedRuntime.make(makeClipboardClientLayer(makeUnavailableClipboardClient()))
+  const runtime = ManagedRuntime.make(
+    Layer.succeed(ClipboardClient)(makeUnavailableClipboardClient())
+  )
   return runtime.runPromise(
     Effect.gen(function* () {
       const client = yield* ClipboardClient
@@ -1936,7 +1938,9 @@ test("DialogTest represents save cancellation as data", () => {
 })
 
 test("Dialog unavailable platform layer returns typed Unsupported failures", () => {
-  const runtime = ManagedRuntime.make(makeDialogServiceLayer(makeUnavailableDialogClient()))
+  const runtime = ManagedRuntime.make(
+    Layer.provide(DialogLive, Layer.succeed(DialogClient)(makeUnavailableDialogClient()))
+  )
   return runtime.runPromise(
     Effect.gen(function* () {
       const exit = yield* Effect.exit(
@@ -2089,7 +2093,7 @@ test("native capability programs run unchanged through Live, Client, and Test la
   })
   const screenBridge = makeMockBridge()
   const screenLiveRuntime = ManagedRuntime.make(
-    Layer.provide(ScreenLive, makeScreenClientLayer(screenLiveClient))
+    Layer.provide(ScreenLive, Layer.succeed(ScreenClient)(screenLiveClient))
   )
   const screenClientRuntime = ManagedRuntime.make(
     Layer.provide(ScreenLive, ScreenSurface.bridgeClientLayer(screenBridge.exchange))
@@ -2131,7 +2135,9 @@ test("native capability programs run unchanged through Live, Client, and Test la
       Effect.succeed(new DialogConfirmResult({ confirmed: dialogOptions.confirmResult }))
   })
   const dialogBridge = makeMockBridge()
-  const dialogLiveRuntime = ManagedRuntime.make(makeDialogServiceLayer(dialogLiveClient))
+  const dialogLiveRuntime = ManagedRuntime.make(
+    Layer.provide(DialogLive, Layer.succeed(DialogClient)(dialogLiveClient))
+  )
   const dialogClientRuntime = ManagedRuntime.make(
     Layer.provide(DialogLive, DialogSurface.bridgeClientLayer(dialogBridge.exchange))
   )

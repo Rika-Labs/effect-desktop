@@ -9,11 +9,12 @@ import {
   MissingDesktopRpcClientError
 } from "@orika/core"
 import {
-  makeWindowServiceLayer,
   Native,
   WindowHandlersLive,
   WindowRpcs,
-  type WindowClientApi
+  type WindowClientApi,
+  WindowLive,
+  WindowClient
 } from "@orika/native"
 import type { WindowHandle } from "@orika/native/contracts"
 import { AsyncResult, Atom } from "effect/unstable/reactivity"
@@ -539,7 +540,10 @@ test("ReactDesktop root exposes native Window helpers when the app declares Nati
   const window = makeTestWindowHandle("window-main")
   const WindowLayer = Desktop.rpc(
     WindowRpcs,
-    Layer.provide(WindowHandlersLive, makeWindowServiceLayer(makeTestWindowClient(window, calls)))
+    Layer.provide(
+      WindowHandlersLive,
+      Layer.provide(WindowLive, Layer.succeed(WindowClient)(makeTestWindowClient(window, calls)))
+    )
   )
   const NotesApp = Desktop.make({
     windows: Desktop.window("main", { title: "Notes" }),

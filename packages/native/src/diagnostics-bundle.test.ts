@@ -16,12 +16,12 @@ import {
   DiagnosticsBundleRpcs,
   Native,
   NativeCapabilities,
-  makeDiagnosticsBundleBridgeClientLayer,
   makeDiagnosticsBundleMemoryClient,
   makeDiagnosticsBundlePermissionDeniedError,
   makeDiagnosticsBundleServiceLayer,
   makeDiagnosticsBundleUnsupportedClient,
-  makeNativeCapabilitiesLayer
+  makeNativeCapabilitiesLayer,
+  DiagnosticsBundleSurface
 } from "./index.js"
 import {
   DiagnosticsBundleCollectInput,
@@ -249,7 +249,7 @@ test("DiagnosticsBundle bridge client sends typed envelopes and decodes events",
               }
   }))
   const runtime = ManagedRuntime.make(
-    Layer.provide(DiagnosticsBundleLive, makeDiagnosticsBundleBridgeClientLayer(exchange))
+    Layer.provide(DiagnosticsBundleLive, DiagnosticsBundleSurface.bridgeClientLayer(exchange))
   )
   return runtime.runPromise(
     Effect.gen(function* () {
@@ -312,7 +312,7 @@ test("DiagnosticsBundle bridge client rejects malformed input before native tran
   const runtime = ManagedRuntime.make(
     Layer.provide(
       DiagnosticsBundleLive,
-      makeDiagnosticsBundleBridgeClientLayer(
+      DiagnosticsBundleSurface.bridgeClientLayer(
         diagnosticsBundleExchange(requests, () => ({ kind: "success", payload: undefined }))
       )
     )
@@ -340,7 +340,7 @@ test("DiagnosticsBundle bridge client rejects non-JSON redact payloads before na
   const runtime = ManagedRuntime.make(
     Layer.provide(
       DiagnosticsBundleLive,
-      makeDiagnosticsBundleBridgeClientLayer(
+      DiagnosticsBundleSurface.bridgeClientLayer(
         diagnosticsBundleExchange(requests, () => ({ kind: "success", payload: undefined }))
       )
     )

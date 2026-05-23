@@ -16,11 +16,11 @@ import {
   RealtimeMediaSessionRpcs,
   RealtimeMediaSessionRpcEvents,
   makeNativeCapabilitiesLayer,
-  makeRealtimeMediaSessionBridgeClientLayer,
   makeRealtimeMediaSessionMemoryClient,
   makeRealtimeMediaSessionPermissionDeniedError,
-  makeRealtimeMediaSessionServiceLayer,
-  makeRealtimeMediaSessionUnsupportedClient
+  makeRealtimeMediaSessionUnsupportedClient,
+  RealtimeMediaSessionClient,
+  RealtimeMediaSessionSurface
 } from "./index.js"
 import {
   RealtimeMediaDeviceStateEvent,
@@ -81,7 +81,7 @@ test("RealtimeMediaSession memory client exercises success, partitioned streams,
 
           return { p1Device, p2Device }
         }),
-        makeRealtimeMediaSessionServiceLayer(client)
+        Layer.provide(RealtimeMediaSessionLive, Layer.succeed(RealtimeMediaSessionClient)(client))
       )
 
       expect(Array.from(result.p1Device)).toEqual([
@@ -119,7 +119,7 @@ test("RealtimeMediaSession memory client exposes typed permission-denied failure
             media.open(new RealtimeMediaSessionOpenInput({ profileId: "p1", sessionId: "s1" }))
           )
         }),
-        makeRealtimeMediaSessionServiceLayer(client)
+        Layer.provide(RealtimeMediaSessionLive, Layer.succeed(RealtimeMediaSessionClient)(client))
       )
 
       expect(error).toMatchObject({
@@ -137,7 +137,10 @@ test("RealtimeMediaSession unsupported client validates malformed input before u
           const media = yield* RealtimeMediaSession
           return yield* Effect.exit(media.open(invalidOpenInput()))
         }),
-        makeRealtimeMediaSessionServiceLayer(makeRealtimeMediaSessionUnsupportedClient())
+        Layer.provide(
+          RealtimeMediaSessionLive,
+          Layer.succeed(RealtimeMediaSessionClient)(makeRealtimeMediaSessionUnsupportedClient())
+        )
       )
 
       expect(Exit.isFailure(exit)).toBe(true)
@@ -181,7 +184,10 @@ test("RealtimeMediaSession bridge client sends typed envelopes and decodes event
 
           return { interruption, supported }
         }),
-        Layer.provide(RealtimeMediaSessionLive, makeRealtimeMediaSessionBridgeClientLayer(exchange))
+        Layer.provide(
+          RealtimeMediaSessionLive,
+          RealtimeMediaSessionSurface.bridgeClientLayer(exchange)
+        )
       )
 
       expect(result.supported).toEqual(
@@ -231,7 +237,10 @@ test("RealtimeMediaSession bridge event streams fail typed unsupported when host
               .pipe(Stream.take(1), Stream.runCollect)
           )
         }),
-        Layer.provide(RealtimeMediaSessionLive, makeRealtimeMediaSessionBridgeClientLayer(exchange))
+        Layer.provide(
+          RealtimeMediaSessionLive,
+          RealtimeMediaSessionSurface.bridgeClientLayer(exchange)
+        )
       )
 
       expect(Exit.isFailure(exit)).toBe(true)
@@ -257,7 +266,7 @@ test("RealtimeMediaSession bridge client rejects malformed input before native t
         }),
         Layer.provide(
           RealtimeMediaSessionLive,
-          makeRealtimeMediaSessionBridgeClientLayer(
+          RealtimeMediaSessionSurface.bridgeClientLayer(
             realtimeMediaSessionExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
         )

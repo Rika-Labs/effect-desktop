@@ -1834,26 +1834,6 @@
       "signature": "const makeActivationRegistryUnsupportedClient: () => ActivationRegistryClientApi"
     },
     {
-      "name": "makeAppClientLayer",
-      "kind": "value",
-      "signature": "const makeAppClientLayer: (client: AppClientApi) => Layer.Layer<AppClient>"
-    },
-    {
-      "name": "makeAppServiceLayer",
-      "kind": "value",
-      "signature": "const makeAppServiceLayer: (client: AppClientApi) => Layer.Layer<App>"
-    },
-    {
-      "name": "makeAttachmentIntakeBridgeClientLayer",
-      "kind": "value",
-      "signature": "const makeAttachmentIntakeBridgeClientLayer: (exchange: BridgeClientExchange, options?: BridgeClientOptions) => Layer.Layer<AttachmentIntakeClient>"
-    },
-    {
-      "name": "makeAttachmentIntakeClientLayer",
-      "kind": "value",
-      "signature": "const makeAttachmentIntakeClientLayer: (client: AttachmentIntakeClientApi) => Layer.Layer<AttachmentIntakeClient>"
-    },
-    {
       "name": "makeAttachmentIntakeMemoryClient",
       "kind": "value",
       "signature": "const makeAttachmentIntakeMemoryClient: (options?: AttachmentIntakeMemoryClientOptions) => Effect.Effect<AttachmentIntakeClientApi, never, never>"
@@ -1869,64 +1849,14 @@
       "signature": "const makeAttachmentIntakeUnsupportedClient: () => AttachmentIntakeClientApi"
     },
     {
-      "name": "makeAutostartBridgeClientLayer",
-      "kind": "value",
-      "signature": "const makeAutostartBridgeClientLayer: (exchange: BridgeClientExchange, options?: BridgeClientOptions) => Layer.Layer<AutostartClient>"
-    },
-    {
-      "name": "makeAutostartClientLayer",
-      "kind": "value",
-      "signature": "const makeAutostartClientLayer: (client: AutostartClientApi) => Layer.Layer<AutostartClient>"
-    },
-    {
-      "name": "makeAutostartServiceLayer",
-      "kind": "value",
-      "signature": "const makeAutostartServiceLayer: (client: AutostartClientApi) => Layer.Layer<Autostart>"
-    },
-    {
-      "name": "makeBrowsingDataBridgeClientLayer",
-      "kind": "value",
-      "signature": "const makeBrowsingDataBridgeClientLayer: (exchange: BridgeClientExchange, options?: BridgeClientOptions) => Layer.Layer<BrowsingDataClient>"
-    },
-    {
-      "name": "makeBrowsingDataClientLayer",
-      "kind": "value",
-      "signature": "const makeBrowsingDataClientLayer: (client: BrowsingDataClientApi) => Layer.Layer<BrowsingDataClient>"
-    },
-    {
       "name": "makeBrowsingDataMemoryClient",
       "kind": "value",
       "signature": "const makeBrowsingDataMemoryClient: () => Effect.Effect<BrowsingDataClientApi, never, never>"
     },
     {
-      "name": "makeBrowsingDataServiceLayer",
-      "kind": "value",
-      "signature": "const makeBrowsingDataServiceLayer: (client: BrowsingDataClientApi) => Layer.Layer<BrowsingData>"
-    },
-    {
       "name": "makeBrowsingDataUnsupportedClient",
       "kind": "value",
       "signature": "const makeBrowsingDataUnsupportedClient: () => BrowsingDataClientApi"
-    },
-    {
-      "name": "makeClipboardClientLayer",
-      "kind": "value",
-      "signature": "const makeClipboardClientLayer: (client: ClipboardClientApi) => Layer.Layer<ClipboardClient>"
-    },
-    {
-      "name": "makeClipboardServiceLayer",
-      "kind": "value",
-      "signature": "const makeClipboardServiceLayer: (client: ClipboardClientApi) => Layer.Layer<Clipboard>"
-    },
-    {
-      "name": "makeContextMenuClientLayer",
-      "kind": "value",
-      "signature": "const makeContextMenuClientLayer: (client: ContextMenuClientApi) => Layer.Layer<ContextMenuClient>"
-    },
-    {
-      "name": "makeContextMenuServiceLayer",
-      "kind": "value",
-      "signature": "const makeContextMenuServiceLayer: (client: ContextMenuClientApi) => Layer.Layer<ContextMenu>"
     },
     {
       "name": "makeCookieStoreMemoryClient",
@@ -1939,11 +1869,6 @@
       "signature": "const makeCookieStoreUnsupportedClient: () => CookieStoreClientApi"
     },
     {
-      "name": "makeCrashReporterClientLayer",
-      "kind": "value",
-      "signature": "const makeCrashReporterClientLayer: (client: CrashReporterClientApi) => Layer.Layer<CrashReporterClient>"
-    },
-    {
       "name": "makeCrashReporterMemoryClient",
       "kind": "value",
       "signature": "const makeCrashReporterMemoryClient: () => Effect.Effect<CrashReporterClientApi, never, never>"
@@ -1952,16 +1877,6 @@
       "name": "makeCrashReporterServiceLayer",
       "kind": "value",
       "signature": "const makeCrashReporterServiceLayer: (client: CrashReporterClientApi, options: CrashReporterServiceOptions) => Layer.Layer<CrashReporter>"
-    },
-    {
-      "name": "makeDiagnosticsBundleBridgeClientLayer",
-      "kind": "value",
-      "signature": "const makeDiagnosticsBundleBridgeClientLayer: (exchange: BridgeClientExchange, options?: BridgeClientOptions) => Layer.Layer<DiagnosticsBundleClient>"
-    },
-    {
-      "name": "makeDiagnosticsBundleClientLayer",
-      "kind": "value",
-      "signature": "const makeDiagnosticsBundleClientLayer: (client: DiagnosticsBundleClientApi) => Layer.Layer<DiagnosticsBundleClient>"
     },
     {
       "name": "makeDiagnosticsBundleMemoryClient",
@@ -1982,26 +1897,6 @@
       "name": "makeDiagnosticsBundleUnsupportedClient",
       "kind": "value",
       "signature": "const makeDiagnosticsBundleUnsupportedClient: () => DiagnosticsBundleClientApi"
-    },
-    {
-      "name": "makeDialogClientLayer",
-      "kind": "value",
-      "signature": "const makeDialogClientLayer: (client: DialogClientApi) => Layer.Layer<DialogClient>"
-    },
-    {
-      "name": "makeDialogServiceLayer",
-      "kind": "value",
-      "signature": "const makeDialogServiceLayer: (client: DialogClientApi) => Layer.Layer<Dialog>"
-    },
-    {
-      "name": "makeDisplayCaptureBridgeClientLayer",
-      "kind": "value",
-      "signature": "const makeDisplayCaptureBridgeClientLayer: (exchange: BridgeClientExchange, options?: BridgeClientOptions) => Layer.Layer<DisplayCaptureClient>"
-    },
-    {
-      "name": "makeDisplayCaptureClientLayer",
-      "kind": "value",
-      "signature": "const makeDisplayCaptureClientLayer: (client: DisplayCaptureClientApi) => Layer.Layer<DisplayCaptureClient>"
     },
     {
       "name": "makeDisplayCaptureGrantAuthority",
@@ -2029,16 +1924,6 @@
       "signature": "const makeDisplayCaptureUnsupportedClient: () => DisplayCaptureClientApi"
     },
     {
-      "name": "makeDistributionParityBridgeClientLayer",
-      "kind": "value",
-      "signature": "const makeDistributionParityBridgeClientLayer: (exchange: BridgeClientExchange, options?: BridgeClientOptions) => Layer.Layer<DistributionParityClient>"
-    },
-    {
-      "name": "makeDistributionParityClientLayer",
-      "kind": "value",
-      "signature": "const makeDistributionParityClientLayer: (client: DistributionParityClientApi) => Layer.Layer<DistributionParityClient>"
-    },
-    {
       "name": "makeDistributionParityMemoryClient",
       "kind": "value",
       "signature": "const makeDistributionParityMemoryClient: (options?: DistributionParityMemoryClientOptions) => Effect.Effect<DistributionParityClientApi, never, never>"
@@ -2054,16 +1939,6 @@
       "signature": "const makeDistributionParityUnsupportedClient: () => DistributionParityClientApi"
     },
     {
-      "name": "makeDockClientLayer",
-      "kind": "value",
-      "signature": "const makeDockClientLayer: (client: DockClientApi) => Layer.Layer<DockClient>"
-    },
-    {
-      "name": "makeDockServiceLayer",
-      "kind": "value",
-      "signature": "const makeDockServiceLayer: (client: DockClientApi) => Layer.Layer<Dock>"
-    },
-    {
       "name": "makeDownloadMemoryClient",
       "kind": "value",
       "signature": "const makeDownloadMemoryClient: () => Effect.Effect<DownloadClientApi, never, never>"
@@ -2072,16 +1947,6 @@
       "name": "makeDownloadUnsupportedClient",
       "kind": "value",
       "signature": "const makeDownloadUnsupportedClient: () => DownloadClientApi"
-    },
-    {
-      "name": "makeEgressPolicyBridgeClientLayer",
-      "kind": "value",
-      "signature": "const makeEgressPolicyBridgeClientLayer: (exchange: BridgeClientExchange, options?: BridgeClientOptions) => Layer.Layer<EgressPolicyClient>"
-    },
-    {
-      "name": "makeEgressPolicyClientLayer",
-      "kind": "value",
-      "signature": "const makeEgressPolicyClientLayer: (client: EgressPolicyClientApi) => Layer.Layer<EgressPolicyClient>"
     },
     {
       "name": "makeEgressPolicyMemoryClient",
@@ -2099,24 +1964,9 @@
       "signature": "const makeEgressPolicyUnsupportedClient: () => EgressPolicyClientApi"
     },
     {
-      "name": "makeExecutionSandboxBridgeClientLayer",
-      "kind": "value",
-      "signature": "const makeExecutionSandboxBridgeClientLayer: (exchange: BridgeClientExchange, options?: BridgeClientOptions) => Layer.Layer<ExecutionSandboxClient>"
-    },
-    {
-      "name": "makeExecutionSandboxClientLayer",
-      "kind": "value",
-      "signature": "const makeExecutionSandboxClientLayer: (client: ExecutionSandboxClientApi) => Layer.Layer<ExecutionSandboxClient>"
-    },
-    {
       "name": "makeExecutionSandboxMemoryClient",
       "kind": "value",
       "signature": "const makeExecutionSandboxMemoryClient: () => Effect.Effect<ExecutionSandboxClientApi, never, never>"
-    },
-    {
-      "name": "makeExecutionSandboxServiceLayer",
-      "kind": "value",
-      "signature": "const makeExecutionSandboxServiceLayer: (client: ExecutionSandboxClientApi) => Layer.Layer<ExecutionSandbox>"
     },
     {
       "name": "makeExecutionSandboxUnsupportedClient",
@@ -2139,16 +1989,6 @@
       "signature": "const makeExtensionConfigUnsupportedClient: () => ExtensionConfigClientApi"
     },
     {
-      "name": "makeExtensionPackageBridgeClientLayer",
-      "kind": "value",
-      "signature": "const makeExtensionPackageBridgeClientLayer: (exchange: BridgeClientExchange, options?: BridgeClientOptions) => Layer.Layer<ExtensionPackageClient>"
-    },
-    {
-      "name": "makeExtensionPackageClientLayer",
-      "kind": "value",
-      "signature": "const makeExtensionPackageClientLayer: (client: ExtensionPackageClientApi) => Layer.Layer<ExtensionPackageClient>"
-    },
-    {
       "name": "makeExtensionPackageMemoryClient",
       "kind": "value",
       "signature": "const makeExtensionPackageMemoryClient: (options?: ExtensionPackageMemoryClientOptions) => Effect.Effect<ExtensionPackageClientApi, never, never>"
@@ -2162,16 +2002,6 @@
       "name": "makeExtensionPackageUnsupportedClient",
       "kind": "value",
       "signature": "const makeExtensionPackageUnsupportedClient: () => ExtensionPackageClientApi"
-    },
-    {
-      "name": "makeFocusedApplicationContextBridgeClientLayer",
-      "kind": "value",
-      "signature": "const makeFocusedApplicationContextBridgeClientLayer: (exchange: BridgeClientExchange, options?: BridgeClientOptions) => Layer.Layer<FocusedApplicationContextClient>"
-    },
-    {
-      "name": "makeFocusedApplicationContextClientLayer",
-      "kind": "value",
-      "signature": "const makeFocusedApplicationContextClientLayer: (client: FocusedApplicationContextClientApi) => Layer.Layer<FocusedApplicationContextClient>"
     },
     {
       "name": "makeFocusedApplicationContextMemoryClient",
@@ -2192,16 +2022,6 @@
       "name": "makeGlobalShortcutAlreadyRegisteredError",
       "kind": "value",
       "signature": "const makeGlobalShortcutAlreadyRegisteredError: (accelerator: string, operation?: string) => HostProtocolAlreadyExistsError"
-    },
-    {
-      "name": "makeGlobalShortcutClientLayer",
-      "kind": "value",
-      "signature": "const makeGlobalShortcutClientLayer: (client: GlobalShortcutClientApi) => Layer.Layer<GlobalShortcutClient>"
-    },
-    {
-      "name": "makeGlobalShortcutServiceLayer",
-      "kind": "value",
-      "signature": "const makeGlobalShortcutServiceLayer: (client: GlobalShortcutClientApi) => Layer.Layer<GlobalShortcut>"
     },
     {
       "name": "makeHostActivationRegistryRpcRuntime",
@@ -2359,16 +2179,6 @@
       "signature": "const makeHostWorkspaceIndexRpcRuntime: (handlers: WorkspaceIndexRpcHandlers, runtimeOptions?: BridgeHandlerRuntimeOptions) => BridgeHandlerRuntime<PermissionRegistry>"
     },
     {
-      "name": "makeJobBridgeClientLayer",
-      "kind": "value",
-      "signature": "const makeJobBridgeClientLayer: (exchange: BridgeClientExchange, options?: BridgeClientOptions) => Layer.Layer<JobClient>"
-    },
-    {
-      "name": "makeJobClientLayer",
-      "kind": "value",
-      "signature": "const makeJobClientLayer: (client: JobClientApi) => Layer.Layer<JobClient>"
-    },
-    {
       "name": "makeJobMemoryClient",
       "kind": "value",
       "signature": "const makeJobMemoryClient: (options?: JobMemoryClientOptions) => Effect.Effect<JobClientApi, never, never>"
@@ -2399,16 +2209,6 @@
       "signature": "const makeLinuxSafeStorageClient: () => SafeStorageClientApi"
     },
     {
-      "name": "makeLocalToolRuntimeBridgeClientLayer",
-      "kind": "value",
-      "signature": "const makeLocalToolRuntimeBridgeClientLayer: (exchange: BridgeClientExchange, options?: BridgeClientOptions) => Layer.Layer<LocalToolRuntimeClient>"
-    },
-    {
-      "name": "makeLocalToolRuntimeClientLayer",
-      "kind": "value",
-      "signature": "const makeLocalToolRuntimeClientLayer: (client: LocalToolRuntimeClientApi) => Layer.Layer<LocalToolRuntimeClient>"
-    },
-    {
       "name": "makeLocalToolRuntimeMemoryClient",
       "kind": "value",
       "signature": "const makeLocalToolRuntimeMemoryClient: (options?: LocalToolRuntimeMemoryClientOptions) => Effect.Effect<LocalToolRuntimeClientApi, never, never>"
@@ -2422,16 +2222,6 @@
       "name": "makeLocalToolRuntimeUnsupportedClient",
       "kind": "value",
       "signature": "const makeLocalToolRuntimeUnsupportedClient: () => LocalToolRuntimeClientApi"
-    },
-    {
-      "name": "makeMenuClientLayer",
-      "kind": "value",
-      "signature": "const makeMenuClientLayer: (client: MenuClientApi) => Layer.Layer<MenuClient>"
-    },
-    {
-      "name": "makeMenuServiceLayer",
-      "kind": "value",
-      "signature": "const makeMenuServiceLayer: (client: MenuClientApi) => Layer.Layer<Menu>"
     },
     {
       "name": "makeNativeCapabilities",
@@ -2449,44 +2239,14 @@
       "signature": "const makeNativeCapabilityManifest: (surfaces: Iterable<NativeCapabilitySurface>) => Effect.Effect<readonly NativeCapabilityFact[], NativeCapabilityManifestError, never>"
     },
     {
-      "name": "makeNativeFileSystemBridgeClientLayer",
-      "kind": "value",
-      "signature": "const makeNativeFileSystemBridgeClientLayer: (exchange: BridgeClientExchange, options?: BridgeClientOptions) => Layer.Layer<NativeFileSystemClient>"
-    },
-    {
-      "name": "makeNativeFileSystemClientLayer",
-      "kind": "value",
-      "signature": "const makeNativeFileSystemClientLayer: (client: NativeFileSystemClientApi) => Layer.Layer<NativeFileSystemClient>"
-    },
-    {
-      "name": "makeNativeFileSystemServiceLayer",
-      "kind": "value",
-      "signature": "const makeNativeFileSystemServiceLayer: (client: NativeFileSystemClientApi) => Layer.Layer<NativeFileSystem>"
-    },
-    {
       "name": "makeNativeHostMethodInventoryLayer",
       "kind": "value",
       "signature": "const makeNativeHostMethodInventoryLayer: (methods: Iterable<string>) => Layer.Layer<NativeHostMethodInventory, never, never>"
     },
     {
-      "name": "makeNativeNetworkBridgeClientLayer",
-      "kind": "value",
-      "signature": "const makeNativeNetworkBridgeClientLayer: (exchange: BridgeClientExchange, options?: BridgeClientOptions) => Layer.Layer<NativeNetworkClient>"
-    },
-    {
-      "name": "makeNativeNetworkClientLayer",
-      "kind": "value",
-      "signature": "const makeNativeNetworkClientLayer: (client: NativeNetworkClientApi) => Layer.Layer<NativeNetworkClient>"
-    },
-    {
       "name": "makeNativeNetworkMemoryClient",
       "kind": "value",
       "signature": "const makeNativeNetworkMemoryClient: () => Effect.Effect<NativeNetworkClientApi, never, never>"
-    },
-    {
-      "name": "makeNativeNetworkServiceLayer",
-      "kind": "value",
-      "signature": "const makeNativeNetworkServiceLayer: (client: NativeNetworkClientApi) => Layer.Layer<NativeNetwork>"
     },
     {
       "name": "makeNativeNetworkUnsupportedClient",
@@ -2519,54 +2279,9 @@
       "signature": "const makeNetworkAuthUnsupportedClient: () => NetworkAuthClientApi"
     },
     {
-      "name": "makeNotificationClientLayer",
-      "kind": "value",
-      "signature": "const makeNotificationClientLayer: (client: NotificationClientApi) => Layer.Layer<NotificationClient>"
-    },
-    {
       "name": "makeNotificationServiceLayer",
       "kind": "value",
       "signature": "const makeNotificationServiceLayer: (client: NotificationClientApi, options?: NotificationServiceOptions) => Layer.Layer<Notification>"
-    },
-    {
-      "name": "makePathClientLayer",
-      "kind": "value",
-      "signature": "const makePathClientLayer: (client: PathClientApi) => Layer.Layer<PathClient>"
-    },
-    {
-      "name": "makePathServiceLayer",
-      "kind": "value",
-      "signature": "const makePathServiceLayer: (client: PathClientApi) => Layer.Layer<Path>"
-    },
-    {
-      "name": "makePowerMonitorClientLayer",
-      "kind": "value",
-      "signature": "const makePowerMonitorClientLayer: (client: PowerMonitorClientApi) => Layer.Layer<PowerMonitorClient>"
-    },
-    {
-      "name": "makePowerMonitorServiceLayer",
-      "kind": "value",
-      "signature": "const makePowerMonitorServiceLayer: (client: PowerMonitorClientApi) => Layer.Layer<PowerMonitor>"
-    },
-    {
-      "name": "makeProtocolClientLayer",
-      "kind": "value",
-      "signature": "const makeProtocolClientLayer: (client: ProtocolClientApi) => Layer.Layer<ProtocolClient>"
-    },
-    {
-      "name": "makeProtocolServiceLayer",
-      "kind": "value",
-      "signature": "const makeProtocolServiceLayer: (client: ProtocolClientApi) => Layer.Layer<Protocol>"
-    },
-    {
-      "name": "makeRealtimeMediaSessionBridgeClientLayer",
-      "kind": "value",
-      "signature": "const makeRealtimeMediaSessionBridgeClientLayer: (exchange: BridgeClientExchange, options?: BridgeClientOptions) => Layer.Layer<RealtimeMediaSessionClient>"
-    },
-    {
-      "name": "makeRealtimeMediaSessionClientLayer",
-      "kind": "value",
-      "signature": "const makeRealtimeMediaSessionClientLayer: (client: RealtimeMediaSessionClientApi) => Layer.Layer<RealtimeMediaSessionClient>"
     },
     {
       "name": "makeRealtimeMediaSessionMemoryClient",
@@ -2579,39 +2294,9 @@
       "signature": "const makeRealtimeMediaSessionPermissionDeniedError: (operation: string) => HostProtocolPermissionDeniedError"
     },
     {
-      "name": "makeRealtimeMediaSessionServiceLayer",
-      "kind": "value",
-      "signature": "const makeRealtimeMediaSessionServiceLayer: (client: RealtimeMediaSessionClientApi) => Layer.Layer<RealtimeMediaSession>"
-    },
-    {
       "name": "makeRealtimeMediaSessionUnsupportedClient",
       "kind": "value",
       "signature": "const makeRealtimeMediaSessionUnsupportedClient: () => RealtimeMediaSessionClientApi"
-    },
-    {
-      "name": "makeRecentDocumentsBridgeClientLayer",
-      "kind": "value",
-      "signature": "const makeRecentDocumentsBridgeClientLayer: (exchange: BridgeClientExchange, options?: BridgeClientOptions) => Layer.Layer<RecentDocumentsClient>"
-    },
-    {
-      "name": "makeRecentDocumentsClientLayer",
-      "kind": "value",
-      "signature": "const makeRecentDocumentsClientLayer: (client: RecentDocumentsClientApi) => Layer.Layer<RecentDocumentsClient>"
-    },
-    {
-      "name": "makeRecentDocumentsServiceLayer",
-      "kind": "value",
-      "signature": "const makeRecentDocumentsServiceLayer: (client: RecentDocumentsClientApi) => Layer.Layer<RecentDocuments>"
-    },
-    {
-      "name": "makeResidentLifecycleBridgeClientLayer",
-      "kind": "value",
-      "signature": "const makeResidentLifecycleBridgeClientLayer: (exchange: BridgeClientExchange, options?: BridgeClientOptions) => Layer.Layer<ResidentLifecycleClient>"
-    },
-    {
-      "name": "makeResidentLifecycleClientLayer",
-      "kind": "value",
-      "signature": "const makeResidentLifecycleClientLayer: (client: ResidentLifecycleClientApi) => Layer.Layer<ResidentLifecycleClient>"
     },
     {
       "name": "makeResidentLifecycleMemoryClient",
@@ -2629,49 +2314,14 @@
       "signature": "const makeResidentLifecycleUnsupportedClient: () => ResidentLifecycleClientApi"
     },
     {
-      "name": "makeSafeStorageClientLayer",
-      "kind": "value",
-      "signature": "const makeSafeStorageClientLayer: (client: SafeStorageClientApi) => Layer.Layer<SafeStorageClient>"
-    },
-    {
-      "name": "makeSafeStorageServiceLayer",
-      "kind": "value",
-      "signature": "const makeSafeStorageServiceLayer: (client: SafeStorageClientApi) => Layer.Layer<SafeStorage>"
-    },
-    {
-      "name": "makeScopedAccessGrantBridgeClientLayer",
-      "kind": "value",
-      "signature": "const makeScopedAccessGrantBridgeClientLayer: (exchange: BridgeClientExchange, options?: BridgeClientOptions) => Layer.Layer<ScopedAccessGrantClient>"
-    },
-    {
-      "name": "makeScopedAccessGrantClientLayer",
-      "kind": "value",
-      "signature": "const makeScopedAccessGrantClientLayer: (client: ScopedAccessGrantClientApi) => Layer.Layer<ScopedAccessGrantClient>"
-    },
-    {
       "name": "makeScopedAccessGrantMemoryClient",
       "kind": "value",
       "signature": "const makeScopedAccessGrantMemoryClient: () => Effect.Effect<ScopedAccessGrantClientApi, never, never>"
     },
     {
-      "name": "makeScopedAccessGrantServiceLayer",
-      "kind": "value",
-      "signature": "const makeScopedAccessGrantServiceLayer: (client: ScopedAccessGrantClientApi) => Layer.Layer<ScopedAccessGrant>"
-    },
-    {
       "name": "makeScopedAccessGrantUnsupportedClient",
       "kind": "value",
       "signature": "const makeScopedAccessGrantUnsupportedClient: () => ScopedAccessGrantClientApi"
-    },
-    {
-      "name": "makeScreenClientLayer",
-      "kind": "value",
-      "signature": "const makeScreenClientLayer: (client: ScreenClientApi) => Layer.Layer<ScreenClient>"
-    },
-    {
-      "name": "makeScreenServiceLayer",
-      "kind": "value",
-      "signature": "const makeScreenServiceLayer: (client: ScreenClientApi) => Layer.Layer<Screen>"
     },
     {
       "name": "makeSecretBytes",
@@ -2694,24 +2344,9 @@
       "signature": "const makeSelectionContextUnsupportedClient: () => SelectionContextClientApi"
     },
     {
-      "name": "makeSessionPermissionBridgeClientLayer",
-      "kind": "value",
-      "signature": "const makeSessionPermissionBridgeClientLayer: (exchange: BridgeClientExchange, options?: BridgeClientOptions) => Layer.Layer<SessionPermissionClient>"
-    },
-    {
-      "name": "makeSessionPermissionClientLayer",
-      "kind": "value",
-      "signature": "const makeSessionPermissionClientLayer: (client: SessionPermissionClientApi) => Layer.Layer<SessionPermissionClient>"
-    },
-    {
       "name": "makeSessionPermissionMemoryClient",
       "kind": "value",
       "signature": "const makeSessionPermissionMemoryClient: () => Effect.Effect<SessionPermissionClientApi, never, never>"
-    },
-    {
-      "name": "makeSessionPermissionServiceLayer",
-      "kind": "value",
-      "signature": "const makeSessionPermissionServiceLayer: (client: SessionPermissionClientApi) => Layer.Layer<SessionPermission>"
     },
     {
       "name": "makeSessionPermissionUnsupportedClient",
@@ -2727,36 +2362,6 @@
       "name": "makeSessionProfileUnsupportedClient",
       "kind": "value",
       "signature": "const makeSessionProfileUnsupportedClient: () => SessionProfileClientApi"
-    },
-    {
-      "name": "makeShellClientLayer",
-      "kind": "value",
-      "signature": "const makeShellClientLayer: (client: ShellClientApi) => Layer.Layer<ShellClient>"
-    },
-    {
-      "name": "makeShellServiceLayer",
-      "kind": "value",
-      "signature": "const makeShellServiceLayer: (client: ShellClientApi) => Layer.Layer<Shell>"
-    },
-    {
-      "name": "makeSystemAppearanceClientLayer",
-      "kind": "value",
-      "signature": "const makeSystemAppearanceClientLayer: (client: SystemAppearanceClientApi) => Layer.Layer<SystemAppearanceClient>"
-    },
-    {
-      "name": "makeSystemAppearanceServiceLayer",
-      "kind": "value",
-      "signature": "const makeSystemAppearanceServiceLayer: (client: SystemAppearanceClientApi) => Layer.Layer<SystemAppearance>"
-    },
-    {
-      "name": "makeTransactionalFileMutationBridgeClientLayer",
-      "kind": "value",
-      "signature": "const makeTransactionalFileMutationBridgeClientLayer: (exchange: BridgeClientExchange, options?: BridgeClientOptions) => Layer.Layer<TransactionalFileMutationClient>"
-    },
-    {
-      "name": "makeTransactionalFileMutationClientLayer",
-      "kind": "value",
-      "signature": "const makeTransactionalFileMutationClientLayer: (client: TransactionalFileMutationClientApi) => Layer.Layer<TransactionalFileMutationClient>"
     },
     {
       "name": "makeTransactionalFileMutationMemoryClient",
@@ -2784,34 +2389,9 @@
       "signature": "const makeTransientWindowRoleUnsupportedClient: () => TransientWindowRoleClientApi"
     },
     {
-      "name": "makeTrayClientLayer",
-      "kind": "value",
-      "signature": "const makeTrayClientLayer: (client: TrayClientApi) => Layer.Layer<TrayClient>"
-    },
-    {
       "name": "makeTrayServiceLayer",
       "kind": "value",
       "signature": "const makeTrayServiceLayer: (client: TrayClientApi, options?: TrayServiceOptions) => Layer.Layer<Tray>"
-    },
-    {
-      "name": "makeUpdaterClientLayer",
-      "kind": "value",
-      "signature": "const makeUpdaterClientLayer: (client: UpdaterClientApi) => Layer.Layer<UpdaterClient>"
-    },
-    {
-      "name": "makeUpdaterServiceLayer",
-      "kind": "value",
-      "signature": "const makeUpdaterServiceLayer: (client: UpdaterClientApi) => Layer.Layer<Updater>"
-    },
-    {
-      "name": "makeWebRequestBridgeClientLayer",
-      "kind": "value",
-      "signature": "const makeWebRequestBridgeClientLayer: (exchange: BridgeClientExchange, options?: BridgeClientOptions) => Layer.Layer<WebRequestClient>"
-    },
-    {
-      "name": "makeWebRequestClientLayer",
-      "kind": "value",
-      "signature": "const makeWebRequestClientLayer: (client: WebRequestClientApi) => Layer.Layer<WebRequestClient>"
     },
     {
       "name": "makeWebRequestMemoryClient",
@@ -2819,29 +2399,9 @@
       "signature": "const makeWebRequestMemoryClient: () => Effect.Effect<WebRequestClientApi, never, never>"
     },
     {
-      "name": "makeWebRequestServiceLayer",
-      "kind": "value",
-      "signature": "const makeWebRequestServiceLayer: (client: WebRequestClientApi) => Layer.Layer<WebRequest>"
-    },
-    {
       "name": "makeWebRequestUnsupportedClient",
       "kind": "value",
       "signature": "const makeWebRequestUnsupportedClient: () => WebRequestClientApi"
-    },
-    {
-      "name": "makeWebViewClientLayer",
-      "kind": "value",
-      "signature": "const makeWebViewClientLayer: (client: WebViewClientApi) => Layer.Layer<WebViewClient>"
-    },
-    {
-      "name": "makeWebViewServiceLayer",
-      "kind": "value",
-      "signature": "const makeWebViewServiceLayer: (client: WebViewClientApi) => Layer.Layer<WebView>"
-    },
-    {
-      "name": "makeWindowClientLayer",
-      "kind": "value",
-      "signature": "const makeWindowClientLayer: (client: WindowClientApi) => Layer.Layer<WindowClient>"
     },
     {
       "name": "makeWindowPersistenceLayer",
@@ -2852,21 +2412,6 @@
       "name": "makeWindowRendererClient",
       "kind": "value",
       "signature": "const makeWindowRendererClient: (clients: DesktopRendererRpcClientMap) => Option.Option<WindowRendererClientApi>"
-    },
-    {
-      "name": "makeWindowServiceLayer",
-      "kind": "value",
-      "signature": "const makeWindowServiceLayer: (client: WindowClientApi) => Layer.Layer<Window>"
-    },
-    {
-      "name": "makeWorkspaceIndexBridgeClientLayer",
-      "kind": "value",
-      "signature": "const makeWorkspaceIndexBridgeClientLayer: (exchange: BridgeClientExchange, options?: BridgeClientOptions) => Layer.Layer<WorkspaceIndexClient>"
-    },
-    {
-      "name": "makeWorkspaceIndexClientLayer",
-      "kind": "value",
-      "signature": "const makeWorkspaceIndexClientLayer: (client: WorkspaceIndexClientApi) => Layer.Layer<WorkspaceIndexClient>"
     },
     {
       "name": "makeWorkspaceIndexMemoryClient",

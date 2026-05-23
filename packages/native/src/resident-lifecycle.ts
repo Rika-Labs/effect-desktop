@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
@@ -157,21 +156,11 @@ export class ResidentLifecycle extends Context.Service<
 
 export const ResidentLifecycleLive = ResidentLifecycle.layer
 
-export const makeResidentLifecycleClientLayer = (
-  client: ResidentLifecycleClientApi
-): Layer.Layer<ResidentLifecycleClient> => Layer.succeed(ResidentLifecycleClient)(client)
-
 export const makeResidentLifecycleServiceLayer = (
   client: ResidentLifecycleClientApi,
   options: ResidentLifecycleServiceOptions
 ): Layer.Layer<ResidentLifecycle> =>
   Layer.effect(ResidentLifecycle)(makeResidentLifecycleService(client, options))
-
-export const makeResidentLifecycleBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<ResidentLifecycleClient> =>
-  ResidentLifecycleSurface.bridgeClientLayer(exchange, options)
 
 export const ResidentLifecycleHandlersLive = ResidentLifecycleRpcGroup.toLayer({
   "ResidentLifecycle.enable": (input) =>

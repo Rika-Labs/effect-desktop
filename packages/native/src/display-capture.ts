@@ -1,6 +1,5 @@
 import {
   type BridgeClientExchange,
-  type BridgeClientOptions,
   type BridgeHandlerRuntime,
   type BridgeHandlerRuntimeOptions,
   type HostProtocolError,
@@ -184,10 +183,6 @@ export class DisplayCapture extends Context.Service<DisplayCapture, DisplayCaptu
 
 export const DisplayCaptureLive = DisplayCapture.layer
 
-export const makeDisplayCaptureClientLayer = (
-  client: DisplayCaptureClientApi
-): Layer.Layer<DisplayCaptureClient> => Layer.succeed(DisplayCaptureClient)(client)
-
 export const makeDisplayCaptureServiceLayer = (
   client: DisplayCaptureClientApi,
   options: DisplayCaptureServiceOptions
@@ -214,11 +209,6 @@ export const makeDisplayCaptureGrantAuthorityLayer = (
   grants: ReadonlySet<string>
 ): Layer.Layer<DisplayCaptureGrantAuthority> =>
   Layer.succeed(DisplayCaptureGrantAuthority, makeDisplayCaptureGrantAuthority(grants))
-
-export const makeDisplayCaptureBridgeClientLayer = (
-  exchange: BridgeClientExchange,
-  options: BridgeClientOptions = {}
-): Layer.Layer<DisplayCaptureClient> => DisplayCaptureSurface.bridgeClientLayer(exchange, options)
 
 export type DisplayCaptureRpc = RpcGroup.Rpcs<typeof DisplayCaptureRpcGroup>
 export type DisplayCaptureRpcHandlers = RpcGroup.HandlersFrom<DisplayCaptureRpc>
