@@ -181,7 +181,7 @@ Desktop.make({
 - `Native.Permissions.window.all` — permission declarations for every privileged Window method.
 - `WindowLive` and `WindowHandlersLive` — runtime layers behind the native surface.
 - `WindowSurface.bridgeClientLayer(exchange, options)` — bridge adapter artifact used by renderer adapters and tests.
-- `makeWindowClientLayer(client)` and `makeWindowServiceLayer(client)` — deterministic test seams, not app-composition API.
+- Deterministic tests can provide `WindowClient` directly with `Layer.succeed(WindowClient)(client)` and `Window.layer`.
 
 ## Surface
 

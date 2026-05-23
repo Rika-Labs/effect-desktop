@@ -25,6 +25,9 @@ const PHASE_0_STUB_INDEX = "export {}\n"
 const PHASE_0_TS_TEST_MARKER = /^\s*(?:test|it)\(["']phase 0 stub compiles and runs["']/m
 const PHASE_0_RUST_STUB_INDEX = /^\/\/! Phase 0 stub\.$/m
 const PHASE_0_RUST_TEST_MARKER = "fn it_compiles"
+const NATIVE_LAYER_HELPER_NAME_PATTERN =
+  /\b(make[A-Za-z0-9]+(?:ClientLayer|ServiceLayer|BridgeClientLayer))\b/g
+const NATIVE_PACKAGE_EXPORT_BLOCK_PATTERN = /export\s*\{([\s\S]*?)\}\s*from\s+"\.[^"]+\.js"/g
 
 const StringRecord = Schema.Record(Schema.String, Schema.String)
 
@@ -62,6 +65,45 @@ const readTsConfig = (path: string): TsConfig => {
     return exit.value
   }
   throw new Error(`TsConfigParseError at ${path}`, { cause: exit.cause })
+}
+
+const collectMarkdownFiles = (directory: string): ReadonlyArray<string> => {
+  const files: string[] = []
+
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name)
+    if (entry.isDirectory()) {
+      files.push(...collectMarkdownFiles(path))
+      continue
+    }
+
+    if (entry.isFile() && entry.name.endsWith(".md")) {
+      files.push(path)
+    }
+  }
+
+  return files
+}
+
+const collectNativePackageLayerHelpers = (): ReadonlySet<string> => {
+  const index = readFileSync(join(REPO_ROOT, "packages/native/src/index.ts"), "utf8")
+  const helpers = new Set<string>()
+
+  for (const exportBlock of index.matchAll(NATIVE_PACKAGE_EXPORT_BLOCK_PATTERN)) {
+    const exportedNames = exportBlock[1]
+    if (exportedNames === undefined) {
+      continue
+    }
+
+    for (const match of exportedNames.matchAll(NATIVE_LAYER_HELPER_NAME_PATTERN)) {
+      const helper = match[1]
+      if (helper !== undefined) {
+        helpers.add(helper)
+      }
+    }
+  }
+
+  return helpers
 }
 
 describe("workspaces", () => {
@@ -220,5 +262,28 @@ describe("architecture debt guardrails", () => {
     expect(source).toContain("DesktopEventLog")
     expect(source).toContain("DesktopEventSchema")
     expect(source).not.toMatch(/export\s+\{[^}]+}\s+from\s+"effect\/unstable\/eventlog"/)
+  })
+})
+
+describe("native reference docs", () => {
+  test("layer helper names refer to public @orika/native exports", () => {
+    const publicHelpers = collectNativePackageLayerHelpers()
+    const violations: string[] = []
+
+    for (const path of collectMarkdownFiles(join(REPO_ROOT, "docs/reference/native"))) {
+      const markdown = readFileSync(path, "utf8")
+      for (const match of markdown.matchAll(NATIVE_LAYER_HELPER_NAME_PATTERN)) {
+        const helper = match[1]
+        if (helper === undefined || publicHelpers.has(helper)) {
+          continue
+        }
+
+        violations.push(
+          `${path.slice(REPO_ROOT.length + 1)}: ${helper} is not exported by packages/native/src/index.ts`
+        )
+      }
+    }
+
+    expect(violations).toEqual([])
   })
 })

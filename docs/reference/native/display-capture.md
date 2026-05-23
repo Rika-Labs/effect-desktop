@@ -29,9 +29,8 @@ On macOS, `displayId` is a `screencapture` display selector: `"main"`, a positiv
 - `DisplayCaptureGrantAuthority`
 - `makeDisplayCaptureGrantAuthority(grants)`
 - `makeDisplayCaptureGrantAuthorityLayer(grants)`
-- `makeDisplayCaptureClientLayer(client)`
 - `makeDisplayCaptureServiceLayer(client, options)`
-- `makeDisplayCaptureBridgeClientLayer(exchange, options?)`
+- `DisplayCaptureSurface.bridgeClientLayer(exchange, options?)`
 - `makeDisplayCaptureMemoryClient(options?)`
 - `makeDisplayCaptureUnsupportedClient()`
 
