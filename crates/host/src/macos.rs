@@ -212,7 +212,6 @@ pub(crate) fn set_window_menu(
     platform::set_window_menu(window_id, template)
 }
 
-#[cfg(all(target_os = "macos", not(test)))]
 pub(crate) fn clear_application_menu() -> std::result::Result<(), HostProtocolError> {
     platform::clear_application_menu()
 }
@@ -606,11 +605,24 @@ mod platform {
             .get("items")
             .and_then(serde_json::Value::as_array)
             .ok_or_else(|| super::invalid_argument("template.items", "must be an array"))?;
-        for item in items {
-            let submenu = build_submenu(item, window_id, bindings)?;
+
+        if window_id.is_some() && items.iter().any(|item| !is_submenu(item)) {
+            let submenu = muda::Submenu::with_id("__orika_window_menu", "Window", true);
+            for item in items {
+                append_menu_entry(&submenu, item, window_id, bindings)?;
+            }
             menu.append(&submenu).map_err(menu_error)?;
+        } else {
+            for item in items {
+                let submenu = build_submenu(item, window_id, bindings)?;
+                menu.append(&submenu).map_err(menu_error)?;
+            }
         }
         Ok(menu)
+    }
+
+    fn is_submenu(value: &serde_json::Value) -> bool {
+        value.get("type").and_then(serde_json::Value::as_str) == Some("submenu")
     }
 
     fn build_submenu(
@@ -629,57 +641,65 @@ mod platform {
             .and_then(serde_json::Value::as_array)
             .ok_or_else(|| super::invalid_argument("items", "submenu items must be an array"))?;
         for item in items {
-            match field_string(item, "type")?.as_str() {
-                "item" => {
-                    let item_id = field_string(item, "id")?;
-                    let command_id = item
-                        .get("commandId")
-                        .map(|_| field_string(item, "commandId"))
-                        .transpose()?;
-                    let native_id = if command_id.is_some() {
-                        crate::window::next_menu_native_item_id("item")
-                    } else {
-                        item_id.clone()
-                    };
-                    let enabled = item
-                        .get("enabled")
-                        .and_then(serde_json::Value::as_bool)
-                        .unwrap_or(true);
-                    let menu_item = muda::MenuItem::with_id(
-                        native_id.clone(),
-                        field_string(item, "label")?,
-                        enabled,
-                        None,
-                    );
-                    submenu.append(&menu_item).map_err(menu_error)?;
-                    if let Some(command_id) = command_id {
-                        bindings.push((
-                            native_id,
-                            crate::window::MenuCommandBinding::new(
-                                item_id,
-                                command_id,
-                                window_id.map(ToOwned::to_owned),
-                            ),
-                        ));
-                    }
-                }
-                "separator" => {
-                    let separator = muda::PredefinedMenuItem::separator();
-                    submenu.append(&separator).map_err(menu_error)?;
-                }
-                "submenu" => {
-                    let nested = build_submenu(item, window_id, bindings)?;
-                    submenu.append(&nested).map_err(menu_error)?;
-                }
-                _ => {
-                    return Err(super::invalid_argument(
-                        "type",
-                        "must be item, separator, or submenu",
-                    ))
-                }
-            }
+            append_menu_entry(&submenu, item, window_id, bindings)?;
         }
         Ok(submenu)
+    }
+
+    fn append_menu_entry(
+        submenu: &muda::Submenu,
+        item: &serde_json::Value,
+        window_id: Option<&str>,
+        bindings: &mut Vec<(String, crate::window::MenuCommandBinding)>,
+    ) -> std::result::Result<(), HostProtocolError> {
+        match field_string(item, "type")?.as_str() {
+            "item" => {
+                let item_id = field_string(item, "id")?;
+                let command_id = item
+                    .get("commandId")
+                    .map(|_| field_string(item, "commandId"))
+                    .transpose()?;
+                let native_id = if command_id.is_some() {
+                    crate::window::next_menu_native_item_id("item")
+                } else {
+                    item_id.clone()
+                };
+                let enabled = item
+                    .get("enabled")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(true);
+                let menu_item = muda::MenuItem::with_id(
+                    native_id.clone(),
+                    field_string(item, "label")?,
+                    enabled,
+                    None,
+                );
+                submenu.append(&menu_item).map_err(menu_error)?;
+                if let Some(command_id) = command_id {
+                    bindings.push((
+                        native_id,
+                        crate::window::MenuCommandBinding::new(
+                            item_id,
+                            command_id,
+                            window_id.map(ToOwned::to_owned),
+                        ),
+                    ));
+                }
+                Ok(())
+            }
+            "separator" => {
+                let separator = muda::PredefinedMenuItem::separator();
+                submenu.append(&separator).map_err(menu_error)
+            }
+            "submenu" => {
+                let nested = build_submenu(item, window_id, bindings)?;
+                submenu.append(&nested).map_err(menu_error)
+            }
+            _ => Err(super::invalid_argument(
+                "type",
+                "must be item, separator, or submenu",
+            )),
+        }
     }
 
     fn field_string(
@@ -813,6 +833,13 @@ mod platform {
         Err(HostProtocolError::unsupported(
             "window menus are macOS-only in the host adapter",
             host_protocol::MENU_SET_WINDOW_MENU_METHOD,
+        ))
+    }
+
+    pub(super) fn clear_application_menu() -> std::result::Result<(), HostProtocolError> {
+        Err(HostProtocolError::unsupported(
+            "Menu.clear is only implemented on macOS in the host adapter",
+            host_protocol::MENU_CLEAR_METHOD,
         ))
     }
 

@@ -1077,7 +1077,7 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     ),
     route(
         host_protocol::MENU_CLEAR_METHOD,
-        HostMethodDispatcher::Payload(menu::clear),
+        HostMethodDispatcher::Window(menu::clear),
     ),
     route(
         host_protocol::MENU_CAPABILITY_METHOD,
@@ -3883,6 +3883,34 @@ mod tests {
         let requests = fake.context_menus();
         assert_eq!(requests.len(), 1);
         assert_eq!(requests[0].window_id(), "window-1");
+    }
+
+    #[test]
+    fn menu_clear_routes_to_window_handler() {
+        let fake = Arc::new(FakeWindowHandler::default());
+        let router = HostMethodRouter::new(fake.clone());
+        let response = router
+            .dispatch_at(
+                request_with_payload(
+                    "request-menu-clear",
+                    host_protocol::MENU_CLEAR_METHOD,
+                    serde_json::json!({}),
+                ),
+                1710000000108,
+            )
+            .expect("menu clear should return response");
+
+        assert_eq!(
+            response,
+            HostProtocolEnvelope::Response {
+                id: "request-menu-clear".to_string(),
+                timestamp: 1710000000108,
+                trace_id: "trace-request-menu-clear".to_string(),
+                payload: None,
+                error: None,
+            }
+        );
+        assert_eq!(fake.menu_clears(), 1);
     }
 
     #[test]
@@ -7904,6 +7932,7 @@ mod tests {
         simple_fullscreen: Mutex<Vec<(String, bool)>>,
         dock_badge_labels: Mutex<Vec<Option<String>>>,
         context_menus: Mutex<Vec<ContextMenuShowRequest>>,
+        menu_clears: Mutex<u32>,
         cookie_gets: Mutex<Vec<host_protocol::CookieStoreGetPayload>>,
         cookie_removes: Mutex<Vec<host_protocol::CookieStoreRemovePayload>>,
         cookie_sets: Mutex<Vec<host_protocol::CookieStoreSetPayload>>,
@@ -7942,6 +7971,7 @@ mod tests {
                 simple_fullscreen: Mutex::new(Vec::new()),
                 dock_badge_labels: Mutex::new(Vec::new()),
                 context_menus: Mutex::new(Vec::new()),
+                menu_clears: Mutex::new(0),
                 cookie_gets: Mutex::new(Vec::new()),
                 cookie_removes: Mutex::new(Vec::new()),
                 cookie_sets: Mutex::new(Vec::new()),
@@ -8115,6 +8145,13 @@ mod tests {
                 .lock()
                 .expect("fake context menu requests should lock")
                 .clone()
+        }
+
+        fn menu_clears(&self) -> u32 {
+            *self
+                .menu_clears
+                .lock()
+                .expect("fake menu clear requests should lock")
         }
 
         fn cookie_gets(&self) -> Vec<host_protocol::CookieStoreGetPayload> {
@@ -8529,6 +8566,14 @@ mod tests {
             _window_id: &str,
             _template: serde_json::Value,
         ) -> Result<(), HostProtocolError> {
+            Ok(())
+        }
+
+        fn clear_application_menu(&self) -> Result<(), HostProtocolError> {
+            *self
+                .menu_clears
+                .lock()
+                .expect("fake menu clear requests should lock") += 1;
             Ok(())
         }
 

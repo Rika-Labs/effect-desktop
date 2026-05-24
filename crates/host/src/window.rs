@@ -315,6 +315,8 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
         template: serde_json::Value,
     ) -> std::result::Result<(), HostProtocolError>;
 
+    fn clear_application_menu(&self) -> std::result::Result<(), HostProtocolError>;
+
     fn show_context_menu(
         &self,
         request: ContextMenuShowRequest,
@@ -1167,6 +1169,9 @@ enum WindowCommand {
     SetWindowMenu {
         window_id: String,
         template: serde_json::Value,
+        reply: Sender<WindowCommandReply>,
+    },
+    ClearApplicationMenu {
         reply: Sender<WindowCommandReply>,
     },
     ShowContextMenu {
@@ -2609,6 +2614,41 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::NetworkAuthProxy(_) => Err(HostProtocolError::internal(
                 "window menu command received window response",
                 host_protocol::MENU_SET_WINDOW_MENU_METHOD,
+            )),
+        }
+    }
+
+    fn clear_application_menu(&self) -> std::result::Result<(), HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::ClearApplicationMenu { reply: reply_tx })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::MenuSet => Ok(()),
+            WindowCommandResponse::Created(_)
+            | WindowCommandResponse::Destroyed
+            | WindowCommandResponse::WindowUpdated
+            | WindowCommandResponse::WindowLookup(_)
+            | WindowCommandResponse::WindowList(_)
+            | WindowCommandResponse::WindowParent(_)
+            | WindowCommandResponse::WindowBounds(_)
+            | WindowCommandResponse::WindowState(_)
+            | WindowCommandResponse::DockBadgeLabelSet
+            | WindowCommandResponse::DockProgressSet
+            | WindowCommandResponse::DockAttentionRequested
+            | WindowCommandResponse::TrayCreated(_)
+            | WindowCommandResponse::TrayUpdated
+            | WindowCommandResponse::TrayDestroyed
+            | WindowCommandResponse::ScreenDisplays(_)
+            | WindowCommandResponse::ScreenDisplay(_)
+            | WindowCommandResponse::ScreenPoint(_)
+            | WindowCommandResponse::ScreenSupported(_)
+            | WindowCommandResponse::WebViewCreated(_)
+            | WindowCommandResponse::WebViewNavigationState(_)
+            | WindowCommandResponse::CookieStoreGet(_)
+            | WindowCommandResponse::BrowsingDataCleared(_)
+            | WindowCommandResponse::NetworkAuthProxy(_) => Err(HostProtocolError::internal(
+                "menu clear command received window response",
+                host_protocol::MENU_CLEAR_METHOD,
             )),
         }
     }
@@ -4448,6 +4488,10 @@ impl WindowRegistry {
         macos::set_window_menu(window_id, template)
     }
 
+    fn clear_application_menu(&self) -> std::result::Result<(), HostProtocolError> {
+        macos::clear_application_menu()
+    }
+
     fn show_context_menu(
         &self,
         request: &ContextMenuShowRequest,
@@ -5779,6 +5823,13 @@ impl WindowRegistry {
             } => {
                 let result = self
                     .set_window_menu(&window_id, template)
+                    .map(|()| WindowCommandResponse::MenuSet);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::ClearApplicationMenu { reply } => {
+                let result = self
+                    .clear_application_menu()
                     .map(|()| WindowCommandResponse::MenuSet);
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other

@@ -45,42 +45,13 @@ pub(crate) fn set_window_menu(
     Ok(None)
 }
 
-pub(crate) fn clear(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
+pub(crate) fn clear(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
     validate_clear_payload(payload)?;
-    platform_clear()?;
+    handler.clear_application_menu()?;
     Ok(None)
-}
-
-#[cfg(all(target_os = "macos", not(test)))]
-fn platform_clear() -> Result<(), HostProtocolError> {
-    crate::macos::clear_application_menu()
-}
-
-#[cfg(any(not(target_os = "macos"), test))]
-fn platform_clear() -> Result<(), HostProtocolError> {
-    test_clear_application_menu().unwrap_or_else(|| {
-        Err(HostProtocolError::unsupported(
-            "Menu.clear is only implemented on macOS in the host adapter",
-            host_protocol::MENU_CLEAR_METHOD,
-        ))
-    })
-}
-
-#[cfg(any(not(target_os = "macos"), test))]
-fn test_clear_application_menu() -> Option<Result<(), HostProtocolError>> {
-    #[cfg(test)]
-    {
-        tests::TEST_MENU_CLEAR_CALLS.with(|state| {
-            let mut state = state.borrow_mut();
-            let counter = state.as_mut()?;
-            *counter += 1;
-            Some(Ok(()))
-        })
-    }
-    #[cfg(not(test))]
-    {
-        None
-    }
 }
 
 pub(crate) fn capability(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
@@ -156,6 +127,7 @@ fn validate_template(template: &Value, operation: &str) -> Result<(), HostProtoc
     if items
         .iter()
         .any(|item| item.get("type").and_then(Value::as_str) != Some("submenu"))
+        && operation == host_protocol::MENU_SET_APPLICATION_MENU_METHOD
     {
         return Err(HostProtocolError::invalid_argument(
             "template.items",
@@ -164,7 +136,93 @@ fn validate_template(template: &Value, operation: &str) -> Result<(), HostProtoc
         ));
     }
 
+    for item in items {
+        validate_template_entry(item, operation)?;
+    }
+
     Ok(())
+}
+
+fn validate_template_entry(value: &Value, operation: &str) -> Result<(), HostProtocolError> {
+    match value.get("type").and_then(Value::as_str) {
+        Some("item") => {
+            validate_printable_value(
+                "item.id",
+                required_item_string(value, "item", "id", operation)?,
+                operation,
+            )?;
+            validate_printable_value(
+                "item.label",
+                required_item_string(value, "item", "label", operation)?,
+                operation,
+            )?;
+            if let Some(command_id) = value.get("commandId") {
+                let command_id = command_id.as_str().ok_or_else(|| {
+                    HostProtocolError::invalid_argument(
+                        "item.commandId",
+                        "must be a string",
+                        operation,
+                    )
+                })?;
+                validate_printable_value("item.commandId", command_id, operation)?;
+            }
+            if let Some(accelerator) = value.get("accelerator") {
+                let accelerator = accelerator.as_str().ok_or_else(|| {
+                    HostProtocolError::invalid_argument(
+                        "item.accelerator",
+                        "must be a string",
+                        operation,
+                    )
+                })?;
+                validate_printable_value("item.accelerator", accelerator, operation)?;
+            }
+            Ok(())
+        }
+        Some("separator") => Ok(()),
+        Some("submenu") => {
+            validate_printable_value(
+                "submenu.id",
+                required_item_string(value, "submenu", "id", operation)?,
+                operation,
+            )?;
+            validate_printable_value(
+                "submenu.label",
+                required_item_string(value, "submenu", "label", operation)?,
+                operation,
+            )?;
+            let Some(items) = value.get("items").and_then(Value::as_array) else {
+                return Err(HostProtocolError::invalid_argument(
+                    "submenu.items",
+                    "must be an array",
+                    operation,
+                ));
+            };
+            for item in items {
+                validate_template_entry(item, operation)?;
+            }
+            Ok(())
+        }
+        _ => Err(HostProtocolError::invalid_argument(
+            "item.type",
+            "must be item, separator, or submenu",
+            operation,
+        )),
+    }
+}
+
+fn required_item_string<'a>(
+    value: &'a Value,
+    prefix: &'static str,
+    field: &'static str,
+    operation: &str,
+) -> Result<&'a str, HostProtocolError> {
+    value.get(field).and_then(Value::as_str).ok_or_else(|| {
+        HostProtocolError::invalid_argument(
+            format!("{prefix}.{field}"),
+            "must be a string",
+            operation,
+        )
+    })
 }
 
 fn validate_capability_payload(payload: &Value) -> Result<(), HostProtocolError> {
@@ -236,28 +294,9 @@ fn required_payload(payload: Option<Value>, operation: &str) -> Result<Value, Ho
 
 #[cfg(test)]
 mod tests {
-    use super::{capability, clear, decode_template};
+    use super::{capability, decode_template, validate_clear_payload, validate_template};
     use host_protocol::HostProtocolError;
     use serde_json::json;
-    use std::cell::RefCell;
-
-    thread_local! {
-        pub(super) static TEST_MENU_CLEAR_CALLS: RefCell<Option<u32>> = const { RefCell::new(None) };
-    }
-
-    fn with_menu_clear_recording<R>(f: impl FnOnce() -> R) -> (R, u32) {
-        TEST_MENU_CLEAR_CALLS.with(|state| {
-            *state.borrow_mut() = Some(0);
-        });
-        let result = f();
-        let calls = TEST_MENU_CLEAR_CALLS.with(|state| {
-            state
-                .borrow_mut()
-                .take()
-                .expect("test menu clear recorder was reset")
-        });
-        (result, calls)
-    }
 
     #[test]
     fn application_menu_template_requires_items() {
@@ -294,6 +333,24 @@ mod tests {
             host_protocol::MENU_SET_APPLICATION_MENU_METHOD,
         )
         .is_err());
+    }
+
+    #[test]
+    fn window_menu_template_accepts_root_items_and_separators() {
+        let template = json!({
+            "items": [
+                { "type": "item", "id": "open", "label": "Open" },
+                { "type": "separator" },
+                {
+                    "type": "submenu",
+                    "id": "view",
+                    "label": "View",
+                    "items": [{ "type": "item", "id": "reload", "label": "Reload" }]
+                }
+            ]
+        });
+
+        assert!(validate_template(&template, host_protocol::MENU_SET_WINDOW_MENU_METHOD).is_ok());
     }
 
     #[test]
@@ -350,36 +407,19 @@ mod tests {
     }
 
     #[test]
-    fn menu_clear_reports_unsupported_without_platform_adapter() {
-        assert!(matches!(
-            clear(None),
-            Err(HostProtocolError::Unsupported { operation, .. })
-                if operation == host_protocol::MENU_CLEAR_METHOD
-        ));
-    }
-
-    #[test]
-    fn menu_clear_rejects_unexpected_payload_before_macos_clear() {
-        let (result, calls) =
-            with_menu_clear_recording(|| clear(Some(json!({ "window": { "id": "" } }))));
+    fn menu_clear_rejects_invalid_window_payload() {
+        let result = validate_clear_payload(Some(json!({ "window": { "id": "" } })));
 
         assert!(matches!(
             result,
             Err(HostProtocolError::InvalidArgument { .. })
         ));
-        assert_eq!(calls, 0, "validation must precede the macOS clear path");
     }
 
-    #[cfg(target_os = "macos")]
     #[test]
-    fn menu_clear_routes_to_macos_when_supported() {
-        let (result, calls) = with_menu_clear_recording(|| clear(None));
-
-        assert!(matches!(result, Ok(None)), "clear should succeed on macOS");
-        assert_eq!(
-            calls, 1,
-            "clear must invoke the macOS application-menu path"
-        );
+    fn menu_clear_accepts_empty_payload() {
+        assert!(validate_clear_payload(None).is_ok());
+        assert!(validate_clear_payload(Some(json!({}))).is_ok());
     }
 
     #[test]
