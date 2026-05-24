@@ -37,16 +37,6 @@ impl LinuxSession {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum DockMethod {
-    SetBadgeCount,
-    SetBadgeText,
-    SetProgress,
-    SetMenu,
-    SetJumpList,
-    RequestAttention,
-}
-
 pub(crate) fn global_shortcut_is_supported() -> Result<Option<Value>, HostProtocolError> {
     Ok(Some(global_shortcut_support_payload()))
 }
@@ -75,56 +65,6 @@ pub(crate) fn screen_work_area(
     _monitor: &tao::monitor::MonitorHandle,
 ) -> Option<LinuxScreenWorkArea> {
     None
-}
-
-pub(crate) fn dock_is_supported(
-    payload: Option<Value>,
-) -> Result<Option<Value>, HostProtocolError> {
-    let method = decode_method(payload)?;
-    Ok(Some(json!({ "supported": dock_method_supported(&method) })))
-}
-
-fn decode_method(payload: Option<Value>) -> Result<String, HostProtocolError> {
-    let Some(payload) = payload else {
-        return Err(HostProtocolError::invalid_argument(
-            "payload",
-            "is required",
-            host_protocol::DOCK_IS_SUPPORTED_METHOD,
-        ));
-    };
-    match payload.get("method") {
-        Some(Value::String(method)) => parse_dock_method(method).map(|_| method.clone()),
-        Some(_) => Err(HostProtocolError::invalid_argument(
-            "method",
-            "must be a string",
-            host_protocol::DOCK_IS_SUPPORTED_METHOD,
-        )),
-        None => Err(HostProtocolError::invalid_argument(
-            "method",
-            "is required",
-            host_protocol::DOCK_IS_SUPPORTED_METHOD,
-        )),
-    }
-}
-
-fn parse_dock_method(method: &str) -> Result<DockMethod, HostProtocolError> {
-    match method {
-        "setBadgeCount" => Ok(DockMethod::SetBadgeCount),
-        "setBadgeText" => Ok(DockMethod::SetBadgeText),
-        "setProgress" => Ok(DockMethod::SetProgress),
-        "setMenu" => Ok(DockMethod::SetMenu),
-        "setJumpList" => Ok(DockMethod::SetJumpList),
-        "requestAttention" => Ok(DockMethod::RequestAttention),
-        _ => Err(HostProtocolError::invalid_argument(
-            "method",
-            "must be a known Dock method",
-            host_protocol::DOCK_IS_SUPPORTED_METHOD,
-        )),
-    }
-}
-
-fn dock_method_supported(method: &str) -> bool {
-    platform_dock_method_supported(method)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -194,29 +134,11 @@ fn global_shortcut_support_payload() -> Value {
     })
 }
 
-#[cfg(target_os = "macos")]
-fn platform_dock_method_supported(method: &str) -> bool {
-    matches!(
-        method,
-        "setBadgeCount" | "setBadgeText" | "requestAttention"
-    )
-}
-
-#[cfg(target_os = "windows")]
-fn platform_dock_method_supported(method: &str) -> bool {
-    matches!(method, "requestAttention")
-}
-
-#[cfg(target_os = "linux")]
-fn platform_dock_method_supported(method: &str) -> bool {
-    matches!(method, "requestAttention")
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
-        decode_method, dock_method_supported, support_payload_for_session, LinuxScreenWorkArea,
-        LinuxSession, HOST_ADAPTER_UNIMPLEMENTED_REASON,
+        support_payload_for_session, LinuxScreenWorkArea, LinuxSession,
+        HOST_ADAPTER_UNIMPLEMENTED_REASON,
     };
     use serde_json::json;
 
@@ -271,48 +193,5 @@ mod tests {
         assert!(LinuxScreenWorkArea::from_logical_rect(0, 0, 100, -1, 1.0).is_none());
         assert!(LinuxScreenWorkArea::from_logical_rect(0, 0, 100, 100, 0.0).is_none());
         assert!(LinuxScreenWorkArea::from_logical_rect(0, 0, 100, 100, f64::NAN).is_none());
-    }
-
-    #[test]
-    fn dock_support_matches_current_platform_rows() {
-        #[cfg(target_os = "macos")]
-        {
-            assert!(dock_method_supported("setBadgeCount"));
-            assert!(dock_method_supported("setBadgeText"));
-            assert!(dock_method_supported("requestAttention"));
-            assert!(!dock_method_supported("setProgress"));
-            assert!(!dock_method_supported("setMenu"));
-            assert!(!dock_method_supported("setJumpList"));
-        }
-
-        #[cfg(target_os = "windows")]
-        {
-            assert!(dock_method_supported("requestAttention"));
-            assert!(!dock_method_supported("setBadgeCount"));
-            assert!(!dock_method_supported("setBadgeText"));
-            assert!(!dock_method_supported("setProgress"));
-            assert!(!dock_method_supported("setMenu"));
-            assert!(!dock_method_supported("setJumpList"));
-        }
-
-        #[cfg(target_os = "linux")]
-        {
-            assert!(dock_method_supported("requestAttention"));
-            assert!(!dock_method_supported("setBadgeCount"));
-            assert!(!dock_method_supported("setBadgeText"));
-            assert!(!dock_method_supported("setProgress"));
-            assert!(!dock_method_supported("setMenu"));
-            assert!(!dock_method_supported("setJumpList"));
-        }
-    }
-
-    #[test]
-    fn dock_support_rejects_blank_and_unknown_methods() {
-        assert!(decode_method(Some(json!({ "method": "" }))).is_err());
-        assert!(decode_method(Some(json!({ "method": "missing" }))).is_err());
-        assert_eq!(
-            decode_method(Some(json!({ "method": "setBadgeCount" }))).expect("method"),
-            "setBadgeCount"
-        );
     }
 }

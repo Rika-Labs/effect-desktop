@@ -886,7 +886,7 @@ test("ProductionChecker flags unguarded partial Dock badge count usage", () =>
     })
   ))
 
-test("ProductionChecker flags unguarded unsupported Dock progress usage", () =>
+test("ProductionChecker accepts supported Dock progress usage without a guard", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const report = yield* runProductionCheck({
@@ -899,17 +899,8 @@ test("ProductionChecker flags unguarded unsupported Dock progress usage", () =>
         ]
       })
 
-      expect(report.passed).toBe(false)
-      expect(report.failures).toMatchObject([
-        {
-          rule: "unsupported-capability-without-guard",
-          location: {
-            path: "src/renderer/dock.ts",
-            line: 1,
-            column: 1
-          }
-        }
-      ])
+      expect(report.passed).toBe(true)
+      expect(report.failures).toEqual([])
     })
   ))
 

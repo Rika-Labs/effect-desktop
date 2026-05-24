@@ -469,7 +469,7 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     ),
     route(
         host_protocol::DOCK_IS_SUPPORTED_METHOD,
-        HostMethodDispatcher::Payload(linux::dock_is_supported),
+        HostMethodDispatcher::Payload(dock::is_supported),
     ),
     route(
         host_protocol::GLOBAL_SHORTCUT_IS_REGISTERED_METHOD,

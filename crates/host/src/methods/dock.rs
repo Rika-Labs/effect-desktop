@@ -4,7 +4,17 @@
 
 use crate::window::WindowMethodHandler;
 use host_protocol::HostProtocolError;
-use serde_json::Value;
+use serde_json::{json, Value};
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DockMethod {
+    SetBadgeCount,
+    SetBadgeText,
+    SetProgress,
+    SetMenu,
+    SetJumpList,
+    RequestAttention,
+}
 
 pub(crate) fn set_badge_count(
     handler: &dyn WindowMethodHandler,
@@ -51,6 +61,11 @@ pub(crate) fn request_attention(
     handler.request_dock_attention(critical)?;
 
     Ok(None)
+}
+
+pub(crate) fn is_supported(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
+    let method = decode_supported_method(payload)?;
+    Ok(Some(json!({ "supported": dock_method_supported(method) })))
 }
 
 fn decode_progress(
@@ -167,6 +182,66 @@ fn decode_critical(payload: Option<Value>) -> Result<bool, HostProtocolError> {
     }
 }
 
+fn decode_supported_method(payload: Option<Value>) -> Result<DockMethod, HostProtocolError> {
+    let Some(payload) = payload else {
+        return Err(HostProtocolError::invalid_argument(
+            "payload",
+            "is required",
+            host_protocol::DOCK_IS_SUPPORTED_METHOD,
+        ));
+    };
+    match payload.get("method") {
+        Some(Value::String(method)) => parse_dock_method(method),
+        Some(_) => Err(HostProtocolError::invalid_argument(
+            "method",
+            "must be a string",
+            host_protocol::DOCK_IS_SUPPORTED_METHOD,
+        )),
+        None => Err(HostProtocolError::invalid_argument(
+            "method",
+            "is required",
+            host_protocol::DOCK_IS_SUPPORTED_METHOD,
+        )),
+    }
+}
+
+fn parse_dock_method(method: &str) -> Result<DockMethod, HostProtocolError> {
+    match method {
+        "setBadgeCount" => Ok(DockMethod::SetBadgeCount),
+        "setBadgeText" => Ok(DockMethod::SetBadgeText),
+        "setProgress" => Ok(DockMethod::SetProgress),
+        "setMenu" => Ok(DockMethod::SetMenu),
+        "setJumpList" => Ok(DockMethod::SetJumpList),
+        "requestAttention" => Ok(DockMethod::RequestAttention),
+        _ => Err(HostProtocolError::invalid_argument(
+            "method",
+            "must be a known Dock method",
+            host_protocol::DOCK_IS_SUPPORTED_METHOD,
+        )),
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn dock_method_supported(method: DockMethod) -> bool {
+    matches!(
+        method,
+        DockMethod::SetBadgeCount
+            | DockMethod::SetBadgeText
+            | DockMethod::SetProgress
+            | DockMethod::RequestAttention
+    )
+}
+
+#[cfg(target_os = "windows")]
+fn dock_method_supported(method: DockMethod) -> bool {
+    matches!(method, DockMethod::RequestAttention)
+}
+
+#[cfg(target_os = "linux")]
+fn dock_method_supported(method: DockMethod) -> bool {
+    matches!(method, DockMethod::RequestAttention)
+}
+
 fn required_payload(payload: Option<Value>, operation: &str) -> Result<Value, HostProtocolError> {
     payload.ok_or_else(|| HostProtocolError::invalid_argument("payload", "is required", operation))
 }
@@ -174,7 +249,8 @@ fn required_payload(payload: Option<Value>, operation: &str) -> Result<Value, Ho
 #[cfg(test)]
 mod tests {
     use super::{
-        decode_count, decode_critical, decode_progress, decode_text, validate_progress_value,
+        decode_count, decode_critical, decode_progress, decode_supported_method, decode_text,
+        dock_method_supported, validate_progress_value, DockMethod,
     };
     use serde_json::json;
 
@@ -222,6 +298,49 @@ mod tests {
     #[test]
     fn critical_rejects_non_boolean_values() {
         assert!(decode_critical(Some(json!({ "critical": "yes" }))).is_err());
+    }
+
+    #[test]
+    fn support_matches_current_platform_rows() {
+        #[cfg(target_os = "macos")]
+        {
+            assert!(dock_method_supported(DockMethod::SetBadgeCount));
+            assert!(dock_method_supported(DockMethod::SetBadgeText));
+            assert!(dock_method_supported(DockMethod::SetProgress));
+            assert!(dock_method_supported(DockMethod::RequestAttention));
+            assert!(!dock_method_supported(DockMethod::SetMenu));
+            assert!(!dock_method_supported(DockMethod::SetJumpList));
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            assert!(dock_method_supported(DockMethod::RequestAttention));
+            assert!(!dock_method_supported(DockMethod::SetBadgeCount));
+            assert!(!dock_method_supported(DockMethod::SetBadgeText));
+            assert!(!dock_method_supported(DockMethod::SetProgress));
+            assert!(!dock_method_supported(DockMethod::SetMenu));
+            assert!(!dock_method_supported(DockMethod::SetJumpList));
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            assert!(dock_method_supported(DockMethod::RequestAttention));
+            assert!(!dock_method_supported(DockMethod::SetBadgeCount));
+            assert!(!dock_method_supported(DockMethod::SetBadgeText));
+            assert!(!dock_method_supported(DockMethod::SetProgress));
+            assert!(!dock_method_supported(DockMethod::SetMenu));
+            assert!(!dock_method_supported(DockMethod::SetJumpList));
+        }
+    }
+
+    #[test]
+    fn support_rejects_blank_and_unknown_methods() {
+        assert!(decode_supported_method(Some(json!({ "method": "" }))).is_err());
+        assert!(decode_supported_method(Some(json!({ "method": "missing" }))).is_err());
+        assert_eq!(
+            decode_supported_method(Some(json!({ "method": "setBadgeCount" }))).expect("method"),
+            DockMethod::SetBadgeCount
+        );
     }
 
     #[test]
