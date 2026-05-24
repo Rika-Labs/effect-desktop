@@ -1851,7 +1851,12 @@
     {
       "name": "PtyAdapter",
       "kind": "interface",
-      "signature": "export interface PtyAdapter { readonly open: (input: PtyOpenInput) => PtyChild }"
+      "signature": "export interface PtyAdapter { readonly open: (input: PtyOpenInput) => Effect.Effect<PtyChild, PtyAdapterError, never> }"
+    },
+    {
+      "name": "PtyAdapterError",
+      "kind": "type",
+      "signature": "export type PtyAdapterError = PtyError | Error"
     },
     {
       "name": "PtyApi",

@@ -15,6 +15,7 @@ import {
   PtyExitStatus,
   PtyResizeInput,
   type PtyAdapter,
+  type PtyAdapterError,
   type PtyApi,
   type PtyBudgetPolicy,
   type PtyChild,
@@ -182,10 +183,11 @@ test("PTY rejects non-positive graceful shutdown windows before adapter activity
           makePty(registry, TEST_OWNER, {
             gracefulShutdownMs: value,
             adapter: {
-              open: () => {
-                openCalls += 1
-                return makeFakeChild({ output: [], exit: { code: 0 } })
-              }
+              open: () =>
+                Effect.sync(() => {
+                  openCalls += 1
+                  return makeFakeChild({ output: [], exit: { code: 0 } })
+                })
             }
           })
         )
@@ -202,10 +204,11 @@ ptyTest("PTY open denies commands by default before adapter activity", () =>
       const registry = yield* makeResourceRegistry()
       const service = yield* makePty(registry, TEST_OWNER, {
         adapter: {
-          open: () => {
-            openCalls += 1
-            return makeFakeChild({ output: [], exit: { code: 0 } })
-          }
+          open: () =>
+            Effect.sync(() => {
+              openCalls += 1
+              return makeFakeChild({ output: [], exit: { code: 0 } })
+            })
         }
       })
 
@@ -581,10 +584,11 @@ ptyTest("PTY rejects invalid output overflow policies before adapter open", () =
       let openCalls = 0
       const fixture = yield* makeFixture(
         {
-          open: () => {
-            openCalls += 1
-            return makeFakeChild({ output: [], exit: { code: 0 } })
-          }
+          open: () =>
+            Effect.sync(() => {
+              openCalls += 1
+              return makeFakeChild({ output: [], exit: { code: 0 } })
+            })
         },
         {
           budgets: {
@@ -915,8 +919,15 @@ const ALLOW_TEST_PTY_PERMISSIONS: PtyPermissionPolicy = {
 const makeFakeAdapter = (
   makeChild: () => PtyChild = () => makeFakeChild({ output: [], exit: { code: 0 } })
 ): PtyAdapter => ({
-  open: () => makeChild()
+  open: () =>
+    Effect.try({
+      try: makeChild,
+      catch: toPtyAdapterError
+    })
 })
+
+const toPtyAdapterError = (error: unknown): PtyAdapterError =>
+  error instanceof Error ? error : new Error(String(error))
 
 interface FakeChild extends PtyChild {
   readonly writes: Uint8Array[]

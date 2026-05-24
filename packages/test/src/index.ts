@@ -113,6 +113,7 @@ import {
   type ProcessSignalInput,
   unsafeSecretBytes,
   type PtyAdapter,
+  type PtyAdapterError,
   type PtyApi,
   type PtyBudgetPolicy,
   type PtyChild,
@@ -1364,27 +1365,34 @@ const makeMockPtyAdapter = (
   const fixtures = [...(options.ptys ?? [])]
 
   return {
-    open: (input) => {
-      const fixture = takePtyFixture(fixtures, input)
-      if (fixture === undefined) {
-        throw mockNodeError("EINVAL", `missing MockPTY fixture for ${input.command}`)
-      }
-      const pid = fixture.pid === null ? undefined : (fixture.pid ?? nextPid++)
-      const record: MutableMockPtyOpenRecord = {
-        input,
-        pid,
-        writes: [],
-        resizes: [],
-        killedWith: undefined,
-        terminateTreeCalls: 0,
-        forceKillTreeCalls: 0
-      }
-      calls.push(record)
+    open: (input) =>
+      Effect.try({
+        try: () => {
+          const fixture = takePtyFixture(fixtures, input)
+          if (fixture === undefined) {
+            throw mockNodeError("EINVAL", `missing MockPTY fixture for ${input.command}`)
+          }
+          const pid = fixture.pid === null ? undefined : (fixture.pid ?? nextPid++)
+          const record: MutableMockPtyOpenRecord = {
+            input,
+            pid,
+            writes: [],
+            resizes: [],
+            killedWith: undefined,
+            terminateTreeCalls: 0,
+            forceKillTreeCalls: 0
+          }
+          calls.push(record)
 
-      return makeMockPtyChild(fixture, record)
-    }
+          return makeMockPtyChild(fixture, record)
+        },
+        catch: toPtyAdapterError
+      })
   }
 }
+
+const toPtyAdapterError = (error: unknown): PtyAdapterError =>
+  error instanceof Error ? error : new Error(String(error))
 
 const makeMockPtyChild = (fixture: MockPtyFixture, record: MutableMockPtyOpenRecord): PtyChild => {
   let running = true

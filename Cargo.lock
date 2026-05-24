@@ -1612,6 +1612,7 @@ dependencies = [
  "libc",
  "lol_html",
  "muda",
+ "native-pty",
  "native-updater",
  "notify",
  "notify-rust",

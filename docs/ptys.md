@@ -16,7 +16,9 @@ The `PTY` service owns pseudo-terminal sessions, resize and kill operations, out
 
 `@orika/core` exports `PTY`, `PtyOpenOptions`, `PtyHandle`, `PtyOpenInput`, `PtyResizeInput`, `PtySignalInput`, `PtyExitStatus`, PTY errors, adapter types, and constructors such as `makePty`.
 
-The current TypeScript surface exposes the adapter contract; application code supplies a `PtyAdapter` when composing `PtyLayer`. Tests can use `MockPTY.layer(options)` from `@orika/test`.
+`@orika/native` exports `NativePtyLayer({ exchange, permissions })` for production desktop apps. It adapts host `Pty.*` methods to the core service while the Rust host owns the native process through `crates/native-pty`. Custom backends can still supply a `PtyAdapter` when composing `PtyLayer`.
+
+Tests can use `MockPTY.layer(options)` from `@orika/test`.
 
 ## Runtime rule
 

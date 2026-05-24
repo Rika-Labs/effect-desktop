@@ -257,6 +257,15 @@ pub const EXTENSION_PACKAGE_REMOVE_METHOD: &str = "ExtensionPackage.remove";
 pub const EXTENSION_PACKAGE_LIST_METHOD: &str = "ExtensionPackage.list";
 pub const EXTENSION_PACKAGE_IS_SUPPORTED_METHOD: &str = "ExtensionPackage.isSupported";
 pub const EXTENSION_PACKAGE_EVENT: &str = "ExtensionPackage.Event";
+pub const PTY_OPEN_METHOD: &str = "Pty.open";
+pub const PTY_READ_METHOD: &str = "Pty.read";
+pub const PTY_WRITE_METHOD: &str = "Pty.write";
+pub const PTY_RESIZE_METHOD: &str = "Pty.resize";
+pub const PTY_KILL_METHOD: &str = "Pty.kill";
+pub const PTY_TERMINATE_TREE_METHOD: &str = "Pty.terminateTree";
+pub const PTY_FORCE_KILL_TREE_METHOD: &str = "Pty.forceKillTree";
+pub const PTY_WAIT_METHOD: &str = "Pty.wait";
+pub const PTY_DISPOSE_METHOD: &str = "Pty.dispose";
 pub const LOCAL_TOOL_RUNTIME_REGISTER_METHOD: &str = "LocalToolRuntime.register";
 pub const LOCAL_TOOL_RUNTIME_RUN_METHOD: &str = "LocalToolRuntime.run";
 pub const LOCAL_TOOL_RUNTIME_STOP_METHOD: &str = "LocalToolRuntime.stop";
@@ -10897,6 +10906,263 @@ impl LocalToolRuntimeManifestPayload {
 
     pub fn health(&self) -> Option<&LocalToolRuntimeHealthCheckPayload> {
         self.health.as_ref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PtyOpenPayload {
+    command: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    args: Vec<String>,
+    rows: u16,
+    cols: u16,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cwd: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    env: BTreeMap<String, String>,
+}
+
+impl PtyOpenPayload {
+    pub fn new(
+        command: impl Into<String>,
+        args: Vec<String>,
+        rows: u16,
+        cols: u16,
+        cwd: Option<String>,
+        env: BTreeMap<String, String>,
+    ) -> Self {
+        Self {
+            command: command.into(),
+            args,
+            rows,
+            cols,
+            cwd,
+            env,
+        }
+    }
+
+    pub fn command(&self) -> &str {
+        &self.command
+    }
+
+    pub fn args(&self) -> &[String] {
+        &self.args
+    }
+
+    pub fn rows(&self) -> u16 {
+        self.rows
+    }
+
+    pub fn cols(&self) -> u16 {
+        self.cols
+    }
+
+    pub fn cwd(&self) -> Option<&str> {
+        self.cwd.as_deref()
+    }
+
+    pub fn env(&self) -> &BTreeMap<String, String> {
+        &self.env
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PtyOpenResultPayload {
+    pty_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pid: Option<u32>,
+}
+
+impl PtyOpenResultPayload {
+    pub fn new(pty_id: impl Into<String>, pid: Option<u32>) -> Self {
+        Self {
+            pty_id: pty_id.into(),
+            pid,
+        }
+    }
+
+    pub fn pty_id(&self) -> &str {
+        &self.pty_id
+    }
+
+    pub fn pid(&self) -> Option<u32> {
+        self.pid
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PtyIdPayload {
+    pty_id: String,
+}
+
+impl PtyIdPayload {
+    pub fn new(pty_id: impl Into<String>) -> Self {
+        Self {
+            pty_id: pty_id.into(),
+        }
+    }
+
+    pub fn pty_id(&self) -> &str {
+        &self.pty_id
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PtyReadPayload {
+    pty_id: String,
+    max_bytes: usize,
+}
+
+impl PtyReadPayload {
+    pub fn new(pty_id: impl Into<String>, max_bytes: usize) -> Self {
+        Self {
+            pty_id: pty_id.into(),
+            max_bytes,
+        }
+    }
+
+    pub fn pty_id(&self) -> &str {
+        &self.pty_id
+    }
+
+    pub fn max_bytes(&self) -> usize {
+        self.max_bytes
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PtyReadResultPayload {
+    bytes_base64: String,
+    done: bool,
+}
+
+impl PtyReadResultPayload {
+    pub fn new(bytes_base64: impl Into<String>, done: bool) -> Self {
+        Self {
+            bytes_base64: bytes_base64.into(),
+            done,
+        }
+    }
+
+    pub fn bytes_base64(&self) -> &str {
+        &self.bytes_base64
+    }
+
+    pub fn done(&self) -> bool {
+        self.done
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PtyWritePayload {
+    pty_id: String,
+    bytes_base64: String,
+}
+
+impl PtyWritePayload {
+    pub fn new(pty_id: impl Into<String>, bytes_base64: impl Into<String>) -> Self {
+        Self {
+            pty_id: pty_id.into(),
+            bytes_base64: bytes_base64.into(),
+        }
+    }
+
+    pub fn pty_id(&self) -> &str {
+        &self.pty_id
+    }
+
+    pub fn bytes_base64(&self) -> &str {
+        &self.bytes_base64
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PtyResizePayload {
+    pty_id: String,
+    rows: u16,
+    cols: u16,
+}
+
+impl PtyResizePayload {
+    pub fn new(pty_id: impl Into<String>, rows: u16, cols: u16) -> Self {
+        Self {
+            pty_id: pty_id.into(),
+            rows,
+            cols,
+        }
+    }
+
+    pub fn pty_id(&self) -> &str {
+        &self.pty_id
+    }
+
+    pub fn rows(&self) -> u16 {
+        self.rows
+    }
+
+    pub fn cols(&self) -> u16 {
+        self.cols
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PtyKillPayload {
+    pty_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    signal: Option<PtySignalPayload>,
+}
+
+impl PtyKillPayload {
+    pub fn new(pty_id: impl Into<String>, signal: Option<PtySignalPayload>) -> Self {
+        Self {
+            pty_id: pty_id.into(),
+            signal,
+        }
+    }
+
+    pub fn pty_id(&self) -> &str {
+        &self.pty_id
+    }
+
+    pub fn signal(&self) -> Option<&PtySignalPayload> {
+        self.signal.as_ref()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum PtySignalPayload {
+    Name(String),
+    Number(i32),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PtyExitStatusPayload {
+    code: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    signal: Option<String>,
+}
+
+impl PtyExitStatusPayload {
+    pub fn new(code: u32, signal: Option<String>) -> Self {
+        Self { code, signal }
+    }
+
+    pub fn code(&self) -> u32 {
+        self.code
+    }
+
+    pub fn signal(&self) -> Option<&str> {
+        self.signal.as_deref()
     }
 }
 

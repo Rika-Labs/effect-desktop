@@ -64,9 +64,9 @@ pub enum PtyError {
 }
 
 pub struct NativePty {
-    master: Box<dyn MasterPty + Send>,
+    master: Option<Box<dyn MasterPty + Send>>,
     child: Box<dyn Child + Send + Sync>,
-    reader: Box<dyn Read + Send>,
+    reader: Option<Box<dyn Read + Send>>,
     writer: Option<Box<dyn Write + Send>>,
     #[cfg(windows)]
     job: Option<PtyJob>,
@@ -112,9 +112,13 @@ impl NativePty {
                 });
             }
 
+            let reader = self.reader.as_mut().ok_or(PtyError::InvalidState {
+                current: "reader-taken",
+                attempted: "read",
+                operation: "Pty.read",
+            })?;
             let mut bytes = vec![0; max_bytes];
-            let read = self
-                .reader
+            let read = reader
                 .read(&mut bytes)
                 .map_err(|error| map_io_error(error, "Pty.read"))?;
             bytes.truncate(read);
@@ -122,10 +126,26 @@ impl NativePty {
         })?
     }
 
+    pub fn take_reader(&mut self) -> PtyResult<Box<dyn Read + Send>> {
+        catch_pty_panic("Pty.takeReader", || {
+            self.reader.take().ok_or(PtyError::InvalidState {
+                current: "reader-taken",
+                attempted: "take-reader",
+                operation: "Pty.takeReader",
+            })
+        })?
+    }
+
     pub fn resize(&self, size: PtySize) -> PtyResult<()> {
         catch_pty_panic("Pty.resize", || {
             validate_size(&size, "Pty.resize")?;
             self.master
+                .as_ref()
+                .ok_or(PtyError::InvalidState {
+                    current: "pty-closed",
+                    attempted: "resize",
+                    operation: "Pty.resize",
+                })?
                 .resize(portable_size(size))
                 .map_err(|error| map_anyhow_error(error, "Pty.resize"))
         })?
@@ -151,6 +171,10 @@ impl NativePty {
 
     pub fn kill(&mut self) -> PtyResult<()> {
         self.terminate_tree()
+    }
+
+    pub fn signal_tree(&mut self, signal: i32) -> PtyResult<()> {
+        catch_pty_panic("Pty.signalTree", || self.signal_child_tree(signal))?
     }
 
     pub fn terminate_tree(&mut self) -> PtyResult<()> {
@@ -198,18 +222,74 @@ impl NativePty {
 
     #[cfg(unix)]
     fn terminate_child_tree(&mut self, signal: TreeSignal) -> PtyResult<()> {
-        terminate_child_tree(self.child.as_mut(), signal)
+        let pgid = self.pty_process_group(signal.operation())?;
+        let result = signal_process_group_or_child(
+            self.child.as_mut(),
+            pgid,
+            signal.unix_signal(),
+            signal.operation(),
+        );
+        if matches!(signal, TreeSignal::ForceKill) {
+            self.close_pty_handles();
+        }
+        result
     }
 
     #[cfg(windows)]
     fn terminate_child_tree(&mut self, signal: TreeSignal) -> PtyResult<()> {
-        match &self.job {
+        let result = match &self.job {
             Some(job) => job.terminate(signal),
             None => self
                 .child
                 .kill()
                 .map_err(|error| map_io_error(error, signal.operation())),
+        };
+        if matches!(signal, TreeSignal::ForceKill) {
+            self.close_pty_handles();
         }
+        result
+    }
+
+    #[cfg(unix)]
+    fn signal_child_tree(&mut self, signal: i32) -> PtyResult<()> {
+        let pgid = self.pty_process_group("Pty.signalTree")?;
+        let result =
+            signal_process_group_or_child(self.child.as_mut(), pgid, signal, "Pty.signalTree");
+        if signal == libc::SIGKILL {
+            self.close_pty_handles();
+        }
+        result
+    }
+
+    #[cfg(windows)]
+    fn signal_child_tree(&mut self, signal: i32) -> PtyResult<()> {
+        match signal {
+            9 => self.force_kill_tree(),
+            15 => self.terminate_tree(),
+            _ => Err(PtyError::InvalidArgument {
+                field: "signal",
+                reason: "only SIGTERM and SIGKILL are supported on Windows".to_string(),
+                operation: "Pty.signalTree",
+            }),
+        }
+    }
+
+    #[cfg(unix)]
+    fn pty_process_group(&self, operation: &'static str) -> PtyResult<libc::pid_t> {
+        match self
+            .master
+            .as_ref()
+            .and_then(|master| master.process_group_leader())
+        {
+            Some(pgid) => Ok(pgid),
+            None => child_pid(self.child.as_ref(), operation),
+        }
+    }
+
+    fn close_pty_handles(&mut self) {
+        self.close_stdin();
+        self.reader.take();
+        self.master.take();
     }
 }
 
@@ -221,17 +301,63 @@ enum TreeSignal {
 
 #[cfg(unix)]
 fn terminate_child_tree(child: &mut dyn Child, signal: TreeSignal) -> PtyResult<()> {
-    let pid = child.process_id().ok_or_else(|| PtyError::InvalidState {
-        current: "missing-process-id",
-        attempted: signal.operation(),
-        operation: signal.operation(),
-    })?;
-    let pgid = i32::try_from(pid).map_err(|_| PtyError::InvalidState {
-        current: "invalid-process-id",
-        attempted: signal.operation(),
-        operation: signal.operation(),
-    })?;
-    let result = unsafe { libc::kill(-pgid, signal.unix_signal()) };
+    let pgid = child_pid(child, signal.operation())?;
+    signal_process_group_or_child(child, pgid, signal.unix_signal(), signal.operation())
+}
+
+#[cfg(unix)]
+fn child_pid(child: &dyn Child, operation: &'static str) -> PtyResult<libc::pid_t> {
+    child
+        .process_id()
+        .ok_or(PtyError::InvalidState {
+            current: "missing-process-id",
+            attempted: operation,
+            operation,
+        })?
+        .try_into()
+        .map_err(|_| PtyError::InvalidState {
+            current: "invalid-process-id",
+            attempted: operation,
+            operation,
+        })
+}
+
+#[cfg(unix)]
+fn signal_process_group_or_child(
+    child: &mut dyn Child,
+    pgid: libc::pid_t,
+    signal: libc::c_int,
+    operation: &'static str,
+) -> PtyResult<()> {
+    let result = unsafe { libc::kill(-pgid, signal) };
+    if result == 0 {
+        return Ok(());
+    }
+
+    let error = std::io::Error::last_os_error();
+    if error.raw_os_error() == Some(libc::ESRCH) {
+        return signal_child(child, signal, operation);
+    }
+
+    Err(map_io_error(error, operation))
+}
+
+#[cfg(unix)]
+fn signal_child(
+    child: &mut dyn Child,
+    signal: libc::c_int,
+    operation: &'static str,
+) -> PtyResult<()> {
+    if child
+        .try_wait()
+        .map_err(|error| map_io_error(error, operation))?
+        .is_some()
+    {
+        return Ok(());
+    }
+
+    let pid = child_pid(child, operation)?;
+    let result = unsafe { libc::kill(pid, signal) };
     if result == 0 {
         return Ok(());
     }
@@ -241,7 +367,7 @@ fn terminate_child_tree(child: &mut dyn Child, signal: TreeSignal) -> PtyResult<
         return Ok(());
     }
 
-    Err(map_io_error(error, signal.operation()))
+    Err(map_io_error(error, operation))
 }
 
 #[cfg(unix)]
@@ -495,9 +621,9 @@ fn open_inner(size: PtySize, command: PtyCommand) -> PtyResult<NativePty> {
     };
 
     Ok(NativePty {
-        master: pair.master,
+        master: Some(pair.master),
         child,
-        reader,
+        reader: Some(reader),
         writer: Some(writer),
         #[cfg(windows)]
         job: Some(job),

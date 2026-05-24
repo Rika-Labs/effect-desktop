@@ -26,6 +26,7 @@ image.workspace = true
 lol_html = "2.9"
 muda = { version = "0.19.1", features = ["common-controls-v6"] }
 native-updater = { path = "../native-updater" }
+native-pty = { path = "../native-pty" }
 notify = "8.2.0"
 rfd = { version = "0.17.2", features = ["common-controls-v6"] }
 serde.workspace = true

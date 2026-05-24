@@ -1027,6 +1027,8 @@ fn dispatch_runtime_request_async(envelope: &HostProtocolEnvelope) -> bool {
         envelope,
         HostProtocolEnvelope::Request { method, .. }
             if method == host_protocol::LOCAL_TOOL_RUNTIME_RUN_METHOD
+                || method == host_protocol::PTY_READ_METHOD
+                || method == host_protocol::PTY_WAIT_METHOD
     )
 }
 

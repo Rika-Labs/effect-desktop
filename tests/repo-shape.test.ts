@@ -48,6 +48,8 @@ const STALE_PTY_HANDLE_DOC_PATTERN =
 const STALE_PTY_PERMISSION_DOC_PATTERN = /\bprocess\.spawn\b/
 const STALE_PTY_PRODUCTION_ADAPTER_DOC_PATTERN =
   /\bProduction uses\b[^\n]*(?:native PTY backend|`crates\/native-pty`)/
+const STALE_PTY_UNSUPPORTED_NATIVE_LAYER_DOC_PATTERN =
+  /\bfail-closed\b|HostProtocolUnsupportedError|does not expose PTY methods/
 const STALE_PACKAGE_README_PHRASES = [
   "public API remains reserved for Phase 4+",
   "Public renderer-facing APIs",
@@ -545,6 +547,9 @@ describe("PTY docs", () => {
         violations.push(
           `${relativePath}: distinguish the Rust PTY backend from an app-facing production adapter`
         )
+      }
+      if (STALE_PTY_UNSUPPORTED_NATIVE_LAYER_DOC_PATTERN.test(markdown)) {
+        violations.push(`${relativePath}: document NativePtyLayer as host-backed, not unsupported`)
       }
     }
 

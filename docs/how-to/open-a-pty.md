@@ -10,7 +10,27 @@ effect_version: 4
 
 A PTY (pseudo-terminal) is what you want when you need an interactive shell or a process that expects a terminal — bash, zsh, ssh, vim. `PTY` runs them through a substitutable adapter with permission policy and scoped cleanup.
 
-## 1. Configure permission policy
+## 1. Compose `PTY`
+
+The native package exports a host-backed layer you can compose without hand-supplying a `PtyAdapter`:
+
+```ts
+import { NativePtyLayer } from "@orika/native"
+import type { HostPtyExchange } from "@orika/native"
+
+declare const exchange: HostPtyExchange
+
+const TerminalPtyLive = NativePtyLayer({
+  exchange,
+  permissions: {
+    spawn: ["/bin/zsh"]
+  }
+})
+```
+
+`NativePtyLayer` validates inputs, enforces `pty.spawn`, and sends `Pty.open`, `Pty.read`, `Pty.write`, `Pty.resize`, `Pty.kill`, `Pty.wait`, and `Pty.dispose` requests through the host protocol. The Rust host owns the native PTY process through `crates/native-pty`.
+
+When you are integrating a non-standard terminal backend, provide an adapter explicitly:
 
 ```ts
 import { PtyLayer, type PtyAdapter } from "@orika/core"
@@ -90,7 +110,7 @@ yield * session.kill()
 
 ## Adapter substitution
 
-`PTY` accepts a substitutable adapter. The checked-in Rust crate `crates/native-pty` is the low-level native primitive, but the current TypeScript SDK exposes the `PtyAdapter` contract rather than a built-in production adapter layer. Tests use `MockPTY` from `@orika/test`, which records open, write, resize, kill, and cleanup calls while returning deterministic output.
+`PTY` accepts a substitutable adapter. Production desktop apps normally use `NativePtyLayer`, which adapts the host PTY protocol to `PtyLayer`. Tests use `MockPTY` from `@orika/test`, which records open, write, resize, kill, and cleanup calls while returning deterministic output.
 
 ## Related
 

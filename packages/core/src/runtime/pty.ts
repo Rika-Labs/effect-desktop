@@ -81,6 +81,7 @@ export class PtyExitStatus extends Schema.Class<PtyExitStatus>("PtyExitStatus")(
 }) {}
 
 export type PtyError = HostProtocolError
+export type PtyAdapterError = PtyError | Error
 
 export interface PtyOpenOptions {
   readonly argv: readonly [string, ...string[]]
@@ -106,7 +107,7 @@ export interface PtyApi {
 }
 
 export interface PtyAdapter {
-  readonly open: (input: PtyOpenInput) => PtyChild
+  readonly open: (input: PtyOpenInput) => Effect.Effect<PtyChild, PtyAdapterError, never>
 }
 
 export interface PtyChild {
@@ -243,10 +244,10 @@ export const makePty = (
                 input.ownerScope,
                 budgets.maxConcurrent
               ).pipe(Effect.tapError(() => Scope.close(ptyScope, Exit.void)))
-              const child = yield* Effect.try({
-                try: () => adapter.open(input),
-                catch: (error) => mapPtyError(error, input.command, "PTY.open")
-              }).pipe(Effect.tapError(() => Scope.close(ptyScope, Exit.void)))
+              const child = yield* adapter.open(input).pipe(
+                Effect.mapError((error) => mapPtyError(error, input.command, "PTY.open")),
+                Effect.tapError(() => Scope.close(ptyScope, Exit.void))
+              )
               const disposalOrigin = yield* Ref.make<PtyDisposalOrigin>("running")
               const resource = yield* registry
                 .register({

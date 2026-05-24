@@ -684,6 +684,81 @@
       "signature": "export class HostProtocolUpdateStaleNotarizationError extends Schema.Class<HostProtocolUpdateStaleNotarizationError>( \"HostProtocolUpdateStaleNotarizationError\" )({ tag: Schema.Literal(\"UpdateStaleNotarization\"), notarizedAt: Schema.String, ...HostProtocolErrorCommonFields }) { get _tag(): \"UpdateStaleNotarization\" { return this.tag } }"
     },
     {
+      "name": "HostPtyClient",
+      "kind": "interface",
+      "signature": "export interface HostPtyClient { readonly open: ( input: HostPtyOpenInput ) => Effect.Effect<HostPtyOpenResult, HostProtocolError, never> readonly read: ( ptyId: string, maxBytes: number ) => Effect.Effect<HostPtyReadResult, HostProtocolError, never> readonly write: ( ptyId: string, bytes: Uint8Array ) => Effect.Effect<void, HostProtocolError, never> readonly resize: ( ptyId: string, size: HostPtyResizeInput ) => Effect.Effect<void, HostProtocolError, never> readonly kill: ( ptyId: string, signal?: string | number ) => Effect.Effect<void, HostProtocolError, never> readonly terminateTree: (ptyId: string) => Effect.Effect<void, HostProtocolError, never> readonly forceKillTree: (ptyId: string) => Effect.Effect<void, HostProtocolError, never> readonly wait: (ptyId: string) => Effect.Effect<HostPtyExitStatus, HostProtocolError, never> readonly dispose: (ptyId: string) => Effect.Effect<void, HostProtocolError, never> }"
+    },
+    {
+      "name": "HostPtyClientOptions",
+      "kind": "interface",
+      "signature": "export interface HostPtyClientOptions { readonly nextRequestId?: () => string readonly nextTraceId?: () => string readonly now?: () => number }"
+    },
+    {
+      "name": "HostPtyExchange",
+      "kind": "interface",
+      "signature": "export interface HostPtyExchange { readonly request: ( request: HostProtocolRequestEnvelope ) => Effect.Effect<HostProtocolResponseEnvelope, HostProtocolError, never> }"
+    },
+    {
+      "name": "HostPtyExitStatus",
+      "kind": "class",
+      "signature": "export class HostPtyExitStatus extends Schema.Class<HostPtyExitStatus>(\"HostPtyExitStatus\")({ code: UInt32, signal: OptionalString }) {}"
+    },
+    {
+      "name": "HostPtyIdPayload",
+      "kind": "class",
+      "signature": "export class HostPtyIdPayload extends Schema.Class<HostPtyIdPayload>(\"HostPtyIdPayload\")({ ptyId: Schema.NonEmptyString }) {}"
+    },
+    {
+      "name": "HostPtyKillPayload",
+      "kind": "class",
+      "signature": "export class HostPtyKillPayload extends Schema.Class<HostPtyKillPayload>(\"HostPtyKillPayload\")({ ptyId: Schema.NonEmptyString, signal: Schema.optionalKey(PtySignalPayload) }) {}"
+    },
+    {
+      "name": "HostPtyOpenInput",
+      "kind": "interface",
+      "signature": "export interface HostPtyOpenInput { readonly command: string readonly args: readonly string[] readonly rows: number readonly cols: number readonly cwd?: string readonly env?: Readonly<Record<string, string>> }"
+    },
+    {
+      "name": "HostPtyOpenPayload",
+      "kind": "class",
+      "signature": "export class HostPtyOpenPayload extends Schema.Class<HostPtyOpenPayload>(\"HostPtyOpenPayload\")({ command: Schema.NonEmptyString, args: Schema.Array(Schema.String), rows: UInt16Positive, cols: UInt16Positive, cwd: OptionalString, env: Schema.optionalKey(StringRecord) }) {}"
+    },
+    {
+      "name": "HostPtyOpenResult",
+      "kind": "class",
+      "signature": "export class HostPtyOpenResult extends Schema.Class<HostPtyOpenResult>(\"HostPtyOpenResult\")({ ptyId: Schema.NonEmptyString, pid: Schema.optionalKey(UInt32) }) {}"
+    },
+    {
+      "name": "HostPtyReadPayload",
+      "kind": "class",
+      "signature": "export class HostPtyReadPayload extends Schema.Class<HostPtyReadPayload>(\"HostPtyReadPayload\")({ ptyId: Schema.NonEmptyString, maxBytes: PositiveInt }) {}"
+    },
+    {
+      "name": "HostPtyReadResult",
+      "kind": "interface",
+      "signature": "export interface HostPtyReadResult { readonly bytes: Uint8Array readonly done: boolean }"
+    },
+    {
+      "name": "HostPtyReadWireResult",
+      "kind": "class",
+      "signature": "export class HostPtyReadWireResult extends Schema.Class<HostPtyReadWireResult>( \"HostPtyReadWireResult\" )({ bytesBase64: Schema.String, done: Schema.Boolean }) {}"
+    },
+    {
+      "name": "HostPtyResizeInput",
+      "kind": "interface",
+      "signature": "export interface HostPtyResizeInput { readonly rows: number readonly cols: number }"
+    },
+    {
+      "name": "HostPtyResizePayload",
+      "kind": "class",
+      "signature": "export class HostPtyResizePayload extends Schema.Class<HostPtyResizePayload>( \"HostPtyResizePayload\" )({ ptyId: Schema.NonEmptyString, rows: UInt16Positive, cols: UInt16Positive }) {}"
+    },
+    {
+      "name": "HostPtyWritePayload",
+      "kind": "class",
+      "signature": "export class HostPtyWritePayload extends Schema.Class<HostPtyWritePayload>(\"HostPtyWritePayload\")({ ptyId: Schema.NonEmptyString, bytesBase64: Schema.NonEmptyString }) {}"
+    },
+    {
       "name": "HostVersionPayload",
       "kind": "class",
       "signature": "export class HostVersionPayload extends Schema.Class<HostVersionPayload>(\"HostVersionPayload\")({ protocolVersion: ProtocolVersion }) {}"
@@ -794,6 +869,11 @@
       "signature": "const makeHostProtocolOriginInvalidError: (operation: string, message?: string) => HostProtocolOriginInvalidError"
     },
     {
+      "name": "makeHostPtyClient",
+      "kind": "value",
+      "signature": "const makeHostPtyClient: (exchange: HostPtyExchange, options?: HostPtyClientOptions) => HostPtyClient"
+    },
+    {
       "name": "makeHostWindowClient",
       "kind": "value",
       "signature": "const makeHostWindowClient: (exchange: HostWindowExchange, options?: HostWindowClientOptions) => HostWindowClient"
@@ -882,6 +962,51 @@
       "name": "parseHostProtocolFrameJson",
       "kind": "value",
       "signature": "const parseHostProtocolFrameJson: (frame: Uint8Array, operation: string) => Effect.Effect<unknown, HostProtocolError, never>"
+    },
+    {
+      "name": "PTY_DISPOSE_METHOD",
+      "kind": "value",
+      "signature": "const PTY_DISPOSE_METHOD: \"Pty.dispose\""
+    },
+    {
+      "name": "PTY_FORCE_KILL_TREE_METHOD",
+      "kind": "value",
+      "signature": "const PTY_FORCE_KILL_TREE_METHOD: \"Pty.forceKillTree\""
+    },
+    {
+      "name": "PTY_KILL_METHOD",
+      "kind": "value",
+      "signature": "const PTY_KILL_METHOD: \"Pty.kill\""
+    },
+    {
+      "name": "PTY_OPEN_METHOD",
+      "kind": "value",
+      "signature": "const PTY_OPEN_METHOD: \"Pty.open\""
+    },
+    {
+      "name": "PTY_READ_METHOD",
+      "kind": "value",
+      "signature": "const PTY_READ_METHOD: \"Pty.read\""
+    },
+    {
+      "name": "PTY_RESIZE_METHOD",
+      "kind": "value",
+      "signature": "const PTY_RESIZE_METHOD: \"Pty.resize\""
+    },
+    {
+      "name": "PTY_TERMINATE_TREE_METHOD",
+      "kind": "value",
+      "signature": "const PTY_TERMINATE_TREE_METHOD: \"Pty.terminateTree\""
+    },
+    {
+      "name": "PTY_WAIT_METHOD",
+      "kind": "value",
+      "signature": "const PTY_WAIT_METHOD: \"Pty.wait\""
+    },
+    {
+      "name": "PTY_WRITE_METHOD",
+      "kind": "value",
+      "signature": "const PTY_WRITE_METHOD: \"Pty.write\""
     },
     {
       "name": "redact",

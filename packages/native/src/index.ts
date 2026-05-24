@@ -153,6 +153,12 @@ export {
   type NativeNetworkServiceApi
 } from "./native-network.js"
 export {
+  NativePtyLayer,
+  type HostPtyClientOptions,
+  type HostPtyExchange,
+  type NativePtyLayerOptions
+} from "./pty.js"
+export {
   classifyNativeBoundaryError,
   decodeNativeBoundaryError,
   encodeNativeBoundaryError,

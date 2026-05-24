@@ -68,7 +68,11 @@ PTY sessions are registered under the `ResourceOwner` that built the `PTY` servi
 
 ## Adapter
 
-`PTY` accepts a substitutable `PtyAdapter`. The adapter opens a lower-level `PtyChild`; applications should depend on `PtyHandle`, not the adapter child. The checked-in Rust crate `crates/native-pty` is the low-level native primitive, but the current TypeScript SDK exposes the adapter contract rather than a built-in production adapter layer. Tests use `MockPTY`.
+`PTY` accepts a substitutable `PtyAdapter`. The adapter opens a lower-level `PtyChild`; applications should depend on `PtyHandle`, not the adapter child.
+
+`@orika/native` exports `NativePtyLayer({ exchange, permissions, ... })`, which adapts host `Pty.*` methods to the core `PTY` service. The Rust host owns native PTY processes through `crates/native-pty`; the TypeScript layer owns permission checks, budgets, output buffering, and scoped cleanup.
+
+Tests use `MockPTY`.
 
 ## Permissions
 

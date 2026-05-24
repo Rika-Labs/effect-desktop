@@ -32,6 +32,7 @@ mod open_intent;
 mod path;
 mod power_monitor;
 pub(crate) mod protocol;
+mod pty;
 mod realtime_media_session;
 mod recent_documents;
 pub(crate) mod resident_lifecycle;
@@ -955,6 +956,42 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
         HostMethodDispatcher::Empty(extension_package::is_supported),
     ),
     route(
+        host_protocol::PTY_OPEN_METHOD,
+        HostMethodDispatcher::Payload(pty::open),
+    ),
+    route(
+        host_protocol::PTY_READ_METHOD,
+        HostMethodDispatcher::Payload(pty::read),
+    ),
+    route(
+        host_protocol::PTY_WRITE_METHOD,
+        HostMethodDispatcher::Payload(pty::write),
+    ),
+    route(
+        host_protocol::PTY_RESIZE_METHOD,
+        HostMethodDispatcher::Payload(pty::resize),
+    ),
+    route(
+        host_protocol::PTY_KILL_METHOD,
+        HostMethodDispatcher::Payload(pty::kill),
+    ),
+    route(
+        host_protocol::PTY_TERMINATE_TREE_METHOD,
+        HostMethodDispatcher::Payload(pty::terminate_tree),
+    ),
+    route(
+        host_protocol::PTY_FORCE_KILL_TREE_METHOD,
+        HostMethodDispatcher::Payload(pty::force_kill_tree),
+    ),
+    route(
+        host_protocol::PTY_WAIT_METHOD,
+        HostMethodDispatcher::Payload(pty::wait),
+    ),
+    route(
+        host_protocol::PTY_DISPOSE_METHOD,
+        HostMethodDispatcher::Payload(pty::dispose),
+    ),
+    route(
         host_protocol::LOCAL_TOOL_RUNTIME_REGISTER_METHOD,
         HostMethodDispatcher::LocalToolRuntime(local_tool_runtime::register_with_event),
     ),
@@ -1584,7 +1621,12 @@ impl HostMethodRouter {
             "host.runtime.cancel",
         )
         .map_err(|error| format!("{error:?}"))?;
-        native_file_system::close_resource_for_cancel(resource_id.as_deref(), "host.runtime.cancel")
+        native_file_system::close_resource_for_cancel(
+            resource_id.as_deref(),
+            "host.runtime.cancel",
+        )
+        .map_err(|error| format!("{error:?}"))?;
+        pty::close_resource_for_cancel(resource_id.as_deref(), "host.runtime.cancel")
             .map_err(|error| format!("{error:?}"))
     }
 
@@ -1619,6 +1661,8 @@ impl HostMethodRouter {
         realtime_media_session::close_all_sessions("host.runtime.disconnect")
             .map_err(|error| format!("{error:?}"))?;
         native_file_system::clear_runtime_resources("host.runtime.disconnect")
+            .map_err(|error| format!("{error:?}"))?;
+        pty::clear_runtime_resources("host.runtime.disconnect")
             .map_err(|error| format!("{error:?}"))?;
         let runtime_ids = self.drain_local_tool_runtime_ids()?;
         local_tool_runtime::clear_runtime_resources_for_runtime_ids(
