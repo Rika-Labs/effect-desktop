@@ -50,6 +50,16 @@ const STALE_PTY_PRODUCTION_ADAPTER_DOC_PATTERN =
   /\bProduction uses\b[^\n]*(?:native PTY backend|`crates\/native-pty`)/
 const STALE_PTY_UNSUPPORTED_NATIVE_LAYER_DOC_PATTERN =
   /\bfail-closed\b|HostProtocolUnsupportedError|does not expose PTY methods/
+const STALE_COMMAND_REFERENCE_TOKENS = [
+  "Command,",
+  "type CommandApi",
+  "type CommandInvocation",
+  "type CommandRegistrationError",
+  "CommandError",
+  "`register`",
+  "({ id, name, run })",
+  "(id, args?)"
+] as const
 const STALE_PACKAGE_README_PHRASES = [
   "public API remains reserved for Phase 4+",
   "Public renderer-facing APIs",
@@ -527,6 +537,34 @@ describe("SQLite docs", () => {
     expect(markdown).toContain("PermissionRegistry")
     expect(markdown).toContain("ResourceRegistryLive")
     expect(markdown).toContain("PermissionRegistry.make")
+  })
+})
+
+describe("Command docs", () => {
+  test("model the current CommandRegistry API", () => {
+    const reference = readFileSync(join(REPO_ROOT, "docs/reference/services/command.md"), "utf8")
+    const violations: string[] = []
+
+    for (const token of STALE_COMMAND_REFERENCE_TOKENS) {
+      if (reference.includes(token)) {
+        violations.push(`docs/reference/services/command.md: remove stale ${token} API docs`)
+      }
+    }
+
+    for (const token of [
+      "CommandRegistry",
+      "DesktopCommands",
+      "registerGroup",
+      "PermissionContext",
+      "CommandInvocationRecord",
+      "CommandRegistryError"
+    ] as const) {
+      if (!reference.includes(token)) {
+        violations.push(`docs/reference/services/command.md: document ${token}`)
+      }
+    }
+
+    expect(violations).toEqual([])
   })
 })
 
