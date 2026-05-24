@@ -90,7 +90,7 @@ yield * session.kill()
 
 ## Adapter substitution
 
-`PTY` accepts a substitutable adapter. Production uses the native PTY backend (`crates/native-pty`). Tests use `MockPTY` from `@orika/test`, which records open, write, resize, kill, and cleanup calls while returning deterministic output.
+`PTY` accepts a substitutable adapter. The checked-in Rust crate `crates/native-pty` is the low-level native primitive, but the current TypeScript SDK exposes the `PtyAdapter` contract rather than a built-in production adapter layer. Tests use `MockPTY` from `@orika/test`, which records open, write, resize, kill, and cleanup calls while returning deterministic output.
 
 ## Related
 

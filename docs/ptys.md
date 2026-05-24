@@ -16,6 +16,8 @@ The `PTY` service owns pseudo-terminal sessions, resize and kill operations, out
 
 `@orika/core` exports `PTY`, `PtyOpenOptions`, `PtyHandle`, `PtyOpenInput`, `PtyResizeInput`, `PtySignalInput`, `PtyExitStatus`, PTY errors, adapter types, and constructors such as `makePty`.
 
+The current TypeScript surface exposes the adapter contract; application code supplies a `PtyAdapter` when composing `PtyLayer`. Tests can use `MockPTY.layer(options)` from `@orika/test`.
+
 ## Runtime rule
 
 A PTY is a scoped resource. `PtyHandle.kill(signal?)` terminates or signals the session explicitly; owner-scope cleanup terminates any remaining session. Output is bounded and observable.

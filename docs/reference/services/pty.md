@@ -68,7 +68,7 @@ PTY sessions are registered under the `ResourceOwner` that built the `PTY` servi
 
 ## Adapter
 
-`PTY` accepts a substitutable `PtyAdapter`. The adapter opens a lower-level `PtyChild`; applications should depend on `PtyHandle`, not the adapter child. Production uses `crates/native-pty`. Tests use `MockPTY`.
+`PTY` accepts a substitutable `PtyAdapter`. The adapter opens a lower-level `PtyChild`; applications should depend on `PtyHandle`, not the adapter child. The checked-in Rust crate `crates/native-pty` is the low-level native primitive, but the current TypeScript SDK exposes the adapter contract rather than a built-in production adapter layer. Tests use `MockPTY`.
 
 ## Permissions
 

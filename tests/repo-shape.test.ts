@@ -46,6 +46,8 @@ const CURRENT_WINDOW_ID_LITERAL_ROUTING_PATTERN =
 const STALE_PTY_HANDLE_DOC_PATTERN =
   /\bsession\.signal\(|\|\s*`list`\s*\||readonly\s+(?:signal|close|exit)\s*:/m
 const STALE_PTY_PERMISSION_DOC_PATTERN = /\bprocess\.spawn\b/
+const STALE_PTY_PRODUCTION_ADAPTER_DOC_PATTERN =
+  /\bProduction uses\b[^\n]*(?:native PTY backend|`crates\/native-pty`)/
 const STALE_PACKAGE_README_PHRASES = [
   "public API remains reserved for Phase 4+",
   "Public renderer-facing APIs",
@@ -538,6 +540,11 @@ describe("PTY docs", () => {
       }
       if (STALE_PTY_PERMISSION_DOC_PATTERN.test(markdown)) {
         violations.push(`${relativePath}: document pty.spawn policy, not process.spawn`)
+      }
+      if (STALE_PTY_PRODUCTION_ADAPTER_DOC_PATTERN.test(markdown)) {
+        violations.push(
+          `${relativePath}: distinguish the Rust PTY backend from an app-facing production adapter`
+        )
       }
     }
 
