@@ -85,13 +85,15 @@ In your runtime entry, you `Layer.merge` and `Layer.provide` to assemble the dep
 ```ts
 import { Layer } from "effect"
 import {
-  PermissionRegistryLive,
+  PermissionRegistry,
   ResourceRegistryLive,
   AuditEventsLive,
   SettingsLive,
   TelemetryLive
 } from "@orika/core"
 import { WindowLive, WindowHandlersLive, ClipboardLive, ClipboardHandlersLive } from "@orika/native"
+
+const PermissionRegistryLive = Layer.effect(PermissionRegistry, PermissionRegistry.make)
 
 const RuntimeLive = Layer.mergeAll(
   PermissionRegistryLive,

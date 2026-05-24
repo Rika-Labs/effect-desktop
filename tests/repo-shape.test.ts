@@ -39,6 +39,8 @@ const RENDERER_MANIFEST_IMPORT_PATTERN =
   /import\s*\{\s*Manifest\s*\}\s*from\s+["'][^"']*manifest\.js["']/m
 const RENDERER_MANIFEST_IMPORT_GLOBAL_PATTERN =
   /import\s*\{\s*Manifest\s*\}\s*from\s+["']([^"']*manifest\.js)["']/g
+const CORE_PERMISSION_REGISTRY_LIVE_IMPORT_PATTERN =
+  /import\s*\{[^}]*\bPermissionRegistryLive\b[^}]*\}\s*from\s+"@orika\/core"/m
 const CURRENT_WINDOW_ID_LITERAL_ROUTING_PATTERN =
   /useCurrentWindowId\(\)[\s\S]{0,500}onSome:\s*\(\s*([A-Za-z_$][\w$]*)\s*\)\s*=>[\s\S]{0,220}\b\1\s*===\s*["']/m
 const STALE_PACKAGE_README_PHRASES = [
@@ -488,5 +490,35 @@ describe("React mutation docs", () => {
     }
 
     expect(violations).toEqual([])
+  })
+})
+
+describe("SQLite docs", () => {
+  test("do not import nonexistent permission registry live layer", () => {
+    const violations: string[] = []
+    const markdownPaths = [
+      ...collectMarkdownFiles(join(REPO_ROOT, "docs")),
+      join(REPO_ROOT, "packages/core/README.md")
+    ]
+
+    for (const path of markdownPaths) {
+      const markdown = readFileSync(path, "utf8")
+      if (CORE_PERMISSION_REGISTRY_LIVE_IMPORT_PATTERN.test(markdown)) {
+        violations.push(
+          `${path.slice(REPO_ROOT.length + 1)}: construct PermissionRegistry layers from PermissionRegistry.make`
+        )
+      }
+    }
+
+    expect(violations).toEqual([])
+  })
+
+  test("standalone setup uses exported permission registry symbols", () => {
+    const markdown = readFileSync(join(REPO_ROOT, "docs/how-to/use-sqlite.md"), "utf8")
+
+    expect(markdown).not.toContain("PermissionRegistryLive")
+    expect(markdown).toContain("PermissionRegistry")
+    expect(markdown).toContain("ResourceRegistryLive")
+    expect(markdown).toContain("PermissionRegistry.make")
   })
 })

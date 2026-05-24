@@ -13,12 +13,30 @@ effect_version: 4
 ## 1. Layer setup
 
 ```ts
+import { BunServices } from "@effect/platform-bun"
 import { Effect, Layer } from "effect"
-import { ResourceOwner, SqlClient, SqlClientLive } from "@orika/core"
+import {
+  PermissionRegistry,
+  ResourceOwner,
+  ResourceRegistryLive,
+  SqlClient,
+  SqlClientLive
+} from "@orika/core"
 
 const SqliteLive = SqlClientLive({
   filename: "app.sqlite"
 })
+
+const PermissionsLive = Layer.unwrap(
+  Effect.gen(function* () {
+    const permissions = yield* PermissionRegistry.make
+    yield* permissions.declare(
+      { kind: "sqlite.open", roots: [process.cwd()], audit: "always" },
+      { effect: "allow", source: "app-init" }
+    )
+    return Layer.succeed(PermissionRegistry, permissions)
+  })
+)
 
 const program = Effect.gen(function* () {
   const sql = yield* SqlClient
@@ -29,8 +47,9 @@ await Effect.runPromise(
   program.pipe(
     Effect.provide(SqliteLive),
     Effect.provide(ResourceOwner.app("dev.example.notes")),
-    Effect.provide(PermissionRegistryLive),
+    Effect.provide(PermissionsLive),
     Effect.provide(ResourceRegistryLive),
+    Effect.provide(BunServices.layer),
     Effect.scoped
   )
 )
