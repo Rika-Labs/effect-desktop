@@ -5658,6 +5658,7 @@ pub struct AttachmentIntakeItemInputPayload {
     name: Option<String>,
     mime_type: String,
     source: AttachmentIntakeSource,
+    #[serde(with = "base64_bytes")]
     bytes: Vec<u8>,
 }
 
@@ -18627,31 +18628,32 @@ mod tests {
         AssociationEventPhasePayload, AssociationFileAssociationPayload,
         AssociationFileAssociationsPayload, AssociationFileAssociationsResultPayload,
         AssociationProtocolPayload, AssociationProtocolStatusPayload, AttachmentIntakeEventPayload,
-        AttachmentIntakeEventPhase, AttachmentIntakeState, AutostartEnablePayload,
-        AutostartEventPayload, AutostartEventPhasePayload, AutostartMechanismPayload,
-        AutostartStatusPayload, BrowsingDataClearPayload, BrowsingDataClearResultPayload,
-        BrowsingDataListTypesPayload, BrowsingDataSupportedPayload, BrowsingDataTypePayload,
-        CanonicalPathPayload, ClipboardCapabilityPayload, ClipboardHtmlPayload,
-        ClipboardImagePayload, ClipboardIsSupportedPayload, ClipboardSupportedPayload,
-        ClipboardTextPayload, ContextMenuActivatedEventPayload, CookieStoreCookiePayload,
-        CookieStoreEventPayload, CookieStoreEventPhasePayload, CookieStoreGetPayload,
-        CookieStoreGetResultPayload, CookieStoreRemovePayload, CookieStoreSetPayload,
-        CookieStoreSupportedPayload, CrashReporterBreadcrumbPayload, CrashReporterFlushPayload,
-        CrashReporterGetReportsPayload, CrashReporterReportPayload, CrashReporterStartPayload,
-        DiagnosticsBundleCollectPayload, DiagnosticsBundleCollectResultPayload,
-        DiagnosticsBundleRedactPayload, DiagnosticsBundleRedactResultPayload,
-        DiagnosticsBundleRedactionEvidencePayload, DiagnosticsBundleRedactionPolicyPayload,
-        DiagnosticsBundleSourceKind, DiagnosticsBundleSourceSummaryPayload,
-        DiagnosticsBundleSupportedPayload, DiagnosticsBundleWritePayload,
-        DiagnosticsBundleWriteResultPayload, DialogConfirmPayload, DialogConfirmResultPayload,
-        DialogFileFilterPayload, DialogLevelPayload, DialogMessagePayload,
-        DialogOpenDirectoryPayload, DialogOpenFilePayload, DialogOpenResultPayload,
-        DialogSaveFilePayload, DialogSaveResultPayload, DisplayCaptureActorKind,
-        DisplayCaptureActorPayload, DisplayCaptureEventPayload, DisplayCaptureEventPhase,
-        DisplayCaptureGrantKind, DisplayCaptureGrantPayload, DisplayCaptureImagePayload,
-        DisplayCaptureMetadataPayload, DisplayCaptureRegionPayload, DisplayCaptureRequestPayload,
-        DisplayCaptureResultPayload, DisplayCaptureSource, DisplayCaptureSupportedPayload,
-        DisplayCaptureTargetPayload, DistributionParityEventPayload, DistributionParityEventPhase,
+        AttachmentIntakeEventPhase, AttachmentIntakeIngestPayload, AttachmentIntakeState,
+        AutostartEnablePayload, AutostartEventPayload, AutostartEventPhasePayload,
+        AutostartMechanismPayload, AutostartStatusPayload, BrowsingDataClearPayload,
+        BrowsingDataClearResultPayload, BrowsingDataListTypesPayload, BrowsingDataSupportedPayload,
+        BrowsingDataTypePayload, CanonicalPathPayload, ClipboardCapabilityPayload,
+        ClipboardHtmlPayload, ClipboardImagePayload, ClipboardIsSupportedPayload,
+        ClipboardSupportedPayload, ClipboardTextPayload, ContextMenuActivatedEventPayload,
+        CookieStoreCookiePayload, CookieStoreEventPayload, CookieStoreEventPhasePayload,
+        CookieStoreGetPayload, CookieStoreGetResultPayload, CookieStoreRemovePayload,
+        CookieStoreSetPayload, CookieStoreSupportedPayload, CrashReporterBreadcrumbPayload,
+        CrashReporterFlushPayload, CrashReporterGetReportsPayload, CrashReporterReportPayload,
+        CrashReporterStartPayload, DiagnosticsBundleCollectPayload,
+        DiagnosticsBundleCollectResultPayload, DiagnosticsBundleRedactPayload,
+        DiagnosticsBundleRedactResultPayload, DiagnosticsBundleRedactionEvidencePayload,
+        DiagnosticsBundleRedactionPolicyPayload, DiagnosticsBundleSourceKind,
+        DiagnosticsBundleSourceSummaryPayload, DiagnosticsBundleSupportedPayload,
+        DiagnosticsBundleWritePayload, DiagnosticsBundleWriteResultPayload, DialogConfirmPayload,
+        DialogConfirmResultPayload, DialogFileFilterPayload, DialogLevelPayload,
+        DialogMessagePayload, DialogOpenDirectoryPayload, DialogOpenFilePayload,
+        DialogOpenResultPayload, DialogSaveFilePayload, DialogSaveResultPayload,
+        DisplayCaptureActorKind, DisplayCaptureActorPayload, DisplayCaptureEventPayload,
+        DisplayCaptureEventPhase, DisplayCaptureGrantKind, DisplayCaptureGrantPayload,
+        DisplayCaptureImagePayload, DisplayCaptureMetadataPayload, DisplayCaptureRegionPayload,
+        DisplayCaptureRequestPayload, DisplayCaptureResultPayload, DisplayCaptureSource,
+        DisplayCaptureSupportedPayload, DisplayCaptureTargetPayload,
+        DistributionParityEventPayload, DistributionParityEventPhase,
         DistributionParityEvidenceKind, DistributionParityEvidencePayload,
         DistributionParitySupportedPayload, DistributionParityVerifyPayload,
         DistributionParityVerifyResultPayload, DockJumpListItemPayload, DockProgressState,
@@ -21168,6 +21170,39 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&supported).expect("support payload should encode"),
             r#"{"supported":false,"reason":"host-adapter-unimplemented"}"#
+        );
+    }
+
+    #[test]
+    fn attachment_intake_ingest_payloads_decode_bridge_bytes() {
+        let decoded: AttachmentIntakeIngestPayload = serde_json::from_str(
+            r#"{"actor":{"kind":"app","id":"qa-app"},"policy":{"allowedMimeTypes":["text/plain"],"maxItems":1,"maxBytesPerItem":64,"maxTotalBytes":64,"lifetimeMillis":60000},"items":[{"itemId":"item-1","name":"hello.txt","mimeType":"text/plain","source":"provided-by-caller","bytes":"aGVsbG8="}],"intakeId":"intake-1","traceId":"trace-1"}"#,
+        )
+        .expect("ingest payload should decode base64 item bytes from bridge JSON");
+        assert_eq!(decoded.items()[0].bytes(), b"hello");
+
+        let encoded = serde_json::to_value(&decoded).expect("ingest payload should encode");
+        assert_eq!(
+            encoded,
+            serde_json::json!({
+                "actor": { "kind": "app", "id": "qa-app" },
+                "policy": {
+                    "allowedMimeTypes": ["text/plain"],
+                    "maxItems": 1,
+                    "maxBytesPerItem": 64,
+                    "maxTotalBytes": 64,
+                    "lifetimeMillis": 60000
+                },
+                "items": [{
+                    "itemId": "item-1",
+                    "name": "hello.txt",
+                    "mimeType": "text/plain",
+                    "source": "provided-by-caller",
+                    "bytes": "aGVsbG8="
+                }],
+                "intakeId": "intake-1",
+                "traceId": "trace-1"
+            })
         );
     }
 

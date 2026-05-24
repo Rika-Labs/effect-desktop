@@ -490,6 +490,39 @@ mod tests {
     }
 
     #[test]
+    fn ingest_decodes_bridge_base64_bytes_before_staging_metadata() {
+        let _guard = TEST_LOCK.lock().expect("test lock");
+        clear_intakes();
+
+        let ingested = ingest(Some(json!({
+            "actor": { "kind": "workspace", "id": "workspace-1" },
+            "policy": {
+                "allowedMimeTypes": ["text/plain"],
+                "maxItems": 1,
+                "maxBytesPerItem": 16,
+                "maxTotalBytes": 16,
+                "lifetimeMillis": 60000
+            },
+            "items": [
+                {
+                    "itemId": "item-base64",
+                    "name": "note.txt",
+                    "mimeType": "text/plain",
+                    "source": "provided-by-caller",
+                    "bytes": "aGk="
+                }
+            ],
+            "intakeId": "intake-base64",
+            "traceId": "trace-base64"
+        })))
+        .expect("base64 bridge bytes should ingest")
+        .expect("ingest should return payload");
+
+        assert_eq!(ingested["intakeId"], json!("intake-base64"));
+        assert_eq!(ingested["items"][0]["sizeBytes"], json!(2));
+    }
+
+    #[test]
     fn ingest_rejects_policy_limit_violations_before_host_side_effects() {
         let _guard = TEST_LOCK.lock().expect("test lock");
         clear_intakes();
