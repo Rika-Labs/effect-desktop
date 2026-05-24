@@ -4,6 +4,11 @@
   "entrypoint": "src/index.ts",
   "symbols": [
     {
+      "name": "AppRendererRoute",
+      "kind": "value",
+      "signature": "const AppRendererRoute: Schema.NonEmptyString"
+    },
+    {
       "name": "BackpressureSpec",
       "kind": "interface",
       "signature": "export interface BackpressureSpec { readonly strategy: \"buffer\" | \"drop\" | \"block\" readonly size?: number readonly overflow?: \"error\" | \"dropOldest\" | \"dropNewest\" | \"block\" }"

@@ -61,6 +61,8 @@ export default defineDesktopConfig({
 | `permissions` | array                      | no       | default `PermissionRegistry` declarations |
 | `security`    | `ProductionSecurityConfig` | no       | production check overrides                |
 
+`renderer.framework` defaults to `"react"` and accepts `"react"`, `"solid"`, or `"vue"`. The build report records the selected framework as the renderer provider. Next apps should use the `@orika/next` client adapter over React; there is no separate `renderer.framework: "next"` build mode today.
+
 See [`packages/config/src/index.ts`](../../packages/config/src/index.ts) for every nested field.
 
 ## `decodeDesktopConfig(raw)`

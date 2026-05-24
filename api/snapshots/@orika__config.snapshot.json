@@ -86,7 +86,7 @@
     {
       "name": "DesktopConfig",
       "kind": "interface",
-      "signature": "export interface DesktopConfig extends Omit<ProductionSecurityConfig, \"permissions\" | \"security\"> { readonly app?: { readonly id?: string readonly name?: string readonly version?: string } readonly runtime?: { readonly engine?: RuntimeEngine readonly entry?: string } readonly renderer?: { readonly framework?: \"react\" readonly styling?: \"tailwind\" readonly entry?: string readonly dist?: string } readonly web?: { readonly engine?: WebEngine } readonly native?: { readonly host?: string readonly renderer?: string } readonly windows?: unknown readonly protocols?: readonly { readonly scheme: string readonly handler?: string }[] readonly build?: { readonly targets?: readonly string[] } readonly signing?: unknown readonly security?: DesktopSecurityConfig readonly permissions?: ProductionSecurityConfig[\"permissions\"] | readonly JsonValue[] readonly update?: ProductionSecurityConfig[\"update\"] & { readonly channel?: \"stable\" | \"beta\" | \"canary\" readonly publicKey?: string readonly feedUrl?: string readonly privateKeyEnv?: string readonly minVersion?: string readonly maxVersion?: string | undefined readonly keyVersion?: number readonly rollback?: boolean } readonly telemetry?: { readonly enabled?: boolean readonly redactSensitive?: boolean readonly endpoint?: string } readonly protocol?: { readonly limits?: { readonly maxFrameBytes?: number readonly maxConcurrentRequestsPerWindow?: number readonly maxConcurrentStreamsPerWindow?: number } } readonly env?: Record<string, Record<string, string>> readonly workspace?: { readonly sharedConfigPath?: string } }"
+      "signature": "export interface DesktopConfig extends Omit<ProductionSecurityConfig, \"permissions\" | \"security\"> { readonly app?: { readonly id?: string readonly name?: string readonly version?: string } readonly runtime?: { readonly engine?: RuntimeEngine readonly entry?: string } readonly renderer?: { readonly framework?: RendererFramework readonly styling?: \"tailwind\" readonly entry?: string readonly dist?: string } readonly web?: { readonly engine?: WebEngine } readonly native?: { readonly host?: string readonly renderer?: string } readonly windows?: unknown readonly protocols?: readonly { readonly scheme: string readonly handler?: string }[] readonly build?: { readonly targets?: readonly string[] } readonly signing?: unknown readonly security?: DesktopSecurityConfig readonly permissions?: ProductionSecurityConfig[\"permissions\"] | readonly JsonValue[] readonly update?: ProductionSecurityConfig[\"update\"] & { readonly channel?: \"stable\" | \"beta\" | \"canary\" readonly publicKey?: string readonly feedUrl?: string readonly privateKeyEnv?: string readonly minVersion?: string readonly maxVersion?: string | undefined readonly keyVersion?: number readonly rollback?: boolean } readonly telemetry?: { readonly enabled?: boolean readonly redactSensitive?: boolean readonly endpoint?: string } readonly protocol?: { readonly limits?: { readonly maxFrameBytes?: number readonly maxConcurrentRequestsPerWindow?: number readonly maxConcurrentStreamsPerWindow?: number } } readonly env?: Record<string, Record<string, string>> readonly workspace?: { readonly sharedConfigPath?: string } }"
     },
     {
       "name": "DesktopConfigDecodeError",
@@ -151,7 +151,7 @@
     {
       "name": "DesktopRendererConfig",
       "kind": "class",
-      "signature": "export class DesktopRendererConfig extends Schema.Class<DesktopRendererConfig>( \"DesktopRendererConfig\" )({ framework: Schema.optionalKey(Schema.Literal(\"react\")), styling: Schema.optionalKey(Schema.Literal(\"tailwind\")), entry: Schema.optionalKey(Schema.String), dist: Schema.optionalKey(Schema.String) }) {}"
+      "signature": "export class DesktopRendererConfig extends Schema.Class<DesktopRendererConfig>( \"DesktopRendererConfig\" )({ framework: Schema.optionalKey(RendererFramework), styling: Schema.optionalKey(Schema.Literal(\"tailwind\")), entry: Schema.optionalKey(Schema.String), dist: Schema.optionalKey(Schema.String) }) {}"
     },
     {
       "name": "DesktopResourceConfig",
@@ -312,6 +312,11 @@
       "name": "renderEffectiveCsp",
       "kind": "value",
       "signature": "const renderEffectiveCsp: (csp: CspConfig | undefined, nonce?: string) => string"
+    },
+    {
+      "name": "RendererFramework",
+      "kind": "type",
+      "signature": "const RendererFramework: Schema.Literals<readonly [\"react\", \"solid\", \"vue\"]>"
     },
     {
       "name": "ResourcePolicy",

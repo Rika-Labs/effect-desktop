@@ -55,6 +55,7 @@ import {
   type DesktopConfig,
   type ProductionCheckFile,
   type ProductionSecurityConfig,
+  type RendererFramework,
   type RuntimeEngine,
   type WebEngine
 } from "@orika/config"
@@ -421,7 +422,7 @@ export type BuildStepName =
   | "manifest"
 const DEFAULT_RUNTIME_ENGINE: RuntimeEngine = "bun"
 const RUNTIME_ENGINES = ["bun", "node"] as const satisfies readonly RuntimeEngine[]
-const DEFAULT_RENDERER_FRAMEWORK = "react"
+const DEFAULT_RENDERER_FRAMEWORK: RendererFramework = "react"
 const DEFAULT_RENDERER_STYLING = "tailwind"
 const DEFAULT_PROFILE = "dev"
 const RESERVED_PROTOCOL_SCHEMES = new Set([
@@ -653,7 +654,7 @@ interface BuildPlan {
   readonly runtimeEntry: string
   readonly runtimeExecutable: RuntimeEngine
   readonly runtimeArgs: readonly string[]
-  readonly rendererFramework: "react"
+  readonly rendererFramework: RendererFramework
   readonly rendererStyling: "tailwind"
   readonly webEngine: WebEngine
   readonly webEngineRuntimeSource: string | undefined
@@ -2530,20 +2531,10 @@ const readWebEngineRuntimeSource = (
   )
 }
 
-const readRendererFramework = (value: unknown): Effect.Effect<"react", BuildConfigError, never> =>
-  readOptionalString(value, "renderer.framework").pipe(
-    Effect.map((rawFramework) => rawFramework ?? DEFAULT_RENDERER_FRAMEWORK),
-    Effect.flatMap((rendererFramework) =>
-      rendererFramework === DEFAULT_RENDERER_FRAMEWORK
-        ? Effect.succeed(rendererFramework)
-        : Effect.fail(
-            new BuildConfigError({
-              field: "renderer.framework",
-              message: `renderer.framework must be ${DEFAULT_RENDERER_FRAMEWORK}`
-            })
-          )
-    )
-  )
+const readRendererFramework = (
+  value: RendererFramework | undefined
+): Effect.Effect<RendererFramework, never, never> =>
+  Effect.succeed(value ?? DEFAULT_RENDERER_FRAMEWORK)
 
 const readRendererStyling = (value: unknown): Effect.Effect<"tailwind", BuildConfigError, never> =>
   readOptionalString(value, "renderer.styling").pipe(

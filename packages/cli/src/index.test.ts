@@ -5864,7 +5864,7 @@ test("desktop notarize decodes canonical config before notarytool side effects",
       try {
         yield* writePlaygroundFixture(directory, {
           renderer: {
-            framework: "vue",
+            framework: "svelte",
             entry: "src/renderer/main.tsx",
             dist: "dist"
           },
@@ -6570,7 +6570,7 @@ test("desktop publish decodes canonical config before signing manifests", () =>
       try {
         yield* writePlaygroundFixture(directory, {
           renderer: {
-            framework: "vue",
+            framework: "svelte",
             entry: "src/renderer/main.tsx",
             dist: "dist"
           },
@@ -8264,6 +8264,50 @@ test("desktop build reuses provider-owned nodes when only runtime source changes
     })
   ))
 
+test("desktop build records the selected renderer framework provider", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-build-renderer-framework-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory, {
+          renderer: {
+            framework: "vue",
+            entry: "src/renderer/main.tsx",
+            dist: "dist"
+          }
+        })
+        const appRoot = join(directory, "apps", "inspector")
+        const layout = join(appRoot, "build", "effect-desktop", "linux-x64")
+        const runner: CommandRunner = (invocation) =>
+          writeBuildFixtureOutput(invocation, {
+            rendererHtml: "<h1>renderer</h1>",
+            runtimeJs: "console.log('runtime')\n"
+          })
+
+        const exitCode = yield* runCli({
+          argv: ["build", "--config", "apps/inspector/desktop.config.ts", "--json"],
+          cwd: directory,
+          hostTarget: "linux-x64",
+          commandRunner: runner,
+          writeStdout: () => {},
+          writeStderr: () => {}
+        })
+
+        expect(exitCode).toBe(0)
+
+        const report = decodeBuildStepsReportJson(
+          yield* Effect.promise(() => readFile(join(layout, "build-report.json"), "utf8"))
+        )
+
+        expect(report.steps.find((step) => step.name === "renderer")?.provider).toBe("renderer:vue")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
 test("desktop build invalidates runtime and renderer cache when workspace dependencies change", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -9393,7 +9437,7 @@ test("desktop package decodes canonical config before reading package metadata",
       try {
         yield* writePlaygroundFixture(directory, {
           renderer: {
-            framework: "vue",
+            framework: "svelte",
             entry: "src/renderer/main.tsx",
             dist: "dist"
           }

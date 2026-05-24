@@ -143,6 +143,21 @@ test("decodeDesktopConfig preserves the publish private key environment field", 
     })
   ))
 
+test("decodeDesktopConfig accepts supported renderer framework adapters", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      for (const framework of ["react", "solid", "vue"] as const) {
+        const config = yield* decodeDesktopConfig({
+          renderer: {
+            framework
+          }
+        })
+
+        expect(config.renderer?.framework).toBe(framework)
+      }
+    })
+  ))
+
 test("defineDesktopConfig rejects invalid app metadata types at compile time", () => {
   const config = defineDesktopConfig({
     app: {

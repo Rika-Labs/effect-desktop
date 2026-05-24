@@ -185,7 +185,7 @@ export interface DesktopConfig extends Omit<ProductionSecurityConfig, "permissio
     readonly entry?: string
   }
   readonly renderer?: {
-    readonly framework?: "react"
+    readonly framework?: RendererFramework
     readonly styling?: "tailwind"
     readonly entry?: string
     readonly dist?: string
@@ -239,6 +239,9 @@ export interface DesktopConfig extends Omit<ProductionSecurityConfig, "permissio
 export const RuntimeEngine = Schema.Literals(["bun", "node"])
 export type RuntimeEngine = typeof RuntimeEngine.Type
 
+export const RendererFramework = Schema.Literals(["react", "solid", "vue"])
+export type RendererFramework = typeof RendererFramework.Type
+
 export const WebEngine = Schema.Literals(["system", "chrome", "chromium"])
 export type WebEngine = typeof WebEngine.Type
 
@@ -262,7 +265,7 @@ export class DesktopRuntimeConfig extends Schema.Class<DesktopRuntimeConfig>(
 export class DesktopRendererConfig extends Schema.Class<DesktopRendererConfig>(
   "DesktopRendererConfig"
 )({
-  framework: Schema.optionalKey(Schema.Literal("react")),
+  framework: Schema.optionalKey(RendererFramework),
   styling: Schema.optionalKey(Schema.Literal("tailwind")),
   entry: Schema.optionalKey(Schema.String),
   dist: Schema.optionalKey(Schema.String)

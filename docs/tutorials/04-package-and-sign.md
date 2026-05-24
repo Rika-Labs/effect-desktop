@@ -83,7 +83,7 @@ bun run desktop build --config desktop.config.ts
 
 What happens:
 
-- The renderer entry is bundled (Vite for React/Solid/Vue, framework-specific for Next).
+- The renderer entry is bundled through the app's build script. `renderer.framework` accepts React, Solid, or Vue and is recorded in the build report; Next apps use the `@orika/next` client adapter over React.
 - The runtime entry is bundled with Bun.
 - Output lands in `dist/` per your `renderer.dist` and `build.outputDir` settings.
 - `runDesktopBuild` returns a `DesktopBuildReport` with `{ layout, elapsed, artifacts }`.

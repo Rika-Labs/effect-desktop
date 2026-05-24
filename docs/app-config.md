@@ -32,6 +32,8 @@ export default defineDesktopConfig({
 })
 ```
 
+`renderer.framework` defaults to `"react"` and accepts `"react"`, `"solid"`, or `"vue"`. The value is recorded in build cache keys and reports; the app still owns its Vite plugin and renderer build script.
+
 ## Verify Config Helper
 
 ```ts run
