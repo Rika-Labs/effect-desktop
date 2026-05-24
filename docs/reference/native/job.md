@@ -40,7 +40,7 @@ State transitions publish a `Job.Event` frame before the matching mutation respo
 
 Renderer event subscriptions receive typed `Job.Event` frames from the native event stream. The payload schema is owned by the canonical `Job.events.Event` RPC stream contract; the native bridge lowers that event contract to the existing `Job.Event` wire method. The memory test client uses a bounded buffer (`capacity: 512`, `replay: 128`) so local tests can assert event ordering without a real host transport.
 
-The public service registers running jobs with `ResourceRegistry` as `job:<jobId>` resources. Terminal transitions dispose that resource through the registry, so active jobs are visible to leak inspection and cleanup remains idempotent.
+The public service registers running jobs with `ResourceRegistry` as `job:<jobId>` resources. Terminal transitions remove that resource through the registry without invoking the active-job cleanup interrupt, so `succeed`, `fail`, and explicit `interrupt` do not send a second synthetic `Job.interrupt` after the host has already written the terminal state. External disposal of a still-running job resource continues to interrupt the job with reason `resource-disposed`. Active jobs remain visible to leak inspection and cleanup remains idempotent.
 
 When an Effect `EventJournal` is supplied to the service layer, each successful lifecycle mutation appends a journal entry keyed by `jobId`. This is the Effect-native journal path for runtimes that back the journal with durable storage.
 

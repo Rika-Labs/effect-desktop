@@ -349,42 +349,50 @@ test("JobRuntime interruption cancels the live fiber and cleans up resources", a
   expect(result.terminal.reason).toBe("user cancelled")
 })
 
-test("Job registers handles as resources and disposes terminal jobs exactly once", async () => {
+test("Job terminal transitions remove resources without cleanup interrupts", async () => {
   const permissions = await configuredPermissions()
   const resources = await Effect.runPromise(makeResourceRegistry())
-  const baseClient = await Effect.runPromise(
-    makeJobMemoryClient({ nextJobId: () => "job-resource" })
-  )
-  let cleanupCalls = 0
+  const baseClient = await Effect.runPromise(makeJobMemoryClient())
+  const interruptCalls: string[] = []
   const client: JobClientApi = {
     ...baseClient,
     interrupt: (input) =>
       Effect.sync(() => {
-        cleanupCalls += 1
+        interruptCalls.push(input.reason ?? "none")
       }).pipe(Effect.andThen(baseClient.interrupt(input)))
   }
 
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const jobs = yield* Job
-      const started = yield* jobs.start({ name: "Resource job" })
+      const started = yield* jobs.start({ jobId: "job-terminal-success", name: "Success" })
       const active = yield* resources.list()
       yield* jobs.succeed({ jobId: started.handle.id })
       const afterTerminal = yield* resources.list()
       yield* resources.dispose(makeResourceId(`job:${started.handle.id}`))
+
+      const failed = yield* jobs.start({ jobId: "job-terminal-fail", name: "Fail" })
+      yield* jobs.fail({ jobId: failed.handle.id, reason: "qa-fail" })
+
+      const activeDispose = yield* jobs.start({ jobId: "job-active-dispose", name: "Active" })
+      yield* resources.dispose(makeResourceId(`job:${activeDispose.handle.id}`))
+
+      const interrupted = yield* jobs.start({ jobId: "job-terminal-interrupt", name: "Interrupt" })
+      yield* jobs.interrupt({ jobId: interrupted.handle.id, reason: "qa-interrupt" })
+
       return { active, afterTerminal, started }
     }).pipe(Effect.provide(makeJobServiceLayer(client, { permissions, resources })))
   )
 
   expect(result.active.entries).toHaveLength(1)
   expect(result.active.entries[0]?.handle).toMatchObject({
-    id: "job:job-resource",
+    id: "job:job-terminal-success",
     kind: "job",
     ownerScope: "native-job",
     state: "running"
   })
   expect(result.afterTerminal.entries).toHaveLength(0)
-  expect(cleanupCalls).toBe(1)
+  expect(interruptCalls).toEqual(["resource-disposed", "qa-interrupt"])
 })
 
 test("Job writes lifecycle entries to an Effect-native journal", async () => {

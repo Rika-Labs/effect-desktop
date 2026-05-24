@@ -463,26 +463,36 @@ const makeJobService = (
   client: JobClientApi,
   options: JobServiceOptions
 ): Effect.Effect<JobServiceApi, never, never> =>
-  Effect.succeed(
-    Object.freeze({
+  Effect.gen(function* () {
+    const terminalResourceDisposals = yield* Ref.make<ReadonlySet<string>>(new Set())
+
+    return Object.freeze({
       start: (input) =>
         validateStart(input).pipe(
           Effect.flatMap((request) =>
             authorize(options, "start", request.traceId).pipe(
               Effect.andThen(client.start(request)),
-              Effect.tap((snapshot) => registerJobResource(options, client, snapshot)),
+              Effect.tap((snapshot) =>
+                registerJobResource(options, client, terminalResourceDisposals, snapshot)
+              ),
               Effect.tap((snapshot) => appendJobJournal(options, "started", snapshot)),
               Effect.tap((snapshot) => emitUseAudit(options, "start", snapshot, request.traceId)),
               Effect.tapError((error) => emitFailureAudit(options, "start", request.jobId, error))
             )
           )
         ),
-      pause: (input) => controlService(client.pause, options, "pause", input),
-      resume: (input) => controlService(client.resume, options, "resume", input),
-      retry: (input) => controlService(client.retry, options, "retry", input),
-      interrupt: (input) => controlService(client.interrupt, options, "interrupt", input),
-      succeed: (input) => controlService(client.succeed, options, "succeed", input),
-      fail: (input) => controlService(client.fail, options, "fail", input),
+      pause: (input) =>
+        controlService(client.pause, options, terminalResourceDisposals, "pause", input),
+      resume: (input) =>
+        controlService(client.resume, options, terminalResourceDisposals, "resume", input),
+      retry: (input) =>
+        controlService(client.retry, options, terminalResourceDisposals, "retry", input),
+      interrupt: (input) =>
+        controlService(client.interrupt, options, terminalResourceDisposals, "interrupt", input),
+      succeed: (input) =>
+        controlService(client.succeed, options, terminalResourceDisposals, "succeed", input),
+      fail: (input) =>
+        controlService(client.fail, options, terminalResourceDisposals, "fail", input),
       reportProgress: (input) =>
         validateProgress(input).pipe(
           Effect.flatMap((request) =>
@@ -511,11 +521,12 @@ const makeJobService = (
       isSupported: () => client.isSupported(),
       events: () => client.events()
     } satisfies JobServiceApi)
-  )
+  })
 
 const controlService = (
   method: (input: JobControlRequest) => Effect.Effect<JobSnapshot, JobError, never>,
   options: JobServiceOptions,
+  terminalResourceDisposals: Ref.Ref<ReadonlySet<string>>,
   name: "pause" | "resume" | "retry" | "interrupt" | "succeed" | "fail",
   input: JobControlRequest
 ): Effect.Effect<JobSnapshot, JobError, never> =>
@@ -524,7 +535,9 @@ const controlService = (
       authorize(options, name, request.traceId).pipe(
         Effect.andThen(method(request)),
         Effect.tap((snapshot) => appendJobJournal(options, phaseFromMethod(name), snapshot)),
-        Effect.tap((snapshot) => disposeTerminalJobResource(options, snapshot)),
+        Effect.tap((snapshot) =>
+          disposeTerminalJobResource(options, terminalResourceDisposals, snapshot)
+        ),
         Effect.tap((snapshot) => emitUseAudit(options, name, snapshot, request.traceId)),
         Effect.tapError((error) => emitFailureAudit(options, name, request.jobId, error))
       )
@@ -697,6 +710,7 @@ const getExisting = (
 const registerJobResource = (
   options: JobServiceOptions,
   client: JobClientApi,
+  terminalResourceDisposals: Ref.Ref<ReadonlySet<string>>,
   snapshot: JobSnapshot
 ): Effect.Effect<void, JobError, never> => {
   if (options.resources === undefined) {
@@ -709,7 +723,13 @@ const registerJobResource = (
       id: jobResourceId(jobId),
       ownerScope: snapshot.handle.ownerScope,
       state: snapshot.state,
-      dispose: client.interrupt({ jobId, reason: "resource-disposed" }).pipe(Effect.ignore)
+      dispose: consumeTerminalResourceDisposal(terminalResourceDisposals, jobId).pipe(
+        Effect.flatMap((skipCleanupInterrupt) =>
+          skipCleanupInterrupt
+            ? Effect.void
+            : client.interrupt({ jobId, reason: "resource-disposed" }).pipe(Effect.ignore)
+        )
+      )
     })
     .pipe(
       Effect.asVoid,
@@ -724,15 +744,50 @@ const registerJobResource = (
 
 const disposeTerminalJobResource = (
   options: JobServiceOptions,
+  terminalResourceDisposals: Ref.Ref<ReadonlySet<string>>,
   snapshot: JobSnapshot
 ): Effect.Effect<void, never, never> => {
   if (options.resources === undefined || !isTerminal(snapshot.state)) {
     return Effect.void
   }
-  return options.resources.dispose(jobResourceId(snapshot.handle.id)).pipe(Effect.ignore)
+  const jobId = snapshot.handle.id
+  return markTerminalResourceDisposal(terminalResourceDisposals, jobId).pipe(
+    Effect.andThen(options.resources.dispose(jobResourceId(jobId))),
+    Effect.ensuring(unmarkTerminalResourceDisposal(terminalResourceDisposals, jobId)),
+    Effect.ignore
+  )
 }
 
 const jobResourceId = (jobId: string) => makeResourceId(`job:${jobId}`)
+
+const markTerminalResourceDisposal = (
+  terminalResourceDisposals: Ref.Ref<ReadonlySet<string>>,
+  jobId: string
+): Effect.Effect<void, never, never> =>
+  Ref.update(terminalResourceDisposals, (jobIds) => new Set(jobIds).add(jobId))
+
+const unmarkTerminalResourceDisposal = (
+  terminalResourceDisposals: Ref.Ref<ReadonlySet<string>>,
+  jobId: string
+): Effect.Effect<void, never, never> =>
+  Ref.update(terminalResourceDisposals, (jobIds) => {
+    const next = new Set(jobIds)
+    next.delete(jobId)
+    return next
+  })
+
+const consumeTerminalResourceDisposal = (
+  terminalResourceDisposals: Ref.Ref<ReadonlySet<string>>,
+  jobId: string
+): Effect.Effect<boolean, never, never> =>
+  Ref.modify(terminalResourceDisposals, (jobIds) => {
+    if (!jobIds.has(jobId)) {
+      return [false, jobIds] as const
+    }
+    const next = new Set(jobIds)
+    next.delete(jobId)
+    return [true, next] as const
+  })
 
 const appendJobJournal = (
   options: JobServiceOptions,
