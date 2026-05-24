@@ -7,7 +7,9 @@ pub use error::{
 };
 
 use std::collections::BTreeMap;
+use std::fmt;
 
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use serde::{de, ser, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 
@@ -371,6 +373,61 @@ pub const NATIVE_FILE_SYSTEM_UNSUPPORTED_REASON: &str = "host-adapter-unimplemen
 pub const AUTOSTART_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const CLIPBOARD_UNSUPPORTED_REASON: &str = "host-adapter-unimplemented";
 pub const TRAY_UNSUPPORTED_REASON: &str = "host-tray-unavailable";
+
+mod base64_bytes {
+    use super::{de, fmt, BASE64_STANDARD};
+    use base64::Engine as _;
+    use serde::{Deserializer, Serializer};
+
+    pub fn serialize<S>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&BASE64_STANDARD.encode(bytes))
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_any(Base64BytesVisitor)
+    }
+
+    struct Base64BytesVisitor;
+
+    impl<'de> de::Visitor<'de> for Base64BytesVisitor {
+        type Value = Vec<u8>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter.write_str("a base64 string or byte array")
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            BASE64_STANDARD.decode(value).map_err(E::custom)
+        }
+
+        fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            self.visit_str(&value)
+        }
+
+        fn visit_seq<A>(self, mut sequence: A) -> Result<Self::Value, A::Error>
+        where
+            A: de::SeqAccess<'de>,
+        {
+            let mut bytes = Vec::new();
+            while let Some(byte) = sequence.next_element::<u8>()? {
+                bytes.push(byte);
+            }
+            Ok(bytes)
+        }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -15959,6 +16016,7 @@ impl TransactionalFileMutationDiffPayload {
 pub struct TransactionalFileMutationPreparePayload {
     actor: TransactionalFileMutationActorPayload,
     path: String,
+    #[serde(with = "base64_bytes")]
     replacement_bytes: Vec<u8>,
     #[serde(skip_serializing_if = "Option::is_none")]
     expected_source_hash: Option<String>,
@@ -22672,8 +22730,14 @@ mod tests {
         );
         assert_eq!(
             serde_json::to_string(&prepare).expect("prepare payload should encode"),
-            r#"{"actor":{"kind":"workspace","id":"workspace-1"},"path":"/workspace/app/src/main.ts","replacementBytes":[110,101,120,116,10],"expectedSourceHash":"fnv1a-source","mutationId":"file-mutation-1","ownerScope":"scope-workspace","traceId":"trace-prepare"}"#
+            r#"{"actor":{"kind":"workspace","id":"workspace-1"},"path":"/workspace/app/src/main.ts","replacementBytes":"bmV4dAo=","expectedSourceHash":"fnv1a-source","mutationId":"file-mutation-1","ownerScope":"scope-workspace","traceId":"trace-prepare"}"#
         );
+
+        let decoded: TransactionalFileMutationPreparePayload = serde_json::from_str(
+            r#"{"actor":{"kind":"workspace","id":"workspace-1"},"path":"/workspace/app/src/main.ts","replacementBytes":"bmV4dAo=","expectedSourceHash":"fnv1a-source","mutationId":"file-mutation-1","ownerScope":"scope-workspace","traceId":"trace-prepare"}"#,
+        )
+        .expect("prepare payload should decode base64 replacement bytes");
+        assert_eq!(decoded.replacement_bytes(), b"next\n");
 
         let diff = TransactionalFileMutationDiffPayload::unified(
             "--- /workspace/app/src/main.ts\n+++ /workspace/app/src/main.ts",

@@ -1046,6 +1046,33 @@ mod tests {
     }
 
     #[test]
+    fn prepare_accepts_bridge_base64_replacement_bytes() {
+        let path = temp_file("prepare-base64", b"source\n");
+        let replacement_hash = hash_bytes(b"next\n");
+        let payload = prepare(Some(json!({
+            "actor": { "kind": "workspace", "id": "workspace-1" },
+            "path": path.display().to_string(),
+            "replacementBytes": "bmV4dAo=",
+            "mutationId": "file-mutation-prepare-base64"
+        })))
+        .expect("prepare should accept bridge-encoded replacement bytes");
+
+        assert_eq!(
+            payload
+                .as_ref()
+                .and_then(|value| value.get("replacementHash"))
+                .and_then(|value| value.as_str()),
+            Some(replacement_hash.as_str())
+        );
+        rollback(Some(json!({
+            "actor": { "kind": "workspace", "id": "workspace-1" },
+            "mutationId": "file-mutation-prepare-base64"
+        })))
+        .expect("cleanup rollback should succeed");
+        cleanup_path(path);
+    }
+
+    #[test]
     fn commit_replaces_file_when_source_hash_matches() {
         let path = temp_file("commit", b"source\n");
         prepare(Some(json!({
