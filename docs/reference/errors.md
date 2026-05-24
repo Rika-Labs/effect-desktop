@@ -61,7 +61,7 @@ Process failures arrive as `HostProtocolError` on the operation that produced th
 
 ## PTY
 
-PTY failures are also `HostProtocolError`. `open`, `write`, `resize`, `signal`, `close` each fail with typed reasons.
+PTY failures are also `HostProtocolError`. `open`, `write`, `resize`, `kill`, `output`, and `onExit` each fail with typed reasons.
 
 ## Worker
 

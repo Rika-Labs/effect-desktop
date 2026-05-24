@@ -10,20 +10,22 @@ effect_version: 4
 
 A PTY (pseudo-terminal) is what you want when you need an interactive shell or a process that expects a terminal — bash, zsh, ssh, vim. `PTY` runs them through a substitutable adapter with permission policy and scoped cleanup.
 
-## 1. Declare permission
+## 1. Configure permission policy
 
 ```ts
-import { PermissionRegistry } from "@orika/core"
+import { PtyLayer, type PtyAdapter } from "@orika/core"
 
-const permissions = yield * PermissionRegistry
-yield *
-  permissions.declare(
-    { kind: "process.spawn", command: "/bin/zsh" },
-    { effect: "allow", source: "terminal-feature" }
-  )
+declare const ptyAdapter: PtyAdapter
+
+const TerminalPtyLive = PtyLayer({
+  adapter: ptyAdapter,
+  permissions: {
+    spawn: ["/bin/zsh"]
+  }
+})
 ```
 
-PTY uses the same `process.spawn` capability as `Process` — the command is checked the same way.
+PTY uses a `pty.spawn` policy with exact command matching. Allowing `/bin/zsh` does not allow `zsh`, `/bin/bash`, or any shell-shaped command string.
 
 ## 2. Open
 
@@ -45,8 +47,13 @@ const program = Effect.gen(function* () {
   yield* session.output.pipe(
     Stream.runForEach((chunk) => Effect.sync(() => process.stdout.write(chunk)))
   )
+
+  const status = yield* session.onExit
+  return status.code
 })
 ```
+
+Run this program with a layer that provides `PTY`, such as `TerminalPtyLive` above.
 
 `session.output` is a bounded stream. Excess output drops oldest chunks rather than blocking the producer.
 
@@ -69,8 +76,8 @@ Resizes are signaled to the underlying process so applications like `vim` re-ren
 ## 5. Send signals
 
 ```ts
-yield * session.signal("SIGINT") // Ctrl+C
-yield * session.signal("SIGTERM")
+yield * session.kill("SIGINT") // Ctrl+C
+yield * session.kill("SIGTERM")
 ```
 
 ## 6. Cleanup
@@ -83,7 +90,7 @@ yield * session.kill()
 
 ## Adapter substitution
 
-`PTY` accepts a substitutable adapter. Production uses the native PTY backend (`crates/native-pty`). Tests use `MockPTY` from `@orika/test`, which records open/write/resize/signal/close calls and returns deterministic output.
+`PTY` accepts a substitutable adapter. Production uses the native PTY backend (`crates/native-pty`). Tests use `MockPTY` from `@orika/test`, which records open, write, resize, kill, and cleanup calls while returning deterministic output.
 
 ## Related
 

@@ -43,6 +43,9 @@ const CORE_PERMISSION_REGISTRY_LIVE_IMPORT_PATTERN =
   /import\s*\{[^}]*\bPermissionRegistryLive\b[^}]*\}\s*from\s+"@orika\/core"/m
 const CURRENT_WINDOW_ID_LITERAL_ROUTING_PATTERN =
   /useCurrentWindowId\(\)[\s\S]{0,500}onSome:\s*\(\s*([A-Za-z_$][\w$]*)\s*\)\s*=>[\s\S]{0,220}\b\1\s*===\s*["']/m
+const STALE_PTY_HANDLE_DOC_PATTERN =
+  /\bsession\.signal\(|\|\s*`list`\s*\||readonly\s+(?:signal|close|exit)\s*:/m
+const STALE_PTY_PERMISSION_DOC_PATTERN = /\bprocess\.spawn\b/
 const STALE_PACKAGE_README_PHRASES = [
   "public API remains reserved for Phase 4+",
   "Public renderer-facing APIs",
@@ -520,5 +523,54 @@ describe("SQLite docs", () => {
     expect(markdown).toContain("PermissionRegistry")
     expect(markdown).toContain("ResourceRegistryLive")
     expect(markdown).toContain("PermissionRegistry.make")
+  })
+})
+
+describe("PTY docs", () => {
+  test("model the current public handle API", () => {
+    const violations: string[] = []
+    const handleDocs = ["docs/how-to/open-a-pty.md", "docs/reference/services/pty.md"] as const
+
+    for (const relativePath of handleDocs) {
+      const markdown = readFileSync(join(REPO_ROOT, relativePath), "utf8")
+      if (STALE_PTY_HANDLE_DOC_PATTERN.test(markdown)) {
+        violations.push(`${relativePath}: document PtyHandle.kill/onExit, not stale aliases`)
+      }
+      if (STALE_PTY_PERMISSION_DOC_PATTERN.test(markdown)) {
+        violations.push(`${relativePath}: document pty.spawn policy, not process.spawn`)
+      }
+    }
+
+    const howTo = readFileSync(join(REPO_ROOT, "docs/how-to/open-a-pty.md"), "utf8")
+    const reference = readFileSync(join(REPO_ROOT, "docs/reference/services/pty.md"), "utf8")
+    const errors = readFileSync(join(REPO_ROOT, "docs/reference/errors.md"), "utf8")
+    const mockPty = readFileSync(
+      join(REPO_ROOT, "docs/reference/test/mock-process-and-pty.md"),
+      "utf8"
+    )
+    const ptys = readFileSync(join(REPO_ROOT, "docs/ptys.md"), "utf8")
+
+    if (!howTo.includes('session.kill("SIGINT")') || !howTo.includes("session.onExit")) {
+      violations.push("docs/how-to/open-a-pty.md: show kill(signal?) and onExit")
+    }
+    if (
+      !reference.includes("type PtyHandle") ||
+      !reference.includes("onExit") ||
+      !reference.includes("kill:") ||
+      !reference.includes("outputMetrics")
+    ) {
+      violations.push("docs/reference/services/pty.md: document the current PtyHandle shape")
+    }
+    if (errors.includes("`signal`, `close`")) {
+      violations.push("docs/reference/errors.md: name current PTY operations")
+    }
+    if (mockPty.includes("signal, close calls")) {
+      violations.push("docs/reference/test/mock-process-and-pty.md: name kill and cleanup records")
+    }
+    if (!ptys.includes("PtyOpenOptions") || !ptys.includes("PtyHandle")) {
+      violations.push("docs/ptys.md: list current public PTY handle types")
+    }
+
+    expect(violations).toEqual([])
   })
 })

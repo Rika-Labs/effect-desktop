@@ -10,15 +10,15 @@ effect_version: 4
 
 > Full reference: [`reference/services/pty.md`](reference/services/pty.md). How-to: [`open a PTY`](how-to/open-a-pty.md).
 
-The `PTY` service owns pseudo-terminal sessions, resize/signal operations, output streams, permission policy, budget policy, and cleanup.
+The `PTY` service owns pseudo-terminal sessions, resize and kill operations, output streams, permission policy, budget policy, and cleanup.
 
 ## Public surface
 
-`@orika/core` exports `PTY`, `PtyOpenInput`, `PtyResizeInput`, `PtySignalInput`, `PtyExitStatus`, PTY errors, adapter types, and constructors such as `makePty`.
+`@orika/core` exports `PTY`, `PtyOpenOptions`, `PtyHandle`, `PtyOpenInput`, `PtyResizeInput`, `PtySignalInput`, `PtyExitStatus`, PTY errors, adapter types, and constructors such as `makePty`.
 
 ## Runtime rule
 
-A PTY is a scoped resource. Open sessions must be closed, signaled, or collected by owner-scope cleanup. Output is bounded and observable.
+A PTY is a scoped resource. `PtyHandle.kill(signal?)` terminates or signals the session explicitly; owner-scope cleanup terminates any remaining session. Output is bounded and observable.
 
 ## Verify PTY Test Surface
 
@@ -33,7 +33,7 @@ if (PTY === undefined || MockPTY === undefined) {
 
 ## Testing
 
-`MockPTY.layer(options)` from `@orika/test` to verify open records, output frames, resize calls, signals, and exit behavior without a real terminal.
+`MockPTY.layer(options)` from `@orika/test` to verify open records, output frames, resize calls, kill calls, cleanup, and exit behavior without a real terminal.
 
 ## Where to go next
 

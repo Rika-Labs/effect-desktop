@@ -8,7 +8,7 @@ effect_version: 4
 
 # `PTY`
 
-Owns pseudo-terminal sessions, resize/signal operations, output streams, permission policy, budget policy, and cleanup.
+Owns pseudo-terminal sessions, resize and kill operations, output streams, permission policy, budget policy, and cleanup.
 
 ## Import
 
@@ -16,9 +16,12 @@ Owns pseudo-terminal sessions, resize/signal operations, output streams, permiss
 import {
   PTY,
   type PtyApi,
+  type PtyHandle,
+  type PtyOpenOptions,
   type PtyOpenInput,
   type PtyChild,
   type PtyExitStatus,
+  type PtyOutputMetrics,
   type PtyAdapter,
   type PtyBudgetPolicy,
   type PtyPermissionPolicy,
@@ -28,12 +31,11 @@ import {
 
 ## API
 
-| Method | Signature                                   |
-| ------ | ------------------------------------------- |
-| `open` | `(input: PtyOpenInput) => Effect<PtyChild>` |
-| `list` | `() => Effect<PtySnapshot[]>`               |
+| Method | Signature                                                  |
+| ------ | ---------------------------------------------------------- |
+| `open` | `(options: PtyOpenOptions) => Effect<PtyHandle, PtyError>` |
 
-## `PtyOpenInput`
+## `PtyOpenOptions`
 
 ```ts
 {
@@ -47,27 +49,41 @@ import {
 
 PTY sessions are registered under the `ResourceOwner` that built the `PTY` service. `Desktop.runtime(...)` supplies an app owner, `Desktop.window(..., services)` supplies a window owner, and custom job layers can provide `ResourceOwner.job(...)`.
 
-## `PtyChild`
+## `PtyHandle`
 
 ```ts
 {
-  readonly id: string
+  readonly resource: ManagedResourceHandle<"pty", "running">
+  readonly pid: Option<number>
   readonly output: Stream<Uint8Array>
-  readonly write: (data: Uint8Array) => Effect<void>
+  readonly outputMetrics: Effect<PtyOutputMetrics>
+  readonly onExit: Effect<PtyExitStatus>
+  readonly write: (chunk: unknown) => Effect<void>
   readonly resize: (size: { rows, cols }) => Effect<void>
-  readonly signal: (signal: string) => Effect<void>
-  readonly close: Effect<void>
-  readonly exit: Effect<PtyExitStatus>
+  readonly kill: (signal?: unknown) => Effect<void>
 }
 ```
 
+`kill(signal?)` sends the requested signal after validating it. Use `onExit` to await the process status. Owner-scope cleanup also terminates the PTY if the caller does not kill it explicitly.
+
 ## Adapter
 
-`PTY` accepts a substitutable `PtyAdapter`. Production uses `crates/native-pty`. Tests use `MockPTY`.
+`PTY` accepts a substitutable `PtyAdapter`. The adapter opens a lower-level `PtyChild`; applications should depend on `PtyHandle`, not the adapter child. Production uses `crates/native-pty`. Tests use `MockPTY`.
 
 ## Permissions
 
-Uses the same `process.spawn` capability as `Process`.
+`PtyLayer({ permissions })` enforces a `pty.spawn` policy with exact command matching:
+
+```ts
+PtyLayer({
+  adapter,
+  permissions: {
+    spawn: ["/bin/zsh"]
+  }
+})
+```
+
+Denied opens fail with `HostProtocolPermissionDeniedError` and capability `pty.spawn`.
 
 ## Test layer
 

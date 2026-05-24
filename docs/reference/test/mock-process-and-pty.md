@@ -32,7 +32,7 @@ const layer = MockPTY.layer({
 })
 ```
 
-Records: open, write, resize, signal, close calls. Output: deterministic bytes from the scripted responses.
+Records: open, write, resize, kill, and cleanup calls. Output: deterministic bytes from the scripted responses.
 
 ## Both keep production discipline
 
