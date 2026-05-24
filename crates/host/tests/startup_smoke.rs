@@ -124,8 +124,12 @@ fn host_binary_verifies_resident_lifecycle_close_to_background() {
 #[test]
 fn host_binary_verifies_app_quit_lifecycle_exit() {
     let _guard = host_smoke_guard();
+    #[cfg(unix)]
+    let runtime = app_quit_runtime_probe();
     let mut command = host_command();
     command.arg("--app-quit-smoke-test");
+    #[cfg(unix)]
+    command.env("EFFECT_DESKTOP_RUNTIME_EXECUTABLE", &runtime.wrapper_path);
     let output = output_with_timeout(command, "host binary should execute app quit smoke");
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -148,6 +152,8 @@ fn host_binary_verifies_app_quit_lifecycle_exit() {
         process_output.contains("source=\"app-quit\""),
         "process output did not contain app quit exit source\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
+    #[cfg(unix)]
+    runtime.assert_runtime_exited();
 }
 
 #[test]
@@ -375,6 +381,11 @@ fn unique_marker_path(name: &str) -> std::path::PathBuf {
     unique_temp_path(name, "marker")
 }
 
+#[cfg(unix)]
+fn unique_script_path(name: &str) -> std::path::PathBuf {
+    unique_temp_path(name, "sh")
+}
+
 fn unique_temp_path(name: &str, extension: &str) -> std::path::PathBuf {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -384,6 +395,98 @@ fn unique_temp_path(name: &str, extension: &str) -> std::path::PathBuf {
         "effect-desktop-{name}-{}-{nanos}.{extension}",
         std::process::id(),
     ))
+}
+
+#[cfg(unix)]
+struct RuntimeProcessProbe {
+    wrapper_path: std::path::PathBuf,
+    pid_path: std::path::PathBuf,
+}
+
+#[cfg(unix)]
+impl RuntimeProcessProbe {
+    fn assert_runtime_exited(&self) {
+        let pid = read_pid(&self.pid_path);
+        let exited = wait_for_process_exit(pid, HOST_SMOKE_TIMEOUT);
+        if !exited {
+            kill_process_group(pid, libc::SIGKILL);
+        }
+        let _ = fs::remove_file(&self.wrapper_path);
+        let _ = fs::remove_file(&self.pid_path);
+
+        assert!(exited, "runtime child pid {pid} survived app quit");
+    }
+}
+
+#[cfg(unix)]
+fn app_quit_runtime_probe() -> RuntimeProcessProbe {
+    let wrapper_path = unique_script_path("app-quit-runtime-wrapper");
+    let pid_path = unique_marker_path("app-quit-runtime-pid");
+    write_runtime_wrapper(&wrapper_path, &pid_path);
+    RuntimeProcessProbe {
+        wrapper_path,
+        pid_path,
+    }
+}
+
+#[cfg(unix)]
+fn write_runtime_wrapper(wrapper_path: &Path, pid_path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let script = format!(
+        "#!/bin/sh\nprintf '%s\\n' \"$$\" > {}\nexec bun \"$@\"\n",
+        shell_quote_path(pid_path)
+    );
+    fs::write(wrapper_path, script).expect("runtime wrapper should write");
+    let mut permissions = fs::metadata(wrapper_path)
+        .expect("runtime wrapper metadata should read")
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(wrapper_path, permissions).expect("runtime wrapper should be executable");
+}
+
+#[cfg(unix)]
+fn shell_quote_path(path: &Path) -> String {
+    let path = path.to_string_lossy();
+    format!("'{}'", path.replace('\'', r#"'\''"#))
+}
+
+#[cfg(unix)]
+fn read_pid(path: &Path) -> libc::pid_t {
+    fs::read_to_string(path)
+        .expect("runtime pid file should exist")
+        .trim()
+        .parse::<libc::pid_t>()
+        .expect("runtime pid file should contain a pid")
+}
+
+#[cfg(unix)]
+fn wait_for_process_exit(pid: libc::pid_t, timeout: Duration) -> bool {
+    let deadline = Instant::now() + timeout;
+    loop {
+        if !process_exists(pid) {
+            return true;
+        }
+        if Instant::now() >= deadline {
+            return false;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+}
+
+#[cfg(unix)]
+fn process_exists(pid: libc::pid_t) -> bool {
+    // SAFETY: kill(pid, 0) only probes process existence and permissions.
+    let result = unsafe { libc::kill(pid, 0) };
+    result == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+}
+
+#[cfg(unix)]
+fn kill_process_group(pid: libc::pid_t, signal: libc::c_int) {
+    // SAFETY: the runtime supervisor launches runtime children in their own process group.
+    unsafe {
+        libc::kill(-pid, signal);
+    }
 }
 
 fn wait_for_marker(path: &Path) -> bool {

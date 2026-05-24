@@ -1572,6 +1572,70 @@ console.log("this is not framed");
         drop(supervisor);
     }
 
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_parent_exit_guard_terminates_runtime_child_without_supervisor_drop() {
+        let temp_dir = unique_temp_dir("macos-parent-exit-guard");
+        fs::create_dir_all(&temp_dir).expect("temp dir should create");
+        let pid_path = temp_dir.join("runtime-pid.txt");
+        let current_exe = std::env::current_exe().expect("current test binary should resolve");
+
+        let status = std::process::Command::new(current_exe)
+            .arg("--exact")
+            .arg("runtime::tests::macos_parent_exit_guard_helper")
+            .arg("--ignored")
+            .env("EFFECT_DESKTOP_MACOS_PARENT_EXIT_GUARD_HELPER", "1")
+            .env("EFFECT_DESKTOP_MACOS_PARENT_EXIT_GUARD_PID_PATH", &pid_path)
+            .status()
+            .expect("helper test process should run");
+
+        assert!(status.success(), "helper test process failed: {status}");
+
+        let child_pid = read_pid(&pid_path);
+        let exited = wait_for_process_exit(child_pid, EVENT_TIMEOUT);
+        if !exited {
+            kill_process_group(child_pid, libc::SIGKILL);
+        }
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        assert!(
+            exited,
+            "runtime child pid {child_pid} survived parent process exit"
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    #[ignore]
+    fn macos_parent_exit_guard_helper() {
+        if std::env::var_os("EFFECT_DESKTOP_MACOS_PARENT_EXIT_GUARD_HELPER").is_none() {
+            return;
+        }
+
+        let pid_path = std::env::var_os("EFFECT_DESKTOP_MACOS_PARENT_EXIT_GUARD_PID_PATH")
+            .map(PathBuf::from)
+            .expect("pid path env should be set");
+        let pid_path_json =
+            serde_json::to_string(pid_path.to_str().expect("pid path should be UTF-8"))
+                .expect("pid path should encode as JSON");
+        let script = format!(
+            r#"
+await Bun.write({pid_path_json}, String(process.pid));
+console.log(JSON.stringify({{ event: "runtime.ready", version: "test" }}));
+setInterval(() => {{}}, 1000);
+"#
+        );
+        let mut supervisor = Supervisor::spawn(
+            RuntimeConfig::new("bun").args(["-e".to_string(), script]),
+            test_policy(RuntimeProfile::Prod, 0, EVENT_TIMEOUT),
+            test_router(),
+        )
+        .expect("runtime child should spawn");
+
+        await_ready(&mut supervisor, EVENT_TIMEOUT).expect("runtime child should become ready");
+        std::process::exit(0);
+    }
+
     #[test]
     fn runtime_event_models_stdio_errors_explicitly() {
         let event = RuntimeEvent::StdioError {
@@ -2940,5 +3004,43 @@ setInterval(() => {{}}, 1000);
             .ok()
             .and_then(|count| count.parse::<usize>().ok())
             .unwrap_or(0)
+    }
+
+    #[cfg(target_os = "macos")]
+    fn read_pid(path: &Path) -> libc::pid_t {
+        fs::read_to_string(path)
+            .expect("pid file should exist")
+            .trim()
+            .parse::<libc::pid_t>()
+            .expect("pid file should contain a pid")
+    }
+
+    #[cfg(target_os = "macos")]
+    fn wait_for_process_exit(pid: libc::pid_t, timeout: Duration) -> bool {
+        let deadline = Instant::now() + timeout;
+        loop {
+            if !process_exists(pid) {
+                return true;
+            }
+            if Instant::now() >= deadline {
+                return false;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    fn process_exists(pid: libc::pid_t) -> bool {
+        // SAFETY: kill(pid, 0) performs existence/permission probing only.
+        let result = unsafe { libc::kill(pid, 0) };
+        result == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+    }
+
+    #[cfg(target_os = "macos")]
+    fn kill_process_group(pid: libc::pid_t, signal: libc::c_int) {
+        // SAFETY: child runtimes are launched in their own process group.
+        unsafe {
+            libc::kill(-pid, signal);
+        }
     }
 }

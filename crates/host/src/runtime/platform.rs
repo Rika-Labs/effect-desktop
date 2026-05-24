@@ -35,17 +35,71 @@ pub(crate) fn configure_command(_command: &mut Command) {}
 #[cfg(not(any(unix, windows)))]
 pub(crate) fn configure_command(_command: &mut Command) {}
 
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
+pub(crate) struct ChildGuard {
+    guard: Child,
+}
+
+#[cfg(target_os = "macos")]
+impl ChildGuard {
+    pub(crate) fn attach(child: &Child) -> io::Result<Self> {
+        spawn_macos_parent_exit_guard(child.id()).map(|guard| Self { guard })
+    }
+}
+
+#[cfg(target_os = "macos")]
+impl Drop for ChildGuard {
+    fn drop(&mut self) {
+        let _ = self.guard.kill();
+        let _ = self.guard.wait();
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn release_child_guard(guard: ChildGuard) {
+    drop(guard);
+}
+
+#[cfg(target_os = "macos")]
+fn spawn_macos_parent_exit_guard(child_pid: u32) -> io::Result<Child> {
+    use std::process::Stdio;
+
+    const SCRIPT: &str = r#"
+parent_pid="$1"
+child_pid="$2"
+while kill -0 "$parent_pid" 2>/dev/null && kill -0 "$child_pid" 2>/dev/null; do
+  sleep 0.2
+done
+if ! kill -0 "$parent_pid" 2>/dev/null && kill -0 "$child_pid" 2>/dev/null; then
+  kill -TERM "-$child_pid" 2>/dev/null
+  sleep 1
+  kill -KILL "-$child_pid" 2>/dev/null
+fi
+"#;
+
+    Command::new("/bin/sh")
+        .arg("-c")
+        .arg(SCRIPT)
+        .arg("effect-desktop-runtime-parent-exit-guard")
+        .arg(std::process::id().to_string())
+        .arg(child_pid.to_string())
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
 pub(crate) struct ChildGuard;
 
-#[cfg(unix)]
+#[cfg(all(unix, not(target_os = "macos")))]
 impl ChildGuard {
     pub(crate) fn attach(_child: &Child) -> io::Result<Self> {
         Ok(Self)
     }
 }
 
-#[cfg(unix)]
+#[cfg(all(unix, not(target_os = "macos")))]
 pub(crate) fn release_child_guard(_guard: ChildGuard) {}
 
 #[cfg(windows)]
