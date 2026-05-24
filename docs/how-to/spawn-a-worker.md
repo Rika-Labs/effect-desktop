@@ -30,7 +30,7 @@ Use whatever shape you want for messages — the framework will Schema-validate 
 ## 2. Spawn from a handler
 
 ```ts
-import { Effect, Schema } from "effect"
+import { Effect, Schema, Stream } from "effect"
 import { Worker } from "@orika/core"
 
 const InMessage = Schema.Struct({
@@ -76,7 +76,7 @@ When the owning `ResourceOwner` scope closes, the worker is terminated, the per-
 
 ```ts
 const live = yield * worker.list()
-// [{ id, script, ownerScope, resourceId, status, uptime, capabilities, lastError? }, ...]
+// [{ id, script, ownerScope, resourceId, status, uptimeMs, capabilities, lastError? }, ...]
 ```
 
 Devtools' workflows panel renders this list live.

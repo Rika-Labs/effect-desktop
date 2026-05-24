@@ -67,6 +67,12 @@ const STALE_SIDECAR_REFERENCE_TOKENS = [
   "Sidecar.spawn",
   "SidecarSnapshot"
 ] as const
+const STALE_WORKER_DOC_TOKENS = [
+  "WorkerHandle<I, O>",
+  "Effect<WorkerHandle<I, O>>",
+  "  id: string",
+  "status, uptime, capabilities"
+] as const
 const STALE_PACKAGE_README_PHRASES = [
   "public API remains reserved for Phase 4+",
   "Public renderer-facing APIs",
@@ -598,6 +604,37 @@ describe("Sidecar docs", () => {
     ] as const) {
       if (!reference.includes(token)) {
         violations.push(`docs/reference/services/sidecar.md: document ${token}`)
+      }
+    }
+
+    expect(violations).toEqual([])
+  })
+})
+
+describe("Worker docs", () => {
+  test("model the current Worker handle and snapshot API", () => {
+    const reference = readFileSync(join(REPO_ROOT, "docs/reference/services/worker.md"), "utf8")
+    const howTo = readFileSync(join(REPO_ROOT, "docs/how-to/spawn-a-worker.md"), "utf8")
+    const combined = `${reference}\n${howTo}`
+    const violations: string[] = []
+
+    for (const token of STALE_WORKER_DOC_TOKENS) {
+      if (combined.includes(token)) {
+        violations.push(`Worker docs: remove stale ${token} wording`)
+      }
+    }
+
+    for (const token of [
+      "WorkerHandle<Out>",
+      "resource:",
+      "ManagedResourceHandle",
+      "WorkerSnapshot",
+      "uptimeMs",
+      "WorkerLive",
+      "WorkerLayer"
+    ] as const) {
+      if (!reference.includes(token)) {
+        violations.push(`docs/reference/services/worker.md: document ${token}`)
       }
     }
 

@@ -14,9 +14,13 @@ Runtime primitive for background TypeScript in a separate worker runtime. The fr
 
 ```ts
 import {
+  type ManagedResourceHandle,
   Worker,
   type WorkerApi,
   type WorkerHandle,
+  WorkerLayer,
+  WorkerLive,
+  WorkerSnapshot,
   type WorkerSpawnInput,
   type WorkerSpawnOptions,
   type WorkerAdapter,
@@ -36,10 +40,10 @@ import {
 
 ## API
 
-| Method  | Signature                                                         |
-| ------- | ----------------------------------------------------------------- |
-| `spawn` | `(input: WorkerSpawnOptions<I, O>) => Effect<WorkerHandle<I, O>>` |
-| `list`  | `() => Effect<WorkerSnapshot[]>`                                  |
+| Method  | Signature                                                                          |
+| ------- | ---------------------------------------------------------------------------------- |
+| `spawn` | `(options: WorkerSpawnOptions<In, Out>) => Effect<WorkerHandle<Out>, WorkerError>` |
+| `list`  | `() => Effect<readonly WorkerSnapshot[]>`                                          |
 
 ## `WorkerSpawnOptions<I, O>`
 
@@ -55,14 +59,34 @@ import {
 
 Workers are registered under the `ResourceOwner` that built the `Worker` service. `Desktop.runtime(...)` supplies an app owner, `Desktop.window(..., services)` supplies a window owner, and custom job layers can provide `ResourceOwner.job(...)`.
 
-## `WorkerHandle<I, O>`
+## `WorkerHandle<Out>`
 
 ```ts
 {
-  id: string
-  send: (message: I) => Effect<void, WorkerChannelError>
-  messages: Stream<O>
-  close: Effect<void>
+  readonly resource: ManagedResourceHandle<"worker", "running">
+  readonly send: (message: unknown) => Effect<void, WorkerError>
+  readonly messages: Stream<Out, WorkerError>
+  readonly close: Effect<void>
+}
+```
+
+`send` accepts `unknown` at the type boundary and decodes each value with the
+`inputSchema` passed to `spawn`. `messages` decodes worker output with
+`outputSchema`. Use `handle.resource.id` when code needs the registered worker
+resource id.
+
+## `WorkerSnapshot`
+
+```ts
+{
+  readonly id: string
+  readonly script: string
+  readonly ownerScope: string
+  readonly resourceId: string
+  readonly status: "running"
+  readonly uptimeMs: number
+  readonly capabilities: NormalizedCapability[]
+  readonly lastError?: unknown
 }
 ```
 
@@ -71,6 +95,14 @@ Workers are registered under the `ResourceOwner` that built the `Worker` service
 - Every declared capability must have a matching `PermissionRegistry` declaration. Missing → `WorkerCapabilityNotHeldError`.
 - The `inputSchema` is enforced on every `send`. Bad shape → `WorkerChannelError`.
 - The `outputSchema` is enforced on every received message.
+
+## Layer
+
+`WorkerLive` builds the default Bun-backed worker service from `ResourceOwner`,
+`ResourceRegistry`, and `PermissionRegistry`.
+
+Use `WorkerLayer(options)` when tests or alternate runtimes need to inject a
+custom `WorkerAdapter`, budgets, inspector, clock, or graceful shutdown policy.
 
 ## Errors (closed union)
 
