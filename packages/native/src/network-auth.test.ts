@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises"
 import {
   type BridgeClientExchange,
   HostProtocolEventEnvelope,
+  HostProtocolInvalidArgumentError,
   HostProtocolInvalidOutputError
 } from "@orika/bridge"
 import { makeResourceId, P } from "@orika/core"
@@ -313,6 +314,37 @@ test("NetworkAuth bridge client rejects inconsistent event phase payloads as Inv
     })
   ))
 
+test("NetworkAuth bridge client rejects invalid setProxy input before transport", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const requests: unknown[] = []
+      const exchange: BridgeClientExchange = {
+        request: (request) =>
+          Effect.sync(() => {
+            requests.push(request)
+            return { kind: "success" as const, payload: undefined }
+          }),
+        subscribe: () => Stream.empty
+      }
+      const exit = yield* runScoped(
+        Effect.gen(function* () {
+          const networkAuth = yield* NetworkAuth
+          return yield* Effect.exit(
+            networkAuth.setProxy({
+              profile: Profile,
+              mode: "fixed",
+              server: "proxy.example.test"
+            })
+          )
+        }),
+        NetworkAuthSurface.bridgeClientLayer(exchange)
+      )
+
+      expectInvalidArgument(exit)
+      expect(requests).toEqual([])
+    })
+  ))
+
 test("NetworkAuth bridge client filters event streams by session profile", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -437,4 +469,13 @@ const expectInvalidOutput = <A, E>(exit: Exit.Exit<A, E>): void => {
   }
 
   expect(Cause.squash(exit.cause)).toBeInstanceOf(HostProtocolInvalidOutputError)
+}
+
+const expectInvalidArgument = <A, E>(exit: Exit.Exit<A, E>): void => {
+  expect(exit._tag).toBe("Failure")
+  if (exit._tag !== "Failure") {
+    return
+  }
+
+  expect(Cause.squash(exit.cause)).toBeInstanceOf(HostProtocolInvalidArgumentError)
 }

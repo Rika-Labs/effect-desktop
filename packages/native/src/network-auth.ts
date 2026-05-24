@@ -15,7 +15,7 @@ import {
 } from "./contracts/network-auth.js"
 import type { SessionProfileHandle } from "./contracts/session-profile.js"
 import { subscribeNativeEvent } from "./event-stream.js"
-import { runNativeRpc } from "./native-client.js"
+import { decodeNativeInput, runNativeRpc } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
 
@@ -169,7 +169,11 @@ const networkAuthClientFromRpcClient = (
     isSupported: () =>
       runNetworkAuthRpc(client["NetworkAuth.isSupported"](undefined), "NetworkAuth.isSupported"),
     setProxy: (input) =>
-      runNetworkAuthRpc(client["NetworkAuth.setProxy"](input), "NetworkAuth.setProxy"),
+      decodeNativeInput(NetworkAuthSetProxyInput, input, "NetworkAuth.setProxy").pipe(
+        Effect.flatMap((decoded) =>
+          runNetworkAuthRpc(client["NetworkAuth.setProxy"](decoded), "NetworkAuth.setProxy")
+        )
+      ),
     events: (profile) =>
       subscribeNativeEvent(exchange, EventMethod, NetworkAuthEvent).pipe(
         Stream.filter((event) => profile === undefined || event.profile.id === profile.id)
