@@ -37,9 +37,10 @@ On macOS, `displayId` is a `screencapture` display selector: `"main"`, a positiv
 ## Events
 
 `DisplayCapture.events()` emits `DisplayCaptureEvent` values for `"captured"` and `"failed"` state. Events carry capture id, source, and byte length, not image bytes.
-The bridge-backed `DisplayCapture.Event` stream currently fails as typed `Unsupported` before
-opening a host subscription; use the memory client for deterministic event tests until the native
-capture adapter publishes lifecycle events.
+The canonical Effect RPC stream is `DisplayCapture.events.Event`. Its support metadata is currently
+`unsupported` on macOS, Windows, and Linux. The bridge-backed client still fails as typed
+`Unsupported` before opening the host `DisplayCapture.Event` subscription; use the memory client for
+deterministic event tests until the native capture adapter publishes lifecycle events.
 
 ## Platform Matrix
 

@@ -591,7 +591,6 @@ export {
   type DisplayCaptureMemoryClientOptions,
   type DisplayCaptureRpc,
   type DisplayCaptureRpcHandlers,
-  type DisplayCaptureServiceApi,
   type DisplayCaptureServiceOptions
 } from "./display-capture.js"
 export {

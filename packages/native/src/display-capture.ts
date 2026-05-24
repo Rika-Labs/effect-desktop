@@ -61,6 +61,13 @@ const HostCaptureSupport = NativeSurface.support.partial(MacOsScreencaptureReaso
     { platform: "linux", status: "unsupported", reason: UnsupportedReason }
   ]
 })
+const EventStreamSupport = NativeSurface.support.unsupported(UnsupportedReason, {
+  platforms: [
+    { platform: "macos", status: "unsupported", reason: UnsupportedReason },
+    { platform: "windows", status: "unsupported", reason: UnsupportedReason },
+    { platform: "linux", status: "unsupported", reason: UnsupportedReason }
+  ]
+})
 
 export type DisplayCaptureError =
   | HostProtocolPermissionDeniedError
@@ -96,15 +103,17 @@ export const DisplayCaptureIsSupported = NativeSurface.rpc(Surface, "isSupported
   support: NativeSurface.support.supported
 })
 
-export const DisplayCaptureRpcEvents = Object.freeze({
-  Event: { payload: DisplayCaptureEvent }
+const DisplayCaptureEventStream = NativeSurface.event(Surface, "Event", {
+  payload: DisplayCaptureEvent,
+  support: EventStreamSupport
 })
 
 const DisplayCaptureRpcGroup = RpcGroup.make(
   DisplayCaptureCaptureDisplay,
   DisplayCaptureCaptureWindow,
   DisplayCaptureCaptureRegion,
-  DisplayCaptureIsSupported
+  DisplayCaptureIsSupported,
+  DisplayCaptureEventStream
 )
 
 export const DisplayCaptureRpcs: RpcGroup.RpcGroup<DisplayCaptureRpc> = DisplayCaptureRpcGroup
@@ -145,8 +154,6 @@ export class DisplayCaptureClient extends Context.Service<
   DisplayCaptureClientApi
 >()("@orika/native/DisplayCaptureClient") {}
 
-export interface DisplayCaptureServiceApi extends DisplayCaptureClientApi {}
-
 export interface DisplayCaptureGrantAuthorityApi {
   readonly verify: (
     grant: DisplayCaptureGrant,
@@ -167,7 +174,7 @@ export interface DisplayCaptureServiceOptions {
   readonly nextTraceId?: () => string
 }
 
-export class DisplayCapture extends Context.Service<DisplayCapture, DisplayCaptureServiceApi>()(
+export class DisplayCapture extends Context.Service<DisplayCapture, DisplayCaptureClientApi>()(
   "@orika/native/DisplayCapture"
 ) {
   static readonly layer = Layer.effect(DisplayCapture)(
@@ -235,7 +242,14 @@ export const DisplayCaptureHandlersLive = DisplayCaptureRpcGroup.toLayer({
     Effect.gen(function* () {
       const service = yield* DisplayCapture
       return yield* service.isSupported()
-    })
+    }),
+  "DisplayCapture.events.Event": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const service = yield* DisplayCapture
+        return service.events()
+      })
+    )
 })
 
 export const DisplayCaptureSurface = NativeSurface.make(Surface, DisplayCaptureRpcGroup, {
@@ -310,7 +324,7 @@ export const makeDisplayCaptureUnsupportedClient = (): DisplayCaptureClientApi =
 const makeDisplayCaptureService = (
   client: DisplayCaptureClientApi,
   options: DisplayCaptureServiceOptions
-): Effect.Effect<DisplayCaptureServiceApi, never, never> =>
+): Effect.Effect<DisplayCaptureClientApi, never, never> =>
   Effect.succeed(
     Object.freeze({
       captureDisplay: (input) => captureWithPolicy(client, options, input, "display"),
@@ -318,7 +332,7 @@ const makeDisplayCaptureService = (
       captureRegion: (input) => captureWithPolicy(client, options, input, "region"),
       isSupported: () => client.isSupported(),
       events: () => client.events()
-    } satisfies DisplayCaptureServiceApi)
+    } satisfies DisplayCaptureClientApi)
   )
 
 const captureWithPolicy = (

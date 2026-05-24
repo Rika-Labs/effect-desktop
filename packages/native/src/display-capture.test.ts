@@ -1,11 +1,13 @@
 import { expect, test } from "bun:test"
-import { type BridgeClientExchange, HostProtocolInternalError } from "@orika/bridge"
+import { type BridgeClientExchange, HostProtocolInternalError, rpcSupport } from "@orika/bridge"
 import { type AuditEvent, makePermissionRegistry, P } from "@orika/core"
 import { Cause, Effect, Exit, ManagedRuntime, Option, Schema, Stream } from "effect"
+import { RpcSchema } from "effect/unstable/rpc"
 
 import {
   DisplayCapture,
   DisplayCaptureClient,
+  DisplayCaptureRpcs,
   makeDisplayCaptureGrantAuthority,
   makeDisplayCaptureMemoryClient,
   makeDisplayCaptureServiceLayer,
@@ -22,6 +24,48 @@ import {
   DisplayCaptureImage,
   DisplayCaptureResult
 } from "./contracts/display-capture.js"
+
+test("DisplayCapture exposes capture methods, support, and event stream as callable RPCs", () => {
+  const callableTags = Array.from(DisplayCaptureRpcs.requests.keys()).toSorted()
+  expect(callableTags).toEqual([
+    "DisplayCapture.captureDisplay",
+    "DisplayCapture.captureRegion",
+    "DisplayCapture.captureWindow",
+    "DisplayCapture.events.Event",
+    "DisplayCapture.isSupported"
+  ])
+})
+
+test("DisplayCapture event schema is owned by the RPC stream contract", async () => {
+  const displayCaptureModule = await import("./display-capture.js")
+  const eventRpc = DisplayCaptureRpcs.requests.get("DisplayCapture.events.Event")
+  const eventSupport = {
+    status: "unsupported",
+    reason: "host-adapter-unimplemented",
+    platforms: [
+      { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
+      { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
+    ]
+  } as const
+
+  expect("DisplayCaptureRpcEvents" in displayCaptureModule).toBe(false)
+  expect(eventRpc).toBeDefined()
+  expect(eventRpc === undefined ? false : RpcSchema.isStreamSchema(eventRpc.successSchema)).toBe(
+    true
+  )
+  if (eventRpc !== undefined && RpcSchema.isStreamSchema(eventRpc.successSchema)) {
+    expect(eventRpc.successSchema.success).toBe(DisplayCaptureEvent)
+    expect(eventRpc.pipe(rpcSupport)).toEqual(eventSupport)
+  }
+
+  const eventDoc = DisplayCaptureSurface.schemaDocs.find(
+    (doc) => doc.tag === "DisplayCapture.events.Event"
+  )
+  expect(eventDoc?.kind).toBe("stream")
+  expect(eventDoc?.callable).toBe(true)
+  expect(eventDoc?.support).toEqual(eventSupport)
+})
 
 test("DisplayCapture captures image bytes with redacted audit metadata", () =>
   Effect.runPromise(
