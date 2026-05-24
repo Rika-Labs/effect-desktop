@@ -1492,6 +1492,20 @@ struct ContextMenuCommandBinding {
     window_id: String,
 }
 
+struct PreparedContextMenu<'a> {
+    window: &'a Window,
+    menu: Menu,
+    position: Option<muda::dpi::Position>,
+    native_ids: Vec<String>,
+}
+
+impl PreparedContextMenu<'_> {
+    fn show(self) {
+        let _shown = show_platform_context_menu(self.window, &self.menu, self.position);
+        clear_context_menu_command_bindings(&self.native_ids);
+    }
+}
+
 struct WindowRegistry {
     windows: HashMap<String, NativeWindowResources>,
     webviews: HashMap<String, NativeWebViewResources>,
@@ -4492,10 +4506,10 @@ impl WindowRegistry {
         macos::clear_application_menu()
     }
 
-    fn show_context_menu(
+    fn prepare_context_menu(
         &self,
         request: &ContextMenuShowRequest,
-    ) -> std::result::Result<(), HostProtocolError> {
+    ) -> std::result::Result<PreparedContextMenu<'_>, HostProtocolError> {
         let Some(resources) = self.windows.get(request.window_id()) else {
             return Err(HostProtocolError::not_found(
                 format!("Window:{}", request.window_id()),
@@ -4518,9 +4532,12 @@ impl WindowRegistry {
         };
 
         let position = Some(request.position().to_muda_position());
-        let _shown = show_platform_context_menu(&resources._window, &menu, position);
-        clear_context_menu_command_bindings(&native_ids);
-        Ok(())
+        Ok(PreparedContextMenu {
+            menu,
+            native_ids,
+            position,
+            window: &resources._window,
+        })
     }
 
     fn create_tray(
@@ -5835,11 +5852,11 @@ impl WindowRegistry {
                 WindowLifecycleEvent::Other
             }
             WindowCommand::ShowContextMenu { request, reply } => {
-                let result = self
-                    .show_context_menu(&request)
-                    .map(|()| WindowCommandResponse::MenuSet);
-                send_window_command_reply(reply, result);
-                WindowLifecycleEvent::Other
+                accept_context_menu_show_then_display(
+                    reply,
+                    self.prepare_context_menu(&request)
+                        .map(|prepared| move || prepared.show()),
+                )
             }
             WindowCommand::CreateTray { request, reply } => {
                 let result = self
@@ -8910,6 +8927,23 @@ fn send_window_command_reply(reply: Sender<WindowCommandReply>, result: WindowCo
     }
 }
 
+fn accept_context_menu_show_then_display<F>(
+    reply: Sender<WindowCommandReply>,
+    display: std::result::Result<F, HostProtocolError>,
+) -> WindowLifecycleEvent
+where
+    F: FnOnce(),
+{
+    match display {
+        Ok(display) => {
+            send_window_command_reply(reply, Ok(WindowCommandResponse::MenuSet));
+            display();
+        }
+        Err(error) => send_window_command_reply(reply, Err(error)),
+    }
+    WindowLifecycleEvent::Other
+}
+
 fn validate_positive_finite(field: &str, value: f64) -> std::result::Result<(), HostProtocolError> {
     if value.is_finite() && value > 0.0 {
         return Ok(());
@@ -8927,19 +8961,23 @@ mod tests {
     #[cfg(target_os = "linux")]
     use super::linux_wayland_pointer_unsupported_from_env;
     use super::{
-        centered_physical_axis, clear_menu_runtime_event_state, clear_webview_runtime_event_state,
-        clear_window_runtime_event_state, clip_window_bounds_to_logical_area,
-        control_flow_for_lifecycle_event, control_flow_for_window_state, cookie_domain_matches_url,
-        cookie_path_matches_url, display_relative_physical_axis, emit_webview_api_call_event,
+        accept_context_menu_show_then_display, centered_physical_axis,
+        clear_context_menu_runtime_event_state, clear_menu_runtime_event_state,
+        clear_webview_runtime_event_state, clear_window_runtime_event_state,
+        clip_window_bounds_to_logical_area, control_flow_for_lifecycle_event,
+        control_flow_for_window_state, cookie_domain_matches_url, cookie_path_matches_url,
+        display_relative_physical_axis, emit_webview_api_call_event,
         emit_webview_navigation_blocked_event, emit_webview_runtime_event,
-        emit_window_registry_event, forward_menu_event_for_native_id,
-        handle_native_window_close_requested, handle_webview_isolation_ipc,
-        install_menu_event_sender, install_webview_event_sender, install_window_event_sender,
+        emit_window_registry_event, forward_context_menu_event_for_native_id,
+        forward_menu_event_for_native_id, handle_native_window_close_requested,
+        handle_webview_isolation_ipc, install_context_menu_event_sender, install_menu_event_sender,
+        install_webview_event_sender, install_window_event_sender,
         is_screen_displays_changed_window_event, lifecycle_event_with_smoke_timeout,
         lifecycle_for_create_result, network_auth_proxy_port, parse_network_auth_proxy_config,
         replace_menu_command_bindings, resident_lifecycle, rounded_i32, rounded_u32,
-        screen_bounds_payload, smoke_deadline_for_mode, to_tao_dock_progress, unsupported_screen,
-        validate_positive_finite, LogicalScreenArea, MenuCommandBinding, PhysicalScreenArea,
+        screen_bounds_payload, smoke_deadline_for_mode, to_tao_dock_progress,
+        track_context_menu_command_binding, unsupported_screen, validate_positive_finite,
+        ContextMenuCommandBinding, LogicalScreenArea, MenuCommandBinding, PhysicalScreenArea,
         RunMode, WebViewExposedApi, WebViewIsolationPolicy, WebViewNavigationDecision,
         WebViewNavigationPolicy, WebViewNavigationState, WindowCommand, WindowCommandResponse,
         WindowCreateRequest, WindowId, WindowLifecycleEvent, WindowMethodPort, WindowRegistry,
@@ -8975,6 +9013,14 @@ mod tests {
     impl Drop for MenuEventSenderGuard {
         fn drop(&mut self) {
             let _ = clear_menu_runtime_event_state();
+        }
+    }
+
+    struct ContextMenuEventSenderGuard;
+
+    impl Drop for ContextMenuEventSenderGuard {
+        fn drop(&mut self) {
+            let _ = clear_context_menu_runtime_event_state();
         }
     }
 
@@ -9078,6 +9124,63 @@ mod tests {
             }
             _ => panic!("expected menu activation event"),
         }
+    }
+
+    #[test]
+    fn context_menu_show_replies_before_invoking_platform_popup() {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        let (event_tx, event_rx) = mpsc::channel();
+        install_context_menu_event_sender(event_tx)
+            .expect("context menu event sender should install");
+        let _event_sender_guard = ContextMenuEventSenderGuard;
+        track_context_menu_command_binding(
+            "context-menu:item:1",
+            ContextMenuCommandBinding {
+                item_id: "file.open".to_string(),
+                command_id: "app.file.open".to_string(),
+                window_id: "window-1".to_string(),
+            },
+            host_protocol::CONTEXT_MENU_SHOW_METHOD,
+        )
+        .expect("context menu command binding should install");
+
+        let lifecycle = accept_context_menu_show_then_display(
+            reply_tx,
+            Ok(|| {
+                let reply = reply_rx
+                    .try_recv()
+                    .expect("context menu reply should be sent before display");
+                assert!(matches!(reply, Ok(WindowCommandResponse::MenuSet)));
+                assert!(forward_context_menu_event_for_native_id(
+                    "context-menu:item:1"
+                ));
+            }),
+        );
+
+        let event = event_rx
+            .recv()
+            .expect("context menu activation event should be emitted");
+        match event {
+            HostProtocolEnvelope::Event {
+                method,
+                window_id,
+                payload,
+                ..
+            } => {
+                assert_eq!(method, host_protocol::CONTEXT_MENU_ACTIVATED_EVENT);
+                assert_eq!(window_id.as_deref(), Some("window-1"));
+                assert_eq!(
+                    payload,
+                    Some(serde_json::json!({
+                        "itemId": "file.open",
+                        "commandId": "app.file.open",
+                        "windowId": "window-1"
+                    }))
+                );
+            }
+            _ => panic!("expected context menu activation event"),
+        }
+        assert!(matches!(lifecycle, WindowLifecycleEvent::Other));
     }
 
     #[test]

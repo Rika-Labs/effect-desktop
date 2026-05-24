@@ -8,7 +8,7 @@ effect_version: 4
 
 # `ContextMenu`
 
-Context menu support. `ContextMenu.show` is a callable native RPC that displays a menu for an open window using the host menu backend. `ContextMenu.Activated` events are emitted for template items that include a `commandId`; the event payload carries the original `itemId`, `commandId`, and `windowId`. `buildFromTemplate` and `bindCommand` remain TypeScript service helpers, not native host methods.
+Context menu support. `ContextMenu.show` is a callable native RPC that asks the host to display a menu for an open window using the host menu backend. The call returns once the host accepts the popup request; it does not wait for the user to dismiss the native menu. `ContextMenu.Activated` events are emitted for template items that include a `commandId`; the event payload carries the original `itemId`, `commandId`, and `windowId`. `buildFromTemplate` and `bindCommand` remain TypeScript service helpers, not native host methods.
 
 ## Methods
 
