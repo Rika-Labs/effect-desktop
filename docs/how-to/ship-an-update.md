@@ -1,6 +1,6 @@
 ---
 title: How to prepare a signed update
-description: Publish a signed update manifest for the planned runtime updater.
+description: Publish a signed update manifest and use the current partial runtime updater.
 kind: how-to
 audience: app-developers
 effect_version: 4
@@ -8,7 +8,7 @@ effect_version: 4
 
 # How to prepare a signed update
 
-Updates are designed to use signed manifests with Ed25519 keys. The CLI can publish update metadata, but the runtime `Updater` host adapter is not implemented yet, so the current native surface must not be used as production update verification or installation.
+Updates use signed manifests with Ed25519 keys. The CLI publishes update metadata, and the runtime `Updater` has an executable local subset: signed-manifest verification, local file artifact staging, staged install commit, and restart readiness. The remaining production updater work is feed polling, network artifact download, production update policy, OS app replacement, process relaunch, and rollback execution.
 
 ## 1. Generate keys (once)
 
@@ -47,7 +47,7 @@ Upload the manifest and artifacts to your distribution host (S3, Cloudflare R2, 
 
 ## 3. Runtime updater status
 
-The runtime updater has an executable local subset: `Updater.check` verifies caller-supplied signed manifest JSON against caller-supplied Ed25519 trust anchors. Follow-on lifecycle calls are still partial and limited to host-owned local file staging, staged install commit, and restart readiness; the host does not fetch feeds, download network artifacts, enforce production update policy, or relaunch the app yet.
+The runtime updater's executable local subset starts at `Updater.check`, which verifies caller-supplied signed manifest JSON against caller-supplied Ed25519 trust anchors. Follow-on lifecycle calls are still partial and limited to host-owned local file staging, staged install commit, and restart readiness; the host does not fetch feeds, download network artifacts, enforce production update policy, replace the installed application bundle, run rollback execution, or relaunch the app yet.
 
 Do not wire `UpdaterRpcs` into production apps until the remaining updater lifecycle is complete. The manifest wiring is expected to look like this:
 
@@ -72,7 +72,7 @@ The current host check contract verifies the manifest signature against caller-s
 
 ## 5. Rollback
 
-A manifest can declare a downgrade-allowed flag per channel. By default, downgrade is rejected. To explicitly roll a channel back, publish a new manifest with the older version and `allowDowngrade: true`.
+A manifest can declare a rollback pack per channel. By default, non-newer versions are rejected. To explicitly roll a channel back, publish a new manifest with the older version, `rollback: true`, and `maxVersion` set to the highest installed version that should accept the rollback pack.
 
 ## Channels
 
@@ -84,7 +84,7 @@ Three properties:
 
 - **Authenticity.** Only manifests signed by your key install. A compromised CDN can't push malware to users.
 - **Integrity.** Each artifact entry includes a hash. A tampered binary fails the hash check post-download.
-- **Auditability.** Every install emits an audit event with key version, channel, version, and outcome.
+- **Auditability.** Signed metadata records key version, channel, version, and artifact digests; runtime install audit event emission remains part of the unfinished production updater work.
 
 ## Related
 

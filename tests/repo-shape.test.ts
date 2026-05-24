@@ -73,6 +73,12 @@ const STALE_WORKER_DOC_TOKENS = [
   "  id: string",
   "status, uptime, capabilities"
 ] as const
+const STALE_UPDATER_HOW_TO_TOKENS = [
+  "runtime `Updater` host adapter is not implemented yet",
+  "must not be used as production update verification or installation",
+  "allowDowngrade",
+  "Every install emits an audit event"
+] as const
 const STALE_PACKAGE_README_PHRASES = [
   "public API remains reserved for Phase 4+",
   "Public renderer-facing APIs",
@@ -638,6 +644,41 @@ describe("Worker docs", () => {
       }
     }
 
+    expect(violations).toEqual([])
+  })
+})
+
+describe("Updater docs", () => {
+  test("model the implemented local signed-manifest subset", () => {
+    const howTo = readFileSync(join(REPO_ROOT, "docs/how-to/ship-an-update.md"), "utf8")
+    const reference = readFileSync(join(REPO_ROOT, "docs/reference/native/updater.md"), "utf8")
+    const violations: string[] = []
+
+    for (const token of STALE_UPDATER_HOW_TO_TOKENS) {
+      if (howTo.includes(token)) {
+        violations.push(`docs/how-to/ship-an-update.md: remove stale ${token} wording`)
+      }
+    }
+
+    for (const token of [
+      "executable local subset",
+      "signed-manifest",
+      "local file artifact staging",
+      "staged install commit",
+      "restart readiness",
+      "does not fetch feeds",
+      "download network artifacts",
+      "relaunch the app",
+      "rollback",
+      "maxVersion"
+    ] as const) {
+      if (!howTo.includes(token)) {
+        violations.push(`docs/how-to/ship-an-update.md: document ${token}`)
+      }
+    }
+
+    expect(reference).toContain("executable local subset")
+    expect(reference).toContain("local file artifact staging")
     expect(violations).toEqual([])
   })
 })
