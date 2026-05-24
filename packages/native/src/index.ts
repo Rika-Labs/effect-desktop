@@ -575,8 +575,11 @@ export {
   DisplayCapture,
   DisplayCaptureClient,
   DisplayCaptureGrantAuthority,
+  DisplayCaptureHandlersLive,
   DisplayCaptureLive,
   DisplayCaptureMethodNames,
+  DisplayCaptureRpcs,
+  DisplayCaptureSurface,
   makeDisplayCaptureGrantAuthority,
   makeDisplayCaptureGrantAuthorityLayer,
   makeDisplayCaptureMemoryClient,
@@ -586,6 +589,8 @@ export {
   type DisplayCaptureError,
   type DisplayCaptureGrantAuthorityApi,
   type DisplayCaptureMemoryClientOptions,
+  type DisplayCaptureRpc,
+  type DisplayCaptureRpcHandlers,
   type DisplayCaptureServiceApi,
   type DisplayCaptureServiceOptions
 } from "./display-capture.js"

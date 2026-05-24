@@ -161,6 +161,9 @@ import {
   DialogLive,
   DialogMethodNames,
   DialogSurface,
+  DisplayCaptureHandlersLive,
+  DisplayCaptureRpcs,
+  DisplayCaptureSurface,
   Dock,
   DockCapabilityFacts,
   DockHandlersLive,
@@ -8645,6 +8648,13 @@ test("native DesktopRpc surfaces derive server, client, test, and metadata layer
           group: DialogRpcs,
           handlers: DialogHandlersLive,
           tags: Array.from(DialogRpcs.requests.keys())
+        },
+        {
+          name: "DisplayCapture",
+          surface: DisplayCaptureSurface,
+          group: DisplayCaptureRpcs,
+          handlers: DisplayCaptureHandlersLive,
+          tags: Array.from(DisplayCaptureRpcs.requests.keys())
         },
         {
           name: "Dock",
