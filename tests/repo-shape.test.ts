@@ -60,6 +60,13 @@ const STALE_COMMAND_REFERENCE_TOKENS = [
   "({ id, name, run })",
   "(id, args?)"
 ] as const
+const STALE_SIDECAR_REFERENCE_TOKENS = [
+  "`spawn`",
+  "`wait`",
+  "`list`",
+  "Sidecar.spawn",
+  "SidecarSnapshot"
+] as const
 const STALE_PACKAGE_README_PHRASES = [
   "public API remains reserved for Phase 4+",
   "Public renderer-facing APIs",
@@ -561,6 +568,36 @@ describe("Command docs", () => {
     ] as const) {
       if (!reference.includes(token)) {
         violations.push(`docs/reference/services/command.md: document ${token}`)
+      }
+    }
+
+    expect(violations).toEqual([])
+  })
+})
+
+describe("Sidecar docs", () => {
+  test("model the current Sidecar start API", () => {
+    const reference = readFileSync(join(REPO_ROOT, "docs/reference/services/sidecar.md"), "utf8")
+    const violations: string[] = []
+
+    for (const token of STALE_SIDECAR_REFERENCE_TOKENS) {
+      if (reference.includes(token)) {
+        violations.push(`docs/reference/services/sidecar.md: remove stale ${token} API docs`)
+      }
+    }
+
+    for (const token of [
+      "SidecarCommand",
+      "SidecarStartOptions",
+      "SidecarReadiness",
+      "SidecarHandle",
+      "`start`",
+      "`ready`",
+      "`events`",
+      "`close`"
+    ] as const) {
+      if (!reference.includes(token)) {
+        violations.push(`docs/reference/services/sidecar.md: document ${token}`)
       }
     }
 
