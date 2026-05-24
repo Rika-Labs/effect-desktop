@@ -199,7 +199,7 @@ fn parse_run_mode(args: impl IntoIterator<Item = String>) -> Result<RunMode> {
                 run_mode = RunMode::AppRestartChildSmokeTest
             }
             SINGLE_INSTANCE_LOCK_SMOKE_TEST_ARG => run_mode = RunMode::SingleInstanceLockSmokeTest,
-            unknown => bail!("unknown host argument: {unknown}"),
+            _app_arg => {}
         }
     }
 
@@ -330,11 +330,32 @@ mod tests {
     }
 
     #[test]
-    fn unknown_arg_is_an_error() {
-        let error = parse_run_mode(["host".to_string(), "--unknown".to_string()])
-            .expect_err("unknown arg should fail");
+    fn open_intent_args_keep_interactive_run_mode() {
+        for arg in [
+            "/tmp/effect-desktop-open-file.txt",
+            "effect-desktop://open",
+            "custom+scheme://localhost/path",
+            "--safe-mode",
+        ] {
+            assert_eq!(
+                parse_run_mode(["host".to_string(), arg.to_string()])
+                    .expect("open-intent argv should not be rejected"),
+                RunMode::Interactive
+            );
+        }
+    }
 
-        assert_eq!(error.to_string(), "unknown host argument: --unknown");
+    #[test]
+    fn mixed_app_args_keep_interactive_run_mode() {
+        assert_eq!(
+            parse_run_mode([
+                "host".to_string(),
+                "--safe-mode".to_string(),
+                "/tmp/effect-desktop-open-file.txt".to_string()
+            ])
+            .expect("app argv should not be rejected"),
+            RunMode::Interactive
+        );
     }
 
     #[test]
