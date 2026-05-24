@@ -12,6 +12,41 @@ use serde_json::{to_value, Value};
 use std::sync::mpsc::Sender;
 use uuid::Uuid;
 
+use crate::window::WindowMethodHandler;
+
+pub(crate) fn add_on_window(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+    event_sender: Option<Sender<HostProtocolEnvelope>>,
+) -> Result<Option<Value>, HostProtocolError> {
+    let input = decode_payload::<RecentDocumentsAddPayload>(
+        payload.clone(),
+        host_protocol::RECENT_DOCUMENTS_ADD_METHOD,
+    )?;
+    validate_add_payload(&input, host_protocol::RECENT_DOCUMENTS_ADD_METHOD)?;
+    handler.add_recent_document(payload, event_sender)
+}
+
+pub(crate) fn clear_on_window(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+    event_sender: Option<Sender<HostProtocolEnvelope>>,
+) -> Result<Option<Value>, HostProtocolError> {
+    reject_payload(
+        payload.clone(),
+        host_protocol::RECENT_DOCUMENTS_CLEAR_METHOD,
+    )?;
+    handler.clear_recent_documents(payload, event_sender)
+}
+
+pub(crate) fn list_on_window(
+    handler: &dyn WindowMethodHandler,
+    payload: Option<Value>,
+) -> Result<Option<Value>, HostProtocolError> {
+    reject_payload(payload.clone(), host_protocol::RECENT_DOCUMENTS_LIST_METHOD)?;
+    handler.list_recent_documents(payload)
+}
+
 #[cfg(test)]
 pub(crate) fn add(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
     add_with_event_sender(payload, None)
@@ -25,10 +60,7 @@ pub(crate) fn add_with_event_sender(
         payload,
         host_protocol::RECENT_DOCUMENTS_ADD_METHOD,
     )?;
-    validate_path(
-        input.path().path(),
-        host_protocol::RECENT_DOCUMENTS_ADD_METHOD,
-    )?;
+    validate_add_payload(&input, host_protocol::RECENT_DOCUMENTS_ADD_METHOD)?;
     platform_add(
         input.path().path(),
         host_protocol::RECENT_DOCUMENTS_ADD_METHOD,
@@ -113,6 +145,13 @@ fn reject_payload(
             operation,
         )),
     }
+}
+
+fn validate_add_payload(
+    input: &RecentDocumentsAddPayload,
+    operation: &'static str,
+) -> Result<(), HostProtocolError> {
+    validate_path(input.path().path(), operation)
 }
 
 fn validate_path(path: &str, operation: &'static str) -> Result<(), HostProtocolError> {

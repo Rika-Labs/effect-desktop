@@ -3,6 +3,7 @@
 // wire contract. Boxing that error here would obscure the protocol surface.
 
 use crate::methods::{
+    recent_documents,
     resident_lifecycle::{self, ResidentWindowCloseAction},
     session_profile, HostMethodRouter,
 };
@@ -374,6 +375,23 @@ pub(crate) trait WindowMethodHandler: Send + Sync {
         &self,
         method: ScreenMethodPayload,
     ) -> std::result::Result<ScreenSupportedPayload, HostProtocolError>;
+
+    fn add_recent_document(
+        &self,
+        payload: Option<serde_json::Value>,
+        event_sender: Option<Sender<HostProtocolEnvelope>>,
+    ) -> std::result::Result<Option<serde_json::Value>, HostProtocolError>;
+
+    fn clear_recent_documents(
+        &self,
+        payload: Option<serde_json::Value>,
+        event_sender: Option<Sender<HostProtocolEnvelope>>,
+    ) -> std::result::Result<Option<serde_json::Value>, HostProtocolError>;
+
+    fn list_recent_documents(
+        &self,
+        payload: Option<serde_json::Value>,
+    ) -> std::result::Result<Option<serde_json::Value>, HostProtocolError>;
 
     fn set_network_auth_proxy(
         &self,
@@ -1294,6 +1312,20 @@ enum WindowCommand {
         method: ScreenMethodPayload,
         reply: Sender<WindowCommandReply>,
     },
+    AddRecentDocument {
+        payload: Option<serde_json::Value>,
+        event_sender: Option<Sender<HostProtocolEnvelope>>,
+        reply: Sender<WindowCommandReply>,
+    },
+    ClearRecentDocuments {
+        payload: Option<serde_json::Value>,
+        event_sender: Option<Sender<HostProtocolEnvelope>>,
+        reply: Sender<WindowCommandReply>,
+    },
+    ListRecentDocuments {
+        payload: Option<serde_json::Value>,
+        reply: Sender<WindowCommandReply>,
+    },
     SetNetworkAuthProxy {
         payload: NetworkAuthSetProxyPayload,
         reply: Sender<WindowCommandReply>,
@@ -1322,6 +1354,7 @@ enum WindowCommandResponse {
     ScreenDisplay(ScreenDisplayPayload),
     ScreenPoint(ScreenPointPayload),
     ScreenSupported(ScreenSupportedPayload),
+    RecentDocuments(Option<serde_json::Value>),
     NetworkAuthProxy(NetworkAuthProxyResultPayload),
     WebViewCreated(WebViewResourcePayload),
     WebViewNavigationState(WebViewNavigationStatePayload),
@@ -1632,7 +1665,8 @@ impl WindowMethodPort {
             | WindowCommandResponse::WebViewNavigationState(_)
             | WindowCommandResponse::CookieStoreGet(_)
             | WindowCommandResponse::BrowsingDataCleared(_)
-            | WindowCommandResponse::NetworkAuthProxy(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::NetworkAuthProxy(_)
+            | WindowCommandResponse::RecentDocuments(_) => Err(HostProtocolError::internal(
                 "window lifecycle command received unrelated response",
                 operation,
             )),
@@ -1668,7 +1702,8 @@ impl WindowMethodPort {
             | WindowCommandResponse::WebViewNavigationState(_)
             | WindowCommandResponse::CookieStoreGet(_)
             | WindowCommandResponse::BrowsingDataCleared(_)
-            | WindowCommandResponse::NetworkAuthProxy(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::NetworkAuthProxy(_)
+            | WindowCommandResponse::RecentDocuments(_) => Err(HostProtocolError::internal(
                 "window state command received unrelated response",
                 operation,
             )),
@@ -1704,7 +1739,8 @@ impl WindowMethodPort {
             | WindowCommandResponse::WebViewNavigationState(_)
             | WindowCommandResponse::CookieStoreGet(_)
             | WindowCommandResponse::BrowsingDataCleared(_)
-            | WindowCommandResponse::NetworkAuthProxy(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::NetworkAuthProxy(_)
+            | WindowCommandResponse::RecentDocuments(_) => Err(HostProtocolError::internal(
                 "window placement command received unrelated response",
                 operation,
             )),
@@ -1800,7 +1836,8 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::WebViewNavigationState(_)
             | WindowCommandResponse::CookieStoreGet(_)
             | WindowCommandResponse::BrowsingDataCleared(_)
-            | WindowCommandResponse::NetworkAuthProxy(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::NetworkAuthProxy(_)
+            | WindowCommandResponse::RecentDocuments(_) => Err(HostProtocolError::internal(
                 "window create received tray response",
                 host_protocol::WINDOW_CREATE_METHOD,
             )),
@@ -1871,7 +1908,8 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::WebViewNavigationState(_)
             | WindowCommandResponse::CookieStoreGet(_)
             | WindowCommandResponse::BrowsingDataCleared(_)
-            | WindowCommandResponse::NetworkAuthProxy(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::NetworkAuthProxy(_)
+            | WindowCommandResponse::RecentDocuments(_) => Err(HostProtocolError::internal(
                 "window destroy received tray response",
                 host_protocol::WINDOW_DESTROY_METHOD,
             )),
@@ -2025,7 +2063,8 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::WebViewNavigationState(_)
             | WindowCommandResponse::CookieStoreGet(_)
             | WindowCommandResponse::BrowsingDataCleared(_)
-            | WindowCommandResponse::NetworkAuthProxy(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::NetworkAuthProxy(_)
+            | WindowCommandResponse::RecentDocuments(_) => Err(HostProtocolError::internal(
                 "window get bounds received unrelated response",
                 host_protocol::WINDOW_GET_BOUNDS_METHOD,
             )),
@@ -2419,7 +2458,8 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::WebViewNavigationState(_)
             | WindowCommandResponse::CookieStoreGet(_)
             | WindowCommandResponse::BrowsingDataCleared(_)
-            | WindowCommandResponse::NetworkAuthProxy(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::NetworkAuthProxy(_)
+            | WindowCommandResponse::RecentDocuments(_) => Err(HostProtocolError::internal(
                 "window get state received unrelated response",
                 host_protocol::WINDOW_GET_STATE_METHOD,
             )),
@@ -2462,7 +2502,8 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::WebViewNavigationState(_)
             | WindowCommandResponse::CookieStoreGet(_)
             | WindowCommandResponse::BrowsingDataCleared(_)
-            | WindowCommandResponse::NetworkAuthProxy(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::NetworkAuthProxy(_)
+            | WindowCommandResponse::RecentDocuments(_) => Err(HostProtocolError::internal(
                 "dock badge command received window response",
                 operation,
             )),
@@ -2503,7 +2544,8 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::WebViewNavigationState(_)
             | WindowCommandResponse::CookieStoreGet(_)
             | WindowCommandResponse::BrowsingDataCleared(_)
-            | WindowCommandResponse::NetworkAuthProxy(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::NetworkAuthProxy(_)
+            | WindowCommandResponse::RecentDocuments(_) => Err(HostProtocolError::internal(
                 "dock set progress received unrelated response",
                 host_protocol::DOCK_SET_PROGRESS_METHOD,
             )),
@@ -2541,7 +2583,8 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::WebViewNavigationState(_)
             | WindowCommandResponse::CookieStoreGet(_)
             | WindowCommandResponse::BrowsingDataCleared(_)
-            | WindowCommandResponse::NetworkAuthProxy(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::NetworkAuthProxy(_)
+            | WindowCommandResponse::RecentDocuments(_) => Err(HostProtocolError::internal(
                 "dock attention command received window response",
                 host_protocol::DOCK_REQUEST_ATTENTION_METHOD,
             )),
@@ -2582,7 +2625,8 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::WebViewNavigationState(_)
             | WindowCommandResponse::CookieStoreGet(_)
             | WindowCommandResponse::BrowsingDataCleared(_)
-            | WindowCommandResponse::NetworkAuthProxy(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::NetworkAuthProxy(_)
+            | WindowCommandResponse::RecentDocuments(_) => Err(HostProtocolError::internal(
                 "application menu command received window response",
                 host_protocol::MENU_SET_APPLICATION_MENU_METHOD,
             )),
@@ -2625,7 +2669,8 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::WebViewNavigationState(_)
             | WindowCommandResponse::CookieStoreGet(_)
             | WindowCommandResponse::BrowsingDataCleared(_)
-            | WindowCommandResponse::NetworkAuthProxy(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::NetworkAuthProxy(_)
+            | WindowCommandResponse::RecentDocuments(_) => Err(HostProtocolError::internal(
                 "window menu command received window response",
                 host_protocol::MENU_SET_WINDOW_MENU_METHOD,
             )),
@@ -2660,7 +2705,8 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::WebViewNavigationState(_)
             | WindowCommandResponse::CookieStoreGet(_)
             | WindowCommandResponse::BrowsingDataCleared(_)
-            | WindowCommandResponse::NetworkAuthProxy(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::NetworkAuthProxy(_)
+            | WindowCommandResponse::RecentDocuments(_) => Err(HostProtocolError::internal(
                 "menu clear command received window response",
                 host_protocol::MENU_CLEAR_METHOD,
             )),
@@ -2701,7 +2747,8 @@ impl WindowMethodHandler for WindowMethodPort {
             | WindowCommandResponse::WebViewNavigationState(_)
             | WindowCommandResponse::CookieStoreGet(_)
             | WindowCommandResponse::BrowsingDataCleared(_)
-            | WindowCommandResponse::NetworkAuthProxy(_) => Err(HostProtocolError::internal(
+            | WindowCommandResponse::NetworkAuthProxy(_)
+            | WindowCommandResponse::RecentDocuments(_) => Err(HostProtocolError::internal(
                 "context menu command received window response",
                 host_protocol::CONTEXT_MENU_SHOW_METHOD,
             )),
@@ -3245,6 +3292,67 @@ impl WindowMethodHandler for WindowMethodPort {
             response => Err(unexpected_screen_response(
                 response,
                 host_protocol::SCREEN_IS_SUPPORTED_METHOD,
+            )),
+        }
+    }
+
+    fn add_recent_document(
+        &self,
+        payload: Option<serde_json::Value>,
+        event_sender: Option<Sender<HostProtocolEnvelope>>,
+    ) -> std::result::Result<Option<serde_json::Value>, HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::AddRecentDocument {
+            payload,
+            event_sender,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::RecentDocuments(payload) => Ok(payload),
+            response => Err(unexpected_recent_documents_response(
+                response,
+                host_protocol::RECENT_DOCUMENTS_ADD_METHOD,
+            )),
+        }
+    }
+
+    fn clear_recent_documents(
+        &self,
+        payload: Option<serde_json::Value>,
+        event_sender: Option<Sender<HostProtocolEnvelope>>,
+    ) -> std::result::Result<Option<serde_json::Value>, HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::ClearRecentDocuments {
+            payload,
+            event_sender,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::RecentDocuments(payload) => Ok(payload),
+            response => Err(unexpected_recent_documents_response(
+                response,
+                host_protocol::RECENT_DOCUMENTS_CLEAR_METHOD,
+            )),
+        }
+    }
+
+    fn list_recent_documents(
+        &self,
+        payload: Option<serde_json::Value>,
+    ) -> std::result::Result<Option<serde_json::Value>, HostProtocolError> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        self.enqueue_command(WindowCommand::ListRecentDocuments {
+            payload,
+            reply: reply_tx,
+        })?;
+
+        match self.recv_reply(reply_rx)? {
+            WindowCommandResponse::RecentDocuments(payload) => Ok(payload),
+            response => Err(unexpected_recent_documents_response(
+                response,
+                host_protocol::RECENT_DOCUMENTS_LIST_METHOD,
             )),
         }
     }
@@ -6062,6 +6170,32 @@ impl WindowRegistry {
                 send_window_command_reply(reply, result);
                 WindowLifecycleEvent::Other
             }
+            WindowCommand::AddRecentDocument {
+                payload,
+                event_sender,
+                reply,
+            } => {
+                let result = recent_documents::add_with_event_sender(payload, event_sender)
+                    .map(WindowCommandResponse::RecentDocuments);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::ClearRecentDocuments {
+                payload,
+                event_sender,
+                reply,
+            } => {
+                let result = recent_documents::clear_with_event_sender(payload, event_sender)
+                    .map(WindowCommandResponse::RecentDocuments);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
+            WindowCommand::ListRecentDocuments { payload, reply } => {
+                let result =
+                    recent_documents::list(payload).map(WindowCommandResponse::RecentDocuments);
+                send_window_command_reply(reply, result);
+                WindowLifecycleEvent::Other
+            }
             WindowCommand::SetNetworkAuthProxy { payload, reply } => {
                 let result = self
                     .set_network_auth_proxy(payload)
@@ -6738,6 +6872,9 @@ fn unexpected_tray_response(
         | WindowCommandResponse::ScreenDisplay(_)
         | WindowCommandResponse::ScreenPoint(_)
         | WindowCommandResponse::ScreenSupported(_) => "tray command received screen response",
+        WindowCommandResponse::RecentDocuments(_) => {
+            "tray command received recent documents response"
+        }
         WindowCommandResponse::WebViewCreated(_)
         | WindowCommandResponse::WebViewNavigationState(_)
         | WindowCommandResponse::CookieStoreGet(_)
@@ -6771,6 +6908,9 @@ fn unexpected_webview_response(
         | WindowCommandResponse::ScreenDisplay(_)
         | WindowCommandResponse::ScreenPoint(_)
         | WindowCommandResponse::ScreenSupported(_) => "webview command received screen response",
+        WindowCommandResponse::RecentDocuments(_) => {
+            "webview command received recent documents response"
+        }
         WindowCommandResponse::WebViewCreated(_) => "webview command received create response",
         WindowCommandResponse::WebViewNavigationState(_)
         | WindowCommandResponse::CookieStoreGet(_)
@@ -6810,6 +6950,9 @@ fn unexpected_screen_response(
         WindowCommandResponse::ScreenDisplay(_) => "screen command received display response",
         WindowCommandResponse::ScreenPoint(_) => "screen command received point response",
         WindowCommandResponse::ScreenSupported(_) => "screen command received support response",
+        WindowCommandResponse::RecentDocuments(_) => {
+            "screen command received recent documents response"
+        }
         WindowCommandResponse::WebViewCreated(_)
         | WindowCommandResponse::WebViewNavigationState(_)
         | WindowCommandResponse::CookieStoreGet(_)
@@ -6818,6 +6961,66 @@ fn unexpected_screen_response(
         }
         WindowCommandResponse::NetworkAuthProxy(_) => {
             "screen command received network auth response"
+        }
+    };
+    HostProtocolError::internal(message, operation)
+}
+
+fn unexpected_recent_documents_response(
+    response: WindowCommandResponse,
+    operation: &'static str,
+) -> HostProtocolError {
+    let message = match response {
+        WindowCommandResponse::Created(_) => {
+            "recent documents command received window create response"
+        }
+        WindowCommandResponse::Destroyed => {
+            "recent documents command received window destroy response"
+        }
+        WindowCommandResponse::WindowUpdated => {
+            "recent documents command received window lifecycle response"
+        }
+        WindowCommandResponse::WindowLookup(_) => {
+            "recent documents command received window lookup response"
+        }
+        WindowCommandResponse::WindowList(_) => {
+            "recent documents command received window list response"
+        }
+        WindowCommandResponse::WindowParent(_) => {
+            "recent documents command received window parent response"
+        }
+        WindowCommandResponse::WindowBounds(_) => {
+            "recent documents command received window bounds response"
+        }
+        WindowCommandResponse::WindowState(_) => {
+            "recent documents command received window state response"
+        }
+        WindowCommandResponse::DockBadgeLabelSet
+        | WindowCommandResponse::DockProgressSet
+        | WindowCommandResponse::DockAttentionRequested => {
+            "recent documents command received dock response"
+        }
+        WindowCommandResponse::MenuSet => "recent documents command received menu response",
+        WindowCommandResponse::TrayCreated(_)
+        | WindowCommandResponse::TrayUpdated
+        | WindowCommandResponse::TrayDestroyed => "recent documents command received tray response",
+        WindowCommandResponse::ScreenDisplays(_)
+        | WindowCommandResponse::ScreenDisplay(_)
+        | WindowCommandResponse::ScreenPoint(_)
+        | WindowCommandResponse::ScreenSupported(_) => {
+            "recent documents command received screen response"
+        }
+        WindowCommandResponse::RecentDocuments(_) => {
+            "recent documents command received recent documents response"
+        }
+        WindowCommandResponse::WebViewCreated(_)
+        | WindowCommandResponse::WebViewNavigationState(_)
+        | WindowCommandResponse::CookieStoreGet(_)
+        | WindowCommandResponse::BrowsingDataCleared(_) => {
+            "recent documents command received webview response"
+        }
+        WindowCommandResponse::NetworkAuthProxy(_) => {
+            "recent documents command received network auth response"
         }
     };
     HostProtocolError::internal(message, operation)

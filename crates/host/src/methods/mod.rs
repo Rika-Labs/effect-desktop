@@ -34,7 +34,7 @@ mod power_monitor;
 pub(crate) mod protocol;
 mod pty;
 mod realtime_media_session;
-mod recent_documents;
+pub(crate) mod recent_documents;
 pub(crate) mod resident_lifecycle;
 mod safe_storage;
 mod scoped_access_grant;
@@ -114,6 +114,11 @@ type TrayCreateHandler = fn(
     Option<Sender<HostProtocolEnvelope>>,
 ) -> Result<Option<serde_json::Value>, HostProtocolError>;
 type EventfulPayloadHandler = fn(
+    Option<serde_json::Value>,
+    Option<Sender<HostProtocolEnvelope>>,
+) -> Result<Option<serde_json::Value>, HostProtocolError>;
+type WindowEventfulPayloadHandler = fn(
+    &dyn WindowMethodHandler,
     Option<serde_json::Value>,
     Option<Sender<HostProtocolEnvelope>>,
 ) -> Result<Option<serde_json::Value>, HostProtocolError>;
@@ -201,6 +206,7 @@ enum HostMethodDispatcher {
     Window(WindowHandler),
     TrayCreate(TrayCreateHandler),
     EventfulPayload(EventfulPayloadHandler),
+    WindowEventfulPayload(WindowEventfulPayloadHandler),
     WindowDestroy,
     EgressRecord,
     RealtimeMedia(RealtimeMediaHandler),
@@ -285,15 +291,15 @@ const HOST_DISPATCH_ROUTES: &[HostMethodRoute] = &[
     ),
     route(
         host_protocol::RECENT_DOCUMENTS_ADD_METHOD,
-        HostMethodDispatcher::EventfulPayload(recent_documents::add_with_event_sender),
+        HostMethodDispatcher::WindowEventfulPayload(recent_documents::add_on_window),
     ),
     route(
         host_protocol::RECENT_DOCUMENTS_CLEAR_METHOD,
-        HostMethodDispatcher::EventfulPayload(recent_documents::clear_with_event_sender),
+        HostMethodDispatcher::WindowEventfulPayload(recent_documents::clear_on_window),
     ),
     route(
         host_protocol::RECENT_DOCUMENTS_LIST_METHOD,
-        HostMethodDispatcher::Payload(recent_documents::list),
+        HostMethodDispatcher::Window(recent_documents::list_on_window),
     ),
     route(
         host_protocol::AUTOSTART_IS_ENABLED_METHOD,
@@ -1305,6 +1311,19 @@ impl HostMethodDispatcher {
                     handler(request.payload, event_sender),
                 )
             }
+            Self::WindowEventfulPayload(handler) => {
+                let event_sender = router
+                    .runtime_event_sender
+                    .lock()
+                    .ok()
+                    .and_then(|sender| sender.clone());
+                dispatch_result_frame(
+                    request.id,
+                    request.timestamp,
+                    request.trace_id,
+                    handler(&*router.window, request.payload, event_sender),
+                )
+            }
             Self::WindowDestroy => {
                 let destroy_payload = request.payload.clone();
                 let result = window::destroy(&*router.window, request.payload);
@@ -2288,7 +2307,7 @@ mod tests {
         WindowCreateResponse, PROTOCOL_VERSION,
     };
     use std::path::{Path, PathBuf};
-    use std::sync::{Arc, Mutex};
+    use std::sync::{mpsc::Sender, Arc, Mutex};
     use std::time::{SystemTime, UNIX_EPOCH};
     use std::{env, fs};
 
@@ -3605,8 +3624,10 @@ mod tests {
     }
 
     #[test]
-    fn recent_documents_routes_to_typed_unsupported() {
-        let response = test_router()
+    fn recent_documents_routes_through_window_handler() {
+        let fake = Arc::new(FakeWindowHandler::default());
+        let router = HostMethodRouter::new(fake.clone());
+        let response = router
             .dispatch_at(
                 request_with_payload(
                     "request-recent-document-add",
@@ -3624,17 +3645,63 @@ mod tests {
                 timestamp: 1710000000127,
                 trace_id: "trace-request-recent-document-add".to_string(),
                 payload: None,
-                error: Some(HostProtocolError::unsupported(
-                    host_protocol::RECENT_DOCUMENTS_UNSUPPORTED_REASON,
-                    host_protocol::RECENT_DOCUMENTS_ADD_METHOD,
-                )),
+                error: None,
             }
         );
+
+        let clear_response = router
+            .dispatch_at(
+                request(
+                    "request-recent-documents-clear",
+                    host_protocol::RECENT_DOCUMENTS_CLEAR_METHOD,
+                ),
+                1710000000127,
+            )
+            .expect("recent documents clear should return response");
+
+        assert_eq!(
+            clear_response,
+            HostProtocolEnvelope::Response {
+                id: "request-recent-documents-clear".to_string(),
+                timestamp: 1710000000127,
+                trace_id: "trace-request-recent-documents-clear".to_string(),
+                payload: None,
+                error: None,
+            }
+        );
+
+        let list_response = router
+            .dispatch_at(
+                request(
+                    "request-recent-documents-list",
+                    host_protocol::RECENT_DOCUMENTS_LIST_METHOD,
+                ),
+                1710000000127,
+            )
+            .expect("recent documents list should return response");
+        assert_eq!(
+            list_response,
+            HostProtocolEnvelope::Response {
+                id: "request-recent-documents-list".to_string(),
+                timestamp: 1710000000127,
+                trace_id: "trace-request-recent-documents-list".to_string(),
+                payload: Some(serde_json::json!({ "documents": [] })),
+                error: None,
+            }
+        );
+
+        assert_eq!(
+            fake.recent_document_adds(),
+            vec!["/tmp/report.txt".to_string()]
+        );
+        assert_eq!(fake.recent_document_clears(), 1);
+        assert_eq!(fake.recent_document_lists(), 1);
     }
 
     #[test]
     fn recent_documents_routes_reject_malformed_payloads() {
-        let response = test_router()
+        let fake = Arc::new(FakeWindowHandler::default());
+        let response = HostMethodRouter::new(fake.clone())
             .dispatch_at(
                 request_with_payload(
                     "request-recent-document-invalid",
@@ -3652,6 +3719,7 @@ mod tests {
             panic!("recent document route should reject malformed paths");
         };
         assert_eq!(error.tag(), "InvalidArgument");
+        assert_eq!(fake.recent_document_adds(), Vec::<String>::new());
     }
 
     #[test]
@@ -7937,6 +8005,9 @@ mod tests {
         cookie_removes: Mutex<Vec<host_protocol::CookieStoreRemovePayload>>,
         cookie_sets: Mutex<Vec<host_protocol::CookieStoreSetPayload>>,
         network_auth_proxies: Mutex<Vec<host_protocol::NetworkAuthSetProxyPayload>>,
+        recent_document_adds: Mutex<Vec<String>>,
+        recent_document_clears: Mutex<u32>,
+        recent_document_lists: Mutex<u32>,
     }
 
     impl FakeWindowHandler {
@@ -7976,6 +8047,9 @@ mod tests {
                 cookie_removes: Mutex::new(Vec::new()),
                 cookie_sets: Mutex::new(Vec::new()),
                 network_auth_proxies: Mutex::new(Vec::new()),
+                recent_document_adds: Mutex::new(Vec::new()),
+                recent_document_clears: Mutex::new(0),
+                recent_document_lists: Mutex::new(0),
             }
         }
 
@@ -8180,6 +8254,27 @@ mod tests {
                 .lock()
                 .expect("fake network auth proxy requests should lock")
                 .clone()
+        }
+
+        fn recent_document_adds(&self) -> Vec<String> {
+            self.recent_document_adds
+                .lock()
+                .expect("fake recent document add requests should lock")
+                .clone()
+        }
+
+        fn recent_document_clears(&self) -> u32 {
+            *self
+                .recent_document_clears
+                .lock()
+                .expect("fake recent document clear requests should lock")
+        }
+
+        fn recent_document_lists(&self) -> u32 {
+            *self
+                .recent_document_lists
+                .lock()
+                .expect("fake recent document list requests should lock")
         }
     }
 
@@ -8725,6 +8820,57 @@ mod tests {
             _method: host_protocol::ScreenMethodPayload,
         ) -> Result<host_protocol::ScreenSupportedPayload, HostProtocolError> {
             Ok(host_protocol::ScreenSupportedPayload::supported())
+        }
+
+        fn add_recent_document(
+            &self,
+            payload: Option<serde_json::Value>,
+            _event_sender: Option<Sender<HostProtocolEnvelope>>,
+        ) -> Result<Option<serde_json::Value>, HostProtocolError> {
+            let input = serde_json::from_value::<host_protocol::RecentDocumentsAddPayload>(
+                payload.ok_or_else(|| {
+                    HostProtocolError::invalid_argument(
+                        "payload",
+                        "is required",
+                        host_protocol::RECENT_DOCUMENTS_ADD_METHOD,
+                    )
+                })?,
+            )
+            .map_err(|error| {
+                HostProtocolError::invalid_argument(
+                    "payload",
+                    error.to_string(),
+                    host_protocol::RECENT_DOCUMENTS_ADD_METHOD,
+                )
+            })?;
+            self.recent_document_adds
+                .lock()
+                .expect("fake recent document add requests should lock")
+                .push(input.path().path().to_string());
+            Ok(None)
+        }
+
+        fn clear_recent_documents(
+            &self,
+            _payload: Option<serde_json::Value>,
+            _event_sender: Option<Sender<HostProtocolEnvelope>>,
+        ) -> Result<Option<serde_json::Value>, HostProtocolError> {
+            *self
+                .recent_document_clears
+                .lock()
+                .expect("fake recent document clear requests should lock") += 1;
+            Ok(None)
+        }
+
+        fn list_recent_documents(
+            &self,
+            _payload: Option<serde_json::Value>,
+        ) -> Result<Option<serde_json::Value>, HostProtocolError> {
+            *self
+                .recent_document_lists
+                .lock()
+                .expect("fake recent document list requests should lock") += 1;
+            Ok(Some(serde_json::json!({ "documents": [] })))
         }
     }
 
