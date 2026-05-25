@@ -223,7 +223,8 @@ Desktop.make({
 ```
 
 `Native.WebView` registers the WebView surface. `Native.Permissions.webView.all` grants WebView authority.
-`webViewCapability(...)` is a platform and runtime-mode support helper; it does not grant permission.
+Use `WebViewSurface.schemaDocs` or `NativeCapabilities` for support metadata;
+capability support metadata does not grant permission.
 
 ## Preload Isolation
 
@@ -284,9 +285,10 @@ output, `host-find-in-page-unavailable` for `findInPage`,
 `host-frame-routing-unavailable` for the frame methods,
 and `host-debugger-protocol-unavailable` for `attachDebugger` — but none can be
 invoked.
-`webViewCapability(...)` remains a local platform and runtime-mode feature
-helper, not a native host method or parity-matrix row; it does not grant
-permission.
+The former `webViewCapability(...)` feature helper has been removed. Support
+truth now comes from canonical WebView surface metadata and `NativeCapabilities`;
+browser-feature probes that are not represented by native WebView methods are
+not part of the public native capability contract.
 Request/response interception is also not part of this surface yet; it requires
 a separate native host adapter with provider request and response callbacks.
 Proxy/auth/certificate hooks are likewise absent from the `WebView` surface;
@@ -296,6 +298,11 @@ Architecture-debt sweep outcome for #1880: removed the public
 `WebViewCapabilityFacts` side export. Unsupported WebView method facts remain
 private to `WebViewSurface` metadata because they publish truthful non-callable
 support metadata for the generated native capability manifest.
+
+Architecture-debt sweep outcome for #1881: removed the public
+`webViewCapability(...)` helper and its hard-coded browser feature matrix.
+WebView support metadata now has one public source of record: the generated
+surface metadata consumed by `NativeCapabilities`.
 
 ## Related
 

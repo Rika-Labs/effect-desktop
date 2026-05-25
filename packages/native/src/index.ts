@@ -857,7 +857,6 @@ export {
   WebViewMethodNames,
   WebViewRpcs,
   WebViewSurface,
-  webViewCapability,
   type WebViewClientApi,
   type WebViewRpc,
   type WebViewRpcHandlers,

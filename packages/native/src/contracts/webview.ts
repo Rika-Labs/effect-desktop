@@ -8,21 +8,7 @@ import { WindowResource } from "./window.js"
 
 export const WebViewResource = ResourceHandleSchema("webview", "open")
 export const WebViewFrameResource = ResourceHandleSchema("webview-frame", "open")
-const WebViewPlatform = Schema.Literals(["macos", "windows", "linux"])
-const WebViewRuntimeMode = Schema.Literals(["dev", "prod"])
-const WebViewCapabilityName = Schema.Literals([
-  "print",
-  "popup blocking",
-  "autofill",
-  "devtools open",
-  "getUserMedia",
-  "service workers in app:",
-  "PDF embedded viewer"
-])
 const WebViewNavigationDecision = Schema.Literals(["block", "openExternal"])
-export type WebViewPlatform = Schema.Schema.Type<typeof WebViewPlatform>
-export type WebViewRuntimeMode = Schema.Schema.Type<typeof WebViewRuntimeMode>
-export type WebViewCapabilityName = Schema.Schema.Type<typeof WebViewCapabilityName>
 const WebViewNavigationUrl = BridgeSafeNonEmptyString.check(
   Schema.isPattern(/^(?!javascript:|data:|vbscript:|blob:|file:)[\s\S]*$/iu),
   Schema.makeFilter((value) => isAbsoluteUrl(value) || "must be an absolute URL")
@@ -159,22 +145,6 @@ export class WebViewSetNavigationPolicyInput extends Schema.Class<WebViewSetNavi
 )({
   webview: WebViewResource,
   policy: WebViewNavigationPolicy
-}) {}
-
-export class WebViewCapabilityInput extends Schema.Class<WebViewCapabilityInput>(
-  "WebViewCapabilityInput"
-)({
-  name: WebViewCapabilityName,
-  platform: Schema.optionalKey(WebViewPlatform),
-  mode: Schema.optionalKey(WebViewRuntimeMode)
-}) {}
-
-export type WebViewCapabilityOptions = Schema.Schema.Type<typeof WebViewCapabilityInput>
-
-export class WebViewCapabilityResult extends Schema.Class<WebViewCapabilityResult>(
-  "WebViewCapabilityResult"
-)({
-  supported: Schema.Boolean
 }) {}
 
 export const WebViewScreenshotMime = ImageMime

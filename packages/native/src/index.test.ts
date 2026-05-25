@@ -297,7 +297,6 @@ import {
 import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
 import { RecentDocumentsSurface } from "./recent-documents.js"
 import { makeScreenBridgeClientLayer } from "./screen.js"
-import { webViewCapability } from "./webview.js"
 import { makeHostWindowRpcRuntime, makeWindowBridgeClientLayer } from "./window.js"
 import {
   AssociationEvent,
@@ -1006,7 +1005,7 @@ const expectedWebViewCapabilityFactMethods = [
   "attachDebugger"
 ] as const
 
-const webViewCapabilityFacts = () => WebViewSurface.schemaDocs.filter((doc) => !doc.callable)
+const unsupportedWebViewFacts = () => WebViewSurface.schemaDocs.filter((doc) => !doc.callable)
 
 const webViewDebuggerUnsupportedSupport = {
   status: "unsupported",
@@ -2555,7 +2554,7 @@ test("WebView support metadata reflects resource lifecycle, print, and devtools 
 })
 
 test("WebView declares unsupported methods as non-callable capability facts", () => {
-  const facts = webViewCapabilityFacts()
+  const facts = unsupportedWebViewFacts()
   const factTags = facts.map((fact) => fact.tag).toSorted()
   expect(factTags).toEqual(
     expectedWebViewCapabilityFactMethods.map((method) => `WebView.${method}`).toSorted()
@@ -3358,14 +3357,16 @@ test("WebView bridge client rejects unsafe navigation inputs before transport", 
     })
   ))
 
-test("WebView capability matrix reports spec-partial features as unsupported", () => {
-  expect(webViewCapability("print", "linux")).toBe(true)
-  expect(webViewCapability("popup blocking", "linux")).toBe(false)
-  expect(webViewCapability("getUserMedia", "linux")).toBe(false)
-  expect(webViewCapability("service workers in app:", "linux")).toBe(false)
-  expect(webViewCapability("service workers in app:", "macos")).toBe(false)
-  expect(webViewCapability("print", "windows")).toBe(true)
-  expect(webViewCapability("PDF embedded viewer", "linux")).toBe(false)
+test("WebView public surface uses capability metadata instead of the legacy helper", async () => {
+  const webViewModule = await import("./webview.js")
+  const rootModule = await import("./index.js")
+  const supportByTag = new Map(WebViewSurface.schemaDocs.map((doc) => [doc.tag, doc.support]))
+
+  expect("webViewCapability" in webViewModule).toBe(false)
+  expect("webViewCapability" in rootModule).toBe(false)
+  expect(supportByTag.get("WebView.print")).toEqual({ status: "supported" })
+  expect(supportByTag.get("WebView.openDevTools")).toEqual(webViewOpenDevToolsSupport)
+  expect(supportByTag.get("WebView.printToPdf")).toEqual(webViewDocumentUnsupportedSupport)
 })
 
 test("MenuRpcs declares the Phase 7 Menu method and event surface", () => {

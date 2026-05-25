@@ -14,7 +14,6 @@ import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
 export * from "./contracts/webview.js"
 import {
-  type WebViewCapabilityName,
   WebViewApiCallEvent,
   type WebViewCreateNavigationOptions,
   type WebViewCreateOptions,
@@ -29,8 +28,6 @@ import {
   WebViewLoadUrlInput,
   WebViewRuntimeEvent,
   WebViewResource,
-  type WebViewPlatform,
-  type WebViewRuntimeMode,
   WebViewSetNavigationPolicyInput,
   WebViewSetZoomInput
 } from "./contracts/webview.js"
@@ -310,7 +307,7 @@ export const WebViewDestroy = NativeSurface.rpc("WebView", "destroy", {
   support: NativeSurface.support.supported
 })
 
-const webViewCapabilityFact = (
+const unsupportedWebViewFact = (
   method:
     | "captureScreenshot"
     | "printToPdf"
@@ -331,15 +328,15 @@ const webViewCapabilityFact = (
   })
 
 const UnsupportedCapabilityFacts = Object.freeze([
-  webViewCapabilityFact("captureScreenshot", WebViewDocumentUnsupportedSupport),
-  webViewCapabilityFact("printToPdf", WebViewDocumentUnsupportedSupport),
-  webViewCapabilityFact("findInPage", WebViewFindInPageSupport),
-  webViewCapabilityFact("setUserAgent", WebViewRuntimeUserAgentSupport),
-  webViewCapabilityFact("setAudioMuted", WebViewRuntimeMediaControlSupport),
-  webViewCapabilityFact("respondToPermission", WebViewRuntimePermissionSupport),
-  webViewCapabilityFact("listFrames", WebViewFrameRoutingSupport),
-  webViewCapabilityFact("postToFrame", WebViewFrameRoutingSupport),
-  webViewCapabilityFact("attachDebugger", WebViewDebuggerSupport)
+  unsupportedWebViewFact("captureScreenshot", WebViewDocumentUnsupportedSupport),
+  unsupportedWebViewFact("printToPdf", WebViewDocumentUnsupportedSupport),
+  unsupportedWebViewFact("findInPage", WebViewFindInPageSupport),
+  unsupportedWebViewFact("setUserAgent", WebViewRuntimeUserAgentSupport),
+  unsupportedWebViewFact("setAudioMuted", WebViewRuntimeMediaControlSupport),
+  unsupportedWebViewFact("respondToPermission", WebViewRuntimePermissionSupport),
+  unsupportedWebViewFact("listFrames", WebViewFrameRoutingSupport),
+  unsupportedWebViewFact("postToFrame", WebViewFrameRoutingSupport),
+  unsupportedWebViewFact("attachDebugger", WebViewDebuggerSupport)
 ])
 
 const WebViewNavigationBlocked = NativeSurface.event("WebView", "NavigationBlocked", {
@@ -605,15 +602,6 @@ export const WebViewSurface = NativeSurface.make("WebView", WebViewRpcGroup, {
   client: (client) => webViewClientFromRpcClient(client),
   bridgeClient: (client, exchange) => webViewBridgeClientFromRpcClient(client, exchange)
 })
-
-export const webViewCapability = (
-  name: WebViewCapabilityName,
-  platform: WebViewPlatform = currentWebViewPlatform(),
-  mode: WebViewRuntimeMode = "prod"
-): boolean => {
-  const support = WEBVIEW_CAPABILITY_MATRIX[platform][name]
-  return support === "dev-only" ? mode === "dev" : support
-}
 
 const makeWebViewService = (client: WebViewClientApi): WebViewServiceApi => {
   const service: WebViewServiceApi = {
@@ -889,48 +877,6 @@ const isWebViewError = (error: unknown): error is WebViewError =>
   "tag" in error &&
   "operation" in error &&
   "recoverable" in error
-
-const currentWebViewPlatform = (): WebViewPlatform => {
-  if (process.platform === "darwin") {
-    return "macos"
-  }
-  if (process.platform === "win32") {
-    return "windows"
-  }
-  return "linux"
-}
-
-const WEBVIEW_CAPABILITY_MATRIX: Readonly<
-  Record<WebViewPlatform, Readonly<Record<WebViewCapabilityName, boolean | "dev-only">>>
-> = Object.freeze({
-  macos: Object.freeze({
-    print: true,
-    "popup blocking": true,
-    autofill: true,
-    "devtools open": "dev-only",
-    getUserMedia: true,
-    "service workers in app:": false,
-    "PDF embedded viewer": true
-  }),
-  windows: Object.freeze({
-    print: true,
-    "popup blocking": true,
-    autofill: true,
-    "devtools open": "dev-only",
-    getUserMedia: true,
-    "service workers in app:": true,
-    "PDF embedded viewer": true
-  }),
-  linux: Object.freeze({
-    print: true,
-    "popup blocking": false,
-    autofill: false,
-    "devtools open": "dev-only",
-    getUserMedia: false,
-    "service workers in app:": false,
-    "PDF embedded viewer": false
-  })
-})
 
 const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) {

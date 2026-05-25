@@ -169,7 +169,7 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 |                   #1878 Keep Dock capability facts private metadata | Closed | Removes the public Dock capability-fact side object while preserving unsupported menu and jump-list manifest facts.                                                   |
 |                 #1879 Model GlobalShortcut events and private facts | Closed | Moves pressed events into the canonical `GlobalShortcut.events.Pressed` RPC stream and keeps unsupported registration facts private to surface metadata.              |
 |                #1880 Keep WebView capability facts private metadata | Closed | Removes the public WebView capability-fact side object while preserving unsupported document, runtime, frame, permission, and debugger manifest facts.                |
-|        #1881 Derive WebView capability helper from surface metadata | Open   | Removes or rewires the hard-coded `webViewCapability` matrix so WebView support truth comes from canonical surface/provider metadata.                                 |
+|        #1881 Derive WebView capability helper from surface metadata | Closed | Removes the hard-coded `webViewCapability` matrix so WebView support truth comes from canonical surface/provider metadata.                                            |
 
 ## Execution Progress
 
