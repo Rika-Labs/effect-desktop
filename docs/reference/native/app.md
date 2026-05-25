@@ -22,9 +22,9 @@ process already owns the lock. `App.releaseSingleInstanceLock` explicitly drops
 the process-held lock and any duplicate-launch handoff listener. When the
 primary process owns a runtime event stream, duplicate launch attempts forward
 `argv`, `cwd`, `activationReason`, and `traceId` to the primary process as
-`App.onSecondInstance`. Safe open-file and open-url intents from the primary
-launch argv and duplicate-launch argv are also emitted through `App.onOpenFile`
-or `App.onOpenUrl`.
+the host event method `App.onSecondInstance`. Safe open-file and open-url
+intents from the primary launch argv and duplicate-launch argv are also emitted
+through the host event methods `App.onOpenFile` or `App.onOpenUrl`.
 `activationReason` is classified from argv as `"open-file"` when exactly one
 safe absolute file path is present, `"open-url"` when exactly one safe
 non-dangerous URL is present, `"unknown"` when intent-like argv is unsafe or
@@ -52,17 +52,26 @@ launch a smoke-only replacement process.
 
 ## Events
 
-The current TypeScript event streams are `onSecondInstance`, `onOpenFile`,
-`onOpenUrl`, and `onBeforeQuit`. `onSecondInstance` events carry `argv`, `cwd`,
-`activationReason`, and `traceId`; `activationReason` is `"launch"`,
+The TypeScript service methods `onSecondInstance`, `onOpenFile`, `onOpenUrl`,
+and `onBeforeQuit` consume canonical RPC streams:
+
+- `App.events.onSecondInstance`
+- `App.events.onOpenFile`
+- `App.events.onOpenUrl`
+- `App.events.onBeforeQuit`
+
+The native/web bridge maps those canonical stream tags to the existing host
+event methods `App.onSecondInstance`, `App.onOpenFile`, `App.onOpenUrl`, and
+`App.onBeforeQuit` at the boundary. `onSecondInstance` events carry `argv`,
+`cwd`, `activationReason`, and `traceId`; `activationReason` is `"launch"`,
 `"open-file"`, `"open-url"`, or `"unknown"`. `onBeforeQuit` is emitted by the
 Rust host before the current `App.quit` path exits the event loop and before a
 native close request exits the app. Native `onSecondInstance` is emitted by the
 single-instance handoff path for duplicate launches, including argv-derived
-open-file/open-url activation reasons. Native `onOpenFile` and `onOpenUrl`
-are emitted from the same argv classifier: the host emits at most one open
-intent event, after `onSecondInstance` for duplicate launches, and does not emit
-an open intent event for unsafe or ambiguous argv. Event delivery uses the host
+open-file/open-url activation reasons. Native `onOpenFile` and `onOpenUrl` are
+emitted from the same argv classifier: the host emits at most one open intent
+event, after `onSecondInstance` for duplicate launches, and does not emit an
+open intent event for unsafe or ambiguous argv. Event delivery uses the host
 runtime event stream; if no renderer subscription is installed yet, the primary
 launch intent remains pending until `requestSingleInstanceLock` installs the
 runtime event sender.

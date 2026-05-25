@@ -111,7 +111,6 @@ import {
   App,
   AppHandlersLive,
   AppRpcs,
-  AppRpcEvents,
   AppLive,
   AppMethodNames,
   AppSurface,
@@ -967,6 +966,12 @@ const expectedAppMethods: Array<(typeof AppMethodNames)[number]> = [
   "requestSingleInstanceLock",
   "releaseSingleInstanceLock"
 ]
+const expectedAppEventRpcTags = [
+  "App.events.onSecondInstance",
+  "App.events.onOpenFile",
+  "App.events.onOpenUrl",
+  "App.events.onBeforeQuit"
+] as const
 
 const expectedAppMetadataMethods: Array<(typeof AppMetadataMethodNames)[number]> = [
   "getInfo",
@@ -1470,14 +1475,108 @@ const appMetadataLaunchContext = new AppMetadataLaunchContext({
 
 test("AppRpcs declares the Phase 7 App method and event surface", () => {
   expect([...AppMethodNames]).toEqual(expectedAppMethods)
-  expect(rpcMethodNames("App", AppRpcs)).toEqual(expectedAppMethods)
-  expect(Object.keys(AppRpcEvents)).toEqual([
-    "onSecondInstance",
-    "onOpenFile",
-    "onOpenUrl",
-    "onBeforeQuit"
+  expect(rpcMethodNames("App", AppRpcs)).toEqual([
+    ...expectedAppMethods,
+    "events.onSecondInstance",
+    "events.onOpenFile",
+    "events.onOpenUrl",
+    "events.onBeforeQuit"
   ])
 })
+
+test("App lifecycle event schema is owned by the RPC stream contract", async () => {
+  const appModule = await import("./app.js")
+  const rootModule = await import("./index.js")
+  const expectedEventSchemas: ReadonlyArray<readonly [string, unknown]> = [
+    ["App.events.onSecondInstance", AppSecondInstanceEvent],
+    ["App.events.onOpenFile", AppOpenFileEvent],
+    ["App.events.onOpenUrl", AppOpenUrlEvent],
+    ["App.events.onBeforeQuit", AppBeforeQuitEvent]
+  ]
+
+  expect("AppRpcEvents" in appModule).toBe(false)
+  expect("AppRpcEvents" in rootModule).toBe(false)
+  expect(Array.from(AppRpcs.requests.keys())).toEqual([
+    ...expectedAppMethods.map((method) => `App.${method}`),
+    ...expectedAppEventRpcTags
+  ])
+
+  for (const [tag, schema] of expectedEventSchemas) {
+    const eventRpc = AppRpcs.requests.get(tag)
+    expect(eventRpc).toBeDefined()
+    expect(eventRpc === undefined ? false : RpcSchema.isStreamSchema(eventRpc.successSchema)).toBe(
+      true
+    )
+    if (eventRpc !== undefined && RpcSchema.isStreamSchema(eventRpc.successSchema)) {
+      expect(Object.is(eventRpc.successSchema.success, schema)).toBe(true)
+      expect(eventRpc.pipe(rpcSupport)).toEqual({ status: "supported" })
+    }
+  }
+})
+
+test("App direct client consumes the canonical open-file event stream", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
+      const requests: HostProtocolRequestEnvelope[] = []
+      const protocolLayer = Layer.effect(RpcClient.Protocol)(
+        makeDesktopClientProtocol(
+          {
+            send: (envelope) => {
+              if (envelope.kind !== "request") {
+                return Effect.void
+              }
+              requests.push(envelope)
+              return Effect.all(
+                [
+                  Queue.offer(
+                    queue,
+                    new HostProtocolStreamByRequestEnvelope({
+                      kind: "stream",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_900,
+                      traceId: envelope.traceId,
+                      payload: { path: "/tmp/README.md" }
+                    })
+                  ),
+                  Queue.offer(
+                    queue,
+                    new HostProtocolResponseEnvelope({
+                      kind: "response",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_901,
+                      traceId: envelope.traceId
+                    })
+                  )
+                ],
+                { discard: true }
+              )
+            },
+            run: (onEnvelope) =>
+              Stream.fromQueue(queue).pipe(
+                Stream.runForEach(onEnvelope),
+                Effect.andThen(Effect.never)
+              )
+          },
+          {
+            nextRequestId: () => "app-open-file-rpc",
+            nextTraceId: () => "trace-app-open-file-rpc"
+          }
+        )
+      )
+
+      const event = yield* runScoped(
+        Effect.gen(function* () {
+          const app = yield* App
+          return yield* app.onOpenFile().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+        }),
+        Layer.provide(AppLive, Layer.provide(AppSurface.clientLayer, protocolLayer))
+      )
+
+      expect(event).toEqual(new AppOpenFileEvent({ path: "/tmp/README.md" }))
+      expect(requests.map((request) => request.method)).toEqual(["App.events.onOpenFile"])
+    })
+  ))
 
 test("App service delegates through a substitutable AppClient port", () =>
   Effect.runPromise(
@@ -1579,7 +1678,11 @@ test("native host RPC runtime gates single-instance release before handlers run"
           "App.releaseSingleInstanceLock": () =>
             Effect.sync(() => {
               calls.push("releaseSingleInstanceLock")
-            })
+            }),
+          "App.events.onSecondInstance": () => Stream.empty,
+          "App.events.onOpenFile": () => Stream.empty,
+          "App.events.onOpenUrl": () => Stream.empty,
+          "App.events.onBeforeQuit": () => Stream.empty
         },
         { originAuth: RendererOriginAuth.unsafeDisabledForTests }
       )

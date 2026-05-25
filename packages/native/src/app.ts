@@ -11,7 +11,6 @@ import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
-import { subscribeNativeEvent } from "./event-stream.js"
 export * from "./contracts/app.js"
 import {
   AppBeforeQuitEvent,
@@ -101,14 +100,22 @@ export const AppReleaseSingleInstanceLock = NativeSurface.rpc("App", "releaseSin
   endpoint: "mutation",
   support: AppSupported
 })
-export const AppRpcEvents = Object.freeze({
-  onSecondInstance: { payload: AppSecondInstanceEvent },
-  onOpenFile: { payload: AppOpenFileEvent },
-  onOpenUrl: { payload: AppOpenUrlEvent },
-  onBeforeQuit: { payload: AppBeforeQuitEvent }
+const AppSecondInstance = NativeSurface.event("App", "onSecondInstance", {
+  payload: AppSecondInstanceEvent,
+  support: AppSupported
 })
-
-export type AppRpcEvents = typeof AppRpcEvents
+const AppOpenFile = NativeSurface.event("App", "onOpenFile", {
+  payload: AppOpenFileEvent,
+  support: AppSupported
+})
+const AppOpenUrl = NativeSurface.event("App", "onOpenUrl", {
+  payload: AppOpenUrlEvent,
+  support: AppSupported
+})
+const AppBeforeQuit = NativeSurface.event("App", "onBeforeQuit", {
+  payload: AppBeforeQuitEvent,
+  support: AppSupported
+})
 
 const AppRpcGroup = RpcGroup.make(
   AppQuit,
@@ -118,7 +125,11 @@ const AppRpcGroup = RpcGroup.make(
   AppFocus,
   AppActivate,
   AppRequestSingleInstanceLock,
-  AppReleaseSingleInstanceLock
+  AppReleaseSingleInstanceLock,
+  AppSecondInstance,
+  AppOpenFile,
+  AppOpenUrl,
+  AppBeforeQuit
 )
 
 export const AppRpcs: RpcGroup.RpcGroup<AppRpc> = AppRpcGroup
@@ -231,15 +242,43 @@ export const AppHandlersLive = AppRpcGroup.toLayer({
     Effect.gen(function* () {
       const app = yield* App
       yield* app.releaseSingleInstanceLock()
-    })
+    }),
+  "App.events.onSecondInstance": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const app = yield* App
+        return app.onSecondInstance()
+      })
+    ),
+  "App.events.onOpenFile": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const app = yield* App
+        return app.onOpenFile()
+      })
+    ),
+  "App.events.onOpenUrl": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const app = yield* App
+        return app.onOpenUrl()
+      })
+    ),
+  "App.events.onBeforeQuit": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const app = yield* App
+        return app.onBeforeQuit()
+      })
+    )
 })
 
 export const AppSurface = NativeSurface.make("App", AppRpcGroup, {
   service: AppClient,
   capabilities: AppCapabilityMethods,
   handlers: AppHandlersLive,
-  client: (client) => appClientFromRpcClient(client, undefined),
-  bridgeClient: (client, exchange) => appClientFromRpcClient(client, exchange)
+  client: (client) => appClientFromRpcClient(client),
+  bridgeClient: (client, exchange) => appBridgeClientFromRpcClient(client, exchange)
 })
 
 const makeAppService = (client: AppClientApi): AppServiceApi => {
@@ -261,10 +300,7 @@ const makeAppService = (client: AppClientApi): AppServiceApi => {
   return Object.freeze(service)
 }
 
-const appClientFromRpcClient = (
-  client: DesktopRpcClient<AppRpc>,
-  exchange: BridgeClientExchange | undefined
-): AppClientApi =>
+const appClientFromRpcClient = (client: DesktopRpcClient<AppRpc>): AppClientApi =>
   Object.freeze({
     quit: (input) =>
       decodeAppQuitInput(input, "App.quit").pipe(
@@ -295,18 +331,30 @@ const appClientFromRpcClient = (
         "App.releaseSingleInstanceLock"
       ),
     onSecondInstance: () =>
-      subscribeAppEvent(exchange, "App.onSecondInstance", AppSecondInstanceEvent),
-    onOpenFile: () => subscribeAppEvent(exchange, "App.onOpenFile", AppOpenFileEvent),
-    onOpenUrl: () => subscribeAppEvent(exchange, "App.onOpenUrl", AppOpenUrlEvent),
-    onBeforeQuit: () => subscribeAppEvent(exchange, "App.onBeforeQuit", AppBeforeQuitEvent)
+      runAppRpcStream(
+        client["App.events.onSecondInstance"](undefined),
+        "App.events.onSecondInstance"
+      ),
+    onOpenFile: () =>
+      runAppRpcStream(client["App.events.onOpenFile"](undefined), "App.events.onOpenFile"),
+    onOpenUrl: () =>
+      runAppRpcStream(client["App.events.onOpenUrl"](undefined), "App.events.onOpenUrl"),
+    onBeforeQuit: () =>
+      runAppRpcStream(client["App.events.onBeforeQuit"](undefined), "App.events.onBeforeQuit")
   } satisfies AppClientApi)
 
-const subscribeAppEvent = <A>(
-  exchange: BridgeClientExchange | undefined,
-  method: "App.onSecondInstance" | "App.onOpenFile" | "App.onOpenUrl" | "App.onBeforeQuit",
-  schema: Schema.Codec<A, unknown, never, never>
-): Stream.Stream<A, AppError, never> =>
-  subscribeNativeEvent(exchange, method, schema, StrictParseOptions)
+const appBridgeClientFromRpcClient = (
+  client: DesktopRpcClient<AppRpc>,
+  exchange: BridgeClientExchange
+): AppClientApi =>
+  Object.freeze({
+    ...appClientFromRpcClient(client),
+    onSecondInstance: () =>
+      NativeSurface.subscribeEvent(exchange, AppSecondInstance, StrictParseOptions),
+    onOpenFile: () => NativeSurface.subscribeEvent(exchange, AppOpenFile, StrictParseOptions),
+    onOpenUrl: () => NativeSurface.subscribeEvent(exchange, AppOpenUrl, StrictParseOptions),
+    onBeforeQuit: () => NativeSurface.subscribeEvent(exchange, AppBeforeQuit, StrictParseOptions)
+  } satisfies AppClientApi)
 
 const decodeAppQuitInput = (
   input: unknown,
@@ -341,6 +389,11 @@ const runAppRpc = <A, E>(
       Effect.fail(makeHostProtocolInvalidOutputError(operation, formatUnknownError(defect)))
     )
   )
+
+const runAppRpcStream = <A, E>(
+  stream: Stream.Stream<A, E, never>,
+  _operation: string
+): Stream.Stream<A, AppError, never> => stream.pipe(Stream.mapError(mapAppRpcClientError))
 
 const mapAppRpcClientError = (error: unknown): AppError =>
   isAppError(error) ? error : makeHostProtocolInternalError("App RPC client failed", "App")

@@ -22,7 +22,6 @@ export {
   AppHandlersLive,
   AppLive,
   AppMethodNames,
-  AppRpcEvents,
   AppRpcs,
   AppSurface,
   type AppClientApi,
