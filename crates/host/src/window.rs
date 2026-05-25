@@ -11,18 +11,18 @@ use crate::{linux, macos, webview, windows};
 use anyhow::Result;
 use host_protocol::{
     AppBeforeQuitEventPayload, BrowsingDataClearPayload, BrowsingDataClearResultPayload,
-    ContextMenuActivatedEventPayload, CookieStoreCookiePayload, CookieStoreGetPayload,
-    CookieStoreGetResultPayload, CookieStoreRemovePayload, CookieStoreSameSitePayload,
-    CookieStoreSetPayload, DockProgressState, DockSetProgressPayload, HostProtocolEnvelope,
-    HostProtocolError, MenuActivatedEventPayload, NetworkAuthProxyModePayload,
-    NetworkAuthProxyResultPayload, NetworkAuthSetProxyPayload, ScreenBoundsPayload,
-    ScreenDisplayPayload, ScreenDisplaysChangedEventPayload, ScreenDisplaysResultPayload,
-    ScreenMethodPayload, ScreenPointPayload, ScreenSupportedPayload, SessionProfileResourcePayload,
-    TrayResourcePayload, WindowAttentionType, WindowBoundsEventPayload, WindowBoundsPayload,
-    WindowCreatePayload, WindowCreateResponse, WindowListResponse, WindowLookupResponse,
-    WindowParentResponse, WindowProgressState, WindowRegistryEventPayload,
-    WindowRegistryEventPhase, WindowSetProgressPayload, WindowStateEventPayload,
-    WindowStatePayload, WindowTitleBarStyle, WindowTrafficLights,
+    ContextMenuActivatedEventPayload, CookieStoreCookiePayload, CookieStoreEventPayload,
+    CookieStoreGetPayload, CookieStoreGetResultPayload, CookieStoreRemovePayload,
+    CookieStoreSameSitePayload, CookieStoreSetPayload, DockProgressState, DockSetProgressPayload,
+    HostProtocolEnvelope, HostProtocolError, MenuActivatedEventPayload,
+    NetworkAuthProxyModePayload, NetworkAuthProxyResultPayload, NetworkAuthSetProxyPayload,
+    ScreenBoundsPayload, ScreenDisplayPayload, ScreenDisplaysChangedEventPayload,
+    ScreenDisplaysResultPayload, ScreenMethodPayload, ScreenPointPayload, ScreenSupportedPayload,
+    SessionProfileResourcePayload, TrayResourcePayload, WindowAttentionType,
+    WindowBoundsEventPayload, WindowBoundsPayload, WindowCreatePayload, WindowCreateResponse,
+    WindowListResponse, WindowLookupResponse, WindowParentResponse, WindowProgressState,
+    WindowRegistryEventPayload, WindowRegistryEventPhase, WindowSetProgressPayload,
+    WindowStateEventPayload, WindowStatePayload, WindowTitleBarStyle, WindowTrafficLights,
 };
 use muda::{
     CheckMenuItem, ContextMenu as MudaContextMenu, Menu, MenuItem, PredefinedMenuItem, Submenu,
@@ -1572,6 +1572,8 @@ static SCREEN_EVENT_SENDER: LazyLock<Mutex<Option<Sender<HostProtocolEnvelope>>>
 static WINDOW_EVENT_SENDER: LazyLock<Mutex<Option<Sender<HostProtocolEnvelope>>>> =
     LazyLock::new(|| Mutex::new(None));
 static WEBVIEW_EVENT_SENDER: LazyLock<Mutex<Option<Sender<HostProtocolEnvelope>>>> =
+    LazyLock::new(|| Mutex::new(None));
+static COOKIE_STORE_EVENT_SENDER: LazyLock<Mutex<Option<Sender<HostProtocolEnvelope>>>> =
     LazyLock::new(|| Mutex::new(None));
 
 impl WindowMethodPort {
@@ -5300,6 +5302,7 @@ impl WindowRegistry {
             payload.url(),
             host_protocol::COOKIE_STORE_REMOVE_METHOD,
         )?;
+        let mut removed = false;
 
         for cookie in cookies {
             if cookie.name() == payload.name() && cookie_path_matches_url(cookie.path(), url.path())
@@ -5309,7 +5312,11 @@ impl WindowRegistry {
                     &cookie,
                     host_protocol::COOKIE_STORE_REMOVE_METHOD,
                 )?;
+                removed = true;
             }
+        }
+        if removed {
+            emit_cookie_store_removed_event(payload.profile(), payload.url(), payload.name());
         }
 
         Ok(())
@@ -5331,7 +5338,9 @@ impl WindowRegistry {
             &resources._webview,
             &cookie,
             host_protocol::COOKIE_STORE_SET_METHOD,
-        )
+        )?;
+        emit_cookie_store_set_event(payload.profile(), payload.url(), payload.cookie().clone());
+        Ok(())
     }
 
     fn clear_browsing_data(
@@ -7698,6 +7707,19 @@ pub(crate) fn install_webview_event_sender(
     Ok(())
 }
 
+pub(crate) fn install_cookie_store_event_sender(
+    sender: Sender<HostProtocolEnvelope>,
+) -> std::result::Result<(), HostProtocolError> {
+    let mut current = COOKIE_STORE_EVENT_SENDER.lock().map_err(|_| {
+        HostProtocolError::internal(
+            "cookie store event sender mutex poisoned",
+            "host.runtime.cookie_store.connect",
+        )
+    })?;
+    *current = Some(sender);
+    Ok(())
+}
+
 pub(crate) fn clear_screen_runtime_event_state() -> std::result::Result<(), HostProtocolError> {
     let mut sender = SCREEN_EVENT_SENDER.lock().map_err(|_| {
         HostProtocolError::internal(
@@ -7725,6 +7747,18 @@ pub(crate) fn clear_webview_runtime_event_state() -> std::result::Result<(), Hos
         HostProtocolError::internal(
             "webview event sender mutex poisoned",
             "host.runtime.webview.disconnect",
+        )
+    })?;
+    *sender = None;
+    Ok(())
+}
+
+pub(crate) fn clear_cookie_store_runtime_event_state() -> std::result::Result<(), HostProtocolError>
+{
+    let mut sender = COOKIE_STORE_EVENT_SENDER.lock().map_err(|_| {
+        HostProtocolError::internal(
+            "cookie store event sender mutex poisoned",
+            "host.runtime.cookie_store.disconnect",
         )
     })?;
     *sender = None;
@@ -7770,6 +7804,19 @@ fn webview_event_sender(
         })
 }
 
+fn cookie_store_event_sender(
+) -> std::result::Result<Option<Sender<HostProtocolEnvelope>>, HostProtocolError> {
+    COOKIE_STORE_EVENT_SENDER
+        .lock()
+        .map(|sender| sender.clone())
+        .map_err(|_| {
+            HostProtocolError::internal(
+                "cookie store event sender mutex poisoned",
+                "host.runtime.cookie_store.event",
+            )
+        })
+}
+
 fn emit_window_registry_event(
     window_id: &str,
     phase: WindowRegistryEventPhase,
@@ -7789,6 +7836,59 @@ fn emit_window_registry_event(
             payload: Some(payload),
         })
         .map_err(|_error| HostProtocolError::host_unavailable(host_protocol::WINDOW_EVENT))
+}
+
+fn emit_cookie_store_set_event(
+    profile: &SessionProfileResourcePayload,
+    url: &str,
+    cookie: CookieStoreCookiePayload,
+) {
+    let timestamp = timestamp_millis();
+    emit_cookie_store_event(
+        timestamp,
+        CookieStoreEventPayload::set(timestamp, profile.clone(), url, cookie),
+    );
+}
+
+fn emit_cookie_store_removed_event(profile: &SessionProfileResourcePayload, url: &str, name: &str) {
+    let timestamp = timestamp_millis();
+    emit_cookie_store_event(
+        timestamp,
+        CookieStoreEventPayload::removed(timestamp, profile.clone(), url, name),
+    );
+}
+
+fn emit_cookie_store_event(timestamp: u64, event: CookieStoreEventPayload) {
+    let sender = match cookie_store_event_sender() {
+        Ok(Some(sender)) => sender,
+        Ok(None) => return,
+        Err(error) => {
+            warn!(
+                event = "host.cookie_store.event_sender_failed",
+                error = ?error,
+                "failed to read cookie store event sender"
+            );
+            return;
+        }
+    };
+    let payload = match serde_json::to_value(event) {
+        Ok(payload) => payload,
+        Err(error) => {
+            warn!(
+                event = "host.cookie_store.event_encode_failed",
+                error = ?error,
+                "failed to encode cookie store event"
+            );
+            return;
+        }
+    };
+    let _ = sender.send(HostProtocolEnvelope::Event {
+        method: host_protocol::COOKIE_STORE_EVENT.to_string(),
+        timestamp,
+        trace_id: format!("cookie-store-event-{timestamp}"),
+        window_id: None,
+        payload: Some(payload),
+    });
 }
 
 fn emit_webview_navigation_blocked_event(
@@ -9165,30 +9265,33 @@ mod tests {
     use super::linux_wayland_pointer_unsupported_from_env;
     use super::{
         accept_context_menu_show_then_display, centered_physical_axis,
-        clear_context_menu_runtime_event_state, clear_menu_runtime_event_state,
-        clear_webview_runtime_event_state, clear_window_runtime_event_state,
-        clip_window_bounds_to_logical_area, control_flow_for_lifecycle_event,
-        control_flow_for_window_state, cookie_domain_matches_url, cookie_path_matches_url,
-        display_relative_physical_axis, emit_webview_api_call_event,
+        clear_context_menu_runtime_event_state, clear_cookie_store_runtime_event_state,
+        clear_menu_runtime_event_state, clear_webview_runtime_event_state,
+        clear_window_runtime_event_state, clip_window_bounds_to_logical_area,
+        control_flow_for_lifecycle_event, control_flow_for_window_state, cookie_domain_matches_url,
+        cookie_path_matches_url, display_relative_physical_axis, emit_cookie_store_removed_event,
+        emit_cookie_store_set_event, emit_webview_api_call_event,
         emit_webview_navigation_blocked_event, emit_webview_runtime_event,
         emit_window_registry_event, forward_context_menu_event_for_native_id,
         forward_menu_event_for_native_id, handle_native_window_close_requested,
-        handle_webview_isolation_ipc, install_context_menu_event_sender, install_menu_event_sender,
-        install_webview_event_sender, install_window_event_sender,
-        is_screen_displays_changed_window_event, lifecycle_event_with_smoke_timeout,
-        lifecycle_for_create_result, network_auth_proxy_port, parse_network_auth_proxy_config,
-        replace_menu_command_bindings, resident_lifecycle, rounded_i32, rounded_u32,
-        screen_bounds_payload, smoke_deadline_for_mode, to_tao_dock_progress,
-        track_context_menu_command_binding, unsupported_screen, validate_positive_finite,
-        ContextMenuCommandBinding, LogicalScreenArea, MenuCommandBinding, PhysicalScreenArea,
-        RunMode, WebViewExposedApi, WebViewIsolationPolicy, WebViewNavigationDecision,
-        WebViewNavigationPolicy, WebViewNavigationState, WindowCommand, WindowCommandResponse,
-        WindowCreateRequest, WindowId, WindowLifecycleEvent, WindowMethodPort, WindowRegistry,
-        WINDOW_COMMAND_IDLE_POLL_INTERVAL, WINDOW_SMOKE_TEST_TIMEOUT,
+        handle_webview_isolation_ipc, install_context_menu_event_sender,
+        install_cookie_store_event_sender, install_menu_event_sender, install_webview_event_sender,
+        install_window_event_sender, is_screen_displays_changed_window_event,
+        lifecycle_event_with_smoke_timeout, lifecycle_for_create_result, network_auth_proxy_port,
+        parse_network_auth_proxy_config, replace_menu_command_bindings, resident_lifecycle,
+        rounded_i32, rounded_u32, screen_bounds_payload, smoke_deadline_for_mode,
+        to_tao_dock_progress, track_context_menu_command_binding, unsupported_screen,
+        validate_positive_finite, ContextMenuCommandBinding, LogicalScreenArea, MenuCommandBinding,
+        PhysicalScreenArea, RunMode, WebViewExposedApi, WebViewIsolationPolicy,
+        WebViewNavigationDecision, WebViewNavigationPolicy, WebViewNavigationState, WindowCommand,
+        WindowCommandResponse, WindowCreateRequest, WindowId, WindowLifecycleEvent,
+        WindowMethodPort, WindowRegistry, WINDOW_COMMAND_IDLE_POLL_INTERVAL,
+        WINDOW_SMOKE_TEST_TIMEOUT,
     };
     use host_protocol::{
-        DockProgressState, DockSetProgressOptionsPayload, DockSetProgressPayload,
-        HostProtocolEnvelope, HostProtocolError, WindowBoundsPayload, WindowCreatePayload,
+        CookieStoreCookiePayload, CookieStoreSameSitePayload, DockProgressState,
+        DockSetProgressOptionsPayload, DockSetProgressPayload, HostProtocolEnvelope,
+        HostProtocolError, SessionProfileResourcePayload, WindowBoundsPayload, WindowCreatePayload,
         WindowCreateResponse, WindowRegistryEventPhase,
     };
     use std::collections::HashSet;
@@ -9224,6 +9327,14 @@ mod tests {
     impl Drop for ContextMenuEventSenderGuard {
         fn drop(&mut self) {
             let _ = clear_context_menu_runtime_event_state();
+        }
+    }
+
+    struct CookieStoreEventSenderGuard;
+
+    impl Drop for CookieStoreEventSenderGuard {
+        fn drop(&mut self) {
+            let _ = clear_cookie_store_runtime_event_state();
         }
     }
 
@@ -9493,6 +9604,84 @@ mod tests {
         assert!(cookie_domain_matches_url(".example.test", &url));
         assert!(!cookie_domain_matches_url("evil.example.test", &url));
         assert!(!cookie_domain_matches_url("test", &url));
+    }
+
+    #[test]
+    fn cookie_store_mutation_events_use_typed_payloads() {
+        let _guard = WINDOW_EVENT_TEST_LOCK.lock().expect("window event lock");
+        let (sender, receiver) = mpsc::channel();
+        install_cookie_store_event_sender(sender)
+            .expect("cookie store event sender should install");
+        let _event_sender_guard = CookieStoreEventSenderGuard;
+        let profile =
+            SessionProfileResourcePayload::new("session-profile:workspace-1", 0, "workspace:1");
+        let cookie = CookieStoreCookiePayload::new("token", "secret", "example.test", "/")
+            .with_secure(true)
+            .with_same_site(CookieStoreSameSitePayload::Lax);
+
+        emit_cookie_store_set_event(&profile, "https://example.test/account", cookie.clone());
+        emit_cookie_store_removed_event(&profile, "https://example.test/account", "token");
+
+        let set_event = receiver.recv().expect("set event should be emitted");
+        let HostProtocolEnvelope::Event {
+            method, payload, ..
+        } = set_event
+        else {
+            panic!("expected set event envelope");
+        };
+        assert_eq!(method, host_protocol::COOKIE_STORE_EVENT);
+        let payload = payload.expect("set event should include payload");
+        assert_eq!(
+            payload,
+            serde_json::json!({
+                "type": "cookie-store-event",
+                "timestamp": payload["timestamp"],
+                "phase": "set",
+                "profile": {
+                    "kind": "session-profile",
+                    "id": "session-profile:workspace-1",
+                    "generation": 0,
+                    "ownerScope": "workspace:1",
+                    "state": "open"
+                },
+                "url": "https://example.test/account",
+                "cookie": {
+                    "name": "token",
+                    "value": "secret",
+                    "domain": "example.test",
+                    "path": "/",
+                    "secure": true,
+                    "sameSite": "lax"
+                }
+            })
+        );
+
+        let removed_event = receiver.recv().expect("removed event should be emitted");
+        let HostProtocolEnvelope::Event {
+            method, payload, ..
+        } = removed_event
+        else {
+            panic!("expected removed event envelope");
+        };
+        assert_eq!(method, host_protocol::COOKIE_STORE_EVENT);
+        let payload = payload.expect("removed event should include payload");
+        assert_eq!(
+            payload,
+            serde_json::json!({
+                "type": "cookie-store-event",
+                "timestamp": payload["timestamp"],
+                "phase": "removed",
+                "profile": {
+                    "kind": "session-profile",
+                    "id": "session-profile:workspace-1",
+                    "generation": 0,
+                    "ownerScope": "workspace:1",
+                    "state": "open"
+                },
+                "url": "https://example.test/account",
+                "name": "token"
+            })
+        );
     }
 
     #[test]

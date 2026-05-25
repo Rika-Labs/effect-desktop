@@ -28,6 +28,8 @@ The public service is Layer-first and test-substitutable. The TypeScript service
 
 `url` must be absolute `http` or `https` and cookie paths must start with `/`.
 
+`events(profile?)` emits mutation events from the native host. Successful `set` calls emit phase `"set"` with the cookie payload. Successful `remove` calls emit phase `"removed"` when the host deletes a matching cookie name. `get` does not emit events.
+
 ## Cookie Shape
 
 Cookies are plain data:
@@ -51,7 +53,7 @@ Cookies are plain data:
 | Windows  | `partial` | `host-cookie-store-live-webview-required` |
 | Linux    | `partial` | `host-cookie-store-live-webview-required` |
 
-`isSupported` returns `{ supported: true }` from the host. Use `makeCookieStoreMemoryClient()` for deterministic success and event tests; use `makeCookieStoreUnsupportedClient()` for the typed unsupported path.
+`isSupported` returns `{ supported: true }` from the host. Use `makeCookieStoreMemoryClient()` for deterministic success tests; use `makeCookieStoreUnsupportedClient()` for the typed unsupported path.
 
 ## Related
 
