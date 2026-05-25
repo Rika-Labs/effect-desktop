@@ -14,8 +14,7 @@ import {
   NetworkAuthSupportedResult
 } from "./contracts/network-auth.js"
 import type { SessionProfileHandle } from "./contracts/session-profile.js"
-import { subscribeNativeEvent } from "./event-stream.js"
-import { decodeNativeInput, runNativeRpc } from "./native-client.js"
+import { decodeNativeInput, runNativeRpc, runNativeRpcStream } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
 
@@ -72,16 +71,21 @@ const networkAuthCapabilityFact = (method: "handleAuth" | "handleCertificate") =
     support: UnsupportedSupport
   })
 
-export const NetworkAuthCapabilityFacts = Object.freeze([
+const UnsupportedCapabilityFacts = Object.freeze([
   networkAuthCapabilityFact("handleAuth"),
   networkAuthCapabilityFact("handleCertificate")
 ])
 
-export const NetworkAuthRpcEvents = Object.freeze({
-  Event: { payload: NetworkAuthEvent }
+const NetworkAuthEventStream = NativeSurface.event(Surface, "Event", {
+  payload: NetworkAuthEvent,
+  support: NativeSurface.support.supported
 })
 
-const NetworkAuthRpcGroup = RpcGroup.make(NetworkAuthIsSupported, NetworkAuthSetProxy)
+const NetworkAuthRpcGroup = RpcGroup.make(
+  NetworkAuthIsSupported,
+  NetworkAuthSetProxy,
+  NetworkAuthEventStream
+)
 
 export const NetworkAuthRpcs: RpcGroup.RpcGroup<NetworkAuthRpc> = NetworkAuthRpcGroup
 
@@ -114,16 +118,23 @@ export const NetworkAuthHandlersLive = NetworkAuthRpcGroup.toLayer({
     Effect.gen(function* () {
       const networkAuth = yield* NetworkAuth
       return yield* networkAuth.setProxy(input)
-    })
+    }),
+  "NetworkAuth.events.Event": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const networkAuth = yield* NetworkAuth
+        return networkAuth.events()
+      })
+    )
 })
 
 export const NetworkAuthSurface = NativeSurface.make(Surface, NetworkAuthRpcGroup, {
   service: NetworkAuth,
   capabilities: NetworkAuthMethodNames,
   handlers: NetworkAuthHandlersLive,
-  capabilityFacts: NetworkAuthCapabilityFacts,
-  client: (client) => networkAuthClientFromRpcClient(client, undefined),
-  bridgeClient: (client, exchange) => networkAuthClientFromRpcClient(client, exchange)
+  capabilityFacts: UnsupportedCapabilityFacts,
+  client: (client) => networkAuthClientFromRpcClient(client),
+  bridgeClient: (client, exchange) => networkAuthBridgeClientFromRpcClient(client, exchange)
 })
 
 export const makeNetworkAuthMemoryClient = (): Effect.Effect<NetworkAuthClientApi, never, never> =>
@@ -162,8 +173,7 @@ export const makeNetworkAuthUnsupportedClient = (): NetworkAuthClientApi =>
   } satisfies NetworkAuthClientApi)
 
 const networkAuthClientFromRpcClient = (
-  client: DesktopRpcClient<NetworkAuthRpc>,
-  exchange: BridgeClientExchange | undefined
+  client: DesktopRpcClient<NetworkAuthRpc>
 ): NetworkAuthClientApi =>
   Object.freeze({
     isSupported: () =>
@@ -175,7 +185,27 @@ const networkAuthClientFromRpcClient = (
         )
       ),
     events: (profile) =>
-      subscribeNativeEvent(exchange, EventMethod, NetworkAuthEvent).pipe(
+      runNetworkAuthRpcStream(
+        client["NetworkAuth.events.Event"](undefined),
+        "NetworkAuth.events.Event"
+      ).pipe(Stream.filter((event) => profile === undefined || event.profile.id === profile.id))
+  } satisfies NetworkAuthClientApi)
+
+const networkAuthBridgeClientFromRpcClient = (
+  client: DesktopRpcClient<NetworkAuthRpc>,
+  exchange: BridgeClientExchange
+): NetworkAuthClientApi =>
+  Object.freeze({
+    isSupported: () =>
+      runNetworkAuthRpc(client["NetworkAuth.isSupported"](undefined), "NetworkAuth.isSupported"),
+    setProxy: (input) =>
+      decodeNativeInput(NetworkAuthSetProxyInput, input, "NetworkAuth.setProxy").pipe(
+        Effect.flatMap((decoded) =>
+          runNetworkAuthRpc(client["NetworkAuth.setProxy"](decoded), "NetworkAuth.setProxy")
+        )
+      ),
+    events: (profile) =>
+      NativeSurface.subscribeEvent(exchange, NetworkAuthEventStream).pipe(
         Stream.filter((event) => profile === undefined || event.profile.id === profile.id)
       )
   } satisfies NetworkAuthClientApi)
@@ -184,6 +214,11 @@ const runNetworkAuthRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
   operation: string
 ): Effect.Effect<A, NetworkAuthError, never> => runNativeRpc(effect, operation, Surface)
+
+const runNetworkAuthRpcStream = <A, E>(
+  stream: Stream.Stream<A, E, never>,
+  operation: string
+): Stream.Stream<A, NetworkAuthError, never> => runNativeRpcStream(stream, operation, Surface)
 
 const unsupportedError = (operation: string): HostProtocolError =>
   new HostProtocolUnsupportedError({

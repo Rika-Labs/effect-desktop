@@ -2,12 +2,18 @@ import { expect, test } from "bun:test"
 import { readFile } from "node:fs/promises"
 import {
   type BridgeClientExchange,
+  type HostProtocolEnvelope,
   HostProtocolEventEnvelope,
   HostProtocolInvalidArgumentError,
-  HostProtocolInvalidOutputError
+  HostProtocolInvalidOutputError,
+  type HostProtocolRequestEnvelope,
+  HostProtocolResponseEnvelope,
+  HostProtocolStreamByRequestEnvelope,
+  makeDesktopClientProtocol
 } from "@orika/bridge"
 import { makeResourceId, P } from "@orika/core"
-import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Schema, Stream } from "effect"
+import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Queue, Schema, Stream } from "effect"
+import { RpcClient, RpcSchema } from "effect/unstable/rpc"
 
 import { makeNativeCapabilityManifest } from "./capabilities.js"
 import { NetworkAuthEvent, NetworkAuthProxyUpdatedEvent } from "./contracts/network-auth.js"
@@ -16,7 +22,6 @@ import {
   makeNetworkAuthMemoryClient,
   makeNetworkAuthUnsupportedClient,
   NetworkAuth,
-  NetworkAuthCapabilityFacts,
   type NetworkAuthClientApi,
   NetworkAuthRpcs,
   NetworkAuthSurface
@@ -61,6 +66,8 @@ test("NetworkAuth public surface omits shallow service and layer helpers", () =>
       )
 
       for (const removedName of [
+        "NetworkAuth" + "CapabilityFacts",
+        "NetworkAuthRpcEvents",
         "NetworkAuthServiceApi",
         "class NetworkAuthClient",
         "NetworkAuthLive",
@@ -77,13 +84,37 @@ test("NetworkAuth public surface omits shallow service and layer helpers", () =>
 
 test("NetworkAuth exposes isSupported and setProxy as callable RPCs", () => {
   const callableTags = Array.from(NetworkAuthRpcs.requests.keys()).toSorted()
-  expect(callableTags).toEqual(["NetworkAuth.isSupported", "NetworkAuth.setProxy"])
+  expect(callableTags).toEqual([
+    "NetworkAuth.events.Event",
+    "NetworkAuth.isSupported",
+    "NetworkAuth.setProxy"
+  ])
   for (const method of SupportedMethods) {
     expect(callableTags).toContain(`NetworkAuth.${method}`)
   }
   for (const method of UnsupportedMethods) {
     expect(callableTags).not.toContain(`NetworkAuth.${method}`)
   }
+})
+
+test("NetworkAuth event schema is owned by the RPC stream contract", async () => {
+  const networkAuthModule = await import("./network-auth.js")
+  const eventRpc = NetworkAuthRpcs.requests.get("NetworkAuth.events.Event")
+
+  expect("NetworkAuthRpcEvents" in networkAuthModule).toBe(false)
+  expect(eventRpc).toBeDefined()
+  expect(eventRpc === undefined ? false : RpcSchema.isStreamSchema(eventRpc.successSchema)).toBe(
+    true
+  )
+  if (eventRpc !== undefined && RpcSchema.isStreamSchema(eventRpc.successSchema)) {
+    expect(eventRpc.successSchema.success).toBe(NetworkAuthEvent)
+  }
+
+  const eventDoc = NetworkAuthSurface.schemaDocs.find(
+    (doc) => doc.tag === "NetworkAuth.events.Event"
+  )
+  expect(eventDoc?.kind).toBe("stream")
+  expect(eventDoc?.callable).toBe(true)
 })
 
 test("NetworkAuth isSupported reports supported result through the service", () =>
@@ -278,6 +309,82 @@ test("NetworkAuth event types reject impossible phase payloads", () => {
   ])
 })
 
+test("NetworkAuth direct client consumes the canonical RPC event stream", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
+      const requests: HostProtocolRequestEnvelope[] = []
+      const protocolLayer = Layer.effect(RpcClient.Protocol)(
+        makeDesktopClientProtocol(
+          {
+            send: (envelope) => {
+              if (envelope.kind !== "request") {
+                return Effect.void
+              }
+              requests.push(envelope)
+              return Effect.all(
+                [
+                  Queue.offer(
+                    queue,
+                    new HostProtocolStreamByRequestEnvelope({
+                      kind: "stream",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_001,
+                      traceId: envelope.traceId,
+                      payload: {
+                        type: "network-auth-event",
+                        timestamp: 1_710_000_000_001,
+                        phase: "proxy-updated",
+                        profile: Profile
+                      }
+                    })
+                  ),
+                  Queue.offer(
+                    queue,
+                    new HostProtocolResponseEnvelope({
+                      kind: "response",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_002,
+                      traceId: envelope.traceId
+                    })
+                  )
+                ],
+                { discard: true }
+              )
+            },
+            run: (onEnvelope) =>
+              Stream.fromQueue(queue).pipe(
+                Stream.runForEach(onEnvelope),
+                Effect.andThen(Effect.never)
+              )
+          },
+          {
+            nextRequestId: () => "network-auth-event-rpc",
+            nextTraceId: () => "trace-network-auth-event-rpc"
+          }
+        )
+      )
+
+      const event = yield* runScoped(
+        Effect.gen(function* () {
+          const networkAuth = yield* NetworkAuth
+          return yield* networkAuth.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+        }),
+        Layer.provide(NetworkAuthSurface.clientLayer, protocolLayer)
+      )
+
+      expect(event).toEqual(
+        new NetworkAuthProxyUpdatedEvent({
+          type: "network-auth-event",
+          timestamp: 1_710_000_000_001,
+          phase: "proxy-updated",
+          profile: Profile
+        })
+      )
+      expect(requests.map((request) => request.method)).toEqual(["NetworkAuth.events.Event"])
+    })
+  ))
+
 test("NetworkAuth bridge client rejects inconsistent event phase payloads as InvalidOutput", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -402,9 +509,10 @@ test("NetworkAuth bridge client filters event streams by session profile", () =>
   ))
 
 test("NetworkAuth declares the 2 unsupported methods as non-callable capability facts", () => {
-  const factTags = NetworkAuthCapabilityFacts.map((fact) => fact.tag).toSorted()
+  const facts = networkAuthCapabilityFacts()
+  const factTags = facts.map((fact) => fact.tag).toSorted()
   expect(factTags).toEqual(UnsupportedMethods.map((method) => `NetworkAuth.${method}`).toSorted())
-  for (const fact of NetworkAuthCapabilityFacts) {
+  for (const fact of facts) {
     expect(fact.support).toEqual(UnsupportedSupport)
   }
 })
@@ -431,12 +539,17 @@ test("NetworkAuth capability facts surface in the manifest and stay non-callable
         const fact = byTag.get(`NetworkAuth.${method}`)
         expect(fact).toBeDefined()
         expect(fact?.support).toEqual(UnsupportedSupport)
+        expect(fact?.capability.kind).toBe("native.invoke")
       }
 
       const callableFactTags = NetworkAuthSurface.schemaDocs
         .filter((doc) => doc.callable)
         .map((doc) => doc.tag)
-      expect(callableFactTags).toEqual(["NetworkAuth.isSupported", "NetworkAuth.setProxy"])
+      expect(callableFactTags).toEqual([
+        "NetworkAuth.isSupported",
+        "NetworkAuth.setProxy",
+        "NetworkAuth.events.Event"
+      ])
 
       const nonCallableTags = NetworkAuthSurface.schemaDocs
         .filter((doc) => !doc.callable)
@@ -461,6 +574,9 @@ const runScoped = <A, E, R>(
 
 const networkAuthLayer = (client: NetworkAuthClientApi): Layer.Layer<NetworkAuth> =>
   Layer.succeed(NetworkAuth)(client)
+
+const networkAuthCapabilityFacts = () =>
+  NetworkAuthSurface.schemaDocs.filter((doc) => !doc.callable)
 
 const expectInvalidOutput = <A, E>(exit: Exit.Exit<A, E>): void => {
   expect(exit._tag).toBe("Failure")
