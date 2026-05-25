@@ -13147,6 +13147,218 @@ impl BrowsingDataSupportedPayload {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum BrowsingDataEventPhasePayload {
+    Cleared,
+    Failed,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct BrowsingDataEventPayload {
+    r#type: String,
+    timestamp: u64,
+    phase: BrowsingDataEventPhasePayload,
+    profile: SessionProfileResourcePayload,
+    cleared: Option<Vec<BrowsingDataTypePayload>>,
+    unsupported: Option<Vec<BrowsingDataTypePayload>>,
+    message: Option<String>,
+}
+
+impl BrowsingDataEventPayload {
+    pub fn cleared(
+        timestamp: u64,
+        profile: SessionProfileResourcePayload,
+        cleared: Vec<BrowsingDataTypePayload>,
+        unsupported: Vec<BrowsingDataTypePayload>,
+    ) -> Self {
+        Self {
+            r#type: "browsing-data-event".to_string(),
+            timestamp,
+            phase: BrowsingDataEventPhasePayload::Cleared,
+            profile,
+            cleared: Some(cleared),
+            unsupported: Some(unsupported),
+            message: None,
+        }
+    }
+
+    pub fn failed(
+        timestamp: u64,
+        profile: SessionProfileResourcePayload,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            r#type: "browsing-data-event".to_string(),
+            timestamp,
+            phase: BrowsingDataEventPhasePayload::Failed,
+            profile,
+            cleared: None,
+            unsupported: None,
+            message: Some(message.into()),
+        }
+    }
+
+    #[cfg(test)]
+    fn new_for_test(
+        timestamp: u64,
+        phase: BrowsingDataEventPhasePayload,
+        profile: SessionProfileResourcePayload,
+    ) -> Self {
+        Self {
+            r#type: "browsing-data-event".to_string(),
+            timestamp,
+            phase,
+            profile,
+            cleared: None,
+            unsupported: None,
+            message: None,
+        }
+    }
+
+    #[cfg(test)]
+    fn with_cleared_for_test(
+        mut self,
+        cleared: Vec<BrowsingDataTypePayload>,
+        unsupported: Vec<BrowsingDataTypePayload>,
+    ) -> Self {
+        self.cleared = Some(cleared);
+        self.unsupported = Some(unsupported);
+        self
+    }
+
+    #[cfg(test)]
+    fn with_message_for_test(mut self, message: impl Into<String>) -> Self {
+        self.message = Some(message.into());
+        self
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SerializableBrowsingDataEventPayload<'a> {
+    r#type: &'a str,
+    timestamp: u64,
+    phase: BrowsingDataEventPhasePayload,
+    profile: &'a SessionProfileResourcePayload,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cleared: Option<&'a [BrowsingDataTypePayload]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    unsupported: Option<&'a [BrowsingDataTypePayload]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<&'a str>,
+}
+
+impl<'a> TryFrom<&'a BrowsingDataEventPayload> for SerializableBrowsingDataEventPayload<'a> {
+    type Error = &'static str;
+
+    fn try_from(payload: &'a BrowsingDataEventPayload) -> Result<Self, Self::Error> {
+        validate_browsing_data_event_payload(
+            payload.phase,
+            &payload.cleared,
+            &payload.unsupported,
+            &payload.message,
+        )?;
+        Ok(Self {
+            r#type: &payload.r#type,
+            timestamp: payload.timestamp,
+            phase: payload.phase,
+            profile: &payload.profile,
+            cleared: payload.cleared.as_deref(),
+            unsupported: payload.unsupported.as_deref(),
+            message: payload.message.as_deref(),
+        })
+    }
+}
+
+impl Serialize for BrowsingDataEventPayload {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        SerializableBrowsingDataEventPayload::try_from(self)
+            .map_err(ser::Error::custom)?
+            .serialize(serializer)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawBrowsingDataEventPayload {
+    r#type: String,
+    timestamp: u64,
+    phase: BrowsingDataEventPhasePayload,
+    profile: SessionProfileResourcePayload,
+    #[serde(default)]
+    cleared: Option<Vec<BrowsingDataTypePayload>>,
+    #[serde(default)]
+    unsupported: Option<Vec<BrowsingDataTypePayload>>,
+    #[serde(default)]
+    message: Option<String>,
+}
+
+impl TryFrom<RawBrowsingDataEventPayload> for BrowsingDataEventPayload {
+    type Error = &'static str;
+
+    fn try_from(raw: RawBrowsingDataEventPayload) -> Result<Self, Self::Error> {
+        if raw.r#type != "browsing-data-event" {
+            return Err("browsing data event type must be browsing-data-event");
+        }
+        validate_browsing_data_event_payload(
+            raw.phase,
+            &raw.cleared,
+            &raw.unsupported,
+            &raw.message,
+        )?;
+        Ok(Self {
+            r#type: raw.r#type,
+            timestamp: raw.timestamp,
+            phase: raw.phase,
+            profile: raw.profile,
+            cleared: raw.cleared,
+            unsupported: raw.unsupported,
+            message: raw.message,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for BrowsingDataEventPayload {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        RawBrowsingDataEventPayload::deserialize(deserializer)?
+            .try_into()
+            .map_err(de::Error::custom)
+    }
+}
+
+fn validate_browsing_data_event_payload(
+    phase: BrowsingDataEventPhasePayload,
+    cleared: &Option<Vec<BrowsingDataTypePayload>>,
+    unsupported: &Option<Vec<BrowsingDataTypePayload>>,
+    message: &Option<String>,
+) -> Result<(), &'static str> {
+    match phase {
+        BrowsingDataEventPhasePayload::Cleared
+            if cleared.is_some() && unsupported.is_some() && message.is_none() =>
+        {
+            Ok(())
+        }
+        BrowsingDataEventPhasePayload::Cleared => {
+            Err("cleared browsing data events require cleared and unsupported arrays only")
+        }
+        BrowsingDataEventPhasePayload::Failed
+            if cleared.is_none() && unsupported.is_none() && message.is_some() =>
+        {
+            Ok(())
+        }
+        BrowsingDataEventPhasePayload::Failed => {
+            Err("failed browsing data events require message only")
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", rename_all_fields = "camelCase")]
 pub enum SessionPermissionKindPayload {
@@ -18631,29 +18843,29 @@ mod tests {
         AttachmentIntakeEventPhase, AttachmentIntakeIngestPayload, AttachmentIntakeState,
         AutostartEnablePayload, AutostartEventPayload, AutostartEventPhasePayload,
         AutostartMechanismPayload, AutostartStatusPayload, BrowsingDataClearPayload,
-        BrowsingDataClearResultPayload, BrowsingDataListTypesPayload, BrowsingDataSupportedPayload,
-        BrowsingDataTypePayload, CanonicalPathPayload, ClipboardCapabilityPayload,
-        ClipboardHtmlPayload, ClipboardImagePayload, ClipboardIsSupportedPayload,
-        ClipboardSupportedPayload, ClipboardTextPayload, ContextMenuActivatedEventPayload,
-        CookieStoreCookiePayload, CookieStoreEventPayload, CookieStoreEventPhasePayload,
-        CookieStoreGetPayload, CookieStoreGetResultPayload, CookieStoreRemovePayload,
-        CookieStoreSetPayload, CookieStoreSupportedPayload, CrashReporterBreadcrumbPayload,
-        CrashReporterFlushPayload, CrashReporterGetReportsPayload, CrashReporterReportPayload,
-        CrashReporterStartPayload, DiagnosticsBundleCollectPayload,
-        DiagnosticsBundleCollectResultPayload, DiagnosticsBundleRedactPayload,
-        DiagnosticsBundleRedactResultPayload, DiagnosticsBundleRedactionEvidencePayload,
-        DiagnosticsBundleRedactionPolicyPayload, DiagnosticsBundleSourceKind,
-        DiagnosticsBundleSourceSummaryPayload, DiagnosticsBundleSupportedPayload,
-        DiagnosticsBundleWritePayload, DiagnosticsBundleWriteResultPayload, DialogConfirmPayload,
-        DialogConfirmResultPayload, DialogFileFilterPayload, DialogLevelPayload,
-        DialogMessagePayload, DialogOpenDirectoryPayload, DialogOpenFilePayload,
-        DialogOpenResultPayload, DialogSaveFilePayload, DialogSaveResultPayload,
-        DisplayCaptureActorKind, DisplayCaptureActorPayload, DisplayCaptureEventPayload,
-        DisplayCaptureEventPhase, DisplayCaptureGrantKind, DisplayCaptureGrantPayload,
-        DisplayCaptureImagePayload, DisplayCaptureMetadataPayload, DisplayCaptureRegionPayload,
-        DisplayCaptureRequestPayload, DisplayCaptureResultPayload, DisplayCaptureSource,
-        DisplayCaptureSupportedPayload, DisplayCaptureTargetPayload,
-        DistributionParityEventPayload, DistributionParityEventPhase,
+        BrowsingDataClearResultPayload, BrowsingDataEventPayload, BrowsingDataEventPhasePayload,
+        BrowsingDataListTypesPayload, BrowsingDataSupportedPayload, BrowsingDataTypePayload,
+        CanonicalPathPayload, ClipboardCapabilityPayload, ClipboardHtmlPayload,
+        ClipboardImagePayload, ClipboardIsSupportedPayload, ClipboardSupportedPayload,
+        ClipboardTextPayload, ContextMenuActivatedEventPayload, CookieStoreCookiePayload,
+        CookieStoreEventPayload, CookieStoreEventPhasePayload, CookieStoreGetPayload,
+        CookieStoreGetResultPayload, CookieStoreRemovePayload, CookieStoreSetPayload,
+        CookieStoreSupportedPayload, CrashReporterBreadcrumbPayload, CrashReporterFlushPayload,
+        CrashReporterGetReportsPayload, CrashReporterReportPayload, CrashReporterStartPayload,
+        DiagnosticsBundleCollectPayload, DiagnosticsBundleCollectResultPayload,
+        DiagnosticsBundleRedactPayload, DiagnosticsBundleRedactResultPayload,
+        DiagnosticsBundleRedactionEvidencePayload, DiagnosticsBundleRedactionPolicyPayload,
+        DiagnosticsBundleSourceKind, DiagnosticsBundleSourceSummaryPayload,
+        DiagnosticsBundleSupportedPayload, DiagnosticsBundleWritePayload,
+        DiagnosticsBundleWriteResultPayload, DialogConfirmPayload, DialogConfirmResultPayload,
+        DialogFileFilterPayload, DialogLevelPayload, DialogMessagePayload,
+        DialogOpenDirectoryPayload, DialogOpenFilePayload, DialogOpenResultPayload,
+        DialogSaveFilePayload, DialogSaveResultPayload, DisplayCaptureActorKind,
+        DisplayCaptureActorPayload, DisplayCaptureEventPayload, DisplayCaptureEventPhase,
+        DisplayCaptureGrantKind, DisplayCaptureGrantPayload, DisplayCaptureImagePayload,
+        DisplayCaptureMetadataPayload, DisplayCaptureRegionPayload, DisplayCaptureRequestPayload,
+        DisplayCaptureResultPayload, DisplayCaptureSource, DisplayCaptureSupportedPayload,
+        DisplayCaptureTargetPayload, DistributionParityEventPayload, DistributionParityEventPhase,
         DistributionParityEvidenceKind, DistributionParityEvidencePayload,
         DistributionParitySupportedPayload, DistributionParityVerifyPayload,
         DistributionParityVerifyResultPayload, DockJumpListItemPayload, DockProgressState,
@@ -23276,6 +23488,73 @@ mod tests {
             .expect("support payload should encode"),
             r#"{"supported":false,"reason":"host-browsing-data-unavailable"}"#
         );
+        assert_eq!(
+            serde_json::to_string(&BrowsingDataEventPayload::cleared(
+                1_710_000_000_000,
+                profile.clone(),
+                vec![BrowsingDataTypePayload::Cookies],
+                Vec::new()
+            ))
+            .expect("cleared event should encode"),
+            r#"{"type":"browsing-data-event","timestamp":1710000000000,"phase":"cleared","profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"cleared":["cookies"],"unsupported":[]}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&BrowsingDataEventPayload::failed(
+                1_710_000_000_001,
+                profile,
+                "host failed"
+            ))
+            .expect("failed event should encode"),
+            r#"{"type":"browsing-data-event","timestamp":1710000000001,"phase":"failed","profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"message":"host failed"}"#
+        );
+    }
+
+    #[test]
+    fn browsing_data_events_reject_inconsistent_phase_payloads() {
+        for source in [
+            r#"{"type":"browsing-data-event","timestamp":1710000000000,"phase":"cleared","profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"cleared":["cookies"],"message":"bad shape"}"#,
+            r#"{"type":"browsing-data-event","timestamp":1710000000000,"phase":"failed","profile":{"kind":"session-profile","id":"session-profile:workspace-1","generation":0,"ownerScope":"workspace:1","state":"open"},"cleared":["cookies"],"unsupported":[],"message":"bad shape"}"#,
+        ] {
+            let error = serde_json::from_str::<BrowsingDataEventPayload>(source)
+                .expect_err("inconsistent browsing data event should be rejected");
+            assert!(
+                error.to_string().contains("browsing data")
+                    || error.to_string().contains("message")
+                    || error.to_string().contains("phase"),
+                "unexpected error: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn browsing_data_events_reject_inconsistent_phase_payloads_before_serializing() {
+        let profile =
+            SessionProfileResourcePayload::new("session-profile:workspace-1", 0, "workspace:1");
+
+        for event in [
+            BrowsingDataEventPayload::new_for_test(
+                1_710_000_000_000,
+                BrowsingDataEventPhasePayload::Cleared,
+                profile.clone(),
+            )
+            .with_message_for_test("bad shape"),
+            BrowsingDataEventPayload::new_for_test(
+                1_710_000_000_000,
+                BrowsingDataEventPhasePayload::Failed,
+                profile,
+            )
+            .with_cleared_for_test(vec![BrowsingDataTypePayload::Cookies], Vec::new())
+            .with_message_for_test("bad shape"),
+        ] {
+            let error = serde_json::to_string(&event)
+                .expect_err("inconsistent browsing data event should not encode");
+            assert!(
+                error.to_string().contains("browsing data")
+                    || error.to_string().contains("message")
+                    || error.to_string().contains("phase"),
+                "unexpected error: {error}"
+            );
+        }
     }
 
     #[test]

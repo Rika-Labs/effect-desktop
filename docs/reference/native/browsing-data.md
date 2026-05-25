@@ -27,6 +27,8 @@ The public service is Layer-first and test-substitutable. The TypeScript service
 
 `clear` accepts `{ profile, types }` and returns `{ cleared, unsupported }`. The current Wry provider exposes profile-level clear primitives; the result reports the portable buckets the host cleared for the request. `listTypes` returns the same portable buckets without probing browser storage.
 
+`events(profile?)` emits host-initiated clear results. Successful `clear` calls emit phase `"cleared"` with the cleared and unsupported bucket arrays. The current host does not observe browser-originated storage changes.
+
 ## Data Types
 
 The contract names the portable data buckets directly:
@@ -48,7 +50,7 @@ The host binds `SessionProfileHandle` to Wry `WebContext` data stores for child 
 | Windows  | `supported` |
 | Linux    | `supported` |
 
-`isSupported` returns `{ supported: true }` from the host. Use `makeBrowsingDataMemoryClient()` for deterministic success and event tests; use `makeBrowsingDataUnsupportedClient()` for the typed unsupported path.
+`isSupported` returns `{ supported: true }` from the host. Use `makeBrowsingDataMemoryClient()` for deterministic success tests; use `makeBrowsingDataUnsupportedClient()` for the typed unsupported path.
 
 ## Related
 
