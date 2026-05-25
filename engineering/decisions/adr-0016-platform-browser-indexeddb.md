@@ -8,17 +8,17 @@ Accepted
 
 The renderer has zero `@effect/platform-browser` integration. Apps that want typed storage lighter than a full WASM SQLite payload must hand-wire raw IndexedDB — no schema validation, no versioned migrations, no Effect-native API.
 
-`@effect/platform-browser` ships `IndexedDbTable`, `IndexedDbVersion`, `IndexedDbMigration`, `IndexedDbDatabase`, `IndexedDbQuery`, `BrowserKeyValueStore`, and `BrowserContext.layer`. The `IndexedDb*` modules integrate directly with `Model.Class` — the same definitions used for SQL storage work for IndexedDB tables. `BrowserKeyValueStore` covers non-schema config (theme preference, last window position, etc.).
+`@effect/platform-browser` ships `IndexedDb.layerWindow`, `IndexedDbTable`, `IndexedDbVersion`, `IndexedDbDatabase`, `IndexedDbQueryBuilder`, and `BrowserKeyValueStore`. The `IndexedDb*` modules integrate directly with `Model.Class` — the same definitions used for SQL storage work for IndexedDB tables. `BrowserKeyValueStore` covers non-schema config (theme preference, last window position, etc.).
 
 T17 (`@effect/sql-sqlite-wasm`, [ADR-0015](adr-0015-sql-sqlite-wasm-renderer.md)) uses `@effect/platform-browser` as its IndexedDB backing when OPFS is unavailable. T18 therefore is a dependency of T17.
 
 ## Decision
 
-Add `@effect/platform-browser` as a renderer dependency. Provide `BrowserContext.layer` from `DesktopProvider`.
+Add `@effect/platform-browser` as a renderer dependency. Provide `IndexedDb.layerWindow` from `DesktopProvider`.
 
-- `DesktopProvider` mounts `BrowserContext.layer` so any service in the renderer's `MainLayer` (T20) can consume browser-platform capabilities.
+- `DesktopProvider` mounts the upstream `IndexedDb.layerWindow` directly so any service in the renderer's `MainLayer` (T20) can consume browser-platform capabilities without an ORIKA wrapper.
 - `IndexedDbTable` and `IndexedDbVersion` are exposed for use with shared `Model.Class` definitions.
-- `IndexedDbMigration` runs at layer boot when the schema version changes; no manual migration management.
+- `IndexedDbDatabase` migrations run at layer boot when the schema version changes; no manual migration management.
 - `BrowserKeyValueStore` is exposed for non-schema config.
 - T17's `@effect/sql-sqlite-wasm` uses this layer as its IndexedDB backing where OPFS is unavailable — no separate wiring needed.
 
@@ -39,8 +39,8 @@ Cross-links: [ADR-0015](adr-0015-sql-sqlite-wasm-renderer.md) (WASM SQLite uses 
 **Positive**
 
 - Typed, schema-validated IndexedDB storage available without the full WASM SQLite payload.
-- `BrowserContext.layer` covers browser-platform services for all renderer code in one layer.
-- `IndexedDbMigration` makes schema evolution explicit and version-tracked.
+- `IndexedDb.layerWindow` covers browser IndexedDB service access for all renderer code.
+- `IndexedDbDatabase` makes schema evolution explicit and version-tracked.
 
 **Negative**
 
@@ -58,7 +58,7 @@ A renderer template using `IndexedDbTable` declared from a shared `Model.Class` 
 ## Migration notes
 
 1. Add `@effect/platform-browser` to `packages/react`.
-2. Mount `BrowserContext.layer` in `DesktopProvider`.
-3. Expose `IndexedDbTable`, `IndexedDbMigration`, and `BrowserKeyValueStore` from `packages/react`.
+2. Mount `IndexedDb.layerWindow` in `DesktopProvider`.
+3. Expose `IndexedDbTable`, `IndexedDbDatabase`, and `BrowserKeyValueStore` from `packages/react`.
 4. Add renderer template examples for each documented use-case.
 5. Confirm T17 and T19 resolve their IndexedDB backing from this layer automatically.

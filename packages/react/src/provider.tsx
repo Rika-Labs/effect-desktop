@@ -1,8 +1,7 @@
 import { makeHostProtocolInvalidStateError } from "@orika/bridge"
 import type { WindowError } from "@orika/native"
 import type { WindowCreateOptions, WindowHandle } from "@orika/native/contracts"
-import type { IndexedDb } from "@orika/platform-browser"
-import { BrowserContext } from "@orika/platform-browser/context"
+import { IndexedDb } from "@orika/platform-browser"
 import { RegistryContext as DesktopAtomRegistryContext } from "@effect/atom-react"
 import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, type Config } from "effect"
 import { AtomRegistry, Reactivity } from "effect/unstable/reactivity"
@@ -68,7 +67,7 @@ const makeBaseContext = (client: DesktopClient): DesktopRuntimeContext => {
   const registry = AtomRegistry.make()
   const runtimeLayer = Layer.merge(
     Layer.provide(Reactivity.layer, AtomRegistry.layer),
-    BrowserContext.layer
+    IndexedDb.layerWindow
   )
   const runtime = ManagedRuntime.make(runtimeLayer)
   return { client, registry, runtime }

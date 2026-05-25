@@ -22,10 +22,6 @@
       "types": "./src/index.ts",
       "default": "./src/index.ts"
     },
-    "./context": {
-      "types": "./src/context.ts",
-      "default": "./src/context.ts"
-    },
     "./sql-pglite": {
       "types": "./src/sql-pglite.ts",
       "default": "./src/sql-pglite.ts"
@@ -33,10 +29,6 @@
     "./sqlite-wasm": {
       "types": "./src/sqlite-wasm.ts",
       "default": "./src/sqlite-wasm.ts"
-    },
-    "./storage/idb": {
-      "types": "./src/storage/idb.ts",
-      "default": "./src/storage/idb.ts"
     }
   },
   "scripts": {

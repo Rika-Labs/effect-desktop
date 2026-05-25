@@ -42,10 +42,6 @@
       "types": "./src/sqlite-wasm.ts",
       "default": "./src/sqlite-wasm.ts"
     },
-    "./storage/idb": {
-      "types": "./src/storage/idb.ts",
-      "default": "./src/storage/idb.ts"
-    },
     "./windows": {
       "types": "./src/windows.ts",
       "default": "./src/windows.ts"

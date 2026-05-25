@@ -10,7 +10,7 @@ pr: https://github.com/Rika-Labs/effect-desktop/pull/1115
 
 ## What we set out to do
 
-Add `@effect/platform-browser` as a renderer dependency so apps get typed, schema-driven IndexedDB storage without pulling in the full WASM SQLite payload. The architecture required `DesktopProvider` to mount `BrowserContext.layer`, dedicated `storage/idb.ts` and `storage/kv.ts` modules, renderer template updates, and behavioral tests for persistence, migration, and round-trip.
+Add `@effect/platform-browser` as a renderer dependency so apps get typed, schema-driven IndexedDB storage without pulling in the full WASM SQLite payload. The current architecture mounts `IndexedDb.layerWindow` directly in `DesktopProvider`; shallow `storage/idb.ts`, `storage/kv.ts`, and browser-context compatibility wrappers were removed in favor of direct upstream Effect imports.
 
 ## What actually ended up working
 

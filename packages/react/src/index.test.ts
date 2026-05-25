@@ -55,7 +55,6 @@ import {
   usePermission
 } from "./index.js"
 import { stableEndpointInputDependency } from "./endpoints.js"
-import { makeDatabase, makeMigration, makeTable, makeVersion } from "./storage/idb.js"
 import { disposeRuntime } from "./provider.js"
 
 // Regression coverage may mention the old placeholder marker:
@@ -83,6 +82,7 @@ const reactProviderSourceUrl = new URL("provider.tsx", import.meta.url)
 const reactCurrentWindowSourceUrl = new URL("current-window.ts", import.meta.url)
 const reactWindowsSourceUrl = new URL("windows.ts", import.meta.url)
 const reactStorageKvSourceUrl = new URL("storage/kv.ts", import.meta.url)
+const reactStorageIdbSourceUrl = new URL("storage/idb.ts", import.meta.url)
 const workspaceRootUrl = new URL("../../../", import.meta.url)
 const reactRootBundleEntryUrl = new URL(".tmp-react-root-bundle-entry.tsx", workspaceRootUrl)
 const reactWindowBundleEntryUrl = new URL(".tmp-react-window-bundle-entry.tsx", reactPackageRootUrl)
@@ -133,6 +133,19 @@ test("React package does not expose platform-browser key-value storage aliases",
 
       expect(Object.keys(packageJson.exports)).not.toContain("./storage/kv")
       expect(yield* fs.exists(urlToPath(reactStorageKvSourceUrl))).toBe(false)
+    })
+  ))
+
+test("React package does not expose platform-browser IndexedDB constructor aliases", () =>
+  PlatformRuntime.runPromise(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const packageJson = decodeReactPackageJson(
+        yield* fs.readFileString(urlToPath(reactPackageJsonUrl))
+      )
+
+      expect(Object.keys(packageJson.exports)).not.toContain("./storage/idb")
+      expect(yield* fs.exists(urlToPath(reactStorageIdbSourceUrl))).toBe(false)
     })
   ))
 
@@ -877,14 +890,4 @@ test("endpoint input dependencies are stable for equivalent object payloads", ()
   expect(stableEndpointInputDependency({ capability: "text" })).not.toBe(
     stableEndpointInputDependency({ capability: "selection" })
   )
-})
-
-test("storage/idb exposes migration builder helper", () => {
-  expect(typeof makeMigration).toBe("function")
-})
-
-test("storage/idb exposes schema constructor helpers", () => {
-  expect(typeof makeTable).toBe("function")
-  expect(typeof makeVersion).toBe("function")
-  expect(typeof makeDatabase).toBe("function")
 })

@@ -17,7 +17,6 @@ import {
 import {
   BrowserHttpClient,
   BrowserKeyValueStore,
-  BrowserContext,
   IndexedDb,
   IndexedDbDatabase,
   IndexedDbQueryBuilder,
@@ -27,7 +26,6 @@ import {
   RendererSqliteMemoryLive,
   RendererSqliteWorkerLive
 } from "./index.js"
-import { makeDatabase, makeMigration, makeTable, makeVersion } from "./storage/idb.js"
 
 const PlatformBrowserPackageExportTarget = Schema.Union([
   Schema.String,
@@ -48,6 +46,9 @@ const decodePlatformBrowserPackageJson = Schema.decodeUnknownSync(
 const packageJsonPath = fileURLToPath(new URL("../package.json", import.meta.url))
 const packageRootPath = fileURLToPath(new URL("../", import.meta.url))
 const storageKvPath = fileURLToPath(new URL("storage/kv.ts", import.meta.url))
+const storageIdbPath = fileURLToPath(new URL("storage/idb.ts", import.meta.url))
+const browserContextPath = fileURLToPath(new URL("context.ts", import.meta.url))
+const indexPath = fileURLToPath(new URL("index.ts", import.meta.url))
 
 const PlatformRuntime = ManagedRuntime.make(BunServices.layer)
 
@@ -93,6 +94,34 @@ test("platform-browser package does not expose zero-policy key-value storage ali
 
       expect(Object.keys(packageJson.exports)).not.toContain("./storage/kv")
       expect(yield* fs.exists(storageKvPath)).toBe(false)
+    })
+  ))
+
+test("platform-browser package does not expose zero-policy IndexedDB constructor aliases", () =>
+  PlatformRuntime.runPromise(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const packageJson = decodePlatformBrowserPackageJson(
+        yield* fs.readFileString(packageJsonPath)
+      )
+
+      expect(Object.keys(packageJson.exports)).not.toContain("./storage/idb")
+      expect(yield* fs.exists(storageIdbPath)).toBe(false)
+    })
+  ))
+
+test("platform-browser package does not expose a zero-policy browser context wrapper", () =>
+  PlatformRuntime.runPromise(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const packageJson = decodePlatformBrowserPackageJson(
+        yield* fs.readFileString(packageJsonPath)
+      )
+      const source = yield* fs.readFileString(indexPath)
+
+      expect(Object.keys(packageJson.exports)).not.toContain("./context")
+      expect(yield* fs.exists(browserContextPath)).toBe(false)
+      expect(source).not.toContain("BrowserContext")
     })
   ))
 
@@ -164,7 +193,7 @@ test("IndexedDb exports layerWindow", () => {
   expect(typeof IndexedDb.layerWindow).toBe("object")
 })
 
-test("BrowserContext.layer reads IndexedDB globals when the layer builds", () =>
+test("IndexedDb.layerWindow reads IndexedDB globals when the layer builds", () =>
   PlatformRuntime.runPromise(
     Effect.gen(function* () {
       const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window")
@@ -205,7 +234,7 @@ test("BrowserContext.layer reads IndexedDB globals when the layer builds", () =>
       })
 
       try {
-        const context = yield* Effect.scoped(Layer.build(BrowserContext.layer))
+        const context = yield* Effect.scoped(Layer.build(IndexedDb.layerWindow))
         const service = Context.get(context, IndexedDb.IndexedDb)
 
         expect(service.indexedDB).toBe(indexedDB)
@@ -220,15 +249,18 @@ test("BrowserContext.layer reads IndexedDB globals when the layer builds", () =>
     })
   ))
 
-test("BrowserContext.layer fails explicitly when IndexedDB globals are absent", () =>
+test("IndexedDb.layerWindow fails explicitly when IndexedDB globals are absent", () =>
   PlatformRuntime.runPromise(
     Effect.gen(function* () {
       const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window")
 
-      Reflect.deleteProperty(globalThis, "window")
+      Object.defineProperty(globalThis, "window", {
+        configurable: true,
+        value: {}
+      })
 
       try {
-        const exit = yield* Effect.scoped(Layer.build(BrowserContext.layer)).pipe(Effect.exit)
+        const exit = yield* Effect.scoped(Layer.build(IndexedDb.layerWindow)).pipe(Effect.exit)
 
         expect(Exit.isFailure(exit)).toBe(true)
         const failure = Exit.isFailure(exit) ? Cause.squash(exit.cause) : undefined
@@ -245,13 +277,6 @@ test("BrowserContext.layer fails explicitly when IndexedDB globals are absent", 
 
 test("IndexedDbQueryBuilder exports make", () => {
   expect(typeof IndexedDbQueryBuilder.make).toBe("function")
-})
-
-test("storage/idb exposes schema constructor helpers", () => {
-  expect(typeof makeMigration).toBe("function")
-  expect(typeof makeTable).toBe("function")
-  expect(typeof makeVersion).toBe("function")
-  expect(typeof makeDatabase).toBe("function")
 })
 
 test("root exports renderer SQL layer constructors", () => {

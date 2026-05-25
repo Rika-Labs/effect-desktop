@@ -20,4 +20,3 @@ export {
   type RendererSqliteWorkerOptions
 } from "./sqlite-wasm.js"
 export { RendererPgliteLive, type RendererPgliteOptions } from "./sql-pglite.js"
-export { BrowserContext } from "./context.js"

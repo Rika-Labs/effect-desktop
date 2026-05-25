@@ -21,8 +21,7 @@ It also does not provide native cookie read, write, remove, or watch behavior.
 import {
   RendererSqliteMemoryLive,
   RendererSqliteWorkerLive,
-  RendererPgliteLive,
-  BrowserContext
+  RendererPgliteLive
 } from "@orika/platform-browser"
 ```
 
@@ -67,25 +66,54 @@ Re-exports from `@effect/platform-browser`:
 
 - `BrowserHttpClient`, `BrowserKeyValueStore`, `BrowserPersistence`
 - `IndexedDb`, `IndexedDbDatabase`, `IndexedDbQueryBuilder`, `IndexedDbTable`, `IndexedDbVersion`
-- `BrowserContext` — `{ layer }` factory
+- `IndexedDb.layerWindow` — browser `window.indexedDB` service layer
 
 For typed IndexedDB tables:
 
 ```ts
-import { IndexedDb, IndexedDbTable } from "@orika/platform-browser"
+import { Effect, Schema } from "effect"
+import {
+  IndexedDb,
+  IndexedDbDatabase,
+  IndexedDbTable,
+  IndexedDbVersion
+} from "@orika/platform-browser"
 
-const NotesTable = IndexedDbTable.makeTableSchema("notes", { keyPath: "id" })
+const NotesTable = IndexedDbTable.make({
+  name: "notes",
+  schema: Schema.Struct({
+    id: Schema.String,
+    body: Schema.String
+  }),
+  keyPath: "id"
+})
 
-const dbLayer = IndexedDb.layer({ name: "notes-db", version: 1, tables: [NotesTable] })
+const NotesV1 = IndexedDbVersion.make(NotesTable)
+
+class NotesDb extends IndexedDbDatabase.make(NotesV1, (tx) =>
+  tx.createObjectStore("notes").pipe(Effect.asVoid)
+) {}
+
+const program = Effect.gen(function* () {
+  const db = yield* NotesDb.getQueryBuilder
+  yield* db.from("notes").insert({ id: "first", body: "Draft" })
+  return yield* db.from("notes").select()
+})
+
+await Effect.runPromise(
+  program.pipe(Effect.provide(NotesDb.layer("notes-db")), Effect.provide(IndexedDb.layerWindow))
+)
 ```
 
 ## Storage layers
 
-`./storage/idb.ts` — IndexedDB-backed key/value store layer.
-
 Use `BrowserKeyValueStore.layerLocalStorage` or
 `BrowserKeyValueStore.layerSessionStorage` directly for browser key/value
 storage. ORIKA does not wrap those upstream Effect layers.
+
+Use `IndexedDbTable`, `IndexedDbVersion`, and `IndexedDbDatabase` directly for
+typed IndexedDB. ORIKA does not expose constructor-alias subpaths over the
+upstream Effect modules.
 
 ## When to use what
 

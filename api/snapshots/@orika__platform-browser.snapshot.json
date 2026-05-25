@@ -4,11 +4,6 @@
   "entrypoint": "src/index.ts",
   "symbols": [
     {
-      "name": "BrowserContext",
-      "kind": "value",
-      "signature": "const BrowserContext: Readonly<{ layer: Layer.Layer<BrowserIndexedDb.IndexedDb.IndexedDb, Config.ConfigError, never>; }>"
-    },
-    {
       "name": "BrowserHttpClient",
       "kind": "value",
       "signature": "import * as Context from \"effect/Context\"; import * as Effect from \"effect/Effect\"; import type { LazyArg } from \"effect/Function\"; import type * as Layer from \"effect/Layer\"; import * as HttpClient from \"effect/unstable/http/HttpClient\"; export { /** * @since 1.0.0 * @category Fetch */ Fetch, /** * @since 1.0.0 * @category Fetch */ layer as layerFetch, /** * @since 1.0.0 * @category Fetch */ RequestInit } from \"effect/unstable/http/FetchHttpClient\"; /** * @since 1.0.0 * @category Models */ export type XHRResponseType = \"arraybuffer\" | \"text\"; /** * @since 1.0.0 * @category References */ export declare const CurrentXHRResponseType: Context.Reference<XHRResponseType>; /** * @since 1.0.0 * @category References */ export declare const withXHRArrayBuffer: <A, E, R>(self: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>; declare const XMLHttpRequest_base: Context.ServiceClass<XMLHttpRequest, \"@effect/platform-browser/BrowserHttpClient/XMLHttpRequest\", LazyArg<globalThis.XMLHttpRequest>>; /** * @since 1.0.0 * @category Services */ export declare class XMLHttpRequest extends XMLHttpRequest_base { } /** * @since 1.0.0 * @category Layers */ export declare const layerXMLHttpRequest: Layer.Layer<HttpClient.HttpClient>; //# sourceMappingURL=BrowserHttpClient.d.ts.map"
