@@ -695,17 +695,14 @@ export {
 } from "./notification.js"
 export {
   Path,
-  PathClient,
   PathHandlersLive,
-  PathLive,
   PathMethodNames,
   PathRpcs,
   PathSurface,
   type PathClientApi,
   type PathError,
   type PathRpc,
-  type PathRpcHandlers,
-  type PathServiceApi
+  type PathRpcHandlers
 } from "./path.js"
 export {
   Protocol,

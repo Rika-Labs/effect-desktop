@@ -5,7 +5,7 @@ import {
   type HostProtocolError
 } from "@orika/bridge"
 import { type DesktopRpcClient } from "@orika/core"
-import { Context, Effect, Layer } from "effect"
+import { Context, Effect } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
@@ -36,29 +36,7 @@ export interface PathClientApi {
   readonly downloads: () => Effect.Effect<CanonicalPath, PathError, never>
 }
 
-export class PathClient extends Context.Service<PathClient, PathClientApi>()(
-  "@orika/native/PathClient"
-) {}
-
-export interface PathServiceApi {
-  readonly appData: () => Effect.Effect<string, PathError, never>
-  readonly cache: () => Effect.Effect<string, PathError, never>
-  readonly logs: () => Effect.Effect<string, PathError, never>
-  readonly temp: () => Effect.Effect<string, PathError, never>
-  readonly home: () => Effect.Effect<string, PathError, never>
-  readonly downloads: () => Effect.Effect<string, PathError, never>
-}
-
-export class Path extends Context.Service<Path, PathServiceApi>()("@orika/native/Path") {
-  static readonly layer = Layer.effect(Path)(
-    Effect.gen(function* () {
-      const client = yield* PathClient
-      return Path.of(makePathService(client))
-    })
-  )
-}
-
-export const PathLive = Path.layer
+export class Path extends Context.Service<Path, PathClientApi>()("@orika/native/Path") {}
 
 export type PathRpc = RpcGroup.Rpcs<typeof PathRpcGroup>
 
@@ -68,63 +46,41 @@ export const PathHandlersLive = PathRpcGroup.toLayer({
   "Path.appData": () =>
     Effect.gen(function* () {
       const path = yield* Path
-      const value = yield* path.appData()
-      return new CanonicalPath({ path: value })
+      return yield* path.appData()
     }),
   "Path.cache": () =>
     Effect.gen(function* () {
       const path = yield* Path
-      const value = yield* path.cache()
-      return new CanonicalPath({ path: value })
+      return yield* path.cache()
     }),
   "Path.logs": () =>
     Effect.gen(function* () {
       const path = yield* Path
-      const value = yield* path.logs()
-      return new CanonicalPath({ path: value })
+      return yield* path.logs()
     }),
   "Path.temp": () =>
     Effect.gen(function* () {
       const path = yield* Path
-      const value = yield* path.temp()
-      return new CanonicalPath({ path: value })
+      return yield* path.temp()
     }),
   "Path.home": () =>
     Effect.gen(function* () {
       const path = yield* Path
-      const value = yield* path.home()
-      return new CanonicalPath({ path: value })
+      return yield* path.home()
     }),
   "Path.downloads": () =>
     Effect.gen(function* () {
       const path = yield* Path
-      const value = yield* path.downloads()
-      return new CanonicalPath({ path: value })
+      return yield* path.downloads()
     })
 })
 
 export const PathSurface = NativeSurface.make("Path", PathRpcGroup, {
-  service: PathClient,
+  service: Path,
   capabilities: PathMethodNames,
   handlers: PathHandlersLive,
   client: (client) => pathClientFromRpcClient(client)
 })
-
-const makePathService = (client: PathClientApi): PathServiceApi => {
-  const toStringPath = (effect: Effect.Effect<CanonicalPath, PathError, never>) =>
-    effect.pipe(Effect.map((result) => result.path))
-
-  const service: PathServiceApi = {
-    appData: () => toStringPath(client.appData()),
-    cache: () => toStringPath(client.cache()),
-    logs: () => toStringPath(client.logs()),
-    temp: () => toStringPath(client.temp()),
-    home: () => toStringPath(client.home()),
-    downloads: () => toStringPath(client.downloads())
-  }
-
-  return Object.freeze(service)
-}
 
 const pathClientFromRpcClient = (client: DesktopRpcClient<PathRpc>): PathClientApi => {
   const pathClient: PathClientApi = {

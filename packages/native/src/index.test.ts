@@ -203,7 +203,6 @@ import {
   Path,
   PathHandlersLive,
   PathRpcs,
-  PathLive,
   PathMethodNames,
   PathSurface,
   Protocol,
@@ -314,7 +313,6 @@ import {
   WebViewClient,
   MenuClient,
   ContextMenuClient,
-  PathClient,
   UpdaterClient,
   SystemAppearanceClient,
   DockClient,
@@ -505,7 +503,6 @@ test("native services expose canonical static layers", () => {
   expect(GlobalShortcutLive).toBe(GlobalShortcut.layer)
   expect(MenuLive).toBe(Menu.layer)
   expect(NotificationLive).toBe(Notification.layer)
-  expect(PathLive).toBe(Path.layer)
   expect(PowerMonitorLive).toBe(PowerMonitor.layer)
   expect(ScreenLive).toBe(Screen.layer)
   expect(SystemAppearanceLive).toBe(SystemAppearance.layer)
@@ -5595,7 +5592,23 @@ test("PathRpcs declares the Phase 7 Path method surface", () => {
   expect(rpcMethodNames("Path", PathRpcs)).toEqual(expectedPathMethods)
 })
 
-test("Path service delegates through a substitutable PathClient port", () =>
+test("Path public surface omits shallow service and layer helpers", async () => {
+  const pathModule = await import("./path.js")
+  const rootModule = await import("./index.js")
+  const pathSource = await Bun.file(new URL("path.ts", import.meta.url)).text()
+  const rootSource = await Bun.file(new URL("index.ts", import.meta.url)).text()
+
+  expect("PathClient" in pathModule).toBe(false)
+  expect("PathLive" in pathModule).toBe(false)
+  expect("PathClient" in rootModule).toBe(false)
+  expect("PathLive" in rootModule).toBe(false)
+  for (const removedName of ["class PathClient", "PathLive", "PathServiceApi", "makePathService"]) {
+    expect(pathSource).not.toContain(removedName)
+    expect(rootSource).not.toContain(removedName)
+  }
+})
+
+test("Path service delegates through a substitutable service value", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
@@ -5611,16 +5624,16 @@ test("Path service delegates through a substitutable PathClient port", () =>
             downloads: yield* path.downloads()
           }
         }),
-        Layer.provide(PathLive, Layer.succeed(PathClient)(pathClient(calls)))
+        Layer.succeed(Path)(pathClient(calls))
       )
 
       expect(result).toEqual({
-        appData: "/tmp/effect-desktop/app-data",
-        cache: "/tmp/effect-desktop/cache",
-        logs: "/tmp/effect-desktop/logs",
-        temp: "/tmp/effect-desktop/temp",
-        home: "/Users/test",
-        downloads: "/Users/test/Downloads"
+        appData: new CanonicalPath({ path: "/tmp/effect-desktop/app-data" }),
+        cache: new CanonicalPath({ path: "/tmp/effect-desktop/cache" }),
+        logs: new CanonicalPath({ path: "/tmp/effect-desktop/logs" }),
+        temp: new CanonicalPath({ path: "/tmp/effect-desktop/temp" }),
+        home: new CanonicalPath({ path: "/Users/test" }),
+        downloads: new CanonicalPath({ path: "/Users/test/Downloads" })
       })
       expect(calls).toEqual(["appData", "cache", "logs", "temp", "home", "downloads"])
     })
@@ -5647,16 +5660,16 @@ test("Path bridge client sends typed host envelopes and decodes canonical paths"
             downloads: yield* path.downloads()
           }
         }),
-        Layer.provide(PathLive, PathSurface.bridgeClientLayer(exchange))
+        PathSurface.bridgeClientLayer(exchange)
       )
 
       expect(result).toEqual({
-        appData: "/host/appData",
-        cache: "/host/cache",
-        logs: "/host/logs",
-        temp: "/host/temp",
-        home: "/host/home",
-        downloads: "/host/downloads"
+        appData: new CanonicalPath({ path: "/host/appData" }),
+        cache: new CanonicalPath({ path: "/host/cache" }),
+        logs: new CanonicalPath({ path: "/host/logs" }),
+        temp: new CanonicalPath({ path: "/host/temp" }),
+        home: new CanonicalPath({ path: "/host/home" }),
+        downloads: new CanonicalPath({ path: "/host/downloads" })
       })
       expect(requests.map((request) => [request.method, request.payload])).toEqual([
         ["Path.appData", null],
@@ -5734,14 +5747,14 @@ test("Path service propagates unsupported platform and host failure", () =>
           const path = yield* Path
           return yield* Effect.exit(path.home())
         }),
-        Layer.provide(PathLive, Layer.succeed(PathClient)(unsupportedClient))
+        Layer.succeed(Path)(unsupportedClient)
       )
       const hostFailureExit = yield* runScoped(
         Effect.gen(function* () {
           const path = yield* Path
           return yield* Effect.exit(path.home())
         }),
-        Layer.provide(PathLive, Layer.succeed(PathClient)(hostFailureClient))
+        Layer.succeed(Path)(hostFailureClient)
       )
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
@@ -5777,14 +5790,11 @@ test("Path bridge client rejects NUL-bearing host output as InvalidOutput", () =
             const path = yield* Path
             return yield* Effect.exit(path[name]())
           }),
-          Layer.provide(
-            PathLive,
-            PathSurface.bridgeClientLayer(exchange, {
-              nextRequestId: nextId([`${name}-request`]),
-              nextTraceId: nextId([`${name}-trace`]),
-              now: nextNumber([1710000000000])
-            })
-          )
+          PathSurface.bridgeClientLayer(exchange, {
+            nextRequestId: nextId([`${name}-request`]),
+            nextTraceId: nextId([`${name}-trace`]),
+            now: nextNumber([1710000000000])
+          })
         )
 
         expectExitFailure(
@@ -5808,11 +5818,8 @@ test("Path bridge client rejects relative canonical paths from host as InvalidOu
           const path = yield* Path
           return yield* Effect.exit(path.home())
         }),
-        Layer.provide(
-          PathLive,
-          PathSurface.bridgeClientLayer(
-            pathExchange([], () => ({ kind: "success", payload: { path: "relative/path" } }))
-          )
+        PathSurface.bridgeClientLayer(
+          pathExchange([], () => ({ kind: "success", payload: { path: "relative/path" } }))
         )
       )
 
@@ -14168,11 +14175,8 @@ test("Path bridge client rejects empty canonical path strings from host as Inval
           const path = yield* Path
           return yield* Effect.exit(path.appData())
         }),
-        Layer.provide(
-          PathLive,
-          PathSurface.bridgeClientLayer(
-            pathExchange([], () => ({ kind: "success", payload: { path: "" } }))
-          )
+        PathSurface.bridgeClientLayer(
+          pathExchange([], () => ({ kind: "success", payload: { path: "" } }))
         )
       )
 
