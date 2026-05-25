@@ -183,10 +183,8 @@ export {
 } from "./parity-matrix.js"
 export {
   BrowsingData,
-  BrowsingDataCapabilityFacts,
   BrowsingDataHandlersLive,
   BrowsingDataMethodNames,
-  BrowsingDataRpcEvents,
   BrowsingDataRpcs,
   BrowsingDataSurface,
   makeBrowsingDataMemoryClient,

@@ -17,8 +17,7 @@ import {
   BrowsingDataSupportedResult
 } from "./contracts/browsing-data.js"
 import type { SessionProfileHandle } from "./contracts/session-profile.js"
-import { subscribeNativeEvent } from "./event-stream.js"
-import { decodeNativeInput, runNativeRpc } from "./native-client.js"
+import { decodeNativeInput, runNativeRpc, runNativeRpcStream } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
 
@@ -81,16 +80,18 @@ const browsingDataCapabilityFact = (method: "estimate") =>
     support: UnsupportedSupport
   })
 
-export const BrowsingDataCapabilityFacts = Object.freeze([browsingDataCapabilityFact("estimate")])
+const UnsupportedCapabilityFacts = Object.freeze([browsingDataCapabilityFact("estimate")])
 
-export const BrowsingDataRpcEvents = Object.freeze({
-  Event: { payload: BrowsingDataEvent }
+const BrowsingDataEventStream = NativeSurface.event(Surface, "Event", {
+  payload: BrowsingDataEvent,
+  support: NativeSurface.support.supported
 })
 
 const BrowsingDataRpcGroup = RpcGroup.make(
   BrowsingDataClear,
   BrowsingDataListTypes,
-  BrowsingDataIsSupported
+  BrowsingDataIsSupported,
+  BrowsingDataEventStream
 )
 
 export const BrowsingDataRpcs: RpcGroup.RpcGroup<BrowsingDataRpc> = BrowsingDataRpcGroup
@@ -130,16 +131,23 @@ export const BrowsingDataHandlersLive = BrowsingDataRpcGroup.toLayer({
     Effect.gen(function* () {
       const browsingData = yield* BrowsingData
       return yield* browsingData.isSupported()
-    })
+    }),
+  "BrowsingData.events.Event": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const browsingData = yield* BrowsingData
+        return browsingData.events()
+      })
+    )
 })
 
 export const BrowsingDataSurface = NativeSurface.make(Surface, BrowsingDataRpcGroup, {
   service: BrowsingData,
   capabilities: BrowsingDataMethodNames,
   handlers: BrowsingDataHandlersLive,
-  capabilityFacts: BrowsingDataCapabilityFacts,
-  client: (client) => browsingDataClientFromRpcClient(client, undefined),
-  bridgeClient: (client, exchange) => browsingDataClientFromRpcClient(client, exchange)
+  capabilityFacts: UnsupportedCapabilityFacts,
+  client: (client) => browsingDataClientFromRpcClient(client),
+  bridgeClient: (client, exchange) => browsingDataBridgeClientFromRpcClient(client, exchange)
 })
 
 export const makeBrowsingDataMemoryClient = (): Effect.Effect<
@@ -177,8 +185,7 @@ export const makeBrowsingDataUnsupportedClient = (): BrowsingDataClientApi =>
   } satisfies BrowsingDataClientApi)
 
 const browsingDataClientFromRpcClient = (
-  client: DesktopRpcClient<BrowsingDataRpc>,
-  exchange: BridgeClientExchange | undefined
+  client: DesktopRpcClient<BrowsingDataRpc>
 ): BrowsingDataClientApi =>
   Object.freeze({
     clear: (input) =>
@@ -192,7 +199,29 @@ const browsingDataClientFromRpcClient = (
     isSupported: () =>
       runBrowsingDataRpc(client["BrowsingData.isSupported"](undefined), "BrowsingData.isSupported"),
     events: (profile) =>
-      subscribeNativeEvent(exchange, EventMethod, BrowsingDataEvent).pipe(
+      runBrowsingDataRpcStream(
+        client["BrowsingData.events.Event"](undefined),
+        "BrowsingData.events.Event"
+      ).pipe(Stream.filter((event) => profile === undefined || event.profile.id === profile.id))
+  } satisfies BrowsingDataClientApi)
+
+const browsingDataBridgeClientFromRpcClient = (
+  client: DesktopRpcClient<BrowsingDataRpc>,
+  exchange: BridgeClientExchange
+): BrowsingDataClientApi =>
+  Object.freeze({
+    clear: (input) =>
+      decodeBrowsingDataClearInput(input, "BrowsingData.clear").pipe(
+        Effect.flatMap((decoded) =>
+          runBrowsingDataRpc(client["BrowsingData.clear"](decoded), "BrowsingData.clear")
+        )
+      ),
+    listTypes: () =>
+      runBrowsingDataRpc(client["BrowsingData.listTypes"](undefined), "BrowsingData.listTypes"),
+    isSupported: () =>
+      runBrowsingDataRpc(client["BrowsingData.isSupported"](undefined), "BrowsingData.isSupported"),
+    events: (profile) =>
+      NativeSurface.subscribeEvent(exchange, BrowsingDataEventStream).pipe(
         Stream.filter((event) => profile === undefined || event.profile.id === profile.id)
       )
   } satisfies BrowsingDataClientApi)
@@ -207,6 +236,11 @@ const runBrowsingDataRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
   operation: string
 ): Effect.Effect<A, BrowsingDataError, never> => runNativeRpc(effect, operation, Surface)
+
+const runBrowsingDataRpcStream = <A, E>(
+  stream: Stream.Stream<A, E, never>,
+  operation: string
+): Stream.Stream<A, BrowsingDataError, never> => runNativeRpcStream(stream, operation, Surface)
 
 const unsupportedError = (operation: string): HostProtocolError =>
   new HostProtocolUnsupportedError({

@@ -10,7 +10,7 @@ effect_version: 4
 
 `BrowsingData` describes cache and browser-storage operations scoped to an explicit `SessionProfileHandle`. The profile handle is the partition identity; calls do not target global browser state. `clear` is a callable RPC backed by the host profile/WebView registry, and `listTypes` returns the portable bucket set supported by the contract. `estimate` remains a non-callable capability fact because the current host provider does not expose truthful per-bucket byte estimates.
 
-The public service is Layer-first and test-substitutable. The TypeScript service exposes `BrowsingData.Event` as a typed stream.
+The public service is Layer-first and test-substitutable. The TypeScript service exposes `BrowsingData.events.Event` as the typed RPC stream. Bridge clients keep host wire compatibility by subscribing to `BrowsingData.Event`.
 
 ## Methods
 
@@ -27,7 +27,7 @@ The public service is Layer-first and test-substitutable. The TypeScript service
 
 `clear` accepts `{ profile, types }` and returns `{ cleared, unsupported }`. The current Wry provider exposes profile-level clear primitives; the result reports the portable buckets the host cleared for the request. `listTypes` returns the same portable buckets without probing browser storage.
 
-`events(profile?)` emits host-initiated clear results. Successful `clear` calls emit phase `"cleared"` with the cleared and unsupported bucket arrays. The current host does not observe browser-originated storage changes.
+`events(profile?)` consumes `BrowsingData.events.Event`, filters by `profile.id` when supplied, and emits host-initiated clear results. Successful `clear` calls emit phase `"cleared"` with the cleared and unsupported bucket arrays. The current host does not observe browser-originated storage changes.
 
 ## Data Types
 
@@ -51,6 +51,8 @@ The host binds `SessionProfileHandle` to Wry `WebContext` data stores for child 
 | Linux    | `supported` |
 
 `isSupported` returns `{ supported: true }` from the host. Use `makeBrowsingDataMemoryClient()` for deterministic success tests; use `makeBrowsingDataUnsupportedClient()` for the typed unsupported path.
+
+Architecture-debt sweep outcome for #1865: removed `BrowsingDataRpcEvents` and the public `BrowsingDataCapabilityFacts` side export. The unsupported `estimate` fact remains local to `BrowsingDataSurface` because it publishes truthful non-callable support metadata.
 
 ## Related
 

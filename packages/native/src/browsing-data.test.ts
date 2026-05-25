@@ -2,15 +2,21 @@ import { expect, test } from "bun:test"
 import { readFile } from "node:fs/promises"
 import {
   type BridgeClientExchange,
+  type HostProtocolEnvelope,
   type HostProtocolEventEnvelope,
-  makeHostProtocolInternalError
+  type HostProtocolRequestEnvelope,
+  HostProtocolResponseEnvelope,
+  HostProtocolStreamByRequestEnvelope,
+  makeDesktopClientProtocol,
+  makeHostProtocolInternalError,
+  rpcSupport
 } from "@orika/bridge"
 import { makeResourceId } from "@orika/core"
-import { Effect, Exit, Layer, ManagedRuntime, Schema, Stream } from "effect"
+import { Effect, Exit, Layer, ManagedRuntime, Option, Queue, Schema, Stream } from "effect"
+import { RpcClient, RpcSchema } from "effect/unstable/rpc"
 
 import {
   BrowsingData,
-  BrowsingDataCapabilityFacts,
   type BrowsingDataClientApi,
   BrowsingDataRpcs,
   BrowsingDataSurface,
@@ -38,7 +44,7 @@ const TestProfile = {
   state: "open"
 } satisfies SessionProfileHandle
 
-test("BrowsingData public surface omits shallow service and layer helpers", () =>
+test("BrowsingData public surface omits shallow service and side exports", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const source = yield* Effect.promise(() =>
@@ -49,6 +55,8 @@ test("BrowsingData public surface omits shallow service and layer helpers", () =
       )
 
       for (const removedName of [
+        "BrowsingDataCapabilityFacts",
+        "BrowsingDataRpcEvents",
         "BrowsingDataServiceApi",
         "class BrowsingDataClient",
         "BrowsingDataLive",
@@ -67,9 +75,36 @@ test("BrowsingData exposes clear, listTypes, and isSupported as callable RPCs", 
   const callableTags = Array.from(BrowsingDataRpcs.requests.keys()).toSorted()
   expect(callableTags).toEqual([
     "BrowsingData.clear",
+    "BrowsingData.events.Event",
     "BrowsingData.isSupported",
     "BrowsingData.listTypes"
   ])
+})
+
+test("BrowsingData event schema is owned by the RPC stream contract", async () => {
+  const browsingDataModule = await import("./browsing-data.js")
+  const rootModule = await import("./index.js")
+  const eventRpc = BrowsingDataRpcs.requests.get("BrowsingData.events.Event")
+
+  for (const removedExport of ["BrowsingDataCapabilityFacts", "BrowsingDataRpcEvents"]) {
+    expect(removedExport in browsingDataModule).toBe(false)
+    expect(removedExport in rootModule).toBe(false)
+  }
+  expect(eventRpc).toBeDefined()
+  expect(eventRpc === undefined ? false : RpcSchema.isStreamSchema(eventRpc.successSchema)).toBe(
+    true
+  )
+  if (eventRpc !== undefined && RpcSchema.isStreamSchema(eventRpc.successSchema)) {
+    expect(eventRpc.successSchema.success).toBe(BrowsingDataEvent)
+    expect(eventRpc.pipe(rpcSupport)).toEqual({ status: "supported" })
+  }
+
+  const eventDoc = BrowsingDataSurface.schemaDocs.find(
+    (doc) => doc.tag === "BrowsingData.events.Event"
+  )
+  expect(eventDoc?.kind).toBe("stream")
+  expect(eventDoc?.callable).toBe(true)
+  expect(eventDoc?.support).toEqual({ status: "supported" })
 })
 
 test("BrowsingData contract module does not export unsupported estimate payload schemas", async () => {
@@ -146,9 +181,10 @@ test("BrowsingData unsupported client reports the host-unavailable reason", () =
   ))
 
 test("BrowsingData keeps estimate as a non-callable capability fact", () => {
-  const factTags = BrowsingDataCapabilityFacts.map((fact) => fact.tag).toSorted()
+  const facts = BrowsingDataSurface.schemaDocs.filter((doc) => !doc.callable)
+  const factTags = facts.map((fact) => fact.tag).toSorted()
   expect(factTags).toEqual(UnsupportedMethods.map((method) => `BrowsingData.${method}`).toSorted())
-  for (const fact of BrowsingDataCapabilityFacts) {
+  for (const fact of facts) {
     expect(fact.support.status).toBe("unsupported")
   }
 })
@@ -173,6 +209,7 @@ test("BrowsingData manifest exposes supported callable methods and keeps estimat
         .toSorted()
       expect(callableFactTags).toEqual([
         "BrowsingData.clear",
+        "BrowsingData.events.Event",
         "BrowsingData.isSupported",
         "BrowsingData.listTypes"
       ])
@@ -184,6 +221,83 @@ test("BrowsingData manifest exposes supported callable methods and keeps estimat
       expect(nonCallableTags).toEqual(
         UnsupportedMethods.map((method) => `BrowsingData.${method}`).toSorted()
       )
+    })
+  ))
+
+test("BrowsingData direct client consumes the canonical RPC event stream", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const otherProfile = profileHandle("workspace-2")
+      const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
+      const requests: HostProtocolRequestEnvelope[] = []
+      const protocolLayer = Layer.effect(RpcClient.Protocol)(
+        makeDesktopClientProtocol(
+          {
+            send: (envelope) => {
+              if (envelope.kind !== "request") {
+                return Effect.void
+              }
+              requests.push(envelope)
+              return Effect.all(
+                [
+                  Queue.offer(
+                    queue,
+                    new HostProtocolStreamByRequestEnvelope({
+                      kind: "stream",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_000,
+                      traceId: envelope.traceId,
+                      payload: browsingDataEvent(otherProfile)
+                    })
+                  ),
+                  Queue.offer(
+                    queue,
+                    new HostProtocolStreamByRequestEnvelope({
+                      kind: "stream",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_001,
+                      traceId: envelope.traceId,
+                      payload: browsingDataEvent(TestProfile)
+                    })
+                  ),
+                  Queue.offer(
+                    queue,
+                    new HostProtocolResponseEnvelope({
+                      kind: "response",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_002,
+                      traceId: envelope.traceId
+                    })
+                  )
+                ],
+                { discard: true }
+              )
+            },
+            run: (onEnvelope) =>
+              Stream.fromQueue(queue).pipe(
+                Stream.runForEach(onEnvelope),
+                Effect.andThen(Effect.never)
+              )
+          },
+          {
+            nextRequestId: () => "browsing-data-event-rpc",
+            nextTraceId: () => "trace-browsing-data-event-rpc"
+          }
+        )
+      )
+
+      const event = yield* runScoped(
+        Effect.gen(function* () {
+          const browsingData = yield* BrowsingData
+          return yield* browsingData
+            .events(TestProfile)
+            .pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+        }),
+        Layer.provide(BrowsingDataSurface.clientLayer, protocolLayer)
+      )
+
+      expect(event).toEqual(new BrowsingDataEvent(browsingDataEvent(TestProfile)))
+      expect(requests.map((request) => request.method)).toEqual(["BrowsingData.events.Event"])
     })
   ))
 
@@ -288,3 +402,22 @@ const runScoped = <A, E, R>(
 
 const browsingDataLayer = (client: BrowsingDataClientApi): Layer.Layer<BrowsingData> =>
   Layer.succeed(BrowsingData)(client)
+
+const profileHandle = (partition: string): SessionProfileHandle =>
+  Object.freeze({
+    kind: "session-profile",
+    id: makeResourceId(`session-profile:${partition}`),
+    generation: 0,
+    ownerScope: "workspace:1",
+    state: "open"
+  })
+
+const browsingDataEvent = (profile: SessionProfileHandle) =>
+  ({
+    type: "browsing-data-event",
+    timestamp: 1_710_000_000_000,
+    phase: "cleared",
+    profile,
+    cleared: ["cookies"],
+    unsupported: []
+  }) as const
