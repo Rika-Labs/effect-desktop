@@ -120,7 +120,6 @@ export {
   NativeFileSystem,
   NativeFileSystemHandlersLive,
   NativeFileSystemMethodNames,
-  NativeFileSystemRpcEvents,
   NativeFileSystemRpcs,
   NativeFileSystemSurface,
   type NativeFileSystemClientApi,

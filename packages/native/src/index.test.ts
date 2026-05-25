@@ -7,6 +7,7 @@ import {
   HostProtocolNotFoundError,
   HostProtocolResponseEnvelope,
   HostProtocolStaleHandleError,
+  HostProtocolStreamByRequestEnvelope,
   HostProtocolUnsupportedError,
   WINDOW_CANCEL_ATTENTION_METHOD,
   WINDOW_CLEAR_VIBRANCY_METHOD,
@@ -58,10 +59,12 @@ import {
   type BridgeClientExchange,
   type BridgeHandlerRuntime,
   type BridgeClientResponse,
+  type HostProtocolEnvelope,
   HostProtocolRequestEnvelope,
   HostProtocolEventEnvelope,
   type HostWindowClientOptions,
   type HostWindowExchange,
+  makeDesktopClientProtocol,
   makeDesktopServerProtocol
 } from "@orika/bridge"
 import {
@@ -99,7 +102,7 @@ import {
   Schema,
   Stream
 } from "effect"
-import { Rpc, RpcGroup, RpcServer } from "effect/unstable/rpc"
+import { Rpc, RpcClient, RpcGroup, RpcSchema, RpcServer } from "effect/unstable/rpc"
 
 import { AutostartSurface } from "./autostart.js"
 import {
@@ -189,7 +192,6 @@ import {
   MenuSurface,
   NativeFileSystem,
   NativeFileSystemMethodNames,
-  NativeFileSystemRpcEvents,
   NativeFileSystemRpcs,
   NativeFileSystemSurface,
   Notification,
@@ -6932,12 +6934,46 @@ test("NativeFileSystemRpcs declares the native filesystem method and event surfa
     "NativeFileSystem.stat",
     "NativeFileSystem.watch",
     "NativeFileSystem.stopWatching",
-    "NativeFileSystem.isSupported"
+    "NativeFileSystem.isSupported",
+    "NativeFileSystem.events.Event"
   ])
-  expect(rpcMethodNames("NativeFileSystem", NativeFileSystemRpcs)).toEqual(
-    expectedNativeFileSystemMethods
+  expect(rpcMethodNames("NativeFileSystem", NativeFileSystemRpcs)).toEqual([
+    ...expectedNativeFileSystemMethods,
+    "events.Event"
+  ])
+})
+
+test("NativeFileSystem event schema is owned by the RPC stream contract", async () => {
+  const nativeFileSystemModule = await import("./native-file-system.js")
+  const rootModule = await import("./index.js")
+  const callableTags = Array.from(NativeFileSystemRpcs.requests.keys()).toSorted()
+  const eventRpc = NativeFileSystemRpcs.requests.get("NativeFileSystem.events.Event")
+
+  expect("NativeFileSystemRpcEvents" in nativeFileSystemModule).toBe(false)
+  expect("NativeFileSystemRpcEvents" in rootModule).toBe(false)
+  expect(callableTags).toEqual([
+    "NativeFileSystem.events.Event",
+    "NativeFileSystem.isSupported",
+    "NativeFileSystem.open",
+    "NativeFileSystem.stat",
+    "NativeFileSystem.stopWatching",
+    "NativeFileSystem.watch"
+  ])
+  expect(eventRpc).toBeDefined()
+  expect(eventRpc === undefined ? false : RpcSchema.isStreamSchema(eventRpc.successSchema)).toBe(
+    true
   )
-  expect(Object.keys(NativeFileSystemRpcEvents)).toEqual(["Event"])
+  if (eventRpc !== undefined && RpcSchema.isStreamSchema(eventRpc.successSchema)) {
+    expect(eventRpc.successSchema.success).toBe(NativeFileSystemEvent)
+    expect(eventRpc.pipe(rpcSupport)).toEqual({ status: "supported" })
+  }
+
+  const eventDoc = NativeFileSystemSurface.schemaDocs.find(
+    (doc) => doc.tag === "NativeFileSystem.events.Event"
+  )
+  expect(eventDoc?.kind).toBe("stream")
+  expect(eventDoc?.callable).toBe(true)
+  expect(eventDoc?.support).toEqual({ status: "supported" })
 })
 
 test("NativeFileSystem public surface omits shallow service and layer helpers", () =>
@@ -7031,6 +7067,84 @@ test("NativeFileSystem service delegates through a substitutable service value",
     })
   ))
 
+test("NativeFileSystem direct client consumes the canonical RPC event stream", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
+      const requests: HostProtocolRequestEnvelope[] = []
+      const protocolLayer = Layer.effect(RpcClient.Protocol)(
+        makeDesktopClientProtocol(
+          {
+            send: (envelope) => {
+              if (envelope.kind !== "request") {
+                return Effect.void
+              }
+              requests.push(envelope)
+              return Effect.all(
+                [
+                  Queue.offer(
+                    queue,
+                    new HostProtocolStreamByRequestEnvelope({
+                      kind: "stream",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_100,
+                      traceId: envelope.traceId,
+                      payload: {
+                        type: "native-file-system-event",
+                        timestamp: 1_710_000_000_100,
+                        watchId: "watch-1",
+                        path: { path: "/tmp/report.txt" },
+                        phase: "changed"
+                      }
+                    })
+                  ),
+                  Queue.offer(
+                    queue,
+                    new HostProtocolResponseEnvelope({
+                      kind: "response",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_101,
+                      traceId: envelope.traceId
+                    })
+                  )
+                ],
+                { discard: true }
+              )
+            },
+            run: (onEnvelope) =>
+              Stream.fromQueue(queue).pipe(
+                Stream.runForEach(onEnvelope),
+                Effect.andThen(Effect.never)
+              )
+          },
+          {
+            nextRequestId: () => "native-file-system-event-rpc",
+            nextTraceId: () => "trace-native-file-system-event-rpc"
+          }
+        )
+      )
+
+      const event = yield* runScoped(
+        Effect.gen(function* () {
+          const filesystem = yield* NativeFileSystem
+          return yield* filesystem.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+        }),
+        Layer.provide(NativeFileSystemSurface.clientLayer, protocolLayer)
+      )
+
+      expect(event).toEqual(
+        new NativeFileSystemEvent({
+          type: "native-file-system-event",
+          timestamp: 1_710_000_000_100,
+          watchId: "watch-1",
+          path: new CanonicalPath({ path: "/tmp/report.txt" }),
+          phase: "changed"
+        })
+      )
+      expect(requests.map((request) => request.method)).toEqual(["NativeFileSystem.events.Event"])
+    })
+  ))
+
 test("NativeFileSystem bridge client sends typed host envelopes and decodes events and results", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -7121,6 +7235,53 @@ test("NativeFileSystem bridge client sends typed host envelopes and decodes even
         ["NativeFileSystem.stopWatching", { watchId: "watch-1" }],
         ["NativeFileSystem.isSupported", null]
       ])
+    })
+  ))
+
+test("NativeFileSystem bridge client keeps native event wire method compatibility", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const subscribedMethods: string[] = []
+      const exchange: BridgeClientExchange = {
+        request: () => Effect.die("NativeFileSystem bridge event test does not issue requests"),
+        subscribe: (method) => {
+          subscribedMethods.push(method)
+          return Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              timestamp: 1_710_000_000_100,
+              traceId: "native-file-system-bridge-event",
+              method,
+              payload: {
+                type: "native-file-system-event",
+                timestamp: 1_710_000_000_100,
+                watchId: "watch-1",
+                path: { path: "/tmp/report.txt" },
+                phase: "changed"
+              }
+            })
+          )
+        }
+      }
+
+      const event = yield* runScoped(
+        Effect.gen(function* () {
+          const filesystem = yield* NativeFileSystem
+          return yield* filesystem.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+        }),
+        NativeFileSystemSurface.bridgeClientLayer(exchange)
+      )
+
+      expect(event).toEqual(
+        new NativeFileSystemEvent({
+          type: "native-file-system-event",
+          timestamp: 1_710_000_000_100,
+          watchId: "watch-1",
+          path: new CanonicalPath({ path: "/tmp/report.txt" }),
+          phase: "changed"
+        })
+      )
+      expect(subscribedMethods).toEqual(["NativeFileSystem.Event"])
     })
   ))
 
@@ -7291,7 +7452,8 @@ test("native host RPC runtime denies protected NativeFileSystem calls before han
                 supported: false,
                 reason: "host-adapter-unimplemented"
               })
-            )
+            ),
+          "NativeFileSystem.events.Event": () => Stream.empty
         },
         { originAuth: RendererOriginAuth.unsafeDisabledForTests }
       )
@@ -7337,7 +7499,8 @@ test("native host RPC runtime lets permission-free NativeFileSystem support call
                 supported: false,
                 reason: "host-adapter-unimplemented"
               })
-            )
+            ),
+          "NativeFileSystem.events.Event": () => Stream.empty
         },
         { originAuth: RendererOriginAuth.unsafeDisabledForTests }
       )

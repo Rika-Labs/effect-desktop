@@ -24,8 +24,7 @@ import {
   type NativeFileSystemWatchOptions,
   NativeFileSystemWatchResult
 } from "./contracts/native-file-system.js"
-import { subscribeNativeEvent } from "./event-stream.js"
-import { decodeNativeInput, runNativeRpc } from "./native-client.js"
+import { decodeNativeInput, runNativeRpc, runNativeRpcStream } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
 
@@ -72,8 +71,9 @@ export const NativeFileSystemIsSupported = nativeFileSystemRpc(
   "query"
 )
 
-export const NativeFileSystemRpcEvents = Object.freeze({
-  Event: { payload: NativeFileSystemEvent }
+const NativeFileSystemEventStream = NativeSurface.event(Surface, "Event", {
+  payload: NativeFileSystemEvent,
+  support: NativeFileSystemSupport
 })
 
 const NativeFileSystemRpcGroup = RpcGroup.make(
@@ -81,7 +81,8 @@ const NativeFileSystemRpcGroup = RpcGroup.make(
   NativeFileSystemStat,
   NativeFileSystemWatch,
   NativeFileSystemStopWatching,
-  NativeFileSystemIsSupported
+  NativeFileSystemIsSupported,
+  NativeFileSystemEventStream
 )
 
 export const NativeFileSystemRpcs: RpcGroup.RpcGroup<NativeFileSystemRpc> = NativeFileSystemRpcGroup
@@ -158,7 +159,14 @@ export const NativeFileSystemHandlersLive = NativeFileSystemRpcGroup.toLayer({
     Effect.gen(function* () {
       const nativeFileSystem = yield* NativeFileSystem
       return yield* nativeFileSystem.isSupported()
-    })
+    }),
+  "NativeFileSystem.events.Event": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const nativeFileSystem = yield* NativeFileSystem
+        return nativeFileSystem.events()
+      })
+    )
 })
 
 export const NativeFileSystemSurface = NativeSurface.make(
@@ -169,13 +177,12 @@ export const NativeFileSystemSurface = NativeSurface.make(
     capabilities: NativeFileSystemCapabilityMethods,
     handlers: NativeFileSystemHandlersLive,
     client: (client) => nativeFileSystemClientFromRpcClient(client),
-    bridgeClient: (client, exchange) => nativeFileSystemClientFromRpcClient(client, exchange)
+    bridgeClient: (client, exchange) => nativeFileSystemBridgeClientFromRpcClient(client, exchange)
   }
 )
 
 const nativeFileSystemClientFromRpcClient = (
-  client: DesktopRpcClient<NativeFileSystemRpc>,
-  exchange?: BridgeClientExchange
+  client: DesktopRpcClient<NativeFileSystemRpc>
 ): NativeFileSystemClientApi =>
   Object.freeze({
     open: (input) =>
@@ -213,7 +220,54 @@ const nativeFileSystemClientFromRpcClient = (
         client["NativeFileSystem.isSupported"](),
         "NativeFileSystem.isSupported"
       ),
-    events: () => subscribeNativeEvent(exchange, "NativeFileSystem.Event", NativeFileSystemEvent)
+    events: () =>
+      runNativeFileSystemRpcStream(
+        client["NativeFileSystem.events.Event"](undefined),
+        "NativeFileSystem.events.Event"
+      )
+  } satisfies NativeFileSystemClientApi)
+
+const nativeFileSystemBridgeClientFromRpcClient = (
+  client: DesktopRpcClient<NativeFileSystemRpc>,
+  exchange: BridgeClientExchange
+): NativeFileSystemClientApi =>
+  Object.freeze({
+    open: (input) =>
+      decodeNativeFileSystemOpenInput(input, "NativeFileSystem.open").pipe(
+        Effect.flatMap((decoded) =>
+          runNativeFileSystemRpc(client["NativeFileSystem.open"](decoded), "NativeFileSystem.open")
+        )
+      ),
+    stat: (input) =>
+      decodeNativeFileSystemStatInput(input, "NativeFileSystem.stat").pipe(
+        Effect.flatMap((decoded) =>
+          runNativeFileSystemRpc(client["NativeFileSystem.stat"](decoded), "NativeFileSystem.stat")
+        )
+      ),
+    watch: (input) =>
+      decodeNativeFileSystemWatchInput(input, "NativeFileSystem.watch").pipe(
+        Effect.flatMap((decoded) =>
+          runNativeFileSystemRpc(
+            client["NativeFileSystem.watch"](decoded),
+            "NativeFileSystem.watch"
+          )
+        )
+      ),
+    stopWatching: (input) =>
+      decodeNativeFileSystemStopWatchingInput(input, "NativeFileSystem.stopWatching").pipe(
+        Effect.flatMap((decoded) =>
+          runNativeFileSystemRpc(
+            client["NativeFileSystem.stopWatching"](decoded),
+            "NativeFileSystem.stopWatching"
+          )
+        )
+      ),
+    isSupported: () =>
+      runNativeFileSystemRpc(
+        client["NativeFileSystem.isSupported"](),
+        "NativeFileSystem.isSupported"
+      ),
+    events: () => NativeSurface.subscribeEvent(exchange, NativeFileSystemEventStream)
   } satisfies NativeFileSystemClientApi)
 
 const decodeNativeFileSystemOpenInput = (
@@ -264,3 +318,8 @@ const runNativeFileSystemRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
   operation: string
 ): Effect.Effect<A, NativeFileSystemError, never> => runNativeRpc(effect, operation, Surface)
+
+const runNativeFileSystemRpcStream = <A, E>(
+  stream: Stream.Stream<A, E, never>,
+  operation: string
+): Stream.Stream<A, NativeFileSystemError, never> => runNativeRpcStream(stream, operation, Surface)

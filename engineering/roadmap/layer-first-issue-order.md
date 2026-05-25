@@ -141,7 +141,7 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 |         #1846 Flatten Protocol pass-through service split | Closed | Removes the `ProtocolClient` -> `Protocol` forwarding layer while keeping Protocol validation, permission metadata, and RPC boundary semantics.                     |
 |      #1847 Flatten SafeStorage pass-through service split | Closed | Removes the `SafeStorageClient` -> `SafeStorage` forwarding layer while keeping SecretBytes redaction, key validation, Linux unavailable semantics, and RPC errors. |
 | #1848 Flatten NativeFileSystem pass-through service split | Closed | Removes the `NativeFileSystemClient` -> `NativeFileSystem` forwarding layer while keeping filesystem validation, capability metadata, and bridge events.            |
-|        #1849 Model NativeFileSystem events as RPC streams | Open   | Removes the remaining `NativeFileSystemRpcEvents` side object by moving NativeFileSystem events into a canonical `NativeFileSystem.events.Event` RPC stream.        |
+|        #1849 Model NativeFileSystem events as RPC streams | Closed | Removes the remaining `NativeFileSystemRpcEvents` side object by moving NativeFileSystem events into a canonical `NativeFileSystem.events.Event` RPC stream.        |
 
 ## Execution Progress
 
