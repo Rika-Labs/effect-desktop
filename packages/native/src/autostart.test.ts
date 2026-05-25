@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
 import {
   type BridgeClientExchange,
   type HostProtocolEnvelope,
@@ -13,14 +14,31 @@ import {
 import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Queue, Schema, Stream } from "effect"
 import { RpcClient, RpcSchema } from "effect/unstable/rpc"
 
-import {
-  Autostart,
-  AutostartClient,
-  AutostartLive,
-  AutostartRpcs,
-  AutostartSurface
-} from "./autostart.js"
+import { Autostart, AutostartRpcs, AutostartSurface } from "./autostart.js"
 import { AutostartEvent } from "./contracts/autostart.js"
+
+test("Autostart public surface omits shallow service and layer helpers", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        readFile(new URL("autostart.ts", import.meta.url), "utf8")
+      )
+      const indexSource = yield* Effect.promise(() =>
+        readFile(new URL("index.ts", import.meta.url), "utf8")
+      )
+
+      for (const removedName of [
+        "class AutostartClient",
+        "AutostartLive",
+        "makeAutostartClientLayer",
+        "makeAutostartServiceLayer",
+        "makeAutostartBridgeClientLayer"
+      ]) {
+        expect(source).not.toContain(removedName)
+        expect(indexSource).not.toContain(removedName)
+      }
+    })
+  ))
 
 test("Autostart event schema is owned by the RPC stream contract", async () => {
   const autostartModule = await import("./autostart.js")
@@ -95,7 +113,7 @@ test("Autostart direct client consumes the canonical RPC event stream", () =>
 
       const event = yield* runScoped(
         Effect.gen(function* () {
-          const autostart = yield* AutostartClient
+          const autostart = yield* Autostart
           return yield* autostart.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
         }),
         Layer.provide(AutostartSurface.clientLayer, protocolLayer)
@@ -163,7 +181,7 @@ test("Autostart bridge client rejects inconsistent event phase payloads as Inval
             autostart.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
           )
         }),
-        Layer.provide(AutostartLive, AutostartSurface.bridgeClientLayer(exchange))
+        AutostartSurface.bridgeClientLayer(exchange)
       )
 
       expectInvalidOutput(exit)

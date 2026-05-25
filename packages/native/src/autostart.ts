@@ -1,6 +1,6 @@
 import { type BridgeClientExchange, type HostProtocolError, RpcGroup } from "@orika/bridge"
 import { type DesktopRpcClient, P } from "@orika/core"
-import { Context, Effect, Layer, Schema, Stream } from "effect"
+import { Context, Effect, Schema, Stream } from "effect"
 
 import {
   AutostartEnableInput,
@@ -72,27 +72,9 @@ export interface AutostartClientApi {
   readonly events: () => Stream.Stream<AutostartEvent, AutostartError>
 }
 
-export class AutostartClient extends Context.Service<AutostartClient, AutostartClientApi>()(
-  "@orika/native/AutostartClient"
-) {}
-
 export class Autostart extends Context.Service<Autostart, AutostartClientApi>()(
   "@orika/native/Autostart"
-) {
-  static readonly layer = Layer.effect(Autostart)(
-    Effect.gen(function* () {
-      const client = yield* AutostartClient
-      return Autostart.of({
-        isEnabled: () => client.isEnabled(),
-        enable: (input) => client.enable(input),
-        disable: () => client.disable(),
-        events: () => client.events()
-      } satisfies AutostartClientApi)
-    })
-  )
-}
-
-export const AutostartLive = Autostart.layer
+) {}
 
 export type AutostartRpc = RpcGroup.Rpcs<typeof AutostartRpcGroup>
 export type AutostartRpcHandlers<R = never> = NativeRpcHandlers<typeof AutostartRpcGroup, R>
@@ -123,7 +105,7 @@ export const AutostartHandlersLive = AutostartRpcGroup.toLayer({
 })
 
 export const AutostartSurface = NativeSurface.make("Autostart", AutostartRpcGroup, {
-  service: AutostartClient,
+  service: Autostart,
   capabilities: AutostartMethodNames,
   handlers: AutostartHandlersLive,
   client: (client) => autostartClientFromRpcClient(client),

@@ -120,7 +120,6 @@ import {
   AssociationRpcEvents,
   AssociationSurface,
   Autostart,
-  AutostartLive,
   AutostartMethodNames,
   AutostartRpcs,
   Native,
@@ -320,7 +319,6 @@ import {
   ContextMenuClient,
   PathClient,
   ProtocolClient,
-  AutostartClient,
   RecentDocumentsClient,
   NativeFileSystemClient,
   SafeStorageClient,
@@ -6368,7 +6366,7 @@ test("AutostartRpcs declares the Phase 8 Autostart method and event surface", ()
   ])
 })
 
-test("Autostart service delegates through a substitutable AutostartClient port", () =>
+test("Autostart service delegates through a substitutable service value", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
@@ -6383,7 +6381,7 @@ test("Autostart service delegates through a substitutable AutostartClient port",
 
             return { disabled, enabled, events, initial }
           }),
-          Layer.provide(AutostartLive, Layer.succeed(AutostartClient)(autostartClient(calls)))
+          autostartLayer(autostartClient(calls))
         )
       )
 
@@ -6425,7 +6423,7 @@ test("Autostart bridge client sends typed host envelopes and decodes events and 
 
             return { disabled, enabled, initial }
           }),
-          Layer.provide(AutostartLive, AutostartSurface.bridgeClientLayer(exchange))
+          AutostartSurface.bridgeClientLayer(exchange)
         )
       )
 
@@ -6472,7 +6470,7 @@ test("Autostart bridge client subscribes to native autostart events", () =>
             const autostart = yield* Autostart
             return yield* autostart.events().pipe(Stream.take(1), Stream.runCollect)
           }),
-          Layer.provide(AutostartLive, AutostartSurface.bridgeClientLayer(exchange))
+          AutostartSurface.bridgeClientLayer(exchange)
         )
       )
 
@@ -6490,14 +6488,11 @@ test("Autostart bridge client rejects invalid launch args before transport", () 
       const requests: HostProtocolRequestEnvelope[] = []
       const client = yield* runScoped(
         Autostart.asEffect(),
-        Layer.provide(
-          AutostartLive,
-          AutostartSurface.bridgeClientLayer(
-            autostartExchange(requests, () => ({
-              kind: "success",
-              payload: { enabled: true, mechanism: "linux-xdg-autostart" }
-            }))
-          )
+        AutostartSurface.bridgeClientLayer(
+          autostartExchange(requests, () => ({
+            kind: "success",
+            payload: { enabled: true, mechanism: "linux-xdg-autostart" }
+          }))
         )
       )
 
@@ -6585,14 +6580,14 @@ test("Autostart service propagates unsupported platform and host failure", () =>
           const autostart = yield* Autostart
           return yield* Effect.exit(autostart.enable({ args: ["--hidden"] }))
         }),
-        Layer.provide(AutostartLive, Layer.succeed(AutostartClient)(unsupportedClient))
+        autostartLayer(unsupportedClient)
       )
       const hostFailureExit = yield* runScoped(
         Effect.gen(function* () {
           const autostart = yield* Autostart
           return yield* Effect.exit(autostart.enable({ args: ["--hidden"] }))
         }),
-        Layer.provide(AutostartLive, Layer.succeed(AutostartClient)(hostFailureClient))
+        autostartLayer(hostFailureClient)
       )
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
@@ -14552,6 +14547,9 @@ const autostartClient = (calls: string[]): AutostartClientApi => ({
       return new AutostartEvent({ phase: "enabled", mechanism: "linux-xdg-autostart" })
     })
 })
+
+const autostartLayer = (client: AutostartClientApi): Layer.Layer<Autostart> =>
+  Layer.succeed(Autostart)(client)
 
 const recentDocumentsClient = (calls: string[]): RecentDocumentsClientApi => ({
   add: (input) => recordVoid(calls, `add:${input.path.path}`),

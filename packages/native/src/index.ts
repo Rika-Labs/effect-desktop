@@ -57,9 +57,7 @@ export {
 } from "./association.js"
 export {
   Autostart,
-  AutostartClient,
   AutostartHandlersLive,
-  AutostartLive,
   AutostartMethodNames,
   AutostartRpcs,
   AutostartSurface,
