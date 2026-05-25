@@ -59,11 +59,9 @@ const PgliteLive = RendererPgliteLive({
 })
 ```
 
-Current packaged macOS system WebView QA shows PGlite layer acquisition does not
-complete under the fixed `app://localhost` renderer scheme; track packaged
-runtime support in [#1832](https://github.com/Rika-Labs/orika/issues/1832).
-Use IndexedDB or SQLite WASM for packaged renderer storage until that issue is
-resolved.
+Packaged macOS system WebView QA verifies this path under the fixed
+`app://localhost` renderer scheme when the renderer bundles PGlite's WASM and
+data assets.
 
 ## IndexedDB
 
@@ -126,8 +124,8 @@ upstream Effect modules.
 | -------------------------------------------------- | -------------------------------------------------------------------- |
 | Small key/value, occasional reads                  | IndexedDB or `BrowserKeyValueStore`                                  |
 | Tabular data, joins, aggregates                    | `SqliteWasmClient.layer` from `@effect/sql-sqlite-wasm`              |
-| Postgres-compatible queries, syncing with a server | `RendererPgliteLive` outside packaged system WebView; see #1832      |
-| Anything that should survive the renderer reload   | IndexedDB-backed stores; PGlite packaged support is tracked in #1832 |
+| Postgres-compatible queries, syncing with a server | `RendererPgliteLive` with a browser storage `dataDir`                |
+| Anything that should survive the renderer reload   | IndexedDB-backed stores or PGlite with an IndexedDB-backed `dataDir` |
 
 ## Why renderer-side storage matters
 

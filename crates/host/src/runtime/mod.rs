@@ -1606,6 +1606,57 @@ console.log("this is not framed");
 
     #[cfg(target_os = "macos")]
     #[test]
+    fn macos_parent_exit_guard_survives_parent_process_group_sigint() {
+        use std::os::unix::process::CommandExt;
+
+        let temp_dir = unique_temp_dir("macos-parent-exit-guard-sigint");
+        fs::create_dir_all(&temp_dir).expect("temp dir should create");
+        let pid_path = temp_dir.join("runtime-pid.txt");
+        let current_exe = std::env::current_exe().expect("current test binary should resolve");
+
+        let mut helper = std::process::Command::new(current_exe);
+        helper
+            .arg("--exact")
+            .arg("runtime::tests::macos_parent_exit_guard_helper")
+            .arg("--ignored")
+            .env("EFFECT_DESKTOP_MACOS_PARENT_EXIT_GUARD_HELPER", "1")
+            .env("EFFECT_DESKTOP_MACOS_PARENT_EXIT_GUARD_HOLD", "1")
+            .env("EFFECT_DESKTOP_MACOS_PARENT_EXIT_GUARD_PID_PATH", &pid_path);
+        helper.process_group(0);
+
+        let mut helper = helper.spawn().expect("helper test process should spawn");
+        let helper_pid = libc::pid_t::try_from(helper.id()).expect("helper pid should fit pid_t");
+        let deadline = Instant::now() + EVENT_TIMEOUT;
+        while !pid_path.is_file() {
+            if Instant::now() >= deadline {
+                let _ = helper.kill();
+                let _ = helper.wait();
+                panic!("helper did not write runtime pid before timeout");
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+
+        let child_pid = read_pid(&pid_path);
+        // SAFETY: the helper was launched as a process-group leader for this test.
+        unsafe {
+            libc::kill(-helper_pid, libc::SIGINT);
+        }
+        let _ = helper.wait();
+
+        let exited = wait_for_process_exit(child_pid, EVENT_TIMEOUT);
+        if !exited {
+            kill_process_group(child_pid, libc::SIGKILL);
+        }
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        assert!(
+            exited,
+            "runtime child pid {child_pid} survived parent process-group SIGINT"
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
     #[ignore]
     fn macos_parent_exit_guard_helper() {
         if std::env::var_os("EFFECT_DESKTOP_MACOS_PARENT_EXIT_GUARD_HELPER").is_none() {
@@ -1633,6 +1684,11 @@ setInterval(() => {{}}, 1000);
         .expect("runtime child should spawn");
 
         await_ready(&mut supervisor, EVENT_TIMEOUT).expect("runtime child should become ready");
+        if std::env::var_os("EFFECT_DESKTOP_MACOS_PARENT_EXIT_GUARD_HOLD").is_some() {
+            loop {
+                thread::sleep(Duration::from_secs(1));
+            }
+        }
         std::process::exit(0);
     }
 

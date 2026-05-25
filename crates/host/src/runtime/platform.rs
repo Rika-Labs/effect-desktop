@@ -62,6 +62,7 @@ pub(crate) fn release_child_guard(guard: ChildGuard) {
 
 #[cfg(target_os = "macos")]
 fn spawn_macos_parent_exit_guard(child_pid: u32) -> io::Result<Child> {
+    use std::os::unix::process::CommandExt;
     use std::process::Stdio;
 
     const SCRIPT: &str = r#"
@@ -77,7 +78,8 @@ if ! kill -0 "$parent_pid" 2>/dev/null && kill -0 "$child_pid" 2>/dev/null; then
 fi
 "#;
 
-    Command::new("/bin/sh")
+    let mut command = Command::new("/bin/sh");
+    command
         .arg("-c")
         .arg(SCRIPT)
         .arg("effect-desktop-runtime-parent-exit-guard")
@@ -85,8 +87,9 @@ fi
         .arg(child_pid.to_string())
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
+        .stderr(Stdio::null());
+    command.process_group(0);
+    command.spawn()
 }
 
 #[cfg(all(unix, not(target_os = "macos")))]
