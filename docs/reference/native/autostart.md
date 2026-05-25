@@ -17,12 +17,12 @@ reports whether the registration exists for the current app identity.
 
 ## Status
 
-| Method      | Success           | Runtime support |
-| ----------- | ----------------- | --------------- |
-| `isEnabled` | `AutostartStatus` | supported       |
-| `enable`    | `AutostartStatus` | supported       |
-| `disable`   | `AutostartStatus` | supported       |
-| `events()`  | `AutostartEvent` stream | supported |
+| Method      | Success                 | Runtime support |
+| ----------- | ----------------------- | --------------- |
+| `isEnabled` | `AutostartStatus`       | supported       |
+| `enable`    | `AutostartStatus`       | supported       |
+| `disable`   | `AutostartStatus`       | supported       |
+| `events()`  | `AutostartEvent` stream | supported       |
 
 ## Mechanisms
 
