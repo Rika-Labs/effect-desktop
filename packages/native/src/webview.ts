@@ -330,7 +330,7 @@ const webViewCapabilityFact = (
     support
   })
 
-export const WebViewCapabilityFacts = Object.freeze([
+const UnsupportedCapabilityFacts = Object.freeze([
   webViewCapabilityFact("captureScreenshot", WebViewDocumentUnsupportedSupport),
   webViewCapabilityFact("printToPdf", WebViewDocumentUnsupportedSupport),
   webViewCapabilityFact("findInPage", WebViewFindInPageSupport),
@@ -601,7 +601,7 @@ export const WebViewSurface = NativeSurface.make("WebView", WebViewRpcGroup, {
   service: WebViewClient,
   capabilities: WebViewCapabilityMethods,
   handlers: WebViewHandlersLive,
-  capabilityFacts: WebViewCapabilityFacts,
+  capabilityFacts: UnsupportedCapabilityFacts,
   client: (client) => webViewClientFromRpcClient(client),
   bridgeClient: (client, exchange) => webViewBridgeClientFromRpcClient(client, exchange)
 })

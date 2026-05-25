@@ -3644,11 +3644,6 @@
       "signature": "const webViewCapability: (name: WebViewCapabilityName, platform?: WebViewPlatform, mode?: WebViewRuntimeMode) => boolean"
     },
     {
-      "name": "WebViewCapabilityFacts",
-      "kind": "value",
-      "signature": "const WebViewCapabilityFacts: readonly import(\"@orika/core\").DesktopRpcCapabilityFact[]"
-    },
-    {
       "name": "WebViewClient",
       "kind": "class",
       "signature": "export class WebViewClient extends Context.Service<WebViewClient, WebViewClientApi>()( \"@orika/native/WebViewClient\" ) {}"

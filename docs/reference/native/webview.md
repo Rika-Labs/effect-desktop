@@ -292,6 +292,11 @@ a separate native host adapter with provider request and response callbacks.
 Proxy/auth/certificate hooks are likewise absent from the `WebView` surface;
 use `NetworkAuth.setProxy` for the current future-WebView proxy path.
 
+Architecture-debt sweep outcome for #1880: removed the public
+`WebViewCapabilityFacts` side export. Unsupported WebView method facts remain
+private to `WebViewSurface` metadata because they publish truthful non-callable
+support metadata for the generated native capability manifest.
+
 ## Related
 
 - Reference: [`Window`](window.md)

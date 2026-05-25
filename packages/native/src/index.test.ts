@@ -241,7 +241,6 @@ import {
   UpdaterMethodNames,
   UpdaterSurface,
   WebView,
-  WebViewCapabilityFacts,
   WebViewHandlersLive,
   WebViewRpcs,
   WebViewLive,
@@ -1006,6 +1005,8 @@ const expectedWebViewCapabilityFactMethods = [
   "postToFrame",
   "attachDebugger"
 ] as const
+
+const webViewCapabilityFacts = () => WebViewSurface.schemaDocs.filter((doc) => !doc.callable)
 
 const webViewDebuggerUnsupportedSupport = {
   status: "unsupported",
@@ -2527,6 +2528,14 @@ test("WebViewRpcs declares the Phase 7 WebView method and event surface", () => 
   ])
 })
 
+test("WebView public surface keeps unsupported capability facts private", async () => {
+  const webViewModule = await import("./webview.js")
+  const rootModule = await import("./index.js")
+
+  expect("WebViewCapabilityFacts" in webViewModule).toBe(false)
+  expect("WebViewCapabilityFacts" in rootModule).toBe(false)
+})
+
 test("WebView support metadata reflects resource lifecycle, print, and devtools platform gates", () => {
   const byTag = new Map(WebViewSurface.schemaDocs.map((doc) => [doc.tag, doc] as const))
   expect(byTag.get("WebView.create")?.support).toEqual({ status: "supported" })
@@ -2546,11 +2555,12 @@ test("WebView support metadata reflects resource lifecycle, print, and devtools 
 })
 
 test("WebView declares unsupported methods as non-callable capability facts", () => {
-  const factTags = WebViewCapabilityFacts.map((fact) => fact.tag).toSorted()
+  const facts = webViewCapabilityFacts()
+  const factTags = facts.map((fact) => fact.tag).toSorted()
   expect(factTags).toEqual(
     expectedWebViewCapabilityFactMethods.map((method) => `WebView.${method}`).toSorted()
   )
-  const byTag = new Map(WebViewCapabilityFacts.map((fact) => [fact.tag, fact] as const))
+  const byTag = new Map(facts.map((fact) => [fact.tag, fact] as const))
   expect(byTag.get("WebView.attachDebugger")?.support).toEqual(webViewDebuggerUnsupportedSupport)
   expect(byTag.get("WebView.captureScreenshot")?.support).toEqual(webViewDocumentUnsupportedSupport)
   expect(byTag.get("WebView.printToPdf")?.support).toEqual(webViewDocumentUnsupportedSupport)
@@ -2567,7 +2577,7 @@ test("WebView declares unsupported methods as non-callable capability facts", ()
   expect(byTag.get("WebView.listFrames")?.support).toEqual(webViewFrameRoutingUnsupportedSupport)
   expect(byTag.get("WebView.postToFrame")?.support).toEqual(webViewFrameRoutingUnsupportedSupport)
   expect(byTag.has("WebView.capability")).toBe(false)
-  for (const fact of WebViewCapabilityFacts) {
+  for (const fact of facts) {
     expect(fact.support.status).toBe("unsupported")
   }
   const callableTags = Array.from(WebViewRpcs.requests.keys())

@@ -851,7 +851,6 @@ export {
 } from "./session-profile.js"
 export {
   WebView,
-  WebViewCapabilityFacts,
   WebViewClient,
   WebViewHandlersLive,
   WebViewLive,
