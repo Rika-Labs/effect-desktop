@@ -789,9 +789,7 @@ export {
 } from "./resident-lifecycle.js"
 export {
   SafeStorage,
-  SafeStorageClient,
   SafeStorageHandlersLive,
-  SafeStorageLive,
   SafeStorageMethodNames,
   SafeStorageRpcEvents,
   SafeStorageRpcs,
@@ -805,7 +803,6 @@ export {
   type SafeStorageError,
   type SafeStorageRpc,
   type SafeStorageRpcHandlers,
-  type SafeStorageServiceApi,
   type SecretBytes
 } from "./safe-storage.js"
 export {

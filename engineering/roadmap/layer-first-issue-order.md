@@ -139,6 +139,7 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 |     #1844 Route direct native events through RPC streams | Closed | Splits direct and bridge event clients for NativeNetwork and Download so direct clients use canonical `*.events.Event` RPC streams instead of bridge subscriptions. |
 |      #1845 Flatten WebRequest pass-through service split | Closed | Removes the `WebRequestClient` -> `WebRequest` forwarding layer while keeping WebRequest support metadata, direct/bridge event routing, and profile filtering.      |
 |        #1846 Flatten Protocol pass-through service split | Closed | Removes the `ProtocolClient` -> `Protocol` forwarding layer while keeping Protocol validation, permission metadata, and RPC boundary semantics.                     |
+|     #1847 Flatten SafeStorage pass-through service split | Closed | Removes the `SafeStorageClient` -> `SafeStorage` forwarding layer while keeping SecretBytes redaction, key validation, Linux unavailable semantics, and RPC errors. |
 
 ## Execution Progress
 

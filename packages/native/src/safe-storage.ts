@@ -11,7 +11,7 @@ import {
   unsafeSecretBytes
 } from "@orika/bridge"
 import { P, type DesktopRpcClient } from "@orika/core"
-import { Context, Effect, Layer, Schema } from "effect"
+import { Context, Effect, Schema } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
@@ -104,30 +104,9 @@ export interface SafeStorageClientApi {
   readonly isAvailable: () => Effect.Effect<boolean, SafeStorageError, never>
 }
 
-export class SafeStorageClient extends Context.Service<SafeStorageClient, SafeStorageClientApi>()(
-  "@orika/native/SafeStorageClient"
-) {}
-
-export type SafeStorageServiceApi = SafeStorageClientApi
-
-export class SafeStorage extends Context.Service<SafeStorage, SafeStorageServiceApi>()(
+export class SafeStorage extends Context.Service<SafeStorage, SafeStorageClientApi>()(
   "@orika/native/SafeStorage"
-) {
-  static readonly layer = Layer.effect(SafeStorage)(
-    Effect.gen(function* () {
-      const client = yield* SafeStorageClient
-      return SafeStorage.of({
-        set: (key, value) => client.set(key, value),
-        get: (key) => client.get(key),
-        delete: (key) => client.delete(key),
-        list: () => client.list(),
-        isAvailable: () => client.isAvailable()
-      } satisfies SafeStorageServiceApi)
-    })
-  )
-}
-
-export const SafeStorageLive = SafeStorage.layer
+) {}
 
 export type SafeStorageRpc = RpcGroup.Rpcs<typeof SafeStorageRpcGroup>
 
@@ -165,7 +144,7 @@ export const SafeStorageHandlersLive = SafeStorageRpcGroup.toLayer({
 })
 
 export const SafeStorageSurface = NativeSurface.make("SafeStorage", SafeStorageRpcGroup, {
-  service: SafeStorageClient,
+  service: SafeStorage,
   capabilities: SafeStorageCapabilityMethods,
   handlers: SafeStorageHandlersLive,
   client: (client) => safeStorageClientFromRpcClient(client)

@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
 import {
   HostProtocolError as HostProtocolErrorSchema,
   HostProtocolInvalidArgumentError,
@@ -223,7 +224,6 @@ import {
   SafeStorageHandlersLive,
   SafeStorageRpcs,
   SafeStorageRpcEvents,
-  SafeStorageLive,
   SafeStorageMethodNames,
   SafeStorageSurface,
   Screen,
@@ -315,7 +315,6 @@ import {
   ContextMenuClient,
   PathClient,
   NativeFileSystemClient,
-  SafeStorageClient,
   UpdaterClient,
   SystemAppearanceClient,
   DockClient,
@@ -509,7 +508,6 @@ test("native services expose canonical static layers", () => {
   expect(NotificationLive).toBe(Notification.layer)
   expect(PathLive).toBe(Path.layer)
   expect(PowerMonitorLive).toBe(PowerMonitor.layer)
-  expect(SafeStorageLive).toBe(SafeStorage.layer)
   expect(ScreenLive).toBe(Screen.layer)
   expect(SystemAppearanceLive).toBe(SystemAppearance.layer)
   expect(TrayLive).toBe(Tray.layer)
@@ -7404,6 +7402,34 @@ test("SafeStorageRpcs declares the Phase 8 SafeStorage method surface", () => {
   expect(Object.keys(SafeStorageRpcEvents)).toEqual([])
 })
 
+test("SafeStorage public surface omits shallow service and layer helpers", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        readFile(new URL("safe-storage.ts", import.meta.url), "utf8")
+      )
+      const indexSource = yield* Effect.promise(() =>
+        readFile(new URL("index.ts", import.meta.url), "utf8")
+      )
+      const safeStorageModule = yield* Effect.promise(() => import("./safe-storage.js"))
+      const rootModule = yield* Effect.promise(() => import("./index.js"))
+
+      for (const removedName of [
+        "class SafeStorageClient",
+        "SafeStorageServiceApi",
+        "SafeStorageLive",
+        "SafeStorage.layer"
+      ]) {
+        expect(source).not.toContain(removedName)
+        expect(indexSource).not.toContain(removedName)
+      }
+      expect("SafeStorageClient" in safeStorageModule).toBe(false)
+      expect("SafeStorageClient" in rootModule).toBe(false)
+      expect("SafeStorageLive" in safeStorageModule).toBe(false)
+      expect("SafeStorageLive" in rootModule).toBe(false)
+    })
+  ))
+
 test("SecretBytes redacts JSON formatting while exposing explicit byte copies", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -7418,7 +7444,7 @@ test("SecretBytes redacts JSON formatting while exposing explicit byte copies", 
     })
   ))
 
-test("SafeStorage service delegates through a substitutable SafeStorageClient port", () =>
+test("SafeStorage service delegates through a substitutable service value", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
@@ -7432,7 +7458,7 @@ test("SafeStorage service delegates through a substitutable SafeStorageClient po
           yield* storage.delete("token")
           return { available, keys, secret }
         }),
-        Layer.provide(SafeStorageLive, Layer.succeed(SafeStorageClient)(safeStorageClient(calls)))
+        Layer.succeed(SafeStorage)(safeStorageClient(calls))
       )
 
       expect(result.available).toBe(true)
@@ -7469,7 +7495,7 @@ test("SafeStorage bridge client validates keys and redacts decoded values", () =
           const emptyKeyExit = yield* Effect.exit(storage.set("", makeSafeStorageTestSecret()))
           return { available, emptyKeyExit, keys, secret }
         }),
-        Layer.provide(SafeStorageLive, SafeStorageSurface.bridgeClientLayer(exchange))
+        SafeStorageSurface.bridgeClientLayer(exchange)
       )
 
       expect(result.secret.pipe(encodeUnknownJson)).toBe('"<redacted:SecretBytes>"')
@@ -7508,7 +7534,7 @@ test("SafeStorage bridge client rejects control-byte keys as InvalidArgument", (
         }))
         const client = yield* runScoped(
           SafeStorage.asEffect(),
-          Layer.provide(SafeStorageLive, SafeStorageSurface.bridgeClientLayer(exchange))
+          SafeStorageSurface.bridgeClientLayer(exchange)
         )
 
         const setExit = yield* Effect.exit(client.set(key, makeSafeStorageTestSecret()))
@@ -7543,7 +7569,7 @@ test("SafeStorage bridge client rejects invalid keys in list output as InvalidOu
             const storage = yield* SafeStorage
             return yield* Effect.exit(storage.list())
           }),
-          Layer.provide(SafeStorageLive, SafeStorageSurface.bridgeClientLayer(exchange))
+          SafeStorageSurface.bridgeClientLayer(exchange)
         )
 
         expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
@@ -7564,7 +7590,7 @@ test("SafeStorage bridge client decodes valid printable keys in list output", ()
           const storage = yield* SafeStorage
           return yield* storage.list()
         }),
-        Layer.provide(SafeStorageLive, SafeStorageSurface.bridgeClientLayer(exchange))
+        SafeStorageSurface.bridgeClientLayer(exchange)
       )
 
       expect(keys).toEqual(["token", "session"])
@@ -7650,14 +7676,14 @@ test("SafeStorage service propagates unsupported platform and host failure witho
           const storage = yield* SafeStorage
           return yield* Effect.exit(storage.set("token", makeSafeStorageTestSecret()))
         }),
-        Layer.provide(SafeStorageLive, Layer.succeed(SafeStorageClient)(unsupportedClient))
+        Layer.succeed(SafeStorage)(unsupportedClient)
       )
       const hostFailureExit = yield* runScoped(
         Effect.gen(function* () {
           const storage = yield* SafeStorage
           return yield* Effect.exit(storage.set("token", makeSafeStorageTestSecret()))
         }),
-        Layer.provide(SafeStorageLive, Layer.succeed(SafeStorageClient)(hostFailureClient))
+        Layer.succeed(SafeStorage)(hostFailureClient)
       )
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
@@ -7680,10 +7706,7 @@ test("Linux SafeStorage client reports unimplemented adapter as unavailable with
           const keys = yield* storage.list()
           return { available, deleteExit, getExit, keys, setExit }
         }),
-        Layer.provide(
-          SafeStorageLive,
-          Layer.succeed(SafeStorageClient)(makeLinuxSafeStorageClient())
-        )
+        Layer.succeed(SafeStorage)(makeLinuxSafeStorageClient())
       )
 
       expect(result.available).toBe(false)
