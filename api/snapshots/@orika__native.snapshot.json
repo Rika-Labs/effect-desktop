@@ -3144,11 +3144,6 @@
       "signature": "export class SelectionContext extends Context.Service< SelectionContext, SelectionContextClientApi >()(\"@orika/native/SelectionContext\") {}"
     },
     {
-      "name": "SelectionContextCapabilityFacts",
-      "kind": "value",
-      "signature": "const SelectionContextCapabilityFacts: readonly import(\"@orika/core\").DesktopRpcCapabilityFact[]"
-    },
-    {
       "name": "SelectionContextClientApi",
       "kind": "interface",
       "signature": "export interface SelectionContextClientApi { readonly isSupported: () => Effect.Effect< SelectionContextSupportedResult, SelectionContextError, never > readonly events: () => Stream.Stream<SelectionContextEvent, SelectionContextError, never> }"

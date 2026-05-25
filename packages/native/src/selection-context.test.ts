@@ -18,7 +18,6 @@ import {
   makeSelectionContextMemoryClient,
   makeSelectionContextUnsupportedClient,
   SelectionContext,
-  SelectionContextCapabilityFacts,
   type SelectionContextClientApi,
   SelectionContextRpcs,
   SelectionContextSurface
@@ -42,6 +41,7 @@ test("SelectionContext public surface omits shallow service and layer helpers", 
       )
 
       for (const removedName of [
+        "SelectionContext" + "CapabilityFacts",
         "SelectionContextServiceApi",
         "class SelectionContextClient",
         "SelectionContextLive",
@@ -96,13 +96,13 @@ test("SelectionContext event schema is owned by the RPC stream contract", async 
 test("SelectionContext declares the demoted methods as non-callable capability facts", () =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const factTags = SelectionContextCapabilityFacts.map((fact) => fact.tag).toSorted()
+      const facts = selectionContextCapabilityFacts()
+      const factTags = facts.map((fact) => fact.tag).toSorted()
       expect(factTags).toEqual(
         UnsupportedMethods.map((method) => `SelectionContext.${method}`).toSorted()
       )
-      for (const fact of SelectionContextCapabilityFacts) {
+      for (const fact of facts) {
         expect(fact.support.status).toBe("unsupported")
-        expect(fact.capability.kind).toBe("native.invoke")
       }
 
       const manifest = yield* makeNativeCapabilityManifest([
@@ -113,6 +113,7 @@ test("SelectionContext declares the demoted methods as non-callable capability f
         const fact = byTag.get(`SelectionContext.${method}`)
         expect(fact).toBeDefined()
         expect(fact?.support.status).toBe("unsupported")
+        expect(fact?.capability.kind).toBe("native.invoke")
       }
 
       const callableTags = SelectionContextSurface.schemaDocs
@@ -395,3 +396,6 @@ const runScoped = <A, E, R>(
 
 const selectionContextLayer = (client: SelectionContextClientApi): Layer.Layer<SelectionContext> =>
   Layer.succeed(SelectionContext)(client)
+
+const selectionContextCapabilityFacts = () =>
+  SelectionContextSurface.schemaDocs.filter((doc) => !doc.callable)

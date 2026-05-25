@@ -43,7 +43,7 @@ const selectionContextCapabilityFact = (
     support: UnsupportedSupport
   })
 
-export const SelectionContextCapabilityFacts = Object.freeze([
+const UnsupportedCapabilityFacts = Object.freeze([
   selectionContextCapabilityFact("readSelection"),
   selectionContextCapabilityFact("readDocumentContext"),
   selectionContextCapabilityFact("watchFocus"),
@@ -102,7 +102,7 @@ export const SelectionContextHandlersLive = SelectionContextRpcGroup.toLayer({
 export const SelectionContextSurface = NativeSurface.make(Surface, SelectionContextRpcGroup, {
   service: SelectionContext,
   handlers: SelectionContextHandlersLive,
-  capabilityFacts: SelectionContextCapabilityFacts,
+  capabilityFacts: UnsupportedCapabilityFacts,
   client: (client) => selectionContextClientFromRpcClient(client),
   bridgeClient: (client) => selectionContextBridgeClientFromRpcClient(client)
 })

@@ -503,7 +503,6 @@ export {
 } from "./scoped-access-grant.js"
 export {
   SelectionContext,
-  SelectionContextCapabilityFacts,
   SelectionContextHandlersLive,
   SelectionContextMethodNames,
   SelectionContextRpcs,
