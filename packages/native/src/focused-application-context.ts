@@ -1,33 +1,10 @@
-import {
-  HostProtocolPermissionDeniedError,
-  HostProtocolUnsupportedError,
-  makeHostProtocolInternalError,
-  type HostProtocolError,
-  RpcGroup
-} from "@orika/bridge"
-import {
-  type AuditEventsApi,
-  type DesktopRpcClient,
-  emitAuditEvent,
-  type NormalizedCapability,
-  P,
-  PermissionActor,
-  PermissionContext,
-  PermissionDeniedError,
-  PermissionRegistry,
-  type PermissionRegistryApi,
-  type PermissionRegistryError,
-  ResourceRegistry,
-  type ResourceRegistryApi,
-  permissionAuditEvent
-} from "@orika/core"
-import { Clock, Context, Effect, Layer, Schema, Stream } from "effect"
+import { HostProtocolUnsupportedError, type HostProtocolError, RpcGroup } from "@orika/bridge"
+import { type DesktopRpcClient, P } from "@orika/core"
+import { Clock, Context, Effect, Schema, Stream } from "effect"
 
 import {
-  FocusedApplicationContextActor,
   FocusedApplicationContextEvent,
   FocusedApplicationContextSnapshotInput,
-  FocusedApplicationContextSnapshotRequest,
   FocusedApplicationContextSnapshotResult,
   FocusedApplicationContextSupportedResult,
   FocusedApplicationMetadata,
@@ -86,7 +63,7 @@ const focusedApplicationContextCapabilityFact = (method: "watch" | "stopWatching
     support: UnsupportedSupport
   })
 
-export const FocusedApplicationContextCapabilityFacts = Object.freeze([
+const UnsupportedCapabilityFacts = Object.freeze([
   focusedApplicationContextCapabilityFact("watch"),
   focusedApplicationContextCapabilityFact("stopWatching")
 ])
@@ -126,55 +103,10 @@ export interface FocusedApplicationContextClientApi {
   >
 }
 
-export class FocusedApplicationContextClient extends Context.Service<
-  FocusedApplicationContextClient,
-  FocusedApplicationContextClientApi
->()("@orika/native/FocusedApplicationContextClient") {}
-
-export interface FocusedApplicationContextServiceApi {
-  readonly snapshot: (
-    input: FocusedApplicationContextSnapshotRequest
-  ) => Effect.Effect<FocusedApplicationContextSnapshotResult, FocusedApplicationContextError, never>
-  readonly isSupported: () => Effect.Effect<
-    FocusedApplicationContextSupportedResult,
-    FocusedApplicationContextError,
-    never
-  >
-  readonly events: () => Stream.Stream<
-    FocusedApplicationContextEvent,
-    FocusedApplicationContextError,
-    never
-  >
-}
-
-export interface FocusedApplicationContextServiceOptions {
-  readonly permissions: PermissionRegistryApi
-  readonly audit?: AuditEventsApi
-  readonly resources: ResourceRegistryApi
-  readonly nextTraceId?: () => string
-}
-
 export class FocusedApplicationContext extends Context.Service<
   FocusedApplicationContext,
-  FocusedApplicationContextServiceApi
->()("@orika/native/FocusedApplicationContext") {
-  static readonly layer = Layer.effect(FocusedApplicationContext)(
-    Effect.gen(function* () {
-      const client = yield* FocusedApplicationContextClient
-      const permissions = yield* PermissionRegistry
-      const resources = yield* ResourceRegistry
-      return makeFocusedApplicationContextService(client, { permissions, resources })
-    })
-  )
-}
-
-export const FocusedApplicationContextLive = FocusedApplicationContext.layer
-
-export const makeFocusedApplicationContextServiceLayer = (
-  client: FocusedApplicationContextClientApi,
-  options: FocusedApplicationContextServiceOptions
-): Layer.Layer<FocusedApplicationContext> =>
-  Layer.succeed(FocusedApplicationContext)(makeFocusedApplicationContextService(client, options))
+  FocusedApplicationContextClientApi
+>()("@orika/native/FocusedApplicationContext") {}
 
 export type FocusedApplicationContextRpc = RpcGroup.Rpcs<typeof FocusedApplicationContextRpcGroup>
 export type FocusedApplicationContextRpcHandlers<R = never> = NativeRpcHandlers<
@@ -206,9 +138,9 @@ export const FocusedApplicationContextSurface = NativeSurface.make(
   Surface,
   FocusedApplicationContextRpcGroup,
   {
-    service: FocusedApplicationContextClient,
+    service: FocusedApplicationContext,
     handlers: FocusedApplicationContextHandlersLive,
-    capabilityFacts: FocusedApplicationContextCapabilityFacts,
+    capabilityFacts: UnsupportedCapabilityFacts,
     client: (client) => focusedApplicationContextClientFromRpcClient(client),
     bridgeClient: (client) => focusedApplicationContextBridgeClientFromRpcClient(client)
   }
@@ -249,37 +181,6 @@ export const makeFocusedApplicationContextUnsupportedClient =
         ),
       events: () => Stream.fail(unsupportedError(FocusedApplicationContextEventMethod))
     } satisfies FocusedApplicationContextClientApi)
-
-const makeFocusedApplicationContextService = (
-  client: FocusedApplicationContextClientApi,
-  options: FocusedApplicationContextServiceOptions
-): FocusedApplicationContextServiceApi =>
-  Object.freeze({
-    snapshot: (input) =>
-      Effect.gen(function* () {
-        const request = yield* validateSnapshotRequest(input)
-        yield* authorize(options, request.actor, "snapshot", request.traceId)
-        const result = yield* auditFailure(
-          options,
-          capability("snapshot"),
-          request.actor,
-          "FocusedApplicationContext.snapshot",
-          request.traceId ?? "FocusedApplicationContext.snapshot",
-          client.snapshot(new FocusedApplicationContextSnapshotInput({ actor: request.actor }))
-        )
-        yield* emitContextAudit(
-          options,
-          "permission-used",
-          capability("snapshot"),
-          request.actor,
-          "FocusedApplicationContext.snapshot",
-          request.traceId ?? "FocusedApplicationContext.snapshot"
-        )
-        return result
-      }),
-    isSupported: () => client.isSupported(),
-    events: () => client.events()
-  } satisfies FocusedApplicationContextServiceApi)
 
 const focusedApplicationContextClientFromRpcClient = (
   client: DesktopRpcClient<FocusedApplicationContextRpc>
@@ -339,69 +240,12 @@ const runFocusedApplicationContextRpcStream = <A, E>(
 ): Stream.Stream<A, FocusedApplicationContextError, never> =>
   runNativeRpcStream(stream, operation, Surface)
 
-const validateSnapshotRequest = (input: unknown) =>
-  decodeNativeInput(
-    FocusedApplicationContextSnapshotRequest,
-    input,
-    "FocusedApplicationContext.snapshot"
-  )
 const validateSnapshotInput = (input: unknown) =>
   decodeNativeInput(
     FocusedApplicationContextSnapshotInput,
     input,
     "FocusedApplicationContext.snapshot"
   )
-
-const authorize = (
-  options: FocusedApplicationContextServiceOptions,
-  actor: FocusedApplicationContextActor,
-  method: "snapshot",
-  traceId: string | undefined
-): Effect.Effect<void, FocusedApplicationContextError, never> =>
-  options.permissions
-    .check(
-      capability(method),
-      new PermissionContext({
-        actor: permissionActor(actor),
-        resource: "focused-application",
-        traceId: traceId ?? options.nextTraceId?.() ?? `FocusedApplicationContext.${method}`
-      })
-    )
-    .pipe(
-      Effect.asVoid,
-      Effect.catch((error: PermissionRegistryError) => {
-        if (!(error instanceof PermissionDeniedError)) {
-          return Effect.fail(
-            makeHostProtocolInternalError(
-              `focused application context permission registry failure: ${error._tag}`,
-              `FocusedApplicationContext.${method}`
-            )
-          )
-        }
-        return emitContextAudit(
-          options,
-          "permission-denied",
-          capability(method),
-          actor,
-          `FocusedApplicationContext.${method}`,
-          error.traceId,
-          { reason: error.reason }
-        ).pipe(
-          Effect.andThen(
-            Effect.fail(
-              permissionDeniedError(
-                capability(method),
-                error,
-                `FocusedApplicationContext.${method}`
-              )
-            )
-          )
-        )
-      })
-    )
-
-const capability = (method: "snapshot"): NormalizedCapability =>
-  P.nativeInvoke({ primitive: Surface, methods: [method] })
 
 const snapshotResult = (
   _input: FocusedApplicationContextSnapshotInput
@@ -426,88 +270,6 @@ const snapshotResult = (
         })
     )
   )
-
-const auditFailure = <A>(
-  options: FocusedApplicationContextServiceOptions,
-  cap: NormalizedCapability,
-  actor: FocusedApplicationContextActor,
-  operation: string,
-  traceId: string,
-  effect: Effect.Effect<A, FocusedApplicationContextError, never>
-): Effect.Effect<A, FocusedApplicationContextError, never> =>
-  effect.pipe(
-    Effect.tapError((error) =>
-      emitContextAudit(options, "permission-used", cap, actor, operation, traceId, {
-        outcome: "failed",
-        reason: error.tag
-      })
-    )
-  )
-
-const emitContextAudit = (
-  options: FocusedApplicationContextServiceOptions,
-  kind: "permission-used" | "permission-denied",
-  cap: NormalizedCapability,
-  actor: FocusedApplicationContextActor,
-  operation: string,
-  traceId: string,
-  details: Record<string, unknown> = {}
-): Effect.Effect<void, FocusedApplicationContextError, never> => {
-  if (options.audit === undefined) {
-    return Effect.void
-  }
-  return emitAuditEvent(
-    options.audit,
-    permissionAuditEvent({
-      kind,
-      source: operation,
-      traceId,
-      outcome:
-        typeof details["outcome"] === "string"
-          ? details["outcome"]
-          : kind === "permission-denied"
-            ? "denied"
-            : "used",
-      normalizedCapability: cap,
-      actor: permissionActor(actor),
-      resource: "focused-application",
-      details: { surface: "focused-application", ...details }
-    })
-  ).pipe(
-    Effect.mapError((error) =>
-      makeHostProtocolInternalError(
-        `failed to write focused application context audit event: ${error.message}`,
-        operation
-      )
-    )
-  )
-}
-
-const permissionActor = (actor: FocusedApplicationContextActor): PermissionActor =>
-  new PermissionActor({
-    kind:
-      actor.kind === "app" || actor.kind === "window" || actor.kind === "process"
-        ? actor.kind
-        : "resource",
-    id:
-      actor.kind === "app" || actor.kind === "window" || actor.kind === "process"
-        ? actor.id
-        : `${actor.kind}:${actor.id}`
-  })
-
-const permissionDeniedError = (
-  cap: NormalizedCapability,
-  error: PermissionDeniedError,
-  operation: string
-): HostProtocolPermissionDeniedError =>
-  new HostProtocolPermissionDeniedError({
-    tag: "PermissionDenied",
-    message: `permission denied for ${cap.kind}`,
-    operation,
-    capability: cap.kind,
-    resource: error.traceId,
-    recoverable: false
-  })
 
 const unsupportedError = (operation: string): HostProtocolUnsupportedError =>
   new HostProtocolUnsupportedError({

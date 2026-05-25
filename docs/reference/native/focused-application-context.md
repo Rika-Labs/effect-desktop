@@ -10,7 +10,7 @@ effect_version: 4
 
 Product-neutral broker for the focused desktop surface. Snapshots expose application, window, process, package, and display metadata only.
 
-The public service is Layer-first and test-substitutable. The TypeScript service validates Schema contracts before transport, checks `native.invoke` permissions before host side effects, audits privileged use, records security-relevant failures, and emits typed events.
+The public service is Layer-first and test-substitutable. Client implementations validate Schema contracts before transport; native RPC middleware checks `native.invoke` permissions before host side effects, records grant/denial/use audit events through `PermissionRegistry`, and emits typed events.
 
 ## Methods
 
@@ -60,7 +60,7 @@ until the native watch adapter can publish focus lifecycle events.
 
 ## Testing
 
-Use `makeFocusedApplicationContextMemoryClient()` for deterministic snapshot and event tests without native UI. Use `makeFocusedApplicationContextUnsupportedClient()` when a test needs the typed unsupported path.
+Use `makeFocusedApplicationContextMemoryClient()` with `Layer.succeed(FocusedApplicationContext)(client)` for deterministic snapshot and event tests without native UI. Use `makeFocusedApplicationContextUnsupportedClient()` when a test needs the typed unsupported path.
 
 ## Related
 

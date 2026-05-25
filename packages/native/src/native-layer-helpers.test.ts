@@ -14,7 +14,6 @@ const AllowedServiceLayerHelpers = new Set([
   "makeEgressPolicyServiceLayer",
   "makeExtensionConfigServiceLayer",
   "makeExtensionPackageServiceLayer",
-  "makeFocusedApplicationContextServiceLayer",
   "makeJobServiceLayer",
   "makeLocalToolRuntimeServiceLayer",
   "makeNotificationServiceLayer",

@@ -523,23 +523,17 @@ export {
 } from "./selection-context.js"
 export {
   FocusedApplicationContext,
-  FocusedApplicationContextCapabilityFacts,
-  FocusedApplicationContextClient,
   FocusedApplicationContextHandlersLive,
-  FocusedApplicationContextLive,
   FocusedApplicationContextMethodNames,
   FocusedApplicationContextRpcs,
   FocusedApplicationContextSurface,
   makeFocusedApplicationContextMemoryClient,
-  makeFocusedApplicationContextServiceLayer,
   makeFocusedApplicationContextUnsupportedClient,
   type FocusedApplicationContextClientApi,
   type FocusedApplicationContextError,
   type FocusedApplicationContextMemoryClientOptions,
   type FocusedApplicationContextRpc,
-  type FocusedApplicationContextRpcHandlers,
-  type FocusedApplicationContextServiceApi,
-  type FocusedApplicationContextServiceOptions
+  type FocusedApplicationContextRpcHandlers
 } from "./focused-application-context.js"
 export {
   DisplayCapture,
