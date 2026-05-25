@@ -10,7 +10,7 @@ effect_version: 4
 
 `CookieStore` describes cookie read, write, remove, and event operations scoped to an explicit `SessionProfileHandle`. The profile handle is the partition identity; cookie calls do not use global browser state in the public contract. `get`, `set`, and `remove` are routed native RPCs backed by Wry's WebView cookie API.
 
-The public service is Layer-first and test-substitutable. The TypeScript service exposes `CookieStore.Event` as a typed stream.
+The public service is Layer-first and test-substitutable. The TypeScript service exposes `CookieStore.events.Event` as a typed RPC stream; bridge clients keep host wire compatibility by subscribing to `CookieStore.Event`.
 
 ## Methods
 
@@ -28,7 +28,7 @@ The public service is Layer-first and test-substitutable. The TypeScript service
 
 `url` must be absolute `http` or `https` and cookie paths must start with `/`.
 
-`events(profile?)` emits mutation events from the native host. Successful `set` calls emit phase `"set"` with the cookie payload. Successful `remove` calls emit phase `"removed"` when the host deletes a matching cookie name. `get` does not emit events.
+`events(profile?)` consumes `CookieStore.events.Event` and filters by profile when one is supplied. Successful `set` calls emit phase `"set"` with the cookie payload. Successful `remove` calls emit phase `"removed"` when the host deletes a matching cookie name. `get` does not emit events.
 
 ## Cookie Shape
 
@@ -54,6 +54,8 @@ Cookies are plain data:
 | Linux    | `partial` | `host-cookie-store-live-webview-required` |
 
 `isSupported` returns `{ supported: true }` from the host. Use `makeCookieStoreMemoryClient()` for deterministic success tests; use `makeCookieStoreUnsupportedClient()` for the typed unsupported path.
+
+Architecture-debt sweep outcome for #1862: removed `CookieStoreRpcEvents` and the empty `CookieStoreCapabilityFacts` export. The `CookieStore` service remains because it is the single test-substitutable boundary for typed cookie operations and profile-filtered event streams.
 
 ## Related
 

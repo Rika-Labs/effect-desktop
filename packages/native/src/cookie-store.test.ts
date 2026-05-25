@@ -3,17 +3,23 @@ import { readFile } from "node:fs/promises"
 import {
   type BridgeClientExchange,
   HostProtocolEventEnvelope,
-  HostProtocolInvalidOutputError
+  type HostProtocolEnvelope,
+  HostProtocolInvalidOutputError,
+  HostProtocolRequestEnvelope,
+  HostProtocolResponseEnvelope,
+  HostProtocolStreamByRequestEnvelope,
+  makeDesktopClientProtocol,
+  rpcSupport
 } from "@orika/bridge"
 import { makeResourceId } from "@orika/core"
-import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Schema, Stream } from "effect"
+import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Queue, Schema, Stream } from "effect"
+import { RpcClient, RpcSchema } from "effect/unstable/rpc"
 
 import { makeNativeCapabilityManifest } from "./capabilities.js"
 import { CookieStoreEvent, CookieStoreRemovedEvent } from "./contracts/cookie-store.js"
 import type { SessionProfileHandle } from "./contracts/session-profile.js"
 import {
   CookieStore,
-  CookieStoreCapabilityFacts,
   type CookieStoreClientApi,
   CookieStoreRpcs,
   CookieStoreSurface,
@@ -22,6 +28,15 @@ import {
 } from "./cookie-store.js"
 
 const SupportedMethods = ["get", "remove", "set"] as const
+const ExpectedLiveWebViewSupport = {
+  status: "partial",
+  reason: "host-cookie-store-live-webview-required",
+  platforms: [
+    { platform: "macos", status: "partial", reason: "host-cookie-store-live-webview-required" },
+    { platform: "windows", status: "partial", reason: "host-cookie-store-live-webview-required" },
+    { platform: "linux", status: "partial", reason: "host-cookie-store-live-webview-required" }
+  ]
+} as const
 const Profile = {
   kind: "session-profile",
   id: makeResourceId("session-profile:workspace-1"),
@@ -65,6 +80,7 @@ test("CookieStore public surface omits shallow service and layer helpers", () =>
 test("CookieStore exposes get, remove, set, and isSupported as callable RPCs", () => {
   const callableTags = Array.from(CookieStoreRpcs.requests.keys()).toSorted()
   expect(callableTags).toEqual([
+    "CookieStore.events.Event",
     "CookieStore.get",
     "CookieStore.isSupported",
     "CookieStore.remove",
@@ -73,6 +89,40 @@ test("CookieStore exposes get, remove, set, and isSupported as callable RPCs", (
   for (const method of SupportedMethods) {
     expect(callableTags).toContain(`CookieStore.${method}`)
   }
+})
+
+test("CookieStore event schema is owned by the RPC stream contract", async () => {
+  const cookieStoreModule = await import("./cookie-store.js")
+  const rootModule = await import("./index.js")
+  const callableTags = Array.from(CookieStoreRpcs.requests.keys()).toSorted()
+  const eventRpc = CookieStoreRpcs.requests.get("CookieStore.events.Event")
+
+  for (const removedExport of ["CookieStoreCapabilityFacts", "CookieStoreRpcEvents"]) {
+    expect(removedExport in cookieStoreModule).toBe(false)
+    expect(removedExport in rootModule).toBe(false)
+  }
+  expect(callableTags).toEqual([
+    "CookieStore.events.Event",
+    "CookieStore.get",
+    "CookieStore.isSupported",
+    "CookieStore.remove",
+    "CookieStore.set"
+  ])
+  expect(eventRpc).toBeDefined()
+  expect(eventRpc === undefined ? false : RpcSchema.isStreamSchema(eventRpc.successSchema)).toBe(
+    true
+  )
+  if (eventRpc !== undefined && RpcSchema.isStreamSchema(eventRpc.successSchema)) {
+    expect(eventRpc.successSchema.success).toBe(CookieStoreEvent)
+    expect(eventRpc.pipe(rpcSupport)).toEqual(ExpectedLiveWebViewSupport)
+  }
+
+  const eventDoc = CookieStoreSurface.schemaDocs.find(
+    (doc) => doc.tag === "CookieStore.events.Event"
+  )
+  expect(eventDoc?.kind).toBe("stream")
+  expect(eventDoc?.callable).toBe(true)
+  expect(eventDoc?.support).toEqual(ExpectedLiveWebViewSupport)
 })
 
 test("CookieStore isSupported reports supported result through the service", () =>
@@ -351,6 +401,86 @@ test("CookieStore event types reject impossible phase payloads", () => {
   expect(failedWithoutMessage.phase).toBe("failed")
 })
 
+test("CookieStore direct client consumes the canonical RPC event stream", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
+      const requests: HostProtocolRequestEnvelope[] = []
+      const protocolLayer = Layer.effect(RpcClient.Protocol)(
+        makeDesktopClientProtocol(
+          {
+            send: (envelope) => {
+              if (envelope.kind !== "request") {
+                return Effect.void
+              }
+              requests.push(envelope)
+              return Effect.all(
+                [
+                  Queue.offer(
+                    queue,
+                    new HostProtocolStreamByRequestEnvelope({
+                      kind: "stream",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_000,
+                      traceId: envelope.traceId,
+                      payload: {
+                        type: "cookie-store-event",
+                        timestamp: 1_710_000_000_000,
+                        phase: "removed",
+                        profile: Profile,
+                        url: "https://example.test/account",
+                        name: "token"
+                      }
+                    })
+                  ),
+                  Queue.offer(
+                    queue,
+                    new HostProtocolResponseEnvelope({
+                      kind: "response",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_001,
+                      traceId: envelope.traceId
+                    })
+                  )
+                ],
+                { discard: true }
+              )
+            },
+            run: (onEnvelope) =>
+              Stream.fromQueue(queue).pipe(
+                Stream.runForEach(onEnvelope),
+                Effect.andThen(Effect.never)
+              )
+          },
+          {
+            nextRequestId: () => "cookie-store-event-rpc",
+            nextTraceId: () => "trace-cookie-store-event-rpc"
+          }
+        )
+      )
+
+      const event = yield* runScoped(
+        Effect.gen(function* () {
+          const store = yield* CookieStore
+          return yield* store.events(Profile).pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+        }),
+        Layer.provide(CookieStoreSurface.clientLayer, protocolLayer)
+      )
+
+      expect(event).toEqual(
+        new CookieStoreRemovedEvent({
+          type: "cookie-store-event",
+          timestamp: 1_710_000_000_000,
+          phase: "removed",
+          profile: Profile,
+          url: "https://example.test/account",
+          name: "token"
+        })
+      )
+      expect(requests.map((request) => request.method)).toEqual(["CookieStore.events.Event"])
+    })
+  ))
+
 test("CookieStore bridge client rejects inconsistent event phase payloads as InvalidOutput", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -451,15 +581,7 @@ test("CookieStore bridge client filters event streams by session profile", () =>
     })
   ))
 
-test("CookieStore declares no unsupported methods as non-callable capability facts", () => {
-  const factTags = CookieStoreCapabilityFacts.map((fact) => fact.tag).toSorted()
-  expect(factTags).toEqual([])
-  for (const fact of CookieStoreCapabilityFacts) {
-    expect(fact.support.status).toBe("unsupported")
-  }
-})
-
-test("CookieStore capability facts surface in the manifest and stay non-callable", () =>
+test("CookieStore keeps unsupported helpers out of schema docs", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const manifest = yield* makeNativeCapabilityManifest([
@@ -474,6 +596,7 @@ test("CookieStore capability facts surface in the manifest and stay non-callable
         .map((doc) => doc.tag)
         .toSorted()
       expect(callableFactTags).toEqual([
+        "CookieStore.events.Event",
         "CookieStore.get",
         "CookieStore.isSupported",
         "CookieStore.remove",

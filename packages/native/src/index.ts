@@ -226,10 +226,8 @@ export {
 } from "./context-menu.js"
 export {
   CookieStore,
-  CookieStoreCapabilityFacts,
   CookieStoreHandlersLive,
   CookieStoreMethodNames,
-  CookieStoreRpcEvents,
   CookieStoreRpcs,
   CookieStoreSurface,
   makeCookieStoreMemoryClient,

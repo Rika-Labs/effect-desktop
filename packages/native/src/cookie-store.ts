@@ -4,7 +4,7 @@ import {
   HostProtocolUnsupportedError,
   RpcGroup
 } from "@orika/bridge"
-import { type DesktopRpcCapabilityFact, type DesktopRpcClient, P } from "@orika/core"
+import { type DesktopRpcClient, P } from "@orika/core"
 import { Context, Effect, Schema, Stream } from "effect"
 
 import {
@@ -19,8 +19,7 @@ import {
   CookieStoreSupportedResult
 } from "./contracts/cookie-store.js"
 import type { SessionProfileHandle } from "./contracts/session-profile.js"
-import { subscribeNativeEvent } from "./event-stream.js"
-import { decodeNativeInput, runNativeRpc } from "./native-client.js"
+import { decodeNativeInput, runNativeRpc, runNativeRpcStream } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
 
@@ -78,17 +77,17 @@ export const CookieStoreIsSupported = NativeSurface.rpc(Surface, "isSupported", 
   support: NativeSurface.support.supported
 })
 
-export const CookieStoreCapabilityFacts: readonly DesktopRpcCapabilityFact[] = Object.freeze([])
-
-export const CookieStoreRpcEvents = Object.freeze({
-  Event: { payload: CookieStoreEvent }
+const CookieStoreEventStream = NativeSurface.event(Surface, "Event", {
+  payload: CookieStoreEvent,
+  support: LiveWebViewSupport
 })
 
 const CookieStoreRpcGroup = RpcGroup.make(
   CookieStoreGet,
   CookieStoreRemove,
   CookieStoreSet,
-  CookieStoreIsSupported
+  CookieStoreIsSupported,
+  CookieStoreEventStream
 )
 
 export const CookieStoreRpcs: RpcGroup.RpcGroup<CookieStoreRpc> = CookieStoreRpcGroup
@@ -134,16 +133,22 @@ export const CookieStoreHandlersLive = CookieStoreRpcGroup.toLayer({
     Effect.gen(function* () {
       const store = yield* CookieStore
       return yield* store.isSupported()
-    })
+    }),
+  "CookieStore.events.Event": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const store = yield* CookieStore
+        return store.events()
+      })
+    )
 })
 
 export const CookieStoreSurface = NativeSurface.make(Surface, CookieStoreRpcGroup, {
   service: CookieStore,
   capabilities: CookieStoreMethodNames,
   handlers: CookieStoreHandlersLive,
-  capabilityFacts: CookieStoreCapabilityFacts,
-  client: (client) => cookieStoreClientFromRpcClient(client, undefined),
-  bridgeClient: (client, exchange) => cookieStoreClientFromRpcClient(client, exchange)
+  client: (client) => cookieStoreClientFromRpcClient(client),
+  bridgeClient: (client, exchange) => cookieStoreBridgeClientFromRpcClient(client, exchange)
 })
 
 export const makeCookieStoreMemoryClient = (): Effect.Effect<CookieStoreClientApi, never, never> =>
@@ -174,8 +179,7 @@ export const makeCookieStoreUnsupportedClient = (): CookieStoreClientApi =>
   } satisfies CookieStoreClientApi)
 
 const cookieStoreClientFromRpcClient = (
-  client: DesktopRpcClient<CookieStoreRpc>,
-  exchange: BridgeClientExchange | undefined
+  client: DesktopRpcClient<CookieStoreRpc>
 ): CookieStoreClientApi =>
   Object.freeze({
     get: (input) =>
@@ -199,7 +203,39 @@ const cookieStoreClientFromRpcClient = (
     isSupported: () =>
       runCookieStoreRpc(client["CookieStore.isSupported"](undefined), "CookieStore.isSupported"),
     events: (profile) =>
-      subscribeNativeEvent(exchange, EventMethod, CookieStoreEvent).pipe(
+      runCookieStoreRpcStream(
+        client["CookieStore.events.Event"](undefined),
+        "CookieStore.events.Event"
+      ).pipe(Stream.filter((event) => profile === undefined || event.profile.id === profile.id))
+  } satisfies CookieStoreClientApi)
+
+const cookieStoreBridgeClientFromRpcClient = (
+  client: DesktopRpcClient<CookieStoreRpc>,
+  exchange: BridgeClientExchange
+): CookieStoreClientApi =>
+  Object.freeze({
+    get: (input) =>
+      decodeCookieStoreGetInput(input, "CookieStore.get").pipe(
+        Effect.flatMap((decoded) =>
+          runCookieStoreRpc(client["CookieStore.get"](decoded), "CookieStore.get")
+        )
+      ),
+    remove: (input) =>
+      decodeCookieStoreRemoveInput(input, "CookieStore.remove").pipe(
+        Effect.flatMap((decoded) =>
+          runCookieStoreRpc(client["CookieStore.remove"](decoded), "CookieStore.remove")
+        )
+      ),
+    set: (input) =>
+      decodeCookieStoreSetInput(input, "CookieStore.set").pipe(
+        Effect.flatMap((decoded) =>
+          runCookieStoreRpc(client["CookieStore.set"](decoded), "CookieStore.set")
+        )
+      ),
+    isSupported: () =>
+      runCookieStoreRpc(client["CookieStore.isSupported"](undefined), "CookieStore.isSupported"),
+    events: (profile) =>
+      NativeSurface.subscribeEvent(exchange, CookieStoreEventStream).pipe(
         Stream.filter((event) => profile === undefined || event.profile.id === profile.id)
       )
   } satisfies CookieStoreClientApi)
@@ -226,6 +262,11 @@ const runCookieStoreRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
   operation: string
 ): Effect.Effect<A, CookieStoreError, never> => runNativeRpc(effect, operation, Surface)
+
+const runCookieStoreRpcStream = <A, E>(
+  stream: Stream.Stream<A, E, never>,
+  operation: string
+): Stream.Stream<A, CookieStoreError, never> => runNativeRpcStream(stream, operation, Surface)
 
 const unsupportedError = (operation: string): HostProtocolError =>
   new HostProtocolUnsupportedError({

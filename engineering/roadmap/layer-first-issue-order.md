@@ -153,6 +153,7 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 |                       #1859 Model ContextMenu events as RPC streams | Closed | Moves activation events into the canonical `ContextMenu.events.Activated` RPC stream and removes shallow ContextMenu side exports.                                    |
 |                              #1860 Model Tray events as RPC streams | Closed | Moves tray activation events into the canonical `Tray.events.Activated` RPC stream and removes shallow Tray side exports.                                             |
 |                              #1861 Model Menu events as RPC streams | Closed | Moves menu activation events into the canonical `Menu.events.Activated` RPC stream and removes shallow Menu side exports.                                             |
+|                       #1862 Model CookieStore events as RPC streams | Closed | Moves cookie-store mutation events into the canonical `CookieStore.events.Event` RPC stream and removes shallow CookieStore side exports.                             |
 
 ## Execution Progress
 
