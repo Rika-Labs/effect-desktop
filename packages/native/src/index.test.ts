@@ -224,10 +224,8 @@ import {
   SafeStorageMethodNames,
   SafeStorageSurface,
   Screen,
-  ScreenClient,
   ScreenHandlersLive,
   ScreenRpcs,
-  ScreenLive,
   ScreenMethodNames,
   ScreenSurface,
   Shell,
@@ -499,7 +497,6 @@ test("native services expose canonical static layers", () => {
   expect(MenuLive).toBe(Menu.layer)
   expect(NotificationLive).toBe(Notification.layer)
   expect(PowerMonitorLive).toBe(PowerMonitor.layer)
-  expect(ScreenLive).toBe(Screen.layer)
   expect(SystemAppearanceLive).toBe(SystemAppearance.layer)
   expect(TrayLive).toBe(Tray.layer)
   expect(UpdaterLive).toBe(Updater.layer)
@@ -8680,6 +8677,34 @@ test("ScreenRpcs declares the Phase 8 Screen method surface", () => {
   expect("spec" in ScreenRpcs).toBe(false)
 })
 
+test("Screen public surface omits shallow service and layer helpers", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        readFile(new URL("screen.ts", import.meta.url), "utf8")
+      )
+      const indexSource = yield* Effect.promise(() =>
+        readFile(new URL("index.ts", import.meta.url), "utf8")
+      )
+      const screenModule = yield* Effect.promise(() => import("./screen.js"))
+      const rootModule = yield* Effect.promise(() => import("./index.js"))
+
+      for (const removedName of [
+        "class ScreenClient",
+        "ScreenServiceApi",
+        "ScreenLive",
+        "Screen.layer"
+      ]) {
+        expect(source).not.toContain(removedName)
+        expect(indexSource).not.toContain(removedName)
+      }
+      expect("ScreenClient" in screenModule).toBe(false)
+      expect("ScreenClient" in rootModule).toBe(false)
+      expect("ScreenLive" in screenModule).toBe(false)
+      expect("ScreenLive" in rootModule).toBe(false)
+    })
+  ))
+
 test("ScreenSurface derives server, client, test, and metadata surfaces from the RpcGroup", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -9049,41 +9074,7 @@ test("DialogSurface test client layer runs Dialog RPCs through the generated ser
     })
   ))
 
-test("ScreenSurface test client layer runs Screen RPCs through the generated service requirement", () =>
-  Effect.runPromise(
-    Effect.gen(function* () {
-      const calls: string[] = []
-      const testLayer = Layer.provide(
-        ScreenSurface.testClientLayer,
-        Layer.provide(ScreenLive, Layer.succeed(ScreenClient)(screenClient(calls)))
-      )
-      const result = yield* runScoped(
-        Effect.gen(function* () {
-          const client = yield* ScreenClient
-          return {
-            displays: yield* client.getDisplays(),
-            primary: yield* client.getPrimaryDisplay(),
-            pointer: yield* client.getPointerPoint(),
-            pointerSupported: yield* client.isSupported("getPointerPoint")
-          }
-        }),
-        testLayer
-      )
-
-      expect(result.displays).toEqual(new ScreenDisplaysResult({ displays: [primaryDisplay] }))
-      expect(result.primary).toEqual(primaryDisplay)
-      expect(result.pointer).toEqual(new ScreenPoint({ x: 12, y: 34 }))
-      expect(result.pointerSupported).toEqual(new ScreenSupportedResult({ supported: true }))
-      expect(calls).toEqual([
-        "getDisplays",
-        "getPrimaryDisplay",
-        "getPointerPoint",
-        "isSupported:getPointerPoint"
-      ])
-    })
-  ))
-
-test("Screen service delegates through a substitutable ScreenClient port", () =>
+test("Screen service delegates through a substitutable service value", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
@@ -9098,7 +9089,7 @@ test("Screen service delegates through a substitutable ScreenClient port", () =>
             pointerSupported: yield* screen.isSupported("getPointerPoint")
           }
         }),
-        Layer.provide(ScreenLive, Layer.succeed(ScreenClient)(screenClient(calls)))
+        Layer.succeed(Screen)(screenClient(calls))
       )
 
       expect(result.displays).toEqual([primaryDisplay])
@@ -9142,14 +9133,14 @@ test("Screen service propagates unsupported platform and host failure", () =>
           const screen = yield* Screen
           return yield* Effect.exit(screen.getDisplays())
         }),
-        Layer.provide(ScreenLive, Layer.succeed(ScreenClient)(unsupportedClient))
+        Layer.succeed(Screen)(unsupportedClient)
       )
       const hostFailureExit = yield* runScoped(
         Effect.gen(function* () {
           const screen = yield* Screen
           return yield* Effect.exit(screen.getDisplays())
         }),
-        Layer.provide(ScreenLive, Layer.succeed(ScreenClient)(hostFailureClient))
+        Layer.succeed(Screen)(hostFailureClient)
       )
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
@@ -9184,7 +9175,7 @@ test("Screen bridge client sends typed host envelopes and decodes values", () =>
             pointerSupported: yield* screen.isSupported("getPointerPoint")
           }
         }),
-        Layer.provide(ScreenLive, makeScreenBridgeClientLayer(exchange))
+        makeScreenBridgeClientLayer(exchange)
       )
 
       expect(result.displays).toEqual([primaryDisplay])
@@ -9290,7 +9281,7 @@ test("Screen bridge client rejects invalid display geometry as InvalidOutput", (
           )
           return { changed, displays, primary }
         }),
-        Layer.provide(ScreenLive, makeScreenBridgeClientLayer(exchange))
+        makeScreenBridgeClientLayer(exchange)
       )
 
       expectExitFailure(result.displays, (error) => hasErrorTag(error, "InvalidOutput"))
@@ -9326,7 +9317,7 @@ test("Screen bridge client rejects invalid primary display topology as InvalidOu
             const screen = yield* Screen
             return yield* screen.getPrimaryDisplay()
           }),
-          Layer.provide(ScreenLive, makeScreenBridgeClientLayer(exchange))
+          makeScreenBridgeClientLayer(exchange)
         )
       )
 
@@ -9383,7 +9374,7 @@ test("Screen bridge client rejects invalid primary display and display-change ge
             )
           }
         }),
-        Layer.provide(ScreenLive, makeScreenBridgeClientLayer(exchange))
+        makeScreenBridgeClientLayer(exchange)
       )
 
       expectExitFailure(result.primary, (error) => hasErrorTag(error, "InvalidOutput"))
@@ -9614,10 +9605,7 @@ test("Screen bridge client validates generated protocol timestamps as typed fail
             const screen = yield* Screen
             return yield* screen.getDisplays()
           }),
-          Layer.provide(
-            ScreenLive,
-            makeScreenBridgeClientLayer(exchange, { now: () => Number.NaN })
-          )
+          makeScreenBridgeClientLayer(exchange, { now: () => Number.NaN })
         )
       )
 
@@ -9643,7 +9631,7 @@ test("Screen bridge client rejects empty display lists as InvalidOutput", () =>
             const screen = yield* Screen
             return yield* screen.getDisplays()
           }),
-          Layer.provide(ScreenLive, makeScreenBridgeClientLayer(exchange))
+          makeScreenBridgeClientLayer(exchange)
         )
       )
 
@@ -9682,7 +9670,7 @@ test("Screen bridge client rejects invalid primary display topologies as Invalid
             const screen = yield* Screen
             return yield* screen.getDisplays()
           }),
-          Layer.provide(ScreenLive, makeScreenBridgeClientLayer(exchange))
+          makeScreenBridgeClientLayer(exchange)
         )
       )
 
@@ -15214,7 +15202,7 @@ const screenClient = (calls: string[]): ScreenClientApi => ({
   getDisplays: () =>
     Effect.sync(() => {
       calls.push("getDisplays")
-      return new ScreenDisplaysResult({ displays: [primaryDisplay] })
+      return [primaryDisplay]
     }),
   getPrimaryDisplay: () =>
     Effect.sync(() => {
@@ -15234,7 +15222,7 @@ const screenClient = (calls: string[]): ScreenClientApi => ({
   isSupported: (method) =>
     Effect.sync(() => {
       calls.push(`isSupported:${method}`)
-      return new ScreenSupportedResult({ supported: true })
+      return true
     })
 })
 

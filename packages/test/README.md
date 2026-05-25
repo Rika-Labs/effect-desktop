@@ -45,8 +45,8 @@ that final check.
 
 `ScreenTest(options)`, `ClipboardTest()`, and `DialogTest(options)` are the
 current Layer-first contract proof for native services. The same service program
-runs through the capability `Live` layer with a direct client, the `Live` layer
-with an RPC client layer, and the deterministic test layer.
+runs through a direct service layer, a bridge client layer, and the deterministic
+test layer.
 
 `TestWindow.layer()` provides the supported Window service surface for tests.
 `makeTestWindowClient()` records `Window.create` and `Window.close` calls and

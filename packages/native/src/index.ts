@@ -793,9 +793,7 @@ export {
 } from "./safe-storage.js"
 export {
   Screen,
-  ScreenClient,
   ScreenHandlersLive,
-  ScreenLive,
   ScreenMethodNames,
   ScreenRpcs,
   ScreenSurface,
@@ -803,8 +801,7 @@ export {
   type ScreenClientApi,
   type ScreenError,
   type ScreenRpc,
-  type ScreenRpcHandlers,
-  type ScreenServiceApi
+  type ScreenRpcHandlers
 } from "./screen.js"
 export {
   Shell,

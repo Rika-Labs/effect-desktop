@@ -73,7 +73,7 @@ The `RpcGroup` remains the source of truth for endpoint tags, request and respon
 - `schemaDocs` exposes the documented endpoint shape without introducing another DSL.
 - `contractLaws` exposes executable checks for bridge-compatible tags, unique renderer endpoint names, and schema-backed endpoints.
 
-Use the direct surface shape when the public service is the generated `DesktopRpcClient<Rpcs>`. Use the mapped shape only when the capability already owns a durable service API, such as `ScreenClient`, and the mapper hides generated RPC details behind that service.
+Use the direct surface shape when the public service can be the generated `DesktopRpcClient<Rpcs>`. Use the mapped shape only when the capability owns durable service policy that differs from the generated RPC client, and the mapper hides that policy or protocol translation behind the service.
 
 Use `Desktop.Rpc.supportedGroup(group)` when a capability intentionally publishes a larger descriptor group than the host can call today. Unsupported RPCs remain in `schemaDocs` and renderer descriptors, but generated client services are built from the filtered supported group. That prevents unsupported methods from looking like ordinary callable service methods.
 

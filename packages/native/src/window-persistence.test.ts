@@ -15,25 +15,18 @@ import { ResourceRegistry, makeResourceId, makeResourceRegistry } from "@orika/c
 import { Effect, Exit, Fiber, Layer, ManagedRuntime, Stream } from "effect"
 import { KeyValueStore } from "effect/unstable/persistence"
 
-import {
-  ScreenBounds,
-  ScreenDisplay,
-  ScreenDisplaysResult,
-  ScreenPoint,
-  ScreenSupportedResult
-} from "./contracts/screen.js"
+import { ScreenBounds, ScreenDisplay, ScreenPoint } from "./contracts/screen.js"
 import { WindowBounds, type WindowHandle, WindowState } from "./contracts/window.js"
 import {
   WindowPersistence,
   WindowPersistenceError,
   WindowPersistenceRestoreResult,
-  ScreenLive,
+  Screen,
   WindowLive,
   makeWindowPersistenceLayer,
   type ScreenClientApi,
   type WindowClientApi,
-  WindowClient,
-  ScreenClient
+  WindowClient
 } from "./index.js"
 import { makeScreenBridgeClientLayer } from "./screen.js"
 import { makeWindowBridgeClientLayer } from "./window.js"
@@ -117,7 +110,7 @@ test("WindowPersistence saves and restores stale display state onto the current 
             })
         }),
         screenClient: () => ({
-          getDisplays: () => Effect.succeed(new ScreenDisplaysResult({ displays }))
+          getDisplays: () => Effect.succeed(displays)
         })
       })
     )
@@ -478,7 +471,7 @@ const fixtureLayer = (options: {
     makeWindowPersistenceLayer({ path: `window-persistence-test-${String(fixtureSequence)}.json` }),
     Layer.mergeAll(
       Layer.provide(WindowLive, Layer.succeed(WindowClient)(windowClient)),
-      Layer.provide(ScreenLive, Layer.succeed(ScreenClient)(screenClient)),
+      Layer.succeed(Screen)(screenClient),
       KeyValueStore.layerMemory
     )
   )
@@ -504,7 +497,7 @@ const bridgeFixtureLayer = (options: {
           Layer.succeed(ResourceRegistry)(registry)
         )
       ),
-      Layer.provide(ScreenLive, makeScreenBridgeClientLayer(exchange)),
+      makeScreenBridgeClientLayer(exchange),
       KeyValueStore.layerMemory
     )
   )
@@ -634,12 +627,11 @@ const makeWindowClient = (
 })
 
 const makeScreenClient = (overrides: Partial<ScreenClientApi>): ScreenClientApi => ({
-  getDisplays: () =>
-    Effect.succeed(new ScreenDisplaysResult({ displays: [primaryDisplay(), secondaryDisplay()] })),
+  getDisplays: () => Effect.succeed([primaryDisplay(), secondaryDisplay()]),
   getPrimaryDisplay: () => Effect.succeed(primaryDisplay()),
   getPointerPoint: () => Effect.succeed(new ScreenPoint({ x: 0, y: 0 })),
   onDisplaysChanged: () => Stream.empty,
-  isSupported: () => Effect.succeed(new ScreenSupportedResult({ supported: true })),
+  isSupported: () => Effect.succeed(true),
   ...overrides
 })
 

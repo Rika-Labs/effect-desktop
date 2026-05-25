@@ -9,7 +9,7 @@ import {
 import { Context, Effect, Layer, Option, Ref, Schema, Semaphore, Stream } from "effect"
 import { KeyValueStore } from "effect/unstable/persistence"
 
-import { Screen, type ScreenServiceApi } from "./screen.js"
+import { Screen, type ScreenClientApi } from "./screen.js"
 import { Window, type WindowServiceApi } from "./window.js"
 import { ScreenDisplay } from "./contracts/screen.js"
 import { WindowBounds, type WindowHandle } from "./contracts/window.js"
@@ -265,7 +265,7 @@ const decodeSaveOptions = (
   )
 
 const currentDisplays = (
-  screen: ScreenServiceApi,
+  screen: ScreenClientApi,
   operation: string
 ): Effect.Effect<ReadonlyArray<ScreenDisplay>, WindowPersistenceError, never> =>
   normalizeHost(screen.getDisplays(), operation).pipe(

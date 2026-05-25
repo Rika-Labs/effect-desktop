@@ -43,20 +43,6 @@ export type ScreenRpc = RpcGroup.Rpcs<typeof ScreenRpcGroup>
 export type ScreenBridgeClientOptions = Omit<BridgeClientOptions, "nextRequestId">
 
 export interface ScreenClientApi {
-  readonly getDisplays: () => Effect.Effect<ScreenDisplaysResult, ScreenError, never>
-  readonly getPrimaryDisplay: () => Effect.Effect<ScreenDisplay, ScreenError, never>
-  readonly getPointerPoint: () => Effect.Effect<ScreenPoint, ScreenError, never>
-  readonly onDisplaysChanged: () => Stream.Stream<ScreenDisplaysChangedEvent, ScreenError, never>
-  readonly isSupported: (
-    method: ScreenMethod
-  ) => Effect.Effect<ScreenSupportedResult, ScreenError, never>
-}
-
-export class ScreenClient extends Context.Service<ScreenClient, ScreenClientApi>()(
-  "@orika/native/ScreenClient"
-) {}
-
-export interface ScreenServiceApi {
   readonly getDisplays: () => Effect.Effect<ReadonlyArray<ScreenDisplay>, ScreenError, never>
   readonly getPrimaryDisplay: () => Effect.Effect<ScreenDisplay, ScreenError, never>
   readonly getPointerPoint: () => Effect.Effect<ScreenPoint, ScreenError, never>
@@ -64,23 +50,7 @@ export interface ScreenServiceApi {
   readonly isSupported: (method: ScreenMethod) => Effect.Effect<boolean, ScreenError, never>
 }
 
-export class Screen extends Context.Service<Screen, ScreenServiceApi>()("@orika/native/Screen") {
-  static readonly layer = Layer.effect(Screen)(
-    Effect.gen(function* () {
-      const client = yield* ScreenClient
-      return Screen.of({
-        getDisplays: () => client.getDisplays().pipe(Effect.map((result) => result.displays)),
-        getPrimaryDisplay: () => client.getPrimaryDisplay(),
-        getPointerPoint: () => client.getPointerPoint(),
-        onDisplaysChanged: () => client.onDisplaysChanged(),
-        isSupported: (method) =>
-          client.isSupported(method).pipe(Effect.map((result) => result.supported))
-      } satisfies ScreenServiceApi)
-    })
-  )
-}
-
-export const ScreenLive = Screen.layer
+export class Screen extends Context.Service<Screen, ScreenClientApi>()("@orika/native/Screen") {}
 
 export const ScreenHandlersLive = ScreenRpcGroup.toLayer({
   "Screen.getDisplays": () =>
@@ -115,7 +85,7 @@ export const ScreenHandlersLive = ScreenRpcGroup.toLayer({
 })
 
 export const ScreenSurface = NativeSurface.make("Screen", ScreenRpcGroup, {
-  service: ScreenClient,
+  service: Screen,
   capabilities: ScreenCapabilityMethods,
   handlers: ScreenHandlersLive,
   client: (client) => screenClientFromRpcClient(client),
@@ -125,7 +95,7 @@ export const ScreenSurface = NativeSurface.make("Screen", ScreenRpcGroup, {
 export const makeScreenBridgeClientLayer = (
   exchange: BridgeClientExchange,
   options: ScreenBridgeClientOptions = {}
-): Layer.Layer<ScreenClient> =>
+): Layer.Layer<Screen> =>
   ScreenSurface.bridgeClientLayer(exchange, {
     ...options,
     normalizeRequest: normalizeScreenBridgeRequest
@@ -159,7 +129,8 @@ const screenClientFromRpcClient = (client: DesktopRpcClient<ScreenRpc>): ScreenC
   Object.freeze({
     getDisplays: () =>
       runScreenRpc(client["Screen.getDisplays"](undefined)).pipe(
-        Effect.flatMap(validateScreenDisplays)
+        Effect.flatMap(validateScreenDisplays),
+        Effect.map((result) => result.displays)
       ),
     getPrimaryDisplay: () =>
       runScreenRpc(client["Screen.getPrimaryDisplay"](undefined), "Screen.getPrimaryDisplay").pipe(
@@ -172,7 +143,10 @@ const screenClientFromRpcClient = (client: DesktopRpcClient<ScreenRpc>): ScreenC
         "Screen.events.DisplaysChanged"
       ).pipe(Stream.mapEffect(validateScreenDisplaysChangedEvent)),
     isSupported: (method) =>
-      runScreenRpc(client["Screen.isSupported"](new ScreenIsSupportedInput({ method })))
+      runScreenRpc(
+        client["Screen.isSupported"](new ScreenIsSupportedInput({ method })),
+        "Screen.isSupported"
+      ).pipe(Effect.map((result) => result.supported))
   } satisfies ScreenClientApi)
 
 const screenBridgeClientFromRpcClient = (

@@ -92,15 +92,13 @@ import {
   DialogLive,
   Screen,
   ScreenSurface,
-  ScreenLive,
   Window,
   type DialogClientApi,
   type ClipboardClientApi,
   type DialogError,
   type ScreenClientApi,
   type ScreenError,
-  DialogClient,
-  ScreenClient
+  DialogClient
 } from "@orika/native"
 import {
   ClipboardImage,
@@ -109,9 +107,7 @@ import {
   DialogOpenResult,
   DialogSaveResult,
   ScreenDisplay,
-  ScreenDisplaysResult,
-  ScreenPoint,
-  ScreenSupportedResult
+  ScreenPoint
 } from "@orika/native/contracts"
 
 import {
@@ -2083,7 +2079,7 @@ test("LayerMatrix interruption closes scoped capability layers", () =>
     })
   ))
 
-test("native capability programs run unchanged through Live, Client, and Test layers", () => {
+test("native capability programs run unchanged through direct, bridge, and test layers", () => {
   const screenProgram: Effect.Effect<string, ScreenError, Screen> = Effect.gen(function* () {
     const screen = yield* Screen
     const display = yield* screen.getPrimaryDisplay()
@@ -2097,19 +2093,17 @@ test("native capability programs run unchanged through Live, Client, and Test la
     primary: true
   } as const
   const screenDisplay = new ScreenDisplay(screenDisplayPayload)
-  const screenLiveClient: ScreenClientApi = Object.freeze({
-    getDisplays: () => Effect.succeed(new ScreenDisplaysResult({ displays: [screenDisplay] })),
+  const screenDirectClient: ScreenClientApi = Object.freeze({
+    getDisplays: () => Effect.succeed([screenDisplay]),
     getPrimaryDisplay: () => Effect.succeed(screenDisplay),
     getPointerPoint: () => Effect.succeed(new ScreenPoint({ x: 10, y: 20 })),
     onDisplaysChanged: () => Stream.empty,
-    isSupported: () => Effect.succeed(new ScreenSupportedResult({ supported: true }))
+    isSupported: () => Effect.succeed(true)
   })
   const screenBridge = makeMockBridge()
-  const screenLiveRuntime = ManagedRuntime.make(
-    Layer.provide(ScreenLive, Layer.succeed(ScreenClient)(screenLiveClient))
-  )
+  const screenDirectRuntime = ManagedRuntime.make(Layer.succeed(Screen)(screenDirectClient))
   const screenClientRuntime = ManagedRuntime.make(
-    Layer.provide(ScreenLive, ScreenSurface.bridgeClientLayer(screenBridge.exchange))
+    ScreenSurface.bridgeClientLayer(screenBridge.exchange)
   )
   const screenTestRuntime = ManagedRuntime.make(
     ScreenTest({
@@ -2168,19 +2162,19 @@ test("native capability programs run unchanged through Live, Client, and Test la
     })
   ).then(() =>
     Promise.all([
-      screenLiveRuntime.runPromise(screenProgram),
+      screenDirectRuntime.runPromise(screenProgram),
       screenClientRuntime.runPromise(screenProgram),
       screenTestRuntime.runPromise(screenProgram),
       dialogLiveRuntime.runPromise(dialogProgram),
       dialogClientRuntime.runPromise(dialogProgram),
       dialogTestRuntime.runPromise(dialogProgram)
-    ]).then(([screenLive, screenClient, screenTest, dialogLive, dialogClient, dialogTest]) => {
+    ]).then(([screenDirect, screenClient, screenTest, dialogLive, dialogClient, dialogTest]) => {
       expect({
         name: "Screen",
-        live: screenLive,
+        direct: screenDirect,
         client: screenClient,
         test: screenTest
-      }).toEqual({ name: "Screen", live: "primary", client: "primary", test: "primary" })
+      }).toEqual({ name: "Screen", direct: "primary", client: "primary", test: "primary" })
       expect(screenBridge.calls().map((call) => call.method)).toEqual(["Screen.getPrimaryDisplay"])
       const dialogExpected = "/tmp/input.txt:/tmp/output.txt:confirmed"
       expect({

@@ -36,8 +36,8 @@ import {
 
 Each `packages/native/src/<name>.test.ts` runs against:
 
-1. Direct client + live service.
-2. Live service through the bridge protocol.
+1. Direct service layer.
+2. Bridge client layer.
 3. Test layer.
 
 If the test layer drifts from the live contract, CI catches it. This is what keeps the test layers honest.

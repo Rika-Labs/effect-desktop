@@ -16,7 +16,7 @@ import {
   ScreenDisplaysChangedEvent,
   ScreenDisplaysResult
 } from "./contracts/screen.js"
-import { ScreenClient, ScreenRpcs, ScreenSurface } from "./screen.js"
+import { Screen, ScreenRpcs, ScreenSurface } from "./screen.js"
 
 test("Screen public surface omits the side event object", async () => {
   const screenModule = await import("./screen.js")
@@ -196,8 +196,8 @@ const directScreenDisplaysChangedEvent = (payload: unknown) =>
 
     const event = yield* runScoped(
       Effect.gen(function* () {
-        const client = yield* ScreenClient
-        return yield* client.onDisplaysChanged().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+        const screen = yield* Screen
+        return yield* screen.onDisplaysChanged().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
       }),
       Layer.provide(ScreenSurface.clientLayer, protocolLayer)
     )

@@ -334,11 +334,6 @@
       "signature": "const runHeadlessRuntime: <A, E, R>(effect: Effect.Effect<A, E, R>, options?: HeadlessRuntimeLayerOptions) => Effect.Effect<A, HostProtocolInvalidArgumentError | TelemetryInvalidArgumentError | ResourceLeakError | E, Exclude<R, HeadlessRuntimeServices>>"
     },
     {
-      "name": "ScreenClientTest",
-      "kind": "value",
-      "signature": "const ScreenClientTest: (options?: TestScreenOptions) => Layer.Layer<ScreenClient>"
-    },
-    {
       "name": "ScreenTest",
       "kind": "value",
       "signature": "const ScreenTest: (options?: TestScreenOptions) => Layer.Layer<Screen>"

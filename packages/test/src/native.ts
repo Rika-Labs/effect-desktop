@@ -18,7 +18,6 @@ import {
   Dialog,
   DialogSurface,
   Screen,
-  ScreenSurface,
   Window,
   Native,
   type ClipboardClient,
@@ -27,9 +26,8 @@ import {
   type DialogClient,
   type DialogError,
   type DialogServiceApi,
-  type ScreenClient,
+  type ScreenClientApi,
   type ScreenError,
-  type ScreenServiceApi,
   type WindowError,
   type WindowServiceApi
 } from "@orika/native"
@@ -128,9 +126,6 @@ export const ClipboardClientTest = (
 
 export const DialogClientTest = (options: TestDialogOptions = {}): Layer.Layer<DialogClient> =>
   Layer.provide(DialogSurface.testClientLayer, makeDialogScenarioLayer(options))
-
-export const ScreenClientTest = (options: TestScreenOptions = {}): Layer.Layer<ScreenClient> =>
-  Layer.provide(ScreenSurface.testClientLayer, makeScreenScenarioLayer(options))
 
 export type TestDesktopServices =
   | Clipboard
@@ -286,7 +281,7 @@ export const makeScreenScenarioLayer = (
   options: TestScreenOptions
 ): Layer.Layer<Screen, never, never> => Layer.succeed(Screen)(makeScreenScenario(options))
 
-const makeScreenScenario = (options: TestScreenOptions): ScreenServiceApi => {
+const makeScreenScenario = (options: TestScreenOptions): ScreenClientApi => {
   const displays = options.displays?.map(
     (display) =>
       new ScreenDisplay({
@@ -320,7 +315,7 @@ const makeScreenScenario = (options: TestScreenOptions): ScreenServiceApi => {
     onDisplaysChanged: () => Stream.make(new ScreenDisplaysChangedEvent({ displays })),
     isSupported: (_method: ScreenMethod): Effect.Effect<boolean, ScreenError> =>
       Effect.succeed(true)
-  } satisfies ScreenServiceApi)
+  } satisfies ScreenClientApi)
 }
 
 export const makeWindowScenarioLayer = (): Layer.Layer<
