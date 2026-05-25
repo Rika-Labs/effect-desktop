@@ -131,7 +131,6 @@ import {
   ClipboardClient,
   ClipboardHandlersLive,
   ClipboardRpcs,
-  ClipboardRpcEvents,
   ClipboardLive,
   ClipboardMethodNames,
   ClipboardSurface,
@@ -198,7 +197,6 @@ import {
   Notification,
   NotificationHandlersLive,
   NotificationRpcs,
-  NotificationRpcEvents,
   NotificationLive,
   NotificationMethodNames,
   NotificationSurface,
@@ -4857,7 +4855,6 @@ test("native host RPC runtime denies protected Dialog calls before handlers run"
 test("ClipboardRpcs declares the Phase 7 Clipboard method surface", () => {
   expect([...ClipboardMethodNames]).toEqual(expectedClipboardMethods)
   expect(rpcMethodNames("Clipboard", ClipboardRpcs)).toEqual(expectedClipboardMethods)
-  expect(Object.keys(ClipboardRpcEvents)).toEqual([])
 })
 
 test("Clipboard service delegates through a substitutable ClipboardClient port", () =>
@@ -5234,8 +5231,9 @@ test("native host RPC runtime denies protected Clipboard calls before handlers r
 
 test("NotificationRpcs declares the Phase 7 Notification method and event surface", () => {
   expect([...NotificationMethodNames]).toEqual(expectedNotificationMethods)
-  expect(rpcMethodNames("Notification", NotificationRpcs)).toEqual(expectedNotificationMethods)
-  expect(Object.keys(NotificationRpcEvents)).toEqual(["Click", "Action"])
+  expect(rpcMethodNames("Notification", NotificationRpcs).toSorted()).toEqual(
+    [...expectedNotificationMethods, "events.Action", "events.Click"].toSorted()
+  )
 })
 
 test("Notification service delegates through a substitutable NotificationClient port", () =>
@@ -5495,7 +5493,9 @@ test("native host RPC runtime denies protected Notification calls before handler
           "Notification.requestPermission": () =>
             Effect.succeed(new NotificationPermissionResult({ state: "granted" })),
           "Notification.getPermissionStatus": () =>
-            Effect.succeed(new NotificationPermissionResult({ state: "default" }))
+            Effect.succeed(new NotificationPermissionResult({ state: "default" })),
+          "Notification.events.Click": () => Stream.empty,
+          "Notification.events.Action": () => Stream.empty
         },
         { originAuth: RendererOriginAuth.unsafeDisabledForTests }
       )

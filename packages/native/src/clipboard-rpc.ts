@@ -74,10 +74,6 @@ export const ClipboardIsSupported = nativeRpc("Clipboard", "isSupported", {
   support: NativeRpcSupport.supported
 })
 
-export const ClipboardRpcEvents = Object.freeze({})
-
-export type ClipboardRpcEvents = typeof ClipboardRpcEvents
-
 const ClipboardRpcGroup = RpcGroup.make(
   ClipboardReadText,
   ClipboardWriteText,

@@ -46,10 +46,13 @@ On macOS and Windows, `requestPermission` and `getPermissionStatus` return `Unsu
 
 ## Events
 
-| Event                 | Payload                                      |
-| --------------------- | -------------------------------------------- |
-| `Notification.Click`  | `{ notification, ownerWindowId? }`           |
-| `Notification.Action` | `{ notification, actionId, ownerWindowId? }` |
+| RPC stream                   | Bridge host method    | Payload                                      |
+| ---------------------------- | --------------------- | -------------------------------------------- |
+| `Notification.events.Click`  | `Notification.Click`  | `{ notification, ownerWindowId? }`           |
+| `Notification.events.Action` | `Notification.Action` | `{ notification, actionId, ownerWindowId? }` |
+
+The public Effect RPC contract owns the event streams. The bridge host method
+names remain native/web protocol details for host event subscriptions.
 
 ## Lifecycle
 

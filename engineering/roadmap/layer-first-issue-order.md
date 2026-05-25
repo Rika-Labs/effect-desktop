@@ -112,20 +112,21 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 
 ## Architecture Debt Follow-Ups
 
-|                                         Issue | Status | Why here                                                                                                                                                        |
-| --------------------------------------------: | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-|        #1421 Remove Window `windowRpc` helper | Closed | Removes a shallow `NativeSurface.rpc` wrapper that spans the Window parity surface and will simplify later Window lifecycle, bounds, chrome, and state tickets. |
-|     #1743 Remove shallow native layer helpers | Closed | Removes pass-through native `make*Layer` exports that mirror Effect `Layer` and generated `NativeSurface` construction instead of owning desktop policy.        |
-|       #1744 Model NetworkAuth events by phase | Closed | Replaces the broad `NetworkAuthEvent` phase payload with phase-specific Schema variants so invalid phase/payload combinations are rejected at the boundary.     |
-|          #1745 Model Download events by phase | Closed | Replaces the broad `DownloadEvent` phase payload with phase-specific Schema variants so invalid phase/payload combinations are rejected at the boundary.        |
-|       #1747 Model CookieStore events by phase | Closed | Replaces the broad `CookieStoreEvent` phase payload with phase-specific Schema variants so invalid phase/payload combinations are rejected at the boundary.     |
-|    #1748 Model SessionProfile events by phase | Closed | Replaces the broad `SessionProfileEvent` phase payload with phase-specific Schema variants so invalid phase/payload combinations are rejected at the boundary.  |
-| #1785 Remove React window convenience aliases | Closed | Removes zero-policy `currentWindow`/`windows` namespace aliases and duplicate React hooks so the React adapter exposes one Effect-native window contract.       |
-|    #1798 Preserve renderer RPC group generics | Closed | Removes the remaining renderer RPC flat-client invocation assertion by reconstructing an invokable Effect RPC union at the erased renderer manifest boundary.   |
-|     #1807 Expose production PTY adapter layer | Closed | Connects the checked-in native PTY primitive to the public TypeScript `PTY` service without forcing app code to hand-supply a `PtyAdapter`.                     |
-| #1824 Model DisplayCapture events as RPC streams | Closed | Removes the remaining `DisplayCaptureRpcEvents` side object by moving capture lifecycle events into the canonical `DisplayCapture.events.Event` RPC stream. |
-| #1825 Model Autostart events as RPC streams | Closed | Removes the remaining `AutostartRpcEvents` side object by moving Autostart lifecycle events into the canonical `Autostart.events.Event` RPC stream. |
-| #1826 Model native context events as RPC streams | Closed | Removes context `*RpcEvents` side objects by moving FocusedApplicationContext, SelectionContext, and TransientWindowRole events into canonical RPC streams. |
+|                                            Issue | Status | Why here                                                                                                                                                        |
+| -----------------------------------------------: | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|           #1421 Remove Window `windowRpc` helper | Closed | Removes a shallow `NativeSurface.rpc` wrapper that spans the Window parity surface and will simplify later Window lifecycle, bounds, chrome, and state tickets. |
+|        #1743 Remove shallow native layer helpers | Closed | Removes pass-through native `make*Layer` exports that mirror Effect `Layer` and generated `NativeSurface` construction instead of owning desktop policy.        |
+|          #1744 Model NetworkAuth events by phase | Closed | Replaces the broad `NetworkAuthEvent` phase payload with phase-specific Schema variants so invalid phase/payload combinations are rejected at the boundary.     |
+|             #1745 Model Download events by phase | Closed | Replaces the broad `DownloadEvent` phase payload with phase-specific Schema variants so invalid phase/payload combinations are rejected at the boundary.        |
+|          #1747 Model CookieStore events by phase | Closed | Replaces the broad `CookieStoreEvent` phase payload with phase-specific Schema variants so invalid phase/payload combinations are rejected at the boundary.     |
+|       #1748 Model SessionProfile events by phase | Closed | Replaces the broad `SessionProfileEvent` phase payload with phase-specific Schema variants so invalid phase/payload combinations are rejected at the boundary.  |
+|    #1785 Remove React window convenience aliases | Closed | Removes zero-policy `currentWindow`/`windows` namespace aliases and duplicate React hooks so the React adapter exposes one Effect-native window contract.       |
+|       #1798 Preserve renderer RPC group generics | Closed | Removes the remaining renderer RPC flat-client invocation assertion by reconstructing an invokable Effect RPC union at the erased renderer manifest boundary.   |
+|        #1807 Expose production PTY adapter layer | Closed | Connects the checked-in native PTY primitive to the public TypeScript `PTY` service without forcing app code to hand-supply a `PtyAdapter`.                     |
+| #1824 Model DisplayCapture events as RPC streams | Closed | Removes the remaining `DisplayCaptureRpcEvents` side object by moving capture lifecycle events into the canonical `DisplayCapture.events.Event` RPC stream.     |
+|      #1825 Model Autostart events as RPC streams | Closed | Removes the remaining `AutostartRpcEvents` side object by moving Autostart lifecycle events into the canonical `Autostart.events.Event` RPC stream.             |
+| #1826 Model native context events as RPC streams | Closed | Removes context `*RpcEvents` side objects by moving FocusedApplicationContext, SelectionContext, and TransientWindowRole events into canonical RPC streams.     |
+|   #1827 Model notification events as RPC streams | Closed | Removes the empty `ClipboardRpcEvents` object and moves Notification click/action events into canonical `Notification.events.*` RPC streams.                    |
 
 ## Execution Progress
 

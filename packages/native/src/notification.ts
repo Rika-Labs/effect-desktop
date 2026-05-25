@@ -16,10 +16,11 @@ import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
-import { subscribeNativeEvent } from "./event-stream.js"
+import { runNativeRpcStream } from "./native-client.js"
 import {
+  NotificationAction as NotificationActionEventStream,
   NotificationCapabilityMethods,
-  NotificationRpcEvents as NotificationRpcEventsValue,
+  NotificationClick as NotificationClickEventStream,
   NotificationRpcs
 } from "./notification-rpc.js"
 import {
@@ -45,9 +46,6 @@ export {
   NotificationRpcs,
   NotificationShow
 } from "./notification-rpc.js"
-
-export const NotificationRpcEvents = NotificationRpcEventsValue
-export type NotificationRpcEvents = typeof NotificationRpcEvents
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
 
@@ -156,15 +154,29 @@ export const NotificationHandlersLive = NotificationRpcGroup.toLayer({
       const notification = yield* Notification
       const state = yield* notification.getPermissionStatus()
       return new NotificationPermissionResult({ state })
-    })
+    }),
+  "Notification.events.Click": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const notification = yield* Notification
+        return notification.onClick()
+      })
+    ),
+  "Notification.events.Action": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const notification = yield* Notification
+        return notification.onAction()
+      })
+    )
 })
 
 export const NotificationSurface = NativeSurface.make("Notification", NotificationRpcGroup, {
   service: NotificationClient,
   capabilities: NotificationCapabilityMethods,
   handlers: NotificationHandlersLive,
-  client: (client) => notificationClientFromRpcClient(client, undefined),
-  bridgeClient: (client, exchange) => notificationClientFromRpcClient(client, exchange)
+  client: (client) => notificationClientFromRpcClient(client),
+  bridgeClient: (client, exchange) => notificationBridgeClientFromRpcClient(client, exchange)
 })
 
 const makeNotificationService = (
@@ -233,8 +245,7 @@ const makeNotificationService = (
 }
 
 const notificationClientFromRpcClient = (
-  client: DesktopRpcClient<NotificationRpc>,
-  exchange: BridgeClientExchange | undefined
+  client: DesktopRpcClient<NotificationRpc>
 ): NotificationClientApi => {
   const notificationClient: NotificationClientApi = {
     show: (input) =>
@@ -263,19 +274,32 @@ const notificationClientFromRpcClient = (
         "Notification.getPermissionStatus"
       ),
     onClick: () =>
-      subscribeNotificationEvent(exchange, "Notification.Click", NotificationClickEvent),
+      runNotificationRpcStream(
+        client["Notification.events.Click"](undefined),
+        "Notification.events.Click"
+      ),
     onAction: () =>
-      subscribeNotificationEvent(exchange, "Notification.Action", NotificationActionEvent)
+      runNotificationRpcStream(
+        client["Notification.events.Action"](undefined),
+        "Notification.events.Action"
+      )
   }
 
   return Object.freeze(notificationClient)
 }
 
-const subscribeNotificationEvent = <A>(
-  exchange: BridgeClientExchange | undefined,
-  method: string,
-  schema: Schema.Codec<A, unknown, never, never>
-): Stream.Stream<A, NotificationError, never> => subscribeNativeEvent(exchange, method, schema)
+const notificationBridgeClientFromRpcClient = (
+  client: DesktopRpcClient<NotificationRpc>,
+  exchange: BridgeClientExchange
+): NotificationClientApi => {
+  const notificationClient: NotificationClientApi = {
+    ...notificationClientFromRpcClient(client),
+    onClick: () => NativeSurface.subscribeEvent(exchange, NotificationClickEventStream),
+    onAction: () => NativeSurface.subscribeEvent(exchange, NotificationActionEventStream)
+  }
+
+  return Object.freeze(notificationClient)
+}
 
 const toNotificationShowInput = (input: NotificationShowOptions): unknown => ({
   title: input.title,
@@ -340,6 +364,12 @@ const isNotificationError = (error: unknown): error is NotificationError =>
   "tag" in error &&
   "operation" in error &&
   "recoverable" in error
+
+const runNotificationRpcStream = <A, E>(
+  stream: Stream.Stream<A, E, never>,
+  operation: string
+): Stream.Stream<A, NotificationError, never> =>
+  runNativeRpcStream(stream, operation, "Notification")
 
 const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) {

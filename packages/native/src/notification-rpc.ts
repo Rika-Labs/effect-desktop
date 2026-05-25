@@ -10,7 +10,12 @@ import {
   NotificationShowInput,
   NotificationSupportedResult
 } from "./contracts/notification.js"
-import { nativeAuthority, nativeRpc, NativeRpcSupport } from "./native-rpc-descriptor.js"
+import {
+  nativeAuthority,
+  nativeEvent,
+  nativeRpc,
+  NativeRpcSupport
+} from "./native-rpc-descriptor.js"
 
 export const NotificationPlatformSupport = NativeRpcSupport.partial(
   "host-notification-unavailable",
@@ -63,19 +68,24 @@ export const NotificationGetPermissionStatus = nativeRpc("Notification", "getPer
   support: NotificationPlatformSupport
 })
 
-export const NotificationRpcEvents = Object.freeze({
-  Click: { payload: NotificationClickEvent },
-  Action: { payload: NotificationActionEvent }
+export const NotificationClick = nativeEvent("Notification", "Click", {
+  payload: NotificationClickEvent,
+  support: NotificationPlatformSupport
 })
 
-export type NotificationRpcEvents = typeof NotificationRpcEvents
+export const NotificationAction = nativeEvent("Notification", "Action", {
+  payload: NotificationActionEvent,
+  support: NotificationPlatformSupport
+})
 
 const NotificationRpcGroup = RpcGroup.make(
   NotificationShow,
   NotificationClose,
   NotificationIsSupported,
   NotificationRequestPermission,
-  NotificationGetPermissionStatus
+  NotificationGetPermissionStatus,
+  NotificationClick,
+  NotificationAction
 )
 
 export type NotificationRpc = RpcGroup.Rpcs<typeof NotificationRpcGroup>

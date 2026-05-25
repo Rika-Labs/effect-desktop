@@ -10,11 +10,7 @@ import { Context, Effect, Layer } from "effect"
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
-import {
-  ClipboardCapabilityMethods,
-  ClipboardRpcEvents as ClipboardRpcEventsValue,
-  ClipboardRpcs
-} from "./clipboard-rpc.js"
+import { ClipboardCapabilityMethods, ClipboardRpcs } from "./clipboard-rpc.js"
 import {
   type ClipboardCapability,
   ClipboardHtml,
@@ -38,9 +34,6 @@ export {
   ClipboardWriteImage,
   ClipboardWriteText
 } from "./clipboard-rpc.js"
-
-export const ClipboardRpcEvents = ClipboardRpcEventsValue
-export type ClipboardRpcEvents = typeof ClipboardRpcEvents
 
 export type ClipboardError = HostProtocolError
 

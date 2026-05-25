@@ -47,6 +47,12 @@ this boundary is reported as `InvalidOutput`.
 | `clear`       | —                                                                       | `void`                                                          |
 | `isSupported` | `{ capability: "text" \| "html" \| "image" \| "clear" \| "selection" }` | `{ supported: true }` or `{ supported: false, reason: string }` |
 
+## Events
+
+Clipboard does not publish event streams today. Apps should read the clipboard
+again after their own write/clear operations or after a user action that may
+change clipboard state.
+
 ## Errors
 
 `ClipboardError` is the host protocol error union. Host operations return typed errors for unavailable
