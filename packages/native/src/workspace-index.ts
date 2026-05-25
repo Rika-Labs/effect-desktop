@@ -24,8 +24,7 @@ import {
 } from "@orika/core"
 import { Clock, Context, Effect, Layer, PubSub, Ref, Schema, Stream } from "effect"
 
-import { subscribeNativeEvent } from "./event-stream.js"
-import { decodeNativeInput, runNativeRpc } from "./native-client.js"
+import { decodeNativeInput, runNativeRpc, runNativeRpcStream } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
 import {
@@ -47,7 +46,6 @@ import {
 
 const Surface = "WorkspaceIndex"
 const UnsupportedReason = "host-adapter-unimplemented"
-const WorkspaceIndexEventMethod = "WorkspaceIndex.Event"
 
 const IdentifierPattern = /^[A-Za-z0-9._-]+$/
 const WindowsAbsolutePath = /^[A-Za-z]:[\\/]/u
@@ -80,17 +78,17 @@ export const WorkspaceIndexIsSupported = NativeSurface.rpc(Surface, "isSupported
   support: NativeSurface.support.supported
 })
 
-export const WorkspaceIndexRpcEvents = Object.freeze({
-  Event: { payload: WorkspaceIndexEvent }
+const WorkspaceIndexEventStream = NativeSurface.event(Surface, "Event", {
+  payload: WorkspaceIndexEvent,
+  support: NativeSurface.support.supported
 })
-
-export type WorkspaceIndexRpcEvents = typeof WorkspaceIndexRpcEvents
 
 const WorkspaceIndexRpcGroup = RpcGroup.make(
   WorkspaceIndexOpen,
   WorkspaceIndexRefresh,
   WorkspaceIndexClose,
-  WorkspaceIndexIsSupported
+  WorkspaceIndexIsSupported,
+  WorkspaceIndexEventStream
 )
 
 export const WorkspaceIndexRpcs: RpcGroup.RpcGroup<WorkspaceIndexRpc> = WorkspaceIndexRpcGroup
@@ -203,15 +201,22 @@ export const WorkspaceIndexHandlersLive = WorkspaceIndexRpcGroup.toLayer({
     Effect.gen(function* () {
       const index = yield* WorkspaceIndex
       return yield* index.isSupported()
-    })
+    }),
+  "WorkspaceIndex.events.Event": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const index = yield* WorkspaceIndex
+        return index.events()
+      })
+    )
 })
 
 export const WorkspaceIndexSurface = NativeSurface.make(Surface, WorkspaceIndexRpcGroup, {
   service: WorkspaceIndexClient,
   capabilities: WorkspaceIndexCapabilityMethods,
   handlers: WorkspaceIndexHandlersLive,
-  client: (client) => workspaceIndexClientFromRpcClient(client, undefined),
-  bridgeClient: (client, exchange) => workspaceIndexClientFromRpcClient(client, exchange)
+  client: (client) => workspaceIndexClientFromRpcClient(client),
+  bridgeClient: (client, exchange) => workspaceIndexBridgeClientFromRpcClient(client, exchange)
 })
 
 export interface WorkspaceIndexMemoryClientOptions {
@@ -505,8 +510,7 @@ const makeWorkspaceIndexService = (
   })
 
 const workspaceIndexClientFromRpcClient = (
-  client: DesktopRpcClient<WorkspaceIndexRpc>,
-  exchange: BridgeClientExchange | undefined
+  client: DesktopRpcClient<WorkspaceIndexRpc>
 ): WorkspaceIndexClientApi =>
   Object.freeze({
     open: (input) =>
@@ -532,7 +536,20 @@ const workspaceIndexClientFromRpcClient = (
         client["WorkspaceIndex.isSupported"](undefined),
         "WorkspaceIndex.isSupported"
       ),
-    events: () => subscribeNativeEvent(exchange, WorkspaceIndexEventMethod, WorkspaceIndexEvent)
+    events: () =>
+      runWorkspaceIndexRpcStream(
+        client["WorkspaceIndex.events.Event"](undefined),
+        "WorkspaceIndex.events.Event"
+      )
+  } satisfies WorkspaceIndexClientApi)
+
+const workspaceIndexBridgeClientFromRpcClient = (
+  client: DesktopRpcClient<WorkspaceIndexRpc>,
+  exchange: BridgeClientExchange
+): WorkspaceIndexClientApi =>
+  Object.freeze({
+    ...workspaceIndexClientFromRpcClient(client),
+    events: () => NativeSurface.subscribeEvent(exchange, WorkspaceIndexEventStream)
   } satisfies WorkspaceIndexClientApi)
 
 function workspaceIndexRpc<
@@ -553,6 +570,11 @@ const runWorkspaceIndexRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
   operation: string
 ): Effect.Effect<A, WorkspaceIndexError, never> => runNativeRpc(effect, operation, Surface)
+
+const runWorkspaceIndexRpcStream = <A, E>(
+  stream: Stream.Stream<A, E, never>,
+  operation: string
+): Stream.Stream<A, WorkspaceIndexError, never> => runNativeRpcStream(stream, operation, Surface)
 
 const validateOpenRequest = (
   input: unknown

@@ -549,7 +549,6 @@ export {
   WorkspaceIndexHandlersLive,
   WorkspaceIndexLive,
   WorkspaceIndexMethodNames,
-  WorkspaceIndexRpcEvents,
   WorkspaceIndexRpcs,
   WorkspaceIndexSurface,
   makeWorkspaceIndexMemoryClient,

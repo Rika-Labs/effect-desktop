@@ -1,13 +1,20 @@
 import { expect, test } from "bun:test"
 import {
   type BridgeClientExchange,
+  type HostProtocolEnvelope,
   type HostProtocolEventEnvelope,
   type HostProtocolError,
   type HostProtocolRequestEnvelope,
-  makeHostProtocolInternalError
+  HostProtocolResponseEnvelope,
+  HostProtocolStreamByRequestEnvelope,
+  makeDesktopClientProtocol,
+  makeHostProtocolInternalError,
+  rpcSupport
 } from "@orika/bridge"
 import { type AuditEvent, type AuditEventsApi, makePermissionRegistry, P } from "@orika/core"
-import { Cause, Effect, Exit, type Layer, ManagedRuntime, Option, Schema, Stream } from "effect"
+import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Queue, Schema, Stream } from "effect"
+import { RpcClient, RpcSchema } from "effect/unstable/rpc"
+import { EventJournal } from "effect/unstable/eventlog"
 
 import {
   makeWorkspaceIndexMemoryClient,
@@ -15,6 +22,8 @@ import {
   makeWorkspaceIndexUnsupportedClient,
   WorkspaceIndex,
   WorkspaceIndexClient,
+  WorkspaceIndexMethodNames,
+  WorkspaceIndexRpcs,
   WorkspaceIndexSurface,
   type WorkspaceIndexClientApi
 } from "./workspace-index.js"
@@ -30,7 +39,113 @@ import {
   WorkspaceIndexRefreshRequest,
   WorkspaceIndexScope
 } from "./contracts/workspace-index.js"
-import { EventJournal } from "effect/unstable/eventlog"
+
+const expectedWorkspaceIndexMethods: Array<(typeof WorkspaceIndexMethodNames)[number]> = [
+  "open",
+  "refresh",
+  "close",
+  "isSupported"
+]
+
+test("WorkspaceIndex event schema is owned by the RPC stream contract", async () => {
+  const workspaceIndexModule = await import("./workspace-index.js")
+  const rootModule = await import("./index.js")
+  const eventRpc = WorkspaceIndexRpcs.requests.get("WorkspaceIndex.events.Event")
+
+  expect("WorkspaceIndexRpcEvents" in workspaceIndexModule).toBe(false)
+  expect("WorkspaceIndexRpcEvents" in rootModule).toBe(false)
+  expect(Array.from(WorkspaceIndexRpcs.requests.keys())).toEqual([
+    ...expectedWorkspaceIndexMethods.map((method) => `WorkspaceIndex.${method}`),
+    "WorkspaceIndex.events.Event"
+  ])
+  expect(eventRpc).toBeDefined()
+  expect(eventRpc === undefined ? false : RpcSchema.isStreamSchema(eventRpc.successSchema)).toBe(
+    true
+  )
+  if (eventRpc !== undefined && RpcSchema.isStreamSchema(eventRpc.successSchema)) {
+    expect(Object.is(eventRpc.successSchema.success, WorkspaceIndexEvent)).toBe(true)
+    expect(eventRpc.pipe(rpcSupport)).toEqual({ status: "supported" })
+  }
+})
+
+test("WorkspaceIndex direct client consumes the canonical RPC event stream", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
+      const requests: HostProtocolRequestEnvelope[] = []
+      const protocolLayer = Layer.effect(RpcClient.Protocol)(
+        makeDesktopClientProtocol(
+          {
+            send: (envelope) => {
+              if (envelope.kind !== "request") {
+                return Effect.void
+              }
+              requests.push(envelope)
+              return Effect.all(
+                [
+                  Queue.offer(
+                    queue,
+                    new HostProtocolStreamByRequestEnvelope({
+                      kind: "stream",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_100,
+                      traceId: envelope.traceId,
+                      payload: {
+                        type: "workspace-index-event",
+                        timestamp: 1_710_000_000_100,
+                        indexId: "workspace-index-1",
+                        root: "/workspace/app",
+                        path: "/workspace/app/src/main.ts",
+                        phase: "entry-indexed",
+                        indexed: 1,
+                        invalidated: 0,
+                        ignored: 0
+                      }
+                    })
+                  ),
+                  Queue.offer(
+                    queue,
+                    new HostProtocolResponseEnvelope({
+                      kind: "response",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_101,
+                      traceId: envelope.traceId
+                    })
+                  )
+                ],
+                { discard: true }
+              )
+            },
+            run: (onEnvelope) =>
+              Stream.fromQueue(queue).pipe(
+                Stream.runForEach(onEnvelope),
+                Effect.andThen(Effect.never)
+              )
+          },
+          {
+            nextRequestId: () => "workspace-index-event-rpc",
+            nextTraceId: () => "trace-workspace-index-event-rpc"
+          }
+        )
+      )
+
+      const event = yield* runScoped(
+        Effect.gen(function* () {
+          const client = yield* WorkspaceIndexClient
+          return yield* client.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+        }),
+        Layer.provide(WorkspaceIndexSurface.clientLayer, protocolLayer)
+      )
+
+      expect(event).toMatchObject({
+        indexId: "workspace-index-1",
+        path: "/workspace/app/src/main.ts",
+        phase: "entry-indexed",
+        indexed: 1
+      })
+      expect(requests.map((request) => request.method)).toEqual(["WorkspaceIndex.events.Event"])
+    })
+  ))
 
 test("WorkspaceIndex service opens, filters ignored paths, refreshes, closes, emits events, and audits use", () =>
   Effect.runPromise(
@@ -629,7 +744,7 @@ test("WorkspaceIndex unsupported client exposes typed unsupported failures", () 
     })
   ))
 
-test("WorkspaceIndex RPC metadata reports host methods as supported", () => {
+test("WorkspaceIndex RPC metadata reports host methods and event stream as supported", () => {
   expect(
     WorkspaceIndexSurface.schemaDocs.map((doc) => ({
       support: doc.support,
@@ -639,7 +754,8 @@ test("WorkspaceIndex RPC metadata reports host methods as supported", () => {
     { tag: "WorkspaceIndex.open", support: { status: "supported" } },
     { tag: "WorkspaceIndex.refresh", support: { status: "supported" } },
     { tag: "WorkspaceIndex.close", support: { status: "supported" } },
-    { tag: "WorkspaceIndex.isSupported", support: { status: "supported" } }
+    { tag: "WorkspaceIndex.isSupported", support: { status: "supported" } },
+    { tag: "WorkspaceIndex.events.Event", support: { status: "supported" } }
   ])
 })
 

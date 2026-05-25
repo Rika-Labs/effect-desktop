@@ -8,7 +8,7 @@ effect_version: 4
 
 # `WorkspaceIndex`
 
-Product-neutral workspace index service. Callers open an index session for a workspace root, provide explicit filesystem read grants, set ignore rules, refresh changed paths, close the session, and subscribe to lifecycle events.
+Product-neutral workspace index service. Callers open an index session for a workspace root, provide explicit filesystem read grants, set ignore rules, refresh changed paths, close the session, and subscribe to lifecycle events through the canonical `WorkspaceIndex.events.Event` RPC stream.
 
 The public service is Layer-first and test-substitutable. It validates Schema contracts before transport, checks native invoke and filesystem read permissions before privileged work, filters ignored paths before the host client sees them, rejects non-canonical path syntax and lexical paths outside the indexed root, emits typed lifecycle events, and records audit rows for privileged use and denial before host work.
 
@@ -44,6 +44,13 @@ The service checks native invoke permission before host side effects:
 - `Native.Permissions.workspaceIndex.close`
 
 `open` also checks `filesystem.read` for the actor and validates that `scope.grants` includes a covering `filesystem.read` grant. `refresh` rejects changed paths outside the opened root before calling the client and omits ignored paths from the client payload.
+
+## Events
+
+`events()` consumes the canonical `WorkspaceIndex.events.Event` RPC stream and
+emits typed workspace index lifecycle events. The native/web bridge maps this
+stream to the existing host event method `WorkspaceIndex.Event` at the boundary.
+Event payloads are Schema-decoded before application code sees them.
 
 ## Errors
 
