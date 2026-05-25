@@ -72,7 +72,7 @@ import { WindowRendererRpcs } from "@orika/native/renderer"
 | `close`                  | `WindowHandle`                   | `void`               | Compatibility name for `destroy`.                                         |
 | `destroy`                | `WindowHandle`                   | `void`               | Destroy a native window and close its scope.                              |
 
-`WindowMethodNames = ["create", "close", "destroy", "show", "hide", "focus", "getCurrent", "getById", "list", "getParent", "getChildren", "getBounds", "setBounds", "setBoundsOnDisplay", "center", "centerOnDisplay", "setTitle", "setResizable", "setDecorations", "setTrafficLights", "setVibrancy", "clearVibrancy", "setShadow", "setTitleBarStyle", "setTitleBarTransparent", "setTransparent", "setAlwaysOnTop", "setSkipTaskbar", "setProgress", "requestAttention", "cancelAttention", "minimize", "maximize", "restore", "setFullscreen", "setSimpleFullscreen", "getState"]`. Bounds use logical coordinates; the host converts through the display scale factor before applying Tao position and size operations. Mutable title, resizable, decorations, always-on-top, progress, and attention controls are backed by Tao operations. `setTrafficLights`, `setVibrancy`, `clearVibrancy`, `setShadow`, `setTitleBarStyle`, `setTitleBarTransparent`, `setTransparent`, and `setSimpleFullscreen` are macOS-only and return typed `Unsupported` on other hosts. `setSkipTaskbar` is supported on Windows and Linux and returns typed `Unsupported` on macOS. Progress is platform-dependent: Tao reports Linux/macOS progress as app-wide rather than truly window-scoped, and Linux support depends on desktop environment support. Attention cancellation maps to Tao's `request_user_attention(None)` and is best-effort; Tao documents that it has no effect on macOS.
+`WindowMethodNames = ["create", "close", "destroy", "show", "hide", "focus", "getCurrent", "getById", "list", "getParent", "getChildren", "getBounds", "setBounds", "setBoundsOnDisplay", "center", "centerOnDisplay", "setTitle", "setResizable", "setDecorations", "setTrafficLights", "setVibrancy", "clearVibrancy", "setShadow", "setTitleBarStyle", "setTitleBarTransparent", "setTransparent", "setAlwaysOnTop", "setSkipTaskbar", "setProgress", "requestAttention", "cancelAttention", "minimize", "maximize", "restore", "setFullscreen", "setSimpleFullscreen", "getState"]`. Bounds use logical coordinates; the host converts through the display scale factor before applying native position and size operations. Mutable title, resizable, decorations, always-on-top, progress, and attention controls are backed by Tao operations. `setTrafficLights`, `setVibrancy`, `clearVibrancy`, `setShadow`, `setTitleBarStyle`, `setTitleBarTransparent`, `setTransparent`, and `setSimpleFullscreen` are macOS-only and return typed `Unsupported` on other hosts. `setSkipTaskbar` is supported on Windows and Linux and returns typed `Unsupported` on macOS. Progress is platform-dependent: Tao reports Linux/macOS progress as app-wide rather than truly window-scoped, and Linux support depends on desktop environment support. Attention cancellation maps to Tao's `request_user_attention(None)` and is best-effort; Tao documents that it has no effect on macOS.
 
 The placement surface is host-routed. `getBounds`, `setBounds`, and `center`
 use logical-coordinate operations. `centerOnDisplay` uses the host's
@@ -87,9 +87,11 @@ area, clips size and position to that work area, and applies the target
 display's scale factor for native placement. `setBounds`, `setBoundsOnDisplay`,
 `center`, and `centerOnDisplay` return the host-observed logical bounds after
 the native command, so callers can compare requested and observed rectangles
-when the OS or compositor adjusts placement. Native move and resize
-notifications are exposed as `window-bounds-event` events with the current
-logical bounds.
+when the OS or compositor adjusts placement. On macOS, `setBounds` and
+`setBoundsOnDisplay` write and read the AppKit `NSWindow` content rect directly
+so the command result reflects the resize accepted by AppKit instead of Tao's
+asynchronous view-size cache. Native move and resize notifications are exposed
+as `window-bounds-event` events with the current logical bounds.
 
 The chrome surface is platform-typed on the existing `Window` service rather
 than split behind a separate `WindowChrome` facade. `Window.create` accepts
@@ -115,13 +117,16 @@ for minimized, maximized, fullscreen, and simple-fullscreen booleans. `minimize`
 are host-routed. `setFullscreen` uses Tao borderless fullscreen on all hosts.
 `setSimpleFullscreen` uses Tao's macOS simple fullscreen primitive and returns
 typed `Unsupported` with reason `simple-fullscreen-macos-only` on Windows and
-Linux. State mutation commands return the host-observed `WindowState` after the
-native call. If the immediate observed state does not match the requested
-transition, the host fails the command with typed `InvalidState` instead of
-acknowledging a desired state. After a successful state command, the Rust host
-publishes a `Window.Event` state snapshot with the same observed state returned
-to the caller. `getState` reads the current Tao window state at call time; the
-host does not synthesize a cached desired state.
+Linux. `setFullscreen` and `setSimpleFullscreen` fail with typed `InvalidState`
+when the host rejects the requested fullscreen transition; clearing macOS simple
+fullscreen is idempotent when it is already clear. `minimize`, `maximize`, and
+`restore` acknowledge an accepted native state request even when the immediate
+Tao state readback still reflects the previous window state. Their returned
+`WindowState` is the immediate host-observed snapshot, and `getState` remains
+the source of truth after the native event loop settles. After a successful
+state command, the Rust host publishes a `Window.Event` state snapshot with the
+same immediate state returned to the caller. The host does not synthesize a
+cached desired state.
 
 The z-order and attention surface is intentionally narrower than Electron-style
 window chrome. ORIKA exposes explicit window-scoped z-order,

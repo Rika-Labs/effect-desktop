@@ -157,6 +157,7 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 |                    #1863 Model SessionProfile events as RPC streams | Closed | Moves session-profile lifecycle events into the canonical `SessionProfile.events.Event` RPC stream and removes shallow SessionProfile side exports.                   |
 |                    #1864 Flatten SessionPermission and model events | Closed | Flattens the SessionPermission forwarding service and moves permission events into `SessionPermission.events.Event` while keeping unsupported capability facts local. |
 |                      #1865 Model BrowsingData events as RPC streams | Closed | Moves browsing-data clear events into the canonical `BrowsingData.events.Event` RPC stream and removes shallow BrowsingData side exports.                             |
+|               #1868 Flatten Window service and event side contracts | Open   | Removes Window's remaining `WindowClient -> Window` forwarding split and event side objects once the large Window surface can migrate to canonical RPC streams.       |
 
 ## Execution Progress
 

@@ -3988,13 +3988,11 @@ impl WindowRegistry {
             .map(|monitor| clip_window_bounds_to_monitor_work_area(bounds, &monitor))
             .unwrap_or_else(|| bounds.clone());
 
-        resources
-            ._window
-            .set_outer_position(LogicalPosition::new(clipped_bounds.x(), clipped_bounds.y()));
-        resources._window.set_inner_size(LogicalSize::new(
-            clipped_bounds.width(),
-            clipped_bounds.height(),
-        ));
+        set_window_bounds(
+            &resources._window,
+            &clipped_bounds,
+            host_protocol::WINDOW_SET_BOUNDS_METHOD,
+        )?;
         window_bounds(&resources._window, host_protocol::WINDOW_SET_BOUNDS_METHOD)
     }
 
@@ -4025,10 +4023,11 @@ impl WindowRegistry {
             &monitor,
             host_protocol::WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD,
         )?;
-        resources._window.set_outer_position(bounds.position);
-        resources
-            ._window
-            .set_inner_size(LogicalSize::new(bounds.size.width, bounds.size.height));
+        set_window_bounds_on_display(
+            &resources._window,
+            &bounds,
+            host_protocol::WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD,
+        )?;
         window_bounds(
             &resources._window,
             host_protocol::WINDOW_SET_BOUNDS_ON_DISPLAY_METHOD,
@@ -4354,7 +4353,11 @@ impl WindowRegistry {
             ));
         };
 
-        resources._window.set_maximized(true);
+        set_window_maximized(
+            &resources._window,
+            true,
+            host_protocol::WINDOW_MAXIMIZE_METHOD,
+        )?;
         let observed = tao_window_state(&resources._window);
         ensure_window_state(
             &observed,
@@ -4377,7 +4380,11 @@ impl WindowRegistry {
         };
 
         resources._window.set_minimized(false);
-        resources._window.set_maximized(false);
+        set_window_maximized(
+            &resources._window,
+            false,
+            host_protocol::WINDOW_RESTORE_METHOD,
+        )?;
         resources._window.set_fullscreen(None);
         clear_simple_fullscreen(&resources._window)?;
         let observed = tao_window_state(&resources._window);
@@ -7049,11 +7056,94 @@ fn window_bounds(
             operation,
         )
     })?;
-    let size = window.inner_size();
+    let size = window_inner_size(window, operation)?;
 
     Ok(WindowBoundsPayload::new(
         f64::from(position.x) / scale,
         f64::from(position.y) / scale,
+        size.0,
+        size.1,
+    ))
+}
+
+#[cfg(target_os = "macos")]
+fn set_window_bounds(
+    window: &Window,
+    bounds: &WindowBoundsPayload,
+    operation: &'static str,
+) -> std::result::Result<(), HostProtocolError> {
+    macos::set_window_bounds(
+        window,
+        bounds.x(),
+        bounds.y(),
+        bounds.width(),
+        bounds.height(),
+        operation,
+    )
+}
+
+#[cfg(not(target_os = "macos"))]
+fn set_window_bounds(
+    window: &Window,
+    bounds: &WindowBoundsPayload,
+    _operation: &'static str,
+) -> std::result::Result<(), HostProtocolError> {
+    window.set_outer_position(LogicalPosition::new(bounds.x(), bounds.y()));
+    window.set_inner_size(LogicalSize::new(bounds.width(), bounds.height()));
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn set_window_bounds_on_display(
+    window: &Window,
+    bounds: &DisplayRelativeWindowBounds,
+    operation: &'static str,
+) -> std::result::Result<(), HostProtocolError> {
+    let scale = window.scale_factor();
+    if !scale.is_finite() || scale <= 0.0 {
+        return Err(HostProtocolError::internal(
+            "window scale factor is invalid",
+            operation,
+        ));
+    }
+
+    macos::set_window_bounds(
+        window,
+        f64::from(bounds.position.x) / scale,
+        f64::from(bounds.position.y) / scale,
+        bounds.size.width,
+        bounds.size.height,
+        operation,
+    )
+}
+
+#[cfg(not(target_os = "macos"))]
+fn set_window_bounds_on_display(
+    window: &Window,
+    bounds: &DisplayRelativeWindowBounds,
+    _operation: &'static str,
+) -> std::result::Result<(), HostProtocolError> {
+    window.set_outer_position(bounds.position);
+    window.set_inner_size(LogicalSize::new(bounds.size.width, bounds.size.height));
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn window_inner_size(
+    window: &Window,
+    operation: &'static str,
+) -> std::result::Result<(f64, f64), HostProtocolError> {
+    macos::window_content_size(window, operation)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn window_inner_size(
+    window: &Window,
+    _operation: &'static str,
+) -> std::result::Result<(f64, f64), HostProtocolError> {
+    let scale = window.scale_factor();
+    let size = window.inner_size();
+    Ok((
         f64::from(size.width) / scale,
         f64::from(size.height) / scale,
     ))
@@ -7068,13 +7158,32 @@ fn tao_window_state(window: &Window) -> WindowStatePayload {
     )
 }
 
+#[cfg(target_os = "macos")]
+fn set_window_maximized(
+    window: &Window,
+    maximized: bool,
+    operation: &'static str,
+) -> std::result::Result<(), HostProtocolError> {
+    macos::set_maximized(window, maximized, operation)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn set_window_maximized(
+    window: &Window,
+    maximized: bool,
+    _operation: &'static str,
+) -> std::result::Result<(), HostProtocolError> {
+    window.set_maximized(maximized);
+    Ok(())
+}
+
 fn ensure_window_state(
     observed: &WindowStatePayload,
     accepted: bool,
     attempted: &'static str,
     operation: &'static str,
 ) -> std::result::Result<(), HostProtocolError> {
-    if accepted {
+    if accepted || accepts_stale_state_readback(observed, operation, attempted) {
         return Ok(());
     }
 
@@ -7090,6 +7199,19 @@ fn ensure_window_state(
         remediation: Some("retry after reading Window.getState, or treat the transition as unsupported on this compositor".to_string()),
         docs_url: None,
     })
+}
+
+fn accepts_stale_state_readback(
+    observed: &WindowStatePayload,
+    operation: &str,
+    attempted: &str,
+) -> bool {
+    (operation == host_protocol::WINDOW_MINIMIZE_METHOD && attempted == "minimized=true")
+        || (operation == host_protocol::WINDOW_MAXIMIZE_METHOD && attempted == "maximized=true")
+        || (operation == host_protocol::WINDOW_RESTORE_METHOD
+            && attempted == "restored"
+            && !observed.fullscreen()
+            && !observed.simple_fullscreen())
 }
 
 fn format_window_state(state: &WindowStatePayload) -> String {
@@ -7122,7 +7244,12 @@ fn set_simple_fullscreen(
 ) -> std::result::Result<(), HostProtocolError> {
     use tao::platform::macos::WindowExtMacOS;
 
-    if WindowExtMacOS::set_simple_fullscreen(window, simple_fullscreen) {
+    if WindowExtMacOS::set_simple_fullscreen(window, simple_fullscreen)
+        || accepts_idempotent_simple_fullscreen_rejection(
+            WindowExtMacOS::simple_fullscreen(window),
+            simple_fullscreen,
+        )
+    {
         Ok(())
     } else {
         Err(HostProtocolError::InvalidState {
@@ -7143,6 +7270,10 @@ fn set_simple_fullscreen(
             docs_url: None,
         })
     }
+}
+
+fn accepts_idempotent_simple_fullscreen_rejection(current: bool, desired: bool) -> bool {
+    !current && !desired
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -10507,6 +10638,86 @@ mod tests {
         } else {
             panic!("expected InvalidState");
         }
+    }
+
+    #[test]
+    fn minimize_accepts_stale_immediate_state_readback() {
+        let observed = host_protocol::WindowStatePayload::new(false, false, false, false);
+        let result = super::ensure_window_state(
+            &observed,
+            observed.minimized(),
+            "minimized=true",
+            host_protocol::WINDOW_MINIMIZE_METHOD,
+        );
+
+        assert!(
+            result.is_ok(),
+            "accepted Window.minimize must not fail solely because immediate readback is stale"
+        );
+    }
+
+    #[test]
+    fn maximize_accepts_stale_immediate_state_readback() {
+        let observed = host_protocol::WindowStatePayload::new(false, false, false, false);
+        let result = super::ensure_window_state(
+            &observed,
+            observed.maximized(),
+            "maximized=true",
+            host_protocol::WINDOW_MAXIMIZE_METHOD,
+        );
+
+        assert!(
+            result.is_ok(),
+            "accepted Window.maximize must not fail solely because immediate readback is stale"
+        );
+    }
+
+    #[test]
+    fn restore_accepts_idempotent_simple_fullscreen_clear() {
+        assert!(
+            super::accepts_idempotent_simple_fullscreen_rejection(false, false),
+            "Window.restore should accept clearing simple fullscreen when already clear"
+        );
+        assert!(
+            !super::accepts_idempotent_simple_fullscreen_rejection(false, true),
+            "entering simple fullscreen still requires Tao to accept the transition"
+        );
+    }
+
+    #[test]
+    fn restore_accepts_stale_immediate_state_readback() {
+        let observed = host_protocol::WindowStatePayload::new(false, true, false, false);
+        let result = super::ensure_window_state(
+            &observed,
+            !observed.minimized()
+                && !observed.maximized()
+                && !observed.fullscreen()
+                && !observed.simple_fullscreen(),
+            "restored",
+            host_protocol::WINDOW_RESTORE_METHOD,
+        );
+
+        assert!(
+            result.is_ok(),
+            "accepted Window.restore must not fail solely because immediate readback is stale"
+        );
+    }
+
+    #[test]
+    fn restore_does_not_accept_stale_fullscreen_readback() {
+        let observed = host_protocol::WindowStatePayload::new(false, false, true, false);
+        let error = super::ensure_window_state(
+            &observed,
+            !observed.minimized()
+                && !observed.maximized()
+                && !observed.fullscreen()
+                && !observed.simple_fullscreen(),
+            "restored",
+            host_protocol::WINDOW_RESTORE_METHOD,
+        )
+        .expect_err("restore should still fail when fullscreen exit remains observed");
+
+        assert_eq!(error.tag(), "InvalidState");
     }
 
     #[test]

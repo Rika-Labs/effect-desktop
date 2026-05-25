@@ -173,6 +173,34 @@ pub(crate) fn set_shadow(
     platform::set_shadow(window, has_shadow)
 }
 
+#[cfg(target_os = "macos")]
+pub(crate) fn window_content_size(
+    window: &Window,
+    operation: &'static str,
+) -> std::result::Result<(f64, f64), HostProtocolError> {
+    platform::window_content_size(window, operation)
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn set_window_bounds(
+    window: &Window,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    operation: &'static str,
+) -> std::result::Result<(), HostProtocolError> {
+    platform::set_window_bounds(window, x, y, width, height, operation)
+}
+
+pub(crate) fn set_maximized(
+    window: &Window,
+    maximized: bool,
+    operation: &'static str,
+) -> std::result::Result<(), HostProtocolError> {
+    platform::set_maximized(window, maximized, operation)
+}
+
 pub(crate) fn set_title_bar_style(
     window: &Window,
     title_bar_style: WindowTitleBarStyle,
@@ -269,6 +297,11 @@ fn invalid_argument_for_operation(
 }
 
 #[cfg(target_os = "macos")]
+fn macos_top_left_y_from_screen_frame(screen_origin_y: f64, screen_height: f64, tao_y: f64) -> f64 {
+    screen_origin_y + screen_height - tao_y
+}
+
+#[cfg(target_os = "macos")]
 mod platform {
     use super::{
         HostProtocolError, MacosScreenWorkArea, MacosTrafficLights, MacosWindowPolish,
@@ -278,6 +311,7 @@ mod platform {
     use objc2_app_kit::{
         NSColor, NSScreen, NSWindow, NSWindowButton, NSWindowStyleMask, NSWindowTitleVisibility,
     };
+    use objc2_foundation::{NSPoint, NSSize};
     use std::ptr::NonNull;
     use tao::{
         dpi::LogicalPosition,
@@ -388,6 +422,41 @@ mod platform {
         Ok(())
     }
 
+    pub(super) fn window_content_size(
+        window: &Window,
+        operation: &'static str,
+    ) -> std::result::Result<(f64, f64), HostProtocolError> {
+        let ns_window = ns_window(window, operation)?;
+        let content_rect = ns_window.contentRectForFrameRect(ns_window.frame());
+        Ok((content_rect.size.width, content_rect.size.height))
+    }
+
+    pub(super) fn set_window_bounds(
+        window: &Window,
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+        operation: &'static str,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let ns_window = ns_window(window, operation)?;
+        ns_window.setContentSize(NSSize::new(width, height));
+        ns_window.setFrameTopLeftPoint(NSPoint::new(x, macos_top_left_y(ns_window, y, operation)?));
+        Ok(())
+    }
+
+    pub(super) fn set_maximized(
+        window: &Window,
+        maximized: bool,
+        operation: &'static str,
+    ) -> std::result::Result<(), HostProtocolError> {
+        let ns_window = ns_window(window, operation)?;
+        if ns_window.isZoomed() != maximized {
+            ns_window.zoom(None);
+        }
+        Ok(())
+    }
+
     pub(super) fn set_title_bar_style(
         window: &Window,
         title_bar_style: WindowTitleBarStyle,
@@ -479,6 +548,25 @@ mod platform {
         // Safety: Tao's macOS `WindowExtMacOS::ns_window` contract returns the
         // live `NSWindow` backing this `Window` until the `Window` is destroyed.
         Ok(unsafe { pointer.cast::<NSWindow>().as_ref() })
+    }
+
+    fn macos_top_left_y(
+        ns_window: &NSWindow,
+        tao_y: f64,
+        operation: &'static str,
+    ) -> std::result::Result<f64, HostProtocolError> {
+        let Some(screen) = ns_window.screen() else {
+            return Err(HostProtocolError::internal(
+                "failed to resolve macOS screen for window placement",
+                operation,
+            ));
+        };
+        let frame = screen.frame();
+        Ok(super::macos_top_left_y_from_screen_frame(
+            frame.origin.y,
+            frame.size.height,
+            tao_y,
+        ))
     }
 
     fn set_style_mask(
@@ -914,6 +1002,19 @@ mod tests {
         assert_eq!(
             polish.traffic_lights(),
             Some(MacosTrafficLights { x: 12.0, y: 13.0 })
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_top_left_y_translates_tao_screen_coordinates() {
+        assert_eq!(
+            super::macos_top_left_y_from_screen_frame(0.0, 900.0, 146.0),
+            754.0
+        );
+        assert_eq!(
+            super::macos_top_left_y_from_screen_frame(-200.0, 1200.0, 300.0),
+            700.0
         );
     }
 }
