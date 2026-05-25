@@ -5,7 +5,7 @@ import {
   RpcGroup
 } from "@orika/bridge"
 import { type DesktopRpcClient, P } from "@orika/core"
-import { Context, Effect, Layer, Schema, Stream } from "effect"
+import { Context, Effect, Schema, Stream } from "effect"
 
 import { NativeNetworkEvent, NativeNetworkSupportedResult } from "./contracts/native-network.js"
 import { runNativeRpc } from "./native-client.js"
@@ -69,28 +69,9 @@ export interface NativeNetworkClientApi {
   readonly events: () => Stream.Stream<NativeNetworkEvent, NativeNetworkError, never>
 }
 
-export class NativeNetworkClient extends Context.Service<
-  NativeNetworkClient,
-  NativeNetworkClientApi
->()("@orika/native/NativeNetworkClient") {}
-
-export interface NativeNetworkServiceApi {
-  readonly isSupported: () => Effect.Effect<NativeNetworkSupportedResult, NativeNetworkError, never>
-  readonly events: () => Stream.Stream<NativeNetworkEvent, NativeNetworkError, never>
-}
-
-export class NativeNetwork extends Context.Service<NativeNetwork, NativeNetworkServiceApi>()(
+export class NativeNetwork extends Context.Service<NativeNetwork, NativeNetworkClientApi>()(
   "@orika/native/NativeNetwork"
-) {
-  static readonly layer = Layer.effect(NativeNetwork)(
-    Effect.gen(function* () {
-      const client = yield* NativeNetworkClient
-      return makeNativeNetworkService(client)
-    })
-  )
-}
-
-export const NativeNetworkLive = NativeNetwork.layer
+) {}
 
 export type NativeNetworkRpc = RpcGroup.Rpcs<typeof NativeNetworkRpcGroup>
 export type NativeNetworkRpcHandlers<R = never> = NativeRpcHandlers<typeof NativeNetworkRpcGroup, R>
@@ -111,7 +92,7 @@ export const NativeNetworkHandlersLive = NativeNetworkRpcGroup.toLayer({
 })
 
 export const NativeNetworkSurface = NativeSurface.make(Surface, NativeNetworkRpcGroup, {
-  service: NativeNetworkClient,
+  service: NativeNetwork,
   handlers: NativeNetworkHandlersLive,
   capabilityFacts: NativeNetworkCapabilityFacts,
   client: (client) => nativeNetworkClientFromRpcClient(client, undefined),
@@ -138,12 +119,6 @@ export const makeNativeNetworkUnsupportedClient = (): NativeNetworkClientApi =>
       ),
     events: () => Stream.fail(unsupportedError(EventMethod))
   } satisfies NativeNetworkClientApi)
-
-const makeNativeNetworkService = (client: NativeNetworkClientApi): NativeNetworkServiceApi =>
-  Object.freeze({
-    isSupported: () => client.isSupported(),
-    events: () => client.events()
-  } satisfies NativeNetworkServiceApi)
 
 const nativeNetworkClientFromRpcClient = (
   client: DesktopRpcClient<NativeNetworkRpc>,

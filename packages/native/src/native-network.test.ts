@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
 import {
   type BridgeClientExchange,
   HostProtocolEventEnvelope,
@@ -14,10 +15,9 @@ import {
   makeNativeNetworkUnsupportedClient,
   NativeNetwork,
   NativeNetworkCapabilityFacts,
-  NativeNetworkClient,
   NativeNetworkRpcs,
   NativeNetworkSurface,
-  NativeNetworkLive
+  type NativeNetworkClientApi
 } from "./native-network.js"
 
 const UnsupportedMethods = [
@@ -37,6 +37,31 @@ const UnsupportedSupport = {
     { platform: "linux", status: "unsupported", reason: "host-native-network-unavailable" }
   ]
 } as const
+
+test("NativeNetwork public surface omits shallow service and layer helpers", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        readFile(new URL("native-network.ts", import.meta.url), "utf8")
+      )
+      const indexSource = yield* Effect.promise(() =>
+        readFile(new URL("index.ts", import.meta.url), "utf8")
+      )
+
+      for (const removedName of [
+        "class NativeNetworkClient",
+        "NativeNetworkLive",
+        "NativeNetworkServiceApi",
+        "makeNativeNetworkService",
+        "makeNativeNetworkClientLayer",
+        "makeNativeNetworkServiceLayer",
+        "makeNativeNetworkBridgeClientLayer"
+      ]) {
+        expect(source).not.toContain(removedName)
+        expect(indexSource).not.toContain(removedName)
+      }
+    })
+  ))
 
 test("NativeNetwork exposes isSupported and its event stream as callable RPCs", () => {
   const callableTags = Array.from(NativeNetworkRpcs.requests.keys()).toSorted()
@@ -75,7 +100,7 @@ test("NativeNetwork isSupported reports supported result through the service", (
           const network = yield* NativeNetwork
           return yield* network.isSupported()
         }),
-        Layer.provide(NativeNetworkLive, Layer.succeed(NativeNetworkClient)(client))
+        nativeNetworkLayer(client)
       )
       expect(result.supported).toBe(true)
     })
@@ -90,7 +115,7 @@ test("NativeNetwork unsupported client reports the host-unavailable reason", () 
           const network = yield* NativeNetwork
           return yield* network.isSupported()
         }),
-        Layer.provide(NativeNetworkLive, Layer.succeed(NativeNetworkClient)(client))
+        nativeNetworkLayer(client)
       )
       expect(result.supported).toBe(false)
       expect(result.reason).toBe("host-native-network-unavailable")
@@ -132,7 +157,7 @@ test("NativeNetwork bridge client rejects inconsistent isSupported output as Inv
         }
         const exit = yield* runScoped(
           Effect.gen(function* () {
-            const client = yield* NativeNetworkClient
+            const client = yield* NativeNetwork
             return yield* Effect.exit(client.isSupported())
           }),
           NativeNetworkSurface.bridgeClientLayer(exchange)
@@ -306,7 +331,7 @@ test("NativeNetwork bridge client rejects inconsistent event phase payloads as I
       }
       const exit = yield* runScoped(
         Effect.gen(function* () {
-          const client = yield* NativeNetworkClient
+          const client = yield* NativeNetwork
           return yield* Effect.exit(
             client.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
           )
@@ -344,7 +369,7 @@ test("NativeNetwork bridge client rejects invalid byte progress events as Invali
       }
       const exit = yield* runScoped(
         Effect.gen(function* () {
-          const client = yield* NativeNetworkClient
+          const client = yield* NativeNetwork
           return yield* Effect.exit(
             client.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
           )
@@ -385,7 +410,7 @@ test("NativeNetwork bridge client validates event payloads through the RPC strea
       }
       const exit = yield* runScoped(
         Effect.gen(function* () {
-          const client = yield* NativeNetworkClient
+          const client = yield* NativeNetwork
           return yield* Effect.exit(
             client.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
           )
@@ -408,6 +433,9 @@ const runScoped = <A, E, R>(
     yield* Effect.promise(() => runtime.dispose())
     return result
   })
+
+const nativeNetworkLayer = (client: NativeNetworkClientApi): Layer.Layer<NativeNetwork> =>
+  Layer.succeed(NativeNetwork)(client)
 
 const requestHandle = () =>
   ({

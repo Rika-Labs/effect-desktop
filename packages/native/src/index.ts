@@ -136,17 +136,14 @@ export {
   makeNativeNetworkUnsupportedClient,
   NativeNetwork,
   NativeNetworkCapabilityFacts,
-  NativeNetworkClient,
   NativeNetworkHandlersLive,
-  NativeNetworkLive,
   NativeNetworkMethodNames,
   NativeNetworkRpcs,
   NativeNetworkSurface,
   type NativeNetworkClientApi,
   type NativeNetworkError,
   type NativeNetworkRpc,
-  type NativeNetworkRpcHandlers,
-  type NativeNetworkServiceApi
+  type NativeNetworkRpcHandlers
 } from "./native-network.js"
 export {
   NativePtyLayer,
