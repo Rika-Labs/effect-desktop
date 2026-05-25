@@ -9,7 +9,7 @@ import {
   type HostProtocolError
 } from "@orika/bridge"
 import { P, type DesktopRpcClient } from "@orika/core"
-import { Context, Effect, Layer, Schema } from "effect"
+import { Context, Effect, Schema } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
@@ -146,34 +146,10 @@ export interface DockClientApi {
   readonly requestAttention: (options?: {
     readonly critical?: boolean
   }) => Effect.Effect<void, DockError, never>
-  readonly isSupported: (method: DockMethod) => Effect.Effect<DockSupportedResult, DockError, never>
-}
-
-export class DockClient extends Context.Service<DockClient, DockClientApi>()(
-  "@orika/native/DockClient"
-) {}
-
-export interface DockServiceApi extends Omit<DockClientApi, "isSupported"> {
   readonly isSupported: (method: DockMethod) => Effect.Effect<boolean, DockError, never>
 }
 
-export class Dock extends Context.Service<Dock, DockServiceApi>()("@orika/native/Dock") {
-  static readonly layer = Layer.effect(Dock)(
-    Effect.gen(function* () {
-      const client = yield* DockClient
-      return Dock.of({
-        setBadgeCount: (count) => client.setBadgeCount(count),
-        setBadgeText: (text) => client.setBadgeText(text),
-        setProgress: (value, options) => client.setProgress(value, options),
-        requestAttention: (options) => client.requestAttention(options),
-        isSupported: (method) =>
-          client.isSupported(method).pipe(Effect.map((result) => result.supported))
-      } satisfies DockServiceApi)
-    })
-  )
-}
-
-export const DockLive = Dock.layer
+export class Dock extends Context.Service<Dock, DockClientApi>()("@orika/native/Dock") {}
 
 export type DockRpc = RpcGroup.Rpcs<typeof DockRpcGroup>
 
@@ -209,7 +185,7 @@ export const DockHandlersLive = DockRpcGroup.toLayer({
 })
 
 export const DockSurface = NativeSurface.make("Dock", DockRpcGroup, {
-  service: DockClient,
+  service: Dock,
   capabilities: DockCapabilityMethods,
   handlers: DockHandlersLive,
   capabilityFacts: DockCapabilityFacts,
@@ -249,7 +225,8 @@ const dockClientFromRpcClient = (client: DesktopRpcClient<DockRpc>): DockClientA
       decodeDockIsSupportedInput({ method }).pipe(
         Effect.flatMap((decoded) =>
           runDockRpc(client["Dock.isSupported"](decoded), "Dock.isSupported")
-        )
+        ),
+        Effect.map((result) => result.supported)
       )
   } satisfies DockClientApi)
 }
@@ -267,8 +244,7 @@ export const makeLinuxDockClient = (): DockClientApi => {
     setProgress: () =>
       unsupportedEffect<void>("Dock.setProgress", "launcher progress API is not connected yet"),
     requestAttention: () => Effect.void,
-    isSupported: (method) =>
-      Effect.succeed(new DockSupportedResult({ supported: method === "requestAttention" }))
+    isSupported: (method) => Effect.succeed(method === "requestAttention")
   } satisfies DockClientApi)
 }
 

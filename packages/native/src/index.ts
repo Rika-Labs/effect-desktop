@@ -595,9 +595,7 @@ export {
 export {
   Dock,
   DockCapabilityFacts,
-  DockClient,
   DockHandlersLive,
-  DockLive,
   DockMethodNames,
   DockRpcs,
   DockSurface,
@@ -605,8 +603,7 @@ export {
   type DockClientApi,
   type DockError,
   type DockRpc,
-  type DockRpcHandlers,
-  type DockServiceApi
+  type DockRpcHandlers
 } from "./dock.js"
 export {
   GlobalShortcut,

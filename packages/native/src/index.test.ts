@@ -167,7 +167,6 @@ import {
   DockCapabilityFacts,
   DockHandlersLive,
   DockRpcs,
-  DockLive,
   DockMethodNames,
   DockSurface,
   ExecutionSandbox,
@@ -313,7 +312,6 @@ import {
   ContextMenuClient,
   UpdaterClient,
   SystemAppearanceClient,
-  DockClient,
   GlobalShortcutClient
 } from "./index.js"
 import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
@@ -496,7 +494,6 @@ test("native services expose canonical static layers", () => {
   expect(ContextMenuLive).toBe(ContextMenu.layer)
   expect(CrashReporterLive).toBe(CrashReporter.layer)
   expect(DialogLive).toBe(Dialog.layer)
-  expect(DockLive).toBe(Dock.layer)
   expect(ExecutionSandboxLive).toBe(ExecutionSandbox.layer)
   expect(GlobalShortcutLive).toBe(GlobalShortcut.layer)
   expect(MenuLive).toBe(Menu.layer)
@@ -10294,7 +10291,30 @@ test("Dock declares setMenu, setJumpList as non-callable capability facts", () =
   )
 })
 
-test("Dock service delegates through a substitutable DockClient port", () =>
+test("Dock public surface omits shallow service and layer helpers", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        readFile(new URL("dock.ts", import.meta.url), "utf8")
+      )
+      const indexSource = yield* Effect.promise(() =>
+        readFile(new URL("index.ts", import.meta.url), "utf8")
+      )
+      const dockModule = yield* Effect.promise(() => import("./dock.js"))
+      const rootModule = yield* Effect.promise(() => import("./index.js"))
+
+      for (const removedName of ["class DockClient", "DockServiceApi", "DockLive", "Dock.layer"]) {
+        expect(source).not.toContain(removedName)
+        expect(indexSource).not.toContain(removedName)
+      }
+      expect("DockClient" in dockModule).toBe(false)
+      expect("DockClient" in rootModule).toBe(false)
+      expect("DockLive" in dockModule).toBe(false)
+      expect("DockLive" in rootModule).toBe(false)
+    })
+  ))
+
+test("Dock service delegates through a substitutable service value", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
@@ -10307,7 +10327,7 @@ test("Dock service delegates through a substitutable DockClient port", () =>
           yield* dock.requestAttention({ critical: true })
           return yield* dock.isSupported("setBadgeText")
         }),
-        Layer.provide(DockLive, Layer.succeed(DockClient)(dockClient(calls)))
+        Layer.succeed(Dock)(dockClient(calls))
       )
 
       expect(supported).toBe(true)
@@ -10340,7 +10360,7 @@ test("Dock bridge client sends typed host envelopes and maps support result", ()
           yield* dock.requestAttention()
           return yield* dock.isSupported("setJumpList")
         }),
-        Layer.provide(DockLive, DockSurface.bridgeClientLayer(exchange))
+        DockSurface.bridgeClientLayer(exchange)
       )
 
       expect(supported).toBe(true)
@@ -10364,10 +10384,7 @@ test("Dock bridge client rejects invalid badge text before transport", () =>
         payload: undefined
       }))
 
-      const dock = yield* runScoped(
-        Dock.asEffect(),
-        Layer.provide(DockLive, DockSurface.bridgeClientLayer(exchange))
-      )
+      const dock = yield* runScoped(Dock.asEffect(), DockSurface.bridgeClientLayer(exchange))
 
       const nulExit = yield* Effect.exit(dock.setBadgeText("bad\u0000text"))
       const newlineExit = yield* Effect.exit(dock.setBadgeText("line\nbreak"))
@@ -10389,10 +10406,7 @@ test("Dock bridge client rejects invalid numeric state before transport", () =>
         payload: undefined
       }))
 
-      const dock = yield* runScoped(
-        Dock.asEffect(),
-        Layer.provide(DockLive, DockSurface.bridgeClientLayer(exchange))
-      )
+      const dock = yield* runScoped(Dock.asEffect(), DockSurface.bridgeClientLayer(exchange))
 
       const negativeBadgeExit = yield* Effect.exit(dock.setBadgeCount(-1))
       const fractionalBadgeExit = yield* Effect.exit(dock.setBadgeCount(1.5))
@@ -10486,14 +10500,14 @@ test("Dock service propagates unsupported platform and host failure", () =>
           const dock = yield* Dock
           return yield* Effect.exit(dock.setBadgeCount(1))
         }),
-        Layer.provide(DockLive, Layer.succeed(DockClient)(unsupportedClient))
+        Layer.succeed(Dock)(unsupportedClient)
       )
       const hostFailureExit = yield* runScoped(
         Effect.gen(function* () {
           const dock = yield* Dock
           return yield* Effect.exit(dock.setProgress(0.5))
         }),
-        Layer.provide(DockLive, Layer.succeed(DockClient)(hostFailureClient))
+        Layer.succeed(Dock)(hostFailureClient)
       )
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
@@ -10528,7 +10542,7 @@ test("Linux Dock client reports unimplemented partial methods as unsupported", (
             textExit
           }
         }),
-        Layer.provide(DockLive, Layer.succeed(DockClient)(makeLinuxDockClient()))
+        Layer.succeed(Dock)(makeLinuxDockClient())
       )
 
       expect(result.badgeCountSupported).toBe(false)
@@ -15271,7 +15285,7 @@ const dockClient = (calls: string[]): DockClientApi => ({
   isSupported: (method) =>
     Effect.sync(() => {
       calls.push(`isSupported:${method}`)
-      return new DockSupportedResult({ supported: true })
+      return true
     })
 })
 
