@@ -669,11 +669,6 @@
       "signature": "export type CrashReporterRpc = RpcGroup.Rpcs<typeof CrashReporterRpcGroup>"
     },
     {
-      "name": "CrashReporterRpcEvents",
-      "kind": "type",
-      "signature": "const CrashReporterRpcEvents: Readonly<{}>"
-    },
-    {
       "name": "CrashReporterRpcHandlers",
       "kind": "type",
       "signature": "export type CrashReporterRpcHandlers<R = never> = NativeRpcHandlers<typeof CrashReporterRpcGroup, R>"
@@ -1082,11 +1077,6 @@
       "name": "DockRpc",
       "kind": "type",
       "signature": "export type DockRpc = RpcGroup.Rpcs<typeof DockRpcGroup>"
-    },
-    {
-      "name": "DockRpcEvents",
-      "kind": "type",
-      "signature": "const DockRpcEvents: Readonly<{}>"
     },
     {
       "name": "DockRpcHandlers",
@@ -2909,11 +2899,6 @@
       "signature": "export type ProtocolRpc = RpcGroup.Rpcs<typeof ProtocolRpcGroup>"
     },
     {
-      "name": "ProtocolRpcEvents",
-      "kind": "type",
-      "signature": "const ProtocolRpcEvents: Readonly<{}>"
-    },
-    {
       "name": "ProtocolRpcHandlers",
       "kind": "type",
       "signature": "export type ProtocolRpcHandlers<R = never> = NativeRpcHandlers<typeof ProtocolRpcGroup, R>"
@@ -3142,11 +3127,6 @@
       "name": "SafeStorageRpc",
       "kind": "type",
       "signature": "export type SafeStorageRpc = RpcGroup.Rpcs<typeof SafeStorageRpcGroup>"
-    },
-    {
-      "name": "SafeStorageRpcEvents",
-      "kind": "type",
-      "signature": "const SafeStorageRpcEvents: Readonly<{}>"
     },
     {
       "name": "SafeStorageRpcHandlers",

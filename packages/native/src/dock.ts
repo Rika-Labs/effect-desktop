@@ -111,10 +111,6 @@ export const DockCapabilityFacts = Object.freeze([
   dockCapabilityFact("setJumpList")
 ])
 
-export const DockRpcEvents = Object.freeze({})
-
-export type DockRpcEvents = typeof DockRpcEvents
-
 const DockRpcGroup = RpcGroup.make(
   DockSetBadgeCount,
   DockSetBadgeText,

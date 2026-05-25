@@ -67,10 +67,6 @@ export const SafeStorageIsAvailable = safeStorageRpc(
   { kind: "none" }
 )
 
-export const SafeStorageRpcEvents = Object.freeze({})
-
-export type SafeStorageRpcEvents = typeof SafeStorageRpcEvents
-
 const SafeStorageRpcGroup = RpcGroup.make(
   SafeStorageSet,
   SafeStorageGet,

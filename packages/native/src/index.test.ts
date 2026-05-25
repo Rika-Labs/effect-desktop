@@ -148,7 +148,6 @@ import {
   CrashReporter,
   CrashReporterHandlersLive,
   CrashReporterRpcs,
-  CrashReporterRpcEvents,
   CrashReporterLive,
   CrashReporterMethodNames,
   CrashReporterSurface,
@@ -223,7 +222,6 @@ import {
   SafeStorage,
   SafeStorageHandlersLive,
   SafeStorageRpcs,
-  SafeStorageRpcEvents,
   SafeStorageMethodNames,
   SafeStorageSurface,
   Screen,
@@ -7582,7 +7580,6 @@ test("NativeFileSystem service propagates unsupported platform and host failure"
 test("SafeStorageRpcs declares the Phase 8 SafeStorage method surface", () => {
   expect([...SafeStorageMethodNames]).toEqual(expectedSafeStorageMethods)
   expect(rpcMethodNames("SafeStorage", SafeStorageRpcs)).toEqual(expectedSafeStorageMethods)
-  expect(Object.keys(SafeStorageRpcEvents)).toEqual([])
 })
 
 test("SafeStorage public surface omits shallow service and layer helpers", () =>
@@ -8114,7 +8111,6 @@ test("Updater service exposes the restart readiness handshake", () =>
 test("CrashReporterRpcs declares the Phase 8 CrashReporter method surface", () => {
   expect([...CrashReporterMethodNames]).toEqual(expectedCrashReporterMethods)
   expect(rpcMethodNames("CrashReporter", CrashReporterRpcs)).toEqual(expectedCrashReporterMethods)
-  expect(Object.keys(CrashReporterRpcEvents)).toEqual([])
 })
 
 test("CrashReporter memory client requires start and flushes recorded breadcrumbs", () =>

@@ -143,6 +143,7 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 | #1848 Flatten NativeFileSystem pass-through service split | Closed | Removes the `NativeFileSystemClient` -> `NativeFileSystem` forwarding layer while keeping filesystem validation, capability metadata, and bridge events.            |
 |        #1849 Model NativeFileSystem events as RPC streams | Closed | Removes the remaining `NativeFileSystemRpcEvents` side object by moving NativeFileSystem events into a canonical `NativeFileSystem.events.Event` RPC stream.        |
 |             #1850 Flatten Path pass-through service split | Closed | Removes the `PathClient` -> `Path` forwarding layer and keeps schema-coded `CanonicalPath` values on the single Path service contract.                              |
+|              #1851 Remove empty native event side objects | Closed | Removes remaining empty `Protocol`/`SafeStorage`/`Dock`/`CrashReporter` event side objects that do not own event contracts or bridge policy.                        |
 
 ## Execution Progress
 

@@ -90,10 +90,6 @@ export const CrashReporterGetReports = NativeSurface.rpc(Surface, "getReports", 
   endpoint: "query",
   support: CrashReporterLocalArtifactSupport
 })
-export const CrashReporterRpcEvents = Object.freeze({})
-
-export type CrashReporterRpcEvents = typeof CrashReporterRpcEvents
-
 const CrashReporterRpcGroup = RpcGroup.make(
   CrashReporterStart,
   CrashReporterRecordBreadcrumb,

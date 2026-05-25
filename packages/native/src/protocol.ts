@@ -48,10 +48,6 @@ export const ProtocolDeny = protocolRpc(
   P.nativeInvoke({ primitive: "Protocol", methods: ["deny"] })
 )
 
-export const ProtocolRpcEvents = Object.freeze({})
-
-export type ProtocolRpcEvents = typeof ProtocolRpcEvents
-
 const ProtocolRpcGroup = RpcGroup.make(
   ProtocolRegisterAppProtocol,
   ProtocolServeAsset,
