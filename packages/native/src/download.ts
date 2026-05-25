@@ -12,7 +12,7 @@ import {
   type DownloadHandle,
   DownloadSupportedResult
 } from "./contracts/download.js"
-import { runNativeRpc } from "./native-client.js"
+import { runNativeRpc, runNativeRpcStream } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
 
@@ -97,8 +97,8 @@ export const DownloadSurface = NativeSurface.make(Surface, DownloadRpcGroup, {
   service: Download,
   handlers: DownloadHandlersLive,
   capabilityFacts: DownloadCapabilityFacts,
-  client: (client) => downloadClientFromRpcClient(client, undefined),
-  bridgeClient: (client, exchange) => downloadClientFromRpcClient(client, exchange)
+  client: (client) => downloadClientFromRpcClient(client),
+  bridgeClient: (client, exchange) => downloadBridgeClientFromRpcClient(client, exchange)
 })
 
 export const makeDownloadMemoryClient = (): Effect.Effect<DownloadClientApi, never, never> =>
@@ -116,9 +116,20 @@ export const makeDownloadUnsupportedClient = (): DownloadClientApi =>
     events: () => Stream.fail(unsupportedError(EventMethod))
   } satisfies DownloadClientApi)
 
-const downloadClientFromRpcClient = (
+const downloadClientFromRpcClient = (client: DesktopRpcClient<DownloadRpc>): DownloadClientApi =>
+  Object.freeze({
+    isSupported: () =>
+      runDownloadRpc(client["Download.isSupported"](undefined), "Download.isSupported"),
+    events: (download) =>
+      runDownloadRpcStream(
+        client["Download.events.Event"](undefined),
+        "Download.events.Event"
+      ).pipe(Stream.filter((event) => download === undefined || event.download.id === download.id))
+  } satisfies DownloadClientApi)
+
+const downloadBridgeClientFromRpcClient = (
   client: DesktopRpcClient<DownloadRpc>,
-  exchange: BridgeClientExchange | undefined
+  exchange: BridgeClientExchange
 ): DownloadClientApi =>
   Object.freeze({
     isSupported: () =>
@@ -133,6 +144,11 @@ const runDownloadRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
   operation: string
 ): Effect.Effect<A, DownloadError, never> => runNativeRpc(effect, operation, Surface)
+
+const runDownloadRpcStream = <A, E>(
+  stream: Stream.Stream<A, E, never>,
+  operation: string
+): Stream.Stream<A, DownloadError, never> => runNativeRpcStream(stream, operation, Surface)
 
 const unsupportedError = (operation: string): HostProtocolError =>
   new HostProtocolUnsupportedError({

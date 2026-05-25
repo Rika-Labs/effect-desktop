@@ -8,7 +8,7 @@ import { type DesktopRpcClient, P } from "@orika/core"
 import { Context, Effect, Schema, Stream } from "effect"
 
 import { NativeNetworkEvent, NativeNetworkSupportedResult } from "./contracts/native-network.js"
-import { runNativeRpc } from "./native-client.js"
+import { runNativeRpc, runNativeRpcStream } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
 
@@ -95,8 +95,8 @@ export const NativeNetworkSurface = NativeSurface.make(Surface, NativeNetworkRpc
   service: NativeNetwork,
   handlers: NativeNetworkHandlersLive,
   capabilityFacts: NativeNetworkCapabilityFacts,
-  client: (client) => nativeNetworkClientFromRpcClient(client, undefined),
-  bridgeClient: (client, exchange) => nativeNetworkClientFromRpcClient(client, exchange)
+  client: (client) => nativeNetworkClientFromRpcClient(client),
+  bridgeClient: (client, exchange) => nativeNetworkBridgeClientFromRpcClient(client, exchange)
 })
 
 export const makeNativeNetworkMemoryClient = (): Effect.Effect<
@@ -121,8 +121,24 @@ export const makeNativeNetworkUnsupportedClient = (): NativeNetworkClientApi =>
   } satisfies NativeNetworkClientApi)
 
 const nativeNetworkClientFromRpcClient = (
+  client: DesktopRpcClient<NativeNetworkRpc>
+): NativeNetworkClientApi =>
+  Object.freeze({
+    isSupported: () =>
+      runNativeNetworkRpc(
+        client["NativeNetwork.isSupported"](undefined),
+        "NativeNetwork.isSupported"
+      ),
+    events: () =>
+      runNativeNetworkRpcStream(
+        client["NativeNetwork.events.Event"](undefined),
+        "NativeNetwork.events.Event"
+      )
+  } satisfies NativeNetworkClientApi)
+
+const nativeNetworkBridgeClientFromRpcClient = (
   client: DesktopRpcClient<NativeNetworkRpc>,
-  exchange: BridgeClientExchange | undefined
+  exchange: BridgeClientExchange
 ): NativeNetworkClientApi =>
   Object.freeze({
     isSupported: () =>
@@ -137,6 +153,11 @@ const runNativeNetworkRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
   operation: string
 ): Effect.Effect<A, NativeNetworkError, never> => runNativeRpc(effect, operation, Surface)
+
+const runNativeNetworkRpcStream = <A, E>(
+  stream: Stream.Stream<A, E, never>,
+  operation: string
+): Stream.Stream<A, NativeNetworkError, never> => runNativeRpcStream(stream, operation, Surface)
 
 const unsupportedError = (operation: string): HostProtocolError =>
   new HostProtocolUnsupportedError({

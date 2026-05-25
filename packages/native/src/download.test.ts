@@ -2,12 +2,17 @@ import { expect, test } from "bun:test"
 import { readFile } from "node:fs/promises"
 import {
   type BridgeClientExchange,
+  type HostProtocolEnvelope,
   HostProtocolEventEnvelope,
-  HostProtocolInvalidOutputError
+  HostProtocolInvalidOutputError,
+  type HostProtocolRequestEnvelope,
+  HostProtocolResponseEnvelope,
+  HostProtocolStreamByRequestEnvelope,
+  makeDesktopClientProtocol
 } from "@orika/bridge"
 import { makeResourceId } from "@orika/core"
-import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Schema, Stream } from "effect"
-import { RpcSchema } from "effect/unstable/rpc"
+import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Queue, Schema, Stream } from "effect"
+import { RpcClient, RpcSchema } from "effect/unstable/rpc"
 
 import { makeNativeCapabilityManifest } from "./capabilities.js"
 import { DownloadEvent, DownloadProgressedEvent, DownloadSnapshot } from "./contracts/download.js"
@@ -285,6 +290,106 @@ test("Download event types reject impossible phase payloads", () => {
   expect(completedWithMessage.phase).toBe("completed")
   expect(failedWithoutMessage.phase).toBe("failed")
 })
+
+test("Download direct client consumes the canonical RPC event stream and filters by handle", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
+      const requests: HostProtocolRequestEnvelope[] = []
+      const protocolLayer = Layer.effect(RpcClient.Protocol)(
+        makeDesktopClientProtocol(
+          {
+            send: (envelope) => {
+              if (envelope.kind !== "request") {
+                return Effect.void
+              }
+              requests.push(envelope)
+              return Effect.all(
+                [
+                  Queue.offer(
+                    queue,
+                    new HostProtocolStreamByRequestEnvelope({
+                      kind: "stream",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_001,
+                      traceId: envelope.traceId,
+                      payload: {
+                        type: "download-event",
+                        timestamp: 1_710_000_000_001,
+                        phase: "progressed",
+                        download: downloadHandle("download:2"),
+                        profile: profileHandle(),
+                        url: "https://example.test/file.zip",
+                        receivedBytes: 1
+                      }
+                    })
+                  ),
+                  Queue.offer(
+                    queue,
+                    new HostProtocolStreamByRequestEnvelope({
+                      kind: "stream",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_002,
+                      traceId: envelope.traceId,
+                      payload: {
+                        type: "download-event",
+                        timestamp: 1_710_000_000_002,
+                        phase: "progressed",
+                        download: downloadHandle(),
+                        profile: profileHandle(),
+                        url: "https://example.test/file.zip",
+                        receivedBytes: 2
+                      }
+                    })
+                  ),
+                  Queue.offer(
+                    queue,
+                    new HostProtocolResponseEnvelope({
+                      kind: "response",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_003,
+                      traceId: envelope.traceId
+                    })
+                  )
+                ],
+                { discard: true }
+              )
+            },
+            run: (onEnvelope) =>
+              Stream.fromQueue(queue).pipe(
+                Stream.runForEach(onEnvelope),
+                Effect.andThen(Effect.never)
+              )
+          },
+          {
+            nextRequestId: () => "download-event-rpc",
+            nextTraceId: () => "trace-download-event-rpc"
+          }
+        )
+      )
+
+      const events = yield* runScoped(
+        Effect.gen(function* () {
+          const client = yield* Download
+          return yield* client.events(downloadHandle()).pipe(Stream.take(1), Stream.runCollect)
+        }),
+        Layer.provide(DownloadSurface.clientLayer, protocolLayer)
+      )
+
+      expect(Array.from(events)).toEqual([
+        new DownloadProgressedEvent({
+          type: "download-event",
+          timestamp: 1_710_000_000_002,
+          phase: "progressed",
+          download: downloadHandle(),
+          profile: profileHandle(),
+          url: "https://example.test/file.zip",
+          receivedBytes: 2
+        })
+      ])
+      expect(requests.map((request) => request.method)).toEqual(["Download.events.Event"])
+    })
+  ))
 
 test("Download bridge client rejects invalid byte progress events as InvalidOutput", () =>
   Effect.runPromise(

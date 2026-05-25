@@ -2,11 +2,17 @@ import { expect, test } from "bun:test"
 import { readFile } from "node:fs/promises"
 import {
   type BridgeClientExchange,
+  type HostProtocolEnvelope,
   HostProtocolEventEnvelope,
-  HostProtocolInvalidOutputError
+  HostProtocolInvalidOutputError,
+  type HostProtocolRequestEnvelope,
+  HostProtocolResponseEnvelope,
+  HostProtocolStreamByRequestEnvelope,
+  makeDesktopClientProtocol
 } from "@orika/bridge"
-import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Schema, Stream } from "effect"
-import { RpcSchema } from "effect/unstable/rpc"
+import { makeResourceId } from "@orika/core"
+import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Queue, Schema, Stream } from "effect"
+import { RpcClient, RpcSchema } from "effect/unstable/rpc"
 
 import { makeNativeCapabilityManifest } from "./capabilities.js"
 import { NativeNetworkEvent, NativeNetworkSupportedResult } from "./contracts/native-network.js"
@@ -143,6 +149,84 @@ test("NativeNetwork support results reject inconsistent reasons", () => {
     expect(Exit.isSuccess(exit)).toBe(true)
   }
 })
+
+test("NativeNetwork direct client consumes the canonical RPC event stream", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
+      const requests: HostProtocolRequestEnvelope[] = []
+      const protocolLayer = Layer.effect(RpcClient.Protocol)(
+        makeDesktopClientProtocol(
+          {
+            send: (envelope) => {
+              if (envelope.kind !== "request") {
+                return Effect.void
+              }
+              requests.push(envelope)
+              return Effect.all(
+                [
+                  Queue.offer(
+                    queue,
+                    new HostProtocolStreamByRequestEnvelope({
+                      kind: "stream",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_001,
+                      traceId: envelope.traceId,
+                      payload: {
+                        type: "native-network-event",
+                        timestamp: 1_710_000_000_001,
+                        phase: "fetch-completed",
+                        request: requestHandle(),
+                        url: "https://example.test/data"
+                      }
+                    })
+                  ),
+                  Queue.offer(
+                    queue,
+                    new HostProtocolResponseEnvelope({
+                      kind: "response",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_002,
+                      traceId: envelope.traceId
+                    })
+                  )
+                ],
+                { discard: true }
+              )
+            },
+            run: (onEnvelope) =>
+              Stream.fromQueue(queue).pipe(
+                Stream.runForEach(onEnvelope),
+                Effect.andThen(Effect.never)
+              )
+          },
+          {
+            nextRequestId: () => "native-network-event-rpc",
+            nextTraceId: () => "trace-native-network-event-rpc"
+          }
+        )
+      )
+
+      const event = yield* runScoped(
+        Effect.gen(function* () {
+          const client = yield* NativeNetwork
+          return yield* client.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+        }),
+        Layer.provide(NativeNetworkSurface.clientLayer, protocolLayer)
+      )
+
+      expect(event).toEqual(
+        new NativeNetworkEvent({
+          type: "native-network-event",
+          timestamp: 1_710_000_000_001,
+          phase: "fetch-completed",
+          request: requestHandle(),
+          url: "https://example.test/data"
+        })
+      )
+      expect(requests.map((request) => request.method)).toEqual(["NativeNetwork.events.Event"])
+    })
+  ))
 
 test("NativeNetwork bridge client rejects inconsistent isSupported output as InvalidOutput", () =>
   Effect.runPromise(
@@ -440,7 +524,7 @@ const nativeNetworkLayer = (client: NativeNetworkClientApi): Layer.Layer<NativeN
 const requestHandle = () =>
   ({
     kind: "native-network-request",
-    id: "request-1",
+    id: makeResourceId("native-network-request:1"),
     generation: 0,
     ownerScope: "scope-1",
     state: "open"
@@ -449,7 +533,7 @@ const requestHandle = () =>
 const socketHandle = () =>
   ({
     kind: "native-network-websocket",
-    id: "socket-1",
+    id: makeResourceId("native-network-websocket:1"),
     generation: 0,
     ownerScope: "scope-1",
     state: "open"
