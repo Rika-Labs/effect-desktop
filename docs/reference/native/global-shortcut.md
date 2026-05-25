@@ -17,9 +17,15 @@ Global shortcut command-binding contract. The TypeScript service defines support
 | `isRegistered` | `{ accelerator }` | `{ registered: false }` |
 | `isSupported`  | `void`            | support result          |
 
+## Events
+
+| Event            | Payload                              |
+| ---------------- | ------------------------------------ |
+| `events.Pressed` | `{ accelerator, registrarWindowId }` |
+
 ## Capability facts (non-callable)
 
-`register`, `unregister`, and `unregisterAll` are advertised in the native capability manifest as capability facts with `support.status: "unsupported"` (reason `host-adapter-unimplemented`). They are not invocable RPCs: the surface registers no handlers for them, and the RPC group exposes only `isRegistered` and `isSupported`. They exist only so the manifest can describe the intended registration lifecycle and so permission tooling can reason about the `native.invoke` authority they would require.
+`register`, `unregister`, and `unregisterAll` are advertised in the native capability manifest as capability facts with `support.status: "unsupported"` (reason `host-adapter-unimplemented`). They are not invocable RPCs: the surface registers no handlers for them, and the RPC group exposes only `isRegistered`, `isSupported`, and `events.Pressed`. They exist only so the manifest can describe the intended registration lifecycle and so permission tooling can reason about the `native.invoke` authority they would require.
 
 `bindCommand` is a TypeScript-level service operation, not a host RPC. It composes over the registration path, so it currently fails closed with typed `Unsupported` until the host adapter exists; it remains useful for deterministic tests and future native events (see Platform support below).
 
@@ -31,7 +37,7 @@ Global shortcut command-binding contract. The TypeScript service defines support
 
 `register`, `unregister`, and `unregisterAll` are non-callable capability facts marked `unsupported` on macOS, Windows, and Linux with reason `host-adapter-unimplemented`. `isSupported` reports unsupported until a real native shortcut adapter exists; Wayland reports `wayland-no-global-shortcut`.
 
-`bindCommand` remains useful for deterministic tests and future native events: it registers a scoped command binding, listens for `GlobalShortcut.Pressed`, invokes `CommandRegistry`, and unregisters on scope disposal.
+`bindCommand` remains useful for deterministic tests and future native events: it registers a scoped command binding, listens for `GlobalShortcut.events.Pressed`, invokes `CommandRegistry`, and unregisters on scope disposal. The bridge adapter still translates that canonical RPC stream to the host event method `GlobalShortcut.Pressed`.
 
 ## Errors
 

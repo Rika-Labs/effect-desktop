@@ -167,10 +167,8 @@ import {
   DockSurface,
   ExecutionSandboxSurface,
   GlobalShortcut,
-  GlobalShortcutCapabilityFacts,
   GlobalShortcutHandlersLive,
   GlobalShortcutRpcs,
-  GlobalShortcutRpcEvents,
   GlobalShortcutLive,
   GlobalShortcutMethodNames,
   GlobalShortcutSurface,
@@ -1196,6 +1194,19 @@ const expectedGlobalShortcutMethods: Array<(typeof GlobalShortcutMethodNames)[nu
 ]
 
 const expectedGlobalShortcutCapabilityFactMethods = ["register", "unregister", "unregisterAll"]
+
+const globalShortcutCapabilityFacts = () =>
+  GlobalShortcutSurface.schemaDocs.filter((doc) => !doc.callable)
+
+const expectedGlobalShortcutUnsupportedSupport = {
+  status: "unsupported",
+  reason: "host-adapter-unimplemented",
+  platforms: [
+    { platform: "macos", status: "unsupported", reason: "host-adapter-unimplemented" },
+    { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
+    { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
+  ]
+} as const
 
 const expectedClipboardMethods: Array<(typeof ClipboardMethodNames)[number]> = [
   "readText",
@@ -9199,7 +9210,7 @@ test("native DesktopRpc surfaces derive server, client, test, and metadata layer
           handlers: GlobalShortcutHandlersLive,
           tags: [
             ...Array.from(GlobalShortcutRpcs.requests.keys()),
-            ...GlobalShortcutCapabilityFacts.map((fact) => fact.tag)
+            ...globalShortcutCapabilityFacts().map((fact) => fact.tag)
           ]
         },
         {
@@ -10906,20 +10917,52 @@ test("Linux Dock client reports unimplemented partial methods as unsupported", (
 
 test("GlobalShortcutRpcs declares the Phase 8 GlobalShortcut method and event surface", () => {
   expect([...GlobalShortcutMethodNames]).toEqual(expectedGlobalShortcutMethods)
-  expect(rpcMethodNames("GlobalShortcut", GlobalShortcutRpcs)).toEqual(
-    expectedGlobalShortcutMethods
+  expect(Array.from(GlobalShortcutRpcs.requests.keys())).toEqual([
+    "GlobalShortcut.isRegistered",
+    "GlobalShortcut.isSupported",
+    "GlobalShortcut.events.Pressed"
+  ])
+  expect(rpcMethodNames("GlobalShortcut", GlobalShortcutRpcs)).toEqual([
+    ...expectedGlobalShortcutMethods,
+    "events.Pressed"
+  ])
+})
+
+test("GlobalShortcut event schema is owned by the RPC stream contract", async () => {
+  const globalShortcutModule = await import("./global-shortcut.js")
+  const rootModule = await import("./index.js")
+  const eventRpc = GlobalShortcutRpcs.requests.get("GlobalShortcut.events.Pressed")
+
+  for (const removedExport of ["GlobalShortcutCapabilityFacts", "GlobalShortcutRpcEvents"]) {
+    expect(removedExport in globalShortcutModule).toBe(false)
+    expect(removedExport in rootModule).toBe(false)
+  }
+  expect(eventRpc).toBeDefined()
+  expect(eventRpc === undefined ? false : RpcSchema.isStreamSchema(eventRpc.successSchema)).toBe(
+    true
   )
-  expect(Object.keys(GlobalShortcutRpcEvents)).toEqual(["Pressed"])
+  if (eventRpc !== undefined && RpcSchema.isStreamSchema(eventRpc.successSchema)) {
+    expect(eventRpc.successSchema.success).toBe(GlobalShortcutPressedEvent)
+    expect(eventRpc.pipe(rpcSupport)).toEqual(expectedGlobalShortcutUnsupportedSupport)
+  }
+
+  const eventDoc = GlobalShortcutSurface.schemaDocs.find(
+    (doc) => doc.tag === "GlobalShortcut.events.Pressed"
+  )
+  expect(eventDoc?.kind).toBe("stream")
+  expect(eventDoc?.callable).toBe(true)
+  expect(eventDoc?.support).toEqual(expectedGlobalShortcutUnsupportedSupport)
 })
 
 test("GlobalShortcut declares register, unregister, unregisterAll as non-callable capability facts", () => {
-  const factTags = GlobalShortcutCapabilityFacts.map((fact) => fact.tag).toSorted()
+  const facts = globalShortcutCapabilityFacts()
+  const factTags = facts.map((fact) => fact.tag).toSorted()
   expect(factTags).toEqual(
     expectedGlobalShortcutCapabilityFactMethods
       .map((method) => `GlobalShortcut.${method}`)
       .toSorted()
   )
-  for (const fact of GlobalShortcutCapabilityFacts) {
+  for (const fact of facts) {
     expect(fact.support.status).toBe("unsupported")
   }
 
@@ -10976,6 +11019,81 @@ test("GlobalShortcut service delegates through a substitutable GlobalShortcutCli
         "unregister:CmdOrCtrl+K",
         "unregisterAll"
       ])
+    })
+  ))
+
+test("GlobalShortcut direct client consumes the canonical RPC pressed stream", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
+      const requests: HostProtocolRequestEnvelope[] = []
+      const protocolLayer = Layer.effect(RpcClient.Protocol)(
+        makeDesktopClientProtocol(
+          {
+            send: (envelope) => {
+              if (envelope.kind !== "request") {
+                return Effect.void
+              }
+              requests.push(envelope)
+              return Effect.all(
+                [
+                  Queue.offer(
+                    queue,
+                    new HostProtocolStreamByRequestEnvelope({
+                      kind: "stream",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_720,
+                      traceId: envelope.traceId,
+                      payload: {
+                        accelerator: "CmdOrCtrl+K",
+                        registrarWindowId: "window-1"
+                      }
+                    })
+                  ),
+                  Queue.offer(
+                    queue,
+                    new HostProtocolResponseEnvelope({
+                      kind: "response",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_721,
+                      traceId: envelope.traceId
+                    })
+                  )
+                ],
+                { discard: true }
+              )
+            },
+            run: (onEnvelope) =>
+              Stream.fromQueue(queue).pipe(
+                Stream.runForEach(onEnvelope),
+                Effect.andThen(Effect.never)
+              )
+          },
+          {
+            nextRequestId: () => "global-shortcut-pressed-rpc",
+            nextTraceId: () => "trace-global-shortcut-pressed-rpc"
+          }
+        )
+      )
+
+      const event = yield* runScoped(
+        Effect.gen(function* () {
+          const shortcuts = yield* GlobalShortcut
+          return yield* shortcuts.onPressed().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+        }),
+        Layer.provide(
+          GlobalShortcutLive,
+          Layer.provide(GlobalShortcutSurface.clientLayer, protocolLayer)
+        )
+      )
+
+      expect(event).toEqual(
+        new GlobalShortcutPressedEvent({
+          accelerator: "CmdOrCtrl+K",
+          registrarWindowId: "window-1"
+        })
+      )
+      expect(requests.map((request) => request.method)).toEqual(["GlobalShortcut.events.Pressed"])
     })
   ))
 
@@ -11165,13 +11283,16 @@ test("GlobalShortcut bridge client rejects empty and NUL-bearing accelerators as
   ))
 
 test("GlobalShortcut capability facts carry the protected nativeInvoke capability", () => {
-  const factsByTag = new Map(GlobalShortcutCapabilityFacts.map((fact) => [fact.tag, fact] as const))
+  const factsByTag = new Map(
+    globalShortcutCapabilityFacts().map((fact) => [fact.tag, fact] as const)
+  )
 
   for (const method of expectedGlobalShortcutCapabilityFactMethods) {
     const fact = factsByTag.get(`GlobalShortcut.${method}`)
     expect(fact).toBeDefined()
-    expect(fact!.capability.kind).toBe("native.invoke")
-    expect(fact!.support.status).toBe("unsupported")
+    const capability = fact === undefined ? undefined : Option.getOrUndefined(fact.capability)
+    expect(capability?.kind).toBe("native.invoke")
+    expect(fact?.support.status).toBe("unsupported")
   }
 })
 

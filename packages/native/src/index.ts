@@ -578,12 +578,10 @@ export {
 } from "./dock.js"
 export {
   GlobalShortcut,
-  GlobalShortcutCapabilityFacts,
   GlobalShortcutClient,
   GlobalShortcutHandlersLive,
   GlobalShortcutLive,
   GlobalShortcutMethodNames,
-  GlobalShortcutRpcEvents,
   GlobalShortcutRpcs,
   GlobalShortcutSurface,
   makeGlobalShortcutAlreadyRegisteredError,

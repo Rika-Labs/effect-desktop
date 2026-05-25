@@ -17,7 +17,6 @@ import {
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
-  type RpcCapabilityMetadata,
   type RpcSupportMetadata,
   RpcGroup,
   type HostProtocolError
@@ -26,7 +25,6 @@ import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
-import { subscribeNativeEvent } from "./event-stream.js"
 import { bindScopedCommand } from "./command-binding.js"
 import {
   GlobalShortcutAcceleratorInput,
@@ -68,18 +66,20 @@ const GlobalShortcutSupportByMethod = Object.freeze({
   isSupported: NativeSurface.support.supported
 } satisfies Record<GlobalShortcutMethodName, RpcSupportMetadata>)
 
-export const GlobalShortcutIsRegistered = shortcutRpc(
-  "isRegistered",
-  GlobalShortcutAcceleratorInput,
-  GlobalShortcutRegisteredResult,
-  { kind: "none" }
-)
-export const GlobalShortcutIsSupported = shortcutRpc(
-  "isSupported",
-  Schema.Void,
-  GlobalShortcutSupportedOutput,
-  { kind: "none" }
-)
+export const GlobalShortcutIsRegistered = NativeSurface.rpc("GlobalShortcut", "isRegistered", {
+  payload: GlobalShortcutAcceleratorInput,
+  success: GlobalShortcutRegisteredResult,
+  authority: NativeSurface.authority.none,
+  endpoint: "mutation",
+  support: GlobalShortcutSupportByMethod.isRegistered
+})
+export const GlobalShortcutIsSupported = NativeSurface.rpc("GlobalShortcut", "isSupported", {
+  payload: Schema.Void,
+  success: GlobalShortcutSupportedOutput,
+  authority: NativeSurface.authority.none,
+  endpoint: "mutation",
+  support: GlobalShortcutSupportByMethod.isSupported
+})
 
 const globalShortcutCapabilityFact = (method: GlobalShortcutCapabilityMethod) =>
   NativeSurface.capabilityFact("GlobalShortcut", method, {
@@ -89,19 +89,22 @@ const globalShortcutCapabilityFact = (method: GlobalShortcutCapabilityMethod) =>
     support: GlobalShortcutUnsupportedSupport
   })
 
-export const GlobalShortcutCapabilityFacts = Object.freeze([
+const UnsupportedCapabilityFacts = Object.freeze([
   globalShortcutCapabilityFact("register"),
   globalShortcutCapabilityFact("unregister"),
   globalShortcutCapabilityFact("unregisterAll")
 ])
 
-export const GlobalShortcutRpcEvents = Object.freeze({
-  Pressed: { payload: GlobalShortcutPressedEvent }
+const GlobalShortcutPressed = NativeSurface.event("GlobalShortcut", "Pressed", {
+  payload: GlobalShortcutPressedEvent,
+  support: GlobalShortcutUnsupportedSupport
 })
 
-export type GlobalShortcutRpcEvents = typeof GlobalShortcutRpcEvents
-
-const GlobalShortcutRpcGroup = RpcGroup.make(GlobalShortcutIsRegistered, GlobalShortcutIsSupported)
+const GlobalShortcutRpcGroup = RpcGroup.make(
+  GlobalShortcutIsRegistered,
+  GlobalShortcutIsSupported,
+  GlobalShortcutPressed
+)
 
 export const GlobalShortcutRpcs: RpcGroup.RpcGroup<GlobalShortcutRpc> = GlobalShortcutRpcGroup
 
@@ -275,20 +278,26 @@ export const GlobalShortcutHandlersLive = GlobalShortcutRpcGroup.toLayer({
     Effect.gen(function* () {
       const shortcuts = yield* GlobalShortcut
       return yield* shortcuts.isSupported()
-    })
+    }),
+  "GlobalShortcut.events.Pressed": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const shortcuts = yield* GlobalShortcut
+        return shortcuts.onPressed()
+      })
+    )
 })
 
 export const GlobalShortcutSurface = NativeSurface.make("GlobalShortcut", GlobalShortcutRpcGroup, {
   service: GlobalShortcutClient,
   handlers: GlobalShortcutHandlersLive,
-  capabilityFacts: GlobalShortcutCapabilityFacts,
-  client: (client) => globalShortcutClientFromRpcClient(client, undefined),
-  bridgeClient: (client, exchange) => globalShortcutClientFromRpcClient(client, exchange)
+  capabilityFacts: UnsupportedCapabilityFacts,
+  client: (client) => globalShortcutClientFromRpcClient(client),
+  bridgeClient: (client, exchange) => globalShortcutBridgeClientFromRpcClient(client, exchange)
 })
 
 const globalShortcutClientFromRpcClient = (
-  client: DesktopRpcClient<GlobalShortcutRpc>,
-  exchange: BridgeClientExchange | undefined
+  client: DesktopRpcClient<GlobalShortcutRpc>
 ): GlobalShortcutClientApi => {
   return Object.freeze({
     register: (accelerator, registrarWindow) =>
@@ -322,15 +331,53 @@ const globalShortcutClientFromRpcClient = (
         client["GlobalShortcut.isSupported"](undefined),
         "GlobalShortcut.isSupported"
       ),
-    onPressed: () => subscribeGlobalShortcutEvent(exchange, "GlobalShortcut.Pressed")
+    onPressed: () =>
+      runGlobalShortcutRpcStream(
+        client["GlobalShortcut.events.Pressed"](undefined),
+        "GlobalShortcut.events.Pressed"
+      )
   } satisfies GlobalShortcutClientApi)
 }
 
-const subscribeGlobalShortcutEvent = (
-  exchange: BridgeClientExchange | undefined,
-  method: "GlobalShortcut.Pressed"
-): Stream.Stream<GlobalShortcutPressedEvent, GlobalShortcutError, never> =>
-  subscribeNativeEvent(exchange, method, GlobalShortcutPressedEvent)
+const globalShortcutBridgeClientFromRpcClient = (
+  client: DesktopRpcClient<GlobalShortcutRpc>,
+  exchange: BridgeClientExchange
+): GlobalShortcutClientApi => {
+  return Object.freeze({
+    register: (accelerator, registrarWindow) =>
+      decodeGlobalShortcutRegisterInput({
+        accelerator,
+        registrarWindow: toWindowHandle(registrarWindow)
+      }).pipe(
+        Effect.flatMap(() =>
+          Effect.fail(unsupportedError("GlobalShortcut.register", HostAdapterUnimplementedReason))
+        )
+      ),
+    unregister: (accelerator) =>
+      decodeGlobalShortcutAcceleratorInput({ accelerator }).pipe(
+        Effect.flatMap(() =>
+          Effect.fail(unsupportedError("GlobalShortcut.unregister", HostAdapterUnimplementedReason))
+        )
+      ),
+    unregisterAll: () =>
+      Effect.fail(unsupportedError("GlobalShortcut.unregisterAll", HostAdapterUnimplementedReason)),
+    isRegistered: (accelerator) =>
+      decodeGlobalShortcutAcceleratorInput({ accelerator }).pipe(
+        Effect.flatMap((decoded) =>
+          runGlobalShortcutRpc(
+            client["GlobalShortcut.isRegistered"](decoded),
+            "GlobalShortcut.isRegistered"
+          )
+        )
+      ),
+    isSupported: () =>
+      runGlobalShortcutRpc(
+        client["GlobalShortcut.isSupported"](undefined),
+        "GlobalShortcut.isSupported"
+      ),
+    onPressed: () => NativeSurface.subscribeEvent(exchange, GlobalShortcutPressed)
+  } satisfies GlobalShortcutClientApi)
+}
 
 export const makeLinuxGlobalShortcutClient = (
   sessionType = process.env["XDG_SESSION_TYPE"]
@@ -424,20 +471,6 @@ const decodeInput = <A>(
     )
   )
 
-function shortcutRpc<
-  const Method extends GlobalShortcutMethodName,
-  Payload extends Schema.Codec<unknown, unknown, never, never>,
-  Success extends Schema.Codec<unknown, unknown, never, never>
->(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
-  return NativeSurface.rpc("GlobalShortcut", method, {
-    payload,
-    success,
-    authority: NativeSurface.authority.custom(capability),
-    endpoint: "mutation",
-    support: GlobalShortcutSupportByMethod[method]
-  })
-}
-
 const runGlobalShortcutRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
   operation: string
@@ -448,6 +481,12 @@ const runGlobalShortcutRpc = <A, E>(
       Effect.fail(makeHostProtocolInvalidOutputError(operation, formatUnknownError(defect)))
     )
   )
+
+const runGlobalShortcutRpcStream = <A, E>(
+  stream: Stream.Stream<A, E, never>,
+  _operation: string
+): Stream.Stream<A, GlobalShortcutError, never> =>
+  stream.pipe(Stream.mapError(mapGlobalShortcutRpcClientError))
 
 const mapGlobalShortcutRpcClientError = (error: unknown): GlobalShortcutError =>
   isGlobalShortcutError(error)
