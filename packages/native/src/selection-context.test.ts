@@ -1,7 +1,16 @@
 import { expect, test } from "bun:test"
 import { readFile } from "node:fs/promises"
-import { type BridgeClientExchange } from "@orika/bridge"
-import { Effect, Layer, ManagedRuntime, Schema, Stream } from "effect"
+import {
+  type BridgeClientExchange,
+  type HostProtocolEnvelope,
+  type HostProtocolRequestEnvelope,
+  HostProtocolResponseEnvelope,
+  HostProtocolStreamByRequestEnvelope,
+  makeDesktopClientProtocol,
+  rpcSupport
+} from "@orika/bridge"
+import { Effect, Layer, ManagedRuntime, Option, Queue, Schema, Stream } from "effect"
+import { RpcClient, RpcSchema } from "effect/unstable/rpc"
 
 import { makeNativeCapabilityManifest } from "./capabilities.js"
 import { SelectionContextEvent } from "./contracts/selection-context.js"
@@ -36,6 +45,7 @@ test("SelectionContext public surface omits shallow service and layer helpers", 
         "SelectionContextServiceApi",
         "class SelectionContextClient",
         "SelectionContextLive",
+        "SelectionContextRpcEvents",
         "makeSelectionContextClientLayer",
         "makeSelectionContextServiceLayer",
         "makeSelectionContextBridgeClientLayer",
@@ -49,10 +59,38 @@ test("SelectionContext public surface omits shallow service and layer helpers", 
 
 test("SelectionContext exposes only isSupported as a callable RPC", () => {
   const callableTags = Array.from(SelectionContextRpcs.requests.keys()).toSorted()
-  expect(callableTags).toEqual(["SelectionContext.isSupported"])
+  expect(callableTags).toEqual(["SelectionContext.events.Event", "SelectionContext.isSupported"])
   for (const method of UnsupportedMethods) {
     expect(callableTags).not.toContain(`SelectionContext.${method}`)
   }
+})
+
+test("SelectionContext event schema is owned by the RPC stream contract", async () => {
+  const contextModule = await import("./selection-context.js")
+  const eventRpc = SelectionContextRpcs.requests.get("SelectionContext.events.Event")
+
+  expect("SelectionContextRpcEvents" in contextModule).toBe(false)
+  expect(eventRpc).toBeDefined()
+  expect(eventRpc === undefined ? false : RpcSchema.isStreamSchema(eventRpc.successSchema)).toBe(
+    true
+  )
+  if (eventRpc !== undefined && RpcSchema.isStreamSchema(eventRpc.successSchema)) {
+    expect(eventRpc.successSchema.success).toBe(SelectionContextEvent)
+    expect(eventRpc.pipe(rpcSupport)).toMatchObject({
+      status: "unsupported",
+      reason: "host-adapter-unimplemented"
+    })
+  }
+
+  const eventDoc = SelectionContextSurface.schemaDocs.find(
+    (doc) => doc.tag === "SelectionContext.events.Event"
+  )
+  expect(eventDoc?.kind).toBe("stream")
+  expect(eventDoc?.callable).toBe(true)
+  expect(eventDoc?.support).toMatchObject({
+    status: "unsupported",
+    reason: "host-adapter-unimplemented"
+  })
 })
 
 test("SelectionContext declares the demoted methods as non-callable capability facts", () =>
@@ -80,7 +118,11 @@ test("SelectionContext declares the demoted methods as non-callable capability f
       const callableTags = SelectionContextSurface.schemaDocs
         .filter((doc) => doc.callable)
         .map((doc) => doc.tag)
-      expect(callableTags).toEqual(["SelectionContext.isSupported"])
+        .toSorted()
+      expect(callableTags).toEqual([
+        "SelectionContext.events.Event",
+        "SelectionContext.isSupported"
+      ])
 
       const nonCallableTags = SelectionContextSurface.schemaDocs
         .filter((doc) => !doc.callable)
@@ -89,6 +131,75 @@ test("SelectionContext declares the demoted methods as non-callable capability f
       expect(nonCallableTags).toEqual(
         UnsupportedMethods.map((method) => `SelectionContext.${method}`).toSorted()
       )
+    })
+  ))
+
+test("SelectionContext direct client consumes the canonical RPC event stream", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
+      const requests: HostProtocolRequestEnvelope[] = []
+      const eventPayload = {
+        ...eventBase(),
+        phase: "selection-changed",
+        selection: selectionMetadata()
+      } as const
+      const protocolLayer = Layer.effect(RpcClient.Protocol)(
+        makeDesktopClientProtocol(
+          {
+            send: (envelope) => {
+              if (envelope.kind !== "request") {
+                return Effect.void
+              }
+              requests.push(envelope)
+              return Effect.all(
+                [
+                  Queue.offer(
+                    queue,
+                    new HostProtocolStreamByRequestEnvelope({
+                      kind: "stream",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_001,
+                      traceId: envelope.traceId,
+                      payload: eventPayload
+                    })
+                  ),
+                  Queue.offer(
+                    queue,
+                    new HostProtocolResponseEnvelope({
+                      kind: "response",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_002,
+                      traceId: envelope.traceId
+                    })
+                  )
+                ],
+                { discard: true }
+              )
+            },
+            run: (onEnvelope) =>
+              Stream.fromQueue(queue).pipe(
+                Stream.runForEach(onEnvelope),
+                Effect.andThen(Effect.never)
+              )
+          },
+          {
+            nextRequestId: () => "selection-context-event-rpc",
+            nextTraceId: () => "trace-selection-context-event-rpc"
+          }
+        )
+      )
+
+      const event = yield* runScoped(
+        Effect.gen(function* () {
+          const context = yield* SelectionContext
+          return yield* context.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+        }),
+        Layer.provide(SelectionContextSurface.clientLayer, protocolLayer)
+      )
+
+      expect(event).toEqual(new SelectionContextEvent(eventPayload))
+      expect(requests.map((request) => request.method)).toEqual(["SelectionContext.events.Event"])
     })
   ))
 
@@ -252,10 +363,11 @@ test("SelectionContext bridge client fails event stream as unsupported before su
     })
   ))
 
-const eventBase = () => ({
-  type: "selection-context-event",
-  timestamp: 1_710_000_000_100
-})
+const eventBase = () =>
+  ({
+    type: "selection-context-event",
+    timestamp: 1_710_000_000_100
+  }) as const
 
 const selectionDocument = () => ({
   documentId: "document-1",

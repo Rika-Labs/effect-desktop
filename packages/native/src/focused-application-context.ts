@@ -1,5 +1,4 @@
 import {
-  type BridgeClientExchange,
   HostProtocolPermissionDeniedError,
   HostProtocolUnsupportedError,
   makeHostProtocolInternalError,
@@ -35,7 +34,7 @@ import {
   FocusedDisplayMetadata,
   FocusedWindowMetadata
 } from "./contracts/focused-application-context.js"
-import { decodeNativeInput, runNativeRpc } from "./native-client.js"
+import { decodeNativeInput, runNativeRpc, runNativeRpcStream } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
 
@@ -92,13 +91,15 @@ export const FocusedApplicationContextCapabilityFacts = Object.freeze([
   focusedApplicationContextCapabilityFact("stopWatching")
 ])
 
-export const FocusedApplicationContextRpcEvents = Object.freeze({
-  Event: { payload: FocusedApplicationContextEvent }
+const FocusedApplicationContextEventStream = NativeSurface.event(Surface, "Event", {
+  payload: FocusedApplicationContextEvent,
+  support: UnsupportedSupport
 })
 
 const FocusedApplicationContextRpcGroup = RpcGroup.make(
   FocusedApplicationContextSnapshot,
-  FocusedApplicationContextIsSupported
+  FocusedApplicationContextIsSupported,
+  FocusedApplicationContextEventStream
 )
 
 export const FocusedApplicationContextRpcs: RpcGroup.RpcGroup<FocusedApplicationContextRpc> =
@@ -191,7 +192,14 @@ export const FocusedApplicationContextHandlersLive = FocusedApplicationContextRp
     Effect.gen(function* () {
       const service = yield* FocusedApplicationContext
       return yield* service.isSupported()
-    })
+    }),
+  "FocusedApplicationContext.events.Event": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const service = yield* FocusedApplicationContext
+        return service.events()
+      })
+    )
 })
 
 export const FocusedApplicationContextSurface = NativeSurface.make(
@@ -201,9 +209,8 @@ export const FocusedApplicationContextSurface = NativeSurface.make(
     service: FocusedApplicationContextClient,
     handlers: FocusedApplicationContextHandlersLive,
     capabilityFacts: FocusedApplicationContextCapabilityFacts,
-    client: (client) => focusedApplicationContextClientFromRpcClient(client, undefined),
-    bridgeClient: (client, exchange) =>
-      focusedApplicationContextClientFromRpcClient(client, exchange)
+    client: (client) => focusedApplicationContextClientFromRpcClient(client),
+    bridgeClient: (client) => focusedApplicationContextBridgeClientFromRpcClient(client)
   }
 )
 
@@ -275,8 +282,32 @@ const makeFocusedApplicationContextService = (
   } satisfies FocusedApplicationContextServiceApi)
 
 const focusedApplicationContextClientFromRpcClient = (
-  client: DesktopRpcClient<FocusedApplicationContextRpc>,
-  _exchange: BridgeClientExchange | undefined
+  client: DesktopRpcClient<FocusedApplicationContextRpc>
+): FocusedApplicationContextClientApi =>
+  Object.freeze({
+    snapshot: (input) =>
+      validateSnapshotInput(input).pipe(
+        Effect.flatMap((valid) =>
+          runFocusedApplicationContextRpc(
+            client["FocusedApplicationContext.snapshot"](valid),
+            "FocusedApplicationContext.snapshot"
+          )
+        )
+      ),
+    isSupported: () =>
+      runFocusedApplicationContextRpc(
+        client["FocusedApplicationContext.isSupported"](undefined),
+        "FocusedApplicationContext.isSupported"
+      ),
+    events: () =>
+      runFocusedApplicationContextRpcStream(
+        client["FocusedApplicationContext.events.Event"](undefined),
+        "FocusedApplicationContext.events.Event"
+      )
+  } satisfies FocusedApplicationContextClientApi)
+
+const focusedApplicationContextBridgeClientFromRpcClient = (
+  client: DesktopRpcClient<FocusedApplicationContextRpc>
 ): FocusedApplicationContextClientApi =>
   Object.freeze({
     snapshot: (input) =>
@@ -301,6 +332,12 @@ const runFocusedApplicationContextRpc = <A, E>(
   operation: string
 ): Effect.Effect<A, FocusedApplicationContextError, never> =>
   runNativeRpc(effect, operation, Surface)
+
+const runFocusedApplicationContextRpcStream = <A, E>(
+  stream: Stream.Stream<A, E, never>,
+  operation: string
+): Stream.Stream<A, FocusedApplicationContextError, never> =>
+  runNativeRpcStream(stream, operation, Surface)
 
 const validateSnapshotRequest = (input: unknown) =>
   decodeNativeInput(

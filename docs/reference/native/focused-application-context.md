@@ -52,7 +52,11 @@ That path reports focused application metadata only; focused window/display meta
 | `stopWatching` | `unsupported` (capability fact)                | `unsupported` | `unsupported` |
 
 `isSupported` still returns `{ supported: false, reason: "host-adapter-unimplemented" }` until the host provides snapshot, watch lifecycle, and event delivery for the surface. The `watch` and `stopWatching` capability facts carry `support.status: "unsupported"` with reason `host-adapter-unimplemented` and are not invocable.
-The bridge-backed `FocusedApplicationContext.Event` stream also fails as typed `Unsupported` before opening a host subscription until the native watch adapter can publish focus lifecycle events.
+The service method `events()` is backed by canonical Effect RPC stream
+`FocusedApplicationContext.events.Event`. The bridge-backed host event method
+remains `FocusedApplicationContext.Event` at the native/web protocol boundary,
+and currently fails as typed `Unsupported` before opening a host subscription
+until the native watch adapter can publish focus lifecycle events.
 
 ## Testing
 

@@ -1,7 +1,16 @@
 import { expect, test } from "bun:test"
 import { readFile } from "node:fs/promises"
-import { type BridgeClientExchange } from "@orika/bridge"
-import { Cause, Effect, Exit, Layer, ManagedRuntime, Schema, Stream } from "effect"
+import {
+  type BridgeClientExchange,
+  type HostProtocolEnvelope,
+  type HostProtocolRequestEnvelope,
+  HostProtocolResponseEnvelope,
+  HostProtocolStreamByRequestEnvelope,
+  makeDesktopClientProtocol,
+  rpcSupport
+} from "@orika/bridge"
+import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Queue, Schema, Stream } from "effect"
+import { RpcClient, RpcSchema } from "effect/unstable/rpc"
 
 import { makeNativeCapabilityManifest } from "./capabilities.js"
 import { TransientWindowRoleEvent } from "./contracts/transient-window-role.js"
@@ -31,6 +40,7 @@ test("TransientWindowRole public surface omits shallow service and layer helpers
         "TransientWindowRoleServiceApi",
         "class TransientWindowRoleClient",
         "TransientWindowRoleLive",
+        "TransientWindowRoleRpcEvents",
         "makeTransientWindowRoleClientLayer",
         "makeTransientWindowRoleServiceLayer",
         "makeTransientWindowRoleBridgeClientLayer",
@@ -44,10 +54,41 @@ test("TransientWindowRole public surface omits shallow service and layer helpers
 
 test("TransientWindowRole exposes only isSupported as a callable RPC", () => {
   const callableTags = Array.from(TransientWindowRoleRpcs.requests.keys()).toSorted()
-  expect(callableTags).toEqual(["TransientWindowRole.isSupported"])
+  expect(callableTags).toEqual([
+    "TransientWindowRole.events.Event",
+    "TransientWindowRole.isSupported"
+  ])
   for (const method of UnsupportedMethods) {
     expect(callableTags).not.toContain(`TransientWindowRole.${method}`)
   }
+})
+
+test("TransientWindowRole event schema is owned by the RPC stream contract", async () => {
+  const roleModule = await import("./transient-window-role.js")
+  const eventRpc = TransientWindowRoleRpcs.requests.get("TransientWindowRole.events.Event")
+
+  expect("TransientWindowRoleRpcEvents" in roleModule).toBe(false)
+  expect(eventRpc).toBeDefined()
+  expect(eventRpc === undefined ? false : RpcSchema.isStreamSchema(eventRpc.successSchema)).toBe(
+    true
+  )
+  if (eventRpc !== undefined && RpcSchema.isStreamSchema(eventRpc.successSchema)) {
+    expect(eventRpc.successSchema.success).toBe(TransientWindowRoleEvent)
+    expect(eventRpc.pipe(rpcSupport)).toMatchObject({
+      status: "unsupported",
+      reason: "host-adapter-unimplemented"
+    })
+  }
+
+  const eventDoc = TransientWindowRoleSurface.schemaDocs.find(
+    (doc) => doc.tag === "TransientWindowRole.events.Event"
+  )
+  expect(eventDoc?.kind).toBe("stream")
+  expect(eventDoc?.callable).toBe(true)
+  expect(eventDoc?.support).toMatchObject({
+    status: "unsupported",
+    reason: "host-adapter-unimplemented"
+  })
 })
 
 test("TransientWindowRole declares open/reposition/dismiss as non-callable capability facts", () => {
@@ -128,7 +169,11 @@ test("TransientWindowRole capability facts surface in the manifest and stay non-
       const callableTags = TransientWindowRoleSurface.schemaDocs
         .filter((doc) => doc.callable)
         .map((doc) => doc.tag)
-      expect(callableTags).toEqual(["TransientWindowRole.isSupported"])
+        .toSorted()
+      expect(callableTags).toEqual([
+        "TransientWindowRole.events.Event",
+        "TransientWindowRole.isSupported"
+      ])
 
       const nonCallableTags = TransientWindowRoleSurface.schemaDocs
         .filter((doc) => !doc.callable)
@@ -137,6 +182,77 @@ test("TransientWindowRole capability facts surface in the manifest and stay non-
       expect(nonCallableTags).toEqual(
         UnsupportedMethods.map((method) => `TransientWindowRole.${method}`).toSorted()
       )
+    })
+  ))
+
+test("TransientWindowRole direct client consumes the canonical RPC event stream", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
+      const requests: HostProtocolRequestEnvelope[] = []
+      const eventPayload = {
+        ...eventBase(),
+        phase: "opened",
+        roleId: "role-1"
+      } as const
+      const protocolLayer = Layer.effect(RpcClient.Protocol)(
+        makeDesktopClientProtocol(
+          {
+            send: (envelope) => {
+              if (envelope.kind !== "request") {
+                return Effect.void
+              }
+              requests.push(envelope)
+              return Effect.all(
+                [
+                  Queue.offer(
+                    queue,
+                    new HostProtocolStreamByRequestEnvelope({
+                      kind: "stream",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_001,
+                      traceId: envelope.traceId,
+                      payload: eventPayload
+                    })
+                  ),
+                  Queue.offer(
+                    queue,
+                    new HostProtocolResponseEnvelope({
+                      kind: "response",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_002,
+                      traceId: envelope.traceId
+                    })
+                  )
+                ],
+                { discard: true }
+              )
+            },
+            run: (onEnvelope) =>
+              Stream.fromQueue(queue).pipe(
+                Stream.runForEach(onEnvelope),
+                Effect.andThen(Effect.never)
+              )
+          },
+          {
+            nextRequestId: () => "transient-window-role-event-rpc",
+            nextTraceId: () => "trace-transient-window-role-event-rpc"
+          }
+        )
+      )
+
+      const event = yield* runScoped(
+        Effect.gen(function* () {
+          const service = yield* TransientWindowRole
+          return yield* service.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+        }),
+        Layer.provide(TransientWindowRoleSurface.clientLayer, protocolLayer)
+      )
+
+      expect(event).toEqual(new TransientWindowRoleEvent(eventPayload))
+      expect(requests.map((request) => request.method)).toEqual([
+        "TransientWindowRole.events.Event"
+      ])
     })
   ))
 
@@ -289,10 +405,11 @@ test("TransientWindowRole bridge client fails event stream as unsupported before
     })
   ))
 
-const eventBase = () => ({
-  type: "transient-window-role-event",
-  timestamp: 1_710_000_000_001
-})
+const eventBase = () =>
+  ({
+    type: "transient-window-role-event",
+    timestamp: 1_710_000_000_001
+  }) as const
 
 const runScoped = <A, E, R>(
   effect: Effect.Effect<A, E, R>,

@@ -1,7 +1,17 @@
 import { expect, test } from "bun:test"
-import { type BridgeClientExchange, makeHostProtocolInternalError } from "@orika/bridge"
+import {
+  type BridgeClientExchange,
+  type HostProtocolEnvelope,
+  type HostProtocolRequestEnvelope,
+  HostProtocolResponseEnvelope,
+  HostProtocolStreamByRequestEnvelope,
+  makeDesktopClientProtocol,
+  makeHostProtocolInternalError,
+  rpcSupport
+} from "@orika/bridge"
 import { type AuditEvent, makePermissionRegistry, makeResourceRegistry, P } from "@orika/core"
-import { Cause, Effect, Exit, type Layer, ManagedRuntime, Schema, Stream } from "effect"
+import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Queue, Schema, Stream } from "effect"
+import { RpcClient, RpcSchema } from "effect/unstable/rpc"
 
 import { makeNativeCapabilityManifest } from "./capabilities.js"
 import {
@@ -27,12 +37,43 @@ type FocusedApplicationContextEventValue = typeof FocusedApplicationContextEvent
 test("FocusedApplicationContext exposes only snapshot and isSupported as callable RPCs", () => {
   const callableTags = Array.from(FocusedApplicationContextRpcs.requests.keys()).toSorted()
   expect(callableTags).toEqual([
+    "FocusedApplicationContext.events.Event",
     "FocusedApplicationContext.isSupported",
     "FocusedApplicationContext.snapshot"
   ])
   for (const method of UnsupportedMethods) {
     expect(callableTags).not.toContain(`FocusedApplicationContext.${method}`)
   }
+})
+
+test("FocusedApplicationContext event schema is owned by the RPC stream contract", async () => {
+  const contextModule = await import("./focused-application-context.js")
+  const eventRpc = FocusedApplicationContextRpcs.requests.get(
+    "FocusedApplicationContext.events.Event"
+  )
+
+  expect("FocusedApplicationContextRpcEvents" in contextModule).toBe(false)
+  expect(eventRpc).toBeDefined()
+  expect(eventRpc === undefined ? false : RpcSchema.isStreamSchema(eventRpc.successSchema)).toBe(
+    true
+  )
+  if (eventRpc !== undefined && RpcSchema.isStreamSchema(eventRpc.successSchema)) {
+    expect(eventRpc.successSchema.success).toBe(FocusedApplicationContextEvent)
+    expect(eventRpc.pipe(rpcSupport)).toMatchObject({
+      status: "unsupported",
+      reason: "host-adapter-unimplemented"
+    })
+  }
+
+  const eventDoc = FocusedApplicationContextSurface.schemaDocs.find(
+    (doc) => doc.tag === "FocusedApplicationContext.events.Event"
+  )
+  expect(eventDoc?.kind).toBe("stream")
+  expect(eventDoc?.callable).toBe(true)
+  expect(eventDoc?.support).toMatchObject({
+    status: "unsupported",
+    reason: "host-adapter-unimplemented"
+  })
 })
 
 test("FocusedApplicationContext declares watch and stopWatching as non-callable capability facts", () => {
@@ -64,6 +105,7 @@ test("FocusedApplicationContext capability facts surface in the manifest and sta
         .map((doc) => doc.tag)
         .toSorted()
       expect(callableTags).toEqual([
+        "FocusedApplicationContext.events.Event",
         "FocusedApplicationContext.isSupported",
         "FocusedApplicationContext.snapshot"
       ])
@@ -75,6 +117,77 @@ test("FocusedApplicationContext capability facts surface in the manifest and sta
       expect(nonCallableTags).toEqual(
         UnsupportedMethods.map((method) => `FocusedApplicationContext.${method}`).toSorted()
       )
+    })
+  ))
+
+test("FocusedApplicationContext direct client consumes the canonical RPC event stream", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
+      const requests: HostProtocolRequestEnvelope[] = []
+      const eventPayload = {
+        ...eventBase(),
+        phase: "focus-changed",
+        snapshot: focusedSnapshot()
+      } as const
+      const protocolLayer = Layer.effect(RpcClient.Protocol)(
+        makeDesktopClientProtocol(
+          {
+            send: (envelope) => {
+              if (envelope.kind !== "request") {
+                return Effect.void
+              }
+              requests.push(envelope)
+              return Effect.all(
+                [
+                  Queue.offer(
+                    queue,
+                    new HostProtocolStreamByRequestEnvelope({
+                      kind: "stream",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_001,
+                      traceId: envelope.traceId,
+                      payload: eventPayload
+                    })
+                  ),
+                  Queue.offer(
+                    queue,
+                    new HostProtocolResponseEnvelope({
+                      kind: "response",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_002,
+                      traceId: envelope.traceId
+                    })
+                  )
+                ],
+                { discard: true }
+              )
+            },
+            run: (onEnvelope) =>
+              Stream.fromQueue(queue).pipe(
+                Stream.runForEach(onEnvelope),
+                Effect.andThen(Effect.never)
+              )
+          },
+          {
+            nextRequestId: () => "focused-context-event-rpc",
+            nextTraceId: () => "trace-focused-context-event-rpc"
+          }
+        )
+      )
+
+      const event = yield* runScoped(
+        Effect.gen(function* () {
+          const client = yield* FocusedApplicationContextClient
+          return yield* client.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+        }),
+        Layer.provide(FocusedApplicationContextSurface.clientLayer, protocolLayer)
+      )
+
+      expect(event).toMatchObject(eventPayload)
+      expect(requests.map((request) => request.method)).toEqual([
+        "FocusedApplicationContext.events.Event"
+      ])
     })
   ))
 

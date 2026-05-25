@@ -6,7 +6,7 @@ import {
   SelectionContextEvent,
   SelectionContextSupportedResult
 } from "./contracts/selection-context.js"
-import { runNativeRpc } from "./native-client.js"
+import { runNativeRpc, runNativeRpcStream } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
 
@@ -50,11 +50,15 @@ export const SelectionContextCapabilityFacts = Object.freeze([
   selectionContextCapabilityFact("stopWatching")
 ])
 
-export const SelectionContextRpcEvents = Object.freeze({
-  Event: { payload: SelectionContextEvent }
+const SelectionContextEventStream = NativeSurface.event(Surface, "Event", {
+  payload: SelectionContextEvent,
+  support: UnsupportedSupport
 })
 
-const SelectionContextRpcGroup = RpcGroup.make(SelectionContextIsSupported)
+const SelectionContextRpcGroup = RpcGroup.make(
+  SelectionContextIsSupported,
+  SelectionContextEventStream
+)
 
 export const SelectionContextRpcs: RpcGroup.RpcGroup<SelectionContextRpc> = SelectionContextRpcGroup
 
@@ -85,14 +89,22 @@ export const SelectionContextHandlersLive = SelectionContextRpcGroup.toLayer({
     Effect.gen(function* () {
       const service = yield* SelectionContext
       return yield* service.isSupported()
-    })
+    }),
+  "SelectionContext.events.Event": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const service = yield* SelectionContext
+        return service.events()
+      })
+    )
 })
 
 export const SelectionContextSurface = NativeSurface.make(Surface, SelectionContextRpcGroup, {
   service: SelectionContext,
   handlers: SelectionContextHandlersLive,
   capabilityFacts: SelectionContextCapabilityFacts,
-  client: (client) => selectionContextClientFromRpcClient(client)
+  client: (client) => selectionContextClientFromRpcClient(client),
+  bridgeClient: (client) => selectionContextBridgeClientFromRpcClient(client)
 })
 
 export const makeSelectionContextMemoryClient = (): Effect.Effect<
@@ -125,6 +137,22 @@ const selectionContextClientFromRpcClient = (
         client["SelectionContext.isSupported"](undefined),
         "SelectionContext.isSupported"
       ),
+    events: () =>
+      runSelectionContextRpcStream(
+        client["SelectionContext.events.Event"](undefined),
+        "SelectionContext.events.Event"
+      )
+  } satisfies SelectionContextClientApi)
+
+const selectionContextBridgeClientFromRpcClient = (
+  client: DesktopRpcClient<SelectionContextRpc>
+): SelectionContextClientApi =>
+  Object.freeze({
+    isSupported: () =>
+      runSelectionContextRpc(
+        client["SelectionContext.isSupported"](undefined),
+        "SelectionContext.isSupported"
+      ),
     events: () => Stream.fail(unsupportedError(SelectionContextEventMethod))
   } satisfies SelectionContextClientApi)
 
@@ -132,6 +160,11 @@ const runSelectionContextRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
   operation: string
 ): Effect.Effect<A, SelectionContextError, never> => runNativeRpc(effect, operation, Surface)
+
+const runSelectionContextRpcStream = <A, E>(
+  stream: Stream.Stream<A, E, never>,
+  operation: string
+): Stream.Stream<A, SelectionContextError, never> => runNativeRpcStream(stream, operation, Surface)
 
 const unsupportedError = (operation: string): HostProtocolError =>
   new HostProtocolUnsupportedError({

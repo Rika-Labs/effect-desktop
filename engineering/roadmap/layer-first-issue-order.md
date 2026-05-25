@@ -125,6 +125,7 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 |     #1807 Expose production PTY adapter layer | Closed | Connects the checked-in native PTY primitive to the public TypeScript `PTY` service without forcing app code to hand-supply a `PtyAdapter`.                     |
 | #1824 Model DisplayCapture events as RPC streams | Closed | Removes the remaining `DisplayCaptureRpcEvents` side object by moving capture lifecycle events into the canonical `DisplayCapture.events.Event` RPC stream. |
 | #1825 Model Autostart events as RPC streams | Closed | Removes the remaining `AutostartRpcEvents` side object by moving Autostart lifecycle events into the canonical `Autostart.events.Event` RPC stream. |
+| #1826 Model native context events as RPC streams | Closed | Removes context `*RpcEvents` side objects by moving FocusedApplicationContext, SelectionContext, and TransientWindowRole events into canonical RPC streams. |
 
 ## Execution Progress
 

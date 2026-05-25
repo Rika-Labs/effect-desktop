@@ -11,7 +11,7 @@ import {
   TransientWindowRoleEvent,
   TransientWindowRoleSupportedResult
 } from "./contracts/transient-window-role.js"
-import { runNativeRpc } from "./native-client.js"
+import { runNativeRpc, runNativeRpcStream } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
 
@@ -52,7 +52,15 @@ export const TransientWindowRoleCapabilityFacts = Object.freeze([
   transientWindowRoleCapabilityFact("dismiss")
 ])
 
-const TransientWindowRoleRpcGroup = RpcGroup.make(TransientWindowRoleIsSupported)
+const TransientWindowRoleEventStream = NativeSurface.event(Surface, "Event", {
+  payload: TransientWindowRoleEvent,
+  support: UnsupportedSupport
+})
+
+const TransientWindowRoleRpcGroup = RpcGroup.make(
+  TransientWindowRoleIsSupported,
+  TransientWindowRoleEventStream
+)
 
 export type TransientWindowRoleRpc = RpcGroup.Rpcs<typeof TransientWindowRoleRpcGroup>
 export type TransientWindowRoleRpcHandlers<R = never> = NativeRpcHandlers<
@@ -61,10 +69,6 @@ export type TransientWindowRoleRpcHandlers<R = never> = NativeRpcHandlers<
 >
 export const TransientWindowRoleRpcs: RpcGroup.RpcGroup<TransientWindowRoleRpc> =
   TransientWindowRoleRpcGroup
-
-export const TransientWindowRoleRpcEvents = Object.freeze({
-  Event: { payload: TransientWindowRoleEvent }
-})
 
 export const TransientWindowRoleMethodNames = Object.freeze(["isSupported"] as const)
 
@@ -87,14 +91,22 @@ export const TransientWindowRoleHandlersLive = TransientWindowRoleRpcGroup.toLay
     Effect.gen(function* () {
       const service = yield* TransientWindowRole
       return yield* service.isSupported()
-    })
+    }),
+  "TransientWindowRole.events.Event": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const service = yield* TransientWindowRole
+        return service.events()
+      })
+    )
 })
 
 export const TransientWindowRoleSurface = NativeSurface.make(Surface, TransientWindowRoleRpcGroup, {
   service: TransientWindowRole,
   handlers: TransientWindowRoleHandlersLive,
   capabilityFacts: TransientWindowRoleCapabilityFacts,
-  client: (client) => transientWindowRoleClientFromRpcClient(client)
+  client: (client) => transientWindowRoleClientFromRpcClient(client),
+  bridgeClient: (client) => transientWindowRoleBridgeClientFromRpcClient(client)
 })
 
 export const makeTransientWindowRoleMemoryClient = (): Effect.Effect<
@@ -128,6 +140,22 @@ const transientWindowRoleClientFromRpcClient = (
         client["TransientWindowRole.isSupported"](undefined),
         "TransientWindowRole.isSupported"
       ),
+    events: () =>
+      runTransientWindowRoleRpcStream(
+        client["TransientWindowRole.events.Event"](undefined),
+        "TransientWindowRole.events.Event"
+      )
+  } satisfies TransientWindowRoleClientApi)
+
+const transientWindowRoleBridgeClientFromRpcClient = (
+  client: DesktopRpcClient<TransientWindowRoleRpc>
+): TransientWindowRoleClientApi =>
+  Object.freeze({
+    isSupported: () =>
+      runTransientWindowRoleRpc(
+        client["TransientWindowRole.isSupported"](undefined),
+        "TransientWindowRole.isSupported"
+      ),
     events: () => Stream.fail(unsupportedError(EventMethod))
   } satisfies TransientWindowRoleClientApi)
 
@@ -136,6 +164,14 @@ const runTransientWindowRoleRpc = <A, E>(
   operation: string
 ): Effect.Effect<A, TransientWindowRoleError, never> =>
   runNativeRpc(effect, operation, Surface).pipe(Effect.mapError(narrowTransientWindowRoleError))
+
+const runTransientWindowRoleRpcStream = <A, E>(
+  stream: Stream.Stream<A, E, never>,
+  operation: string
+): Stream.Stream<A, TransientWindowRoleError, never> =>
+  runNativeRpcStream(stream, operation, Surface).pipe(
+    Stream.mapError(narrowTransientWindowRoleError)
+  )
 
 const unsupportedError = (operation: string): HostProtocolError =>
   new HostProtocolUnsupportedError({

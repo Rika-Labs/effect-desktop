@@ -83,7 +83,11 @@ The current Rust host adapter is intentionally fail-closed while OS selection an
 | Linux    | `unsupported` | `host-adapter-unimplemented` |
 
 `isSupported` returns `{ supported: false, reason: "host-adapter-unimplemented" }`. `readSelection`, `readDocumentContext`, `watchFocus`, and `stopWatching` are non-callable capability facts published with `support.status: "unsupported"`, not invocable RPCs.
-The bridge-backed `SelectionContext.Event` stream also fails as typed `Unsupported` before opening a host subscription until the native watch adapter can publish selection context events.
+The service method `events()` is backed by canonical Effect RPC stream
+`SelectionContext.events.Event`. The bridge-backed host event method remains
+`SelectionContext.Event` at the native/web protocol boundary, and currently
+fails as typed `Unsupported` before opening a host subscription until the native
+watch adapter can publish selection context events.
 
 ## Testing
 

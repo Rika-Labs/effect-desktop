@@ -6,7 +6,8 @@ The public service is Layer-first and test-substitutable. It checks `native.invo
 
 ## Surface
 
-The only callable RPC on this surface is the support query:
+The callable RPCs on this surface are the support query and the canonical event
+stream:
 
 - `TransientWindowRole.isSupported()` reports platform support.
 - `TransientWindowRole.events()` exposes the role lifecycle stream (`opened`, `repositioned`, `dismissed`, `failed`).
@@ -35,8 +36,11 @@ The only callable RPC on this surface is the support query:
 | Windows  | `unsupported` | `host-adapter-unimplemented` |
 | Linux    | `unsupported` | `host-adapter-unimplemented` |
 
-The bridge-backed `TransientWindowRole.Event` stream fails as typed `Unsupported` before opening
-a host subscription until the native role adapter can publish real role lifecycle events.
+The service method `events()` is backed by canonical Effect RPC stream
+`TransientWindowRole.events.Event`. The bridge-backed host event method remains
+`TransientWindowRole.Event` at the native/web protocol boundary, and currently
+fails as typed `Unsupported` before opening a host subscription until the native
+role adapter can publish real role lifecycle events.
 
 ## Diagnostics
 
