@@ -708,7 +708,6 @@ export {
   PowerMonitorHandlersLive,
   PowerMonitorLive,
   PowerMonitorMethodNames,
-  PowerMonitorRpcEvents,
   PowerMonitorRpcs,
   PowerMonitorSurface,
   type PowerMonitorClientApi,

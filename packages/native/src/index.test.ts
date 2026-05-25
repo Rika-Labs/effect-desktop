@@ -200,7 +200,6 @@ import {
   PowerMonitor,
   PowerMonitorHandlersLive,
   PowerMonitorRpcs,
-  PowerMonitorRpcEvents,
   PowerMonitorLive,
   PowerMonitorMethodNames,
   PowerMonitorSurface,
@@ -1317,6 +1316,15 @@ const makeCrashReporterPermissions = (effect: "allow" | "deny" = "allow") =>
   })
 
 const expectedPowerMonitorMethods: Array<(typeof PowerMonitorMethodNames)[number]> = ["isSupported"]
+
+const expectedPowerMonitorEventRpcTags = [
+  "PowerMonitor.events.Suspend",
+  "PowerMonitor.events.Resume",
+  "PowerMonitor.events.Shutdown",
+  "PowerMonitor.events.LockScreen",
+  "PowerMonitor.events.UnlockScreen",
+  "PowerMonitor.events.PowerSourceChanged"
+] as const
 
 const expectedScreenMethods: Array<(typeof ScreenMethodNames)[number]> = [
   "getDisplays",
@@ -10429,16 +10437,128 @@ const systemAppearanceEventExchange = (payload: Record<string, unknown>): Bridge
       : Stream.empty
 })
 
-test("PowerMonitorRpcs declares the Phase 8 event-only surface", () => {
+test("PowerMonitor event schemas are owned by canonical RPC stream contracts", async () => {
+  const powerMonitorModule = await import("./power-monitor.js")
+  const rootModule = await import("./index.js")
+  const eventSchemas = [
+    ["PowerMonitor.events.Suspend", PowerMonitorSuspendEvent],
+    ["PowerMonitor.events.Resume", PowerMonitorResumeEvent],
+    ["PowerMonitor.events.Shutdown", PowerMonitorShutdownEvent],
+    ["PowerMonitor.events.LockScreen", PowerMonitorLockScreenEvent],
+    ["PowerMonitor.events.UnlockScreen", PowerMonitorUnlockScreenEvent],
+    ["PowerMonitor.events.PowerSourceChanged", PowerMonitorSourceChangedEvent]
+  ] as const
+
+  expect("PowerMonitorRpcEvents" in powerMonitorModule).toBe(false)
+  expect("PowerMonitorRpcEvents" in rootModule).toBe(false)
   expect([...PowerMonitorMethodNames]).toEqual(expectedPowerMonitorMethods)
-  expect(Array.from(PowerMonitorRpcs.requests.keys())).toEqual(["PowerMonitor.isSupported"])
-  expect(Object.keys(PowerMonitorRpcEvents)).toEqual([
-    "Suspend",
-    "Resume",
-    "Shutdown",
-    "LockScreen",
-    "UnlockScreen",
-    "PowerSourceChanged"
+  expect(Array.from(PowerMonitorRpcs.requests.keys())).toEqual([
+    "PowerMonitor.isSupported",
+    ...expectedPowerMonitorEventRpcTags
+  ])
+
+  for (const [tag, schema] of eventSchemas) {
+    const eventRpc = PowerMonitorRpcs.requests.get(tag)
+    expect(eventRpc).toBeDefined()
+    expect(eventRpc === undefined ? false : RpcSchema.isStreamSchema(eventRpc.successSchema)).toBe(
+      true
+    )
+    if (eventRpc !== undefined && RpcSchema.isStreamSchema(eventRpc.successSchema)) {
+      expect(eventRpc.successSchema.success).toBe(schema)
+      expect(eventRpc.pipe(rpcSupport)).toEqual({
+        status: "partial",
+        reason: "platform-power-monitor-unavailable",
+        platforms: [
+          { platform: "macos", status: "supported" },
+          {
+            platform: "windows",
+            status: "unsupported",
+            reason: "platform-power-monitor-unavailable"
+          },
+          { platform: "linux", status: "unsupported", reason: "platform-power-monitor-unavailable" }
+        ]
+      })
+    }
+  }
+})
+
+test("PowerMonitor direct client consumes the canonical RPC suspend stream", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
+      const requests: HostProtocolRequestEnvelope[] = []
+      const protocolLayer = Layer.effect(RpcClient.Protocol)(
+        makeDesktopClientProtocol(
+          {
+            send: (envelope) => {
+              if (envelope.kind !== "request") {
+                return Effect.void
+              }
+              requests.push(envelope)
+              return Effect.all(
+                [
+                  Queue.offer(
+                    queue,
+                    new HostProtocolStreamByRequestEnvelope({
+                      kind: "stream",
+                      id: envelope.id,
+                      timestamp: 1_710_000_007_300,
+                      traceId: envelope.traceId,
+                      payload: { reason: "sleep" }
+                    })
+                  ),
+                  Queue.offer(
+                    queue,
+                    new HostProtocolResponseEnvelope({
+                      kind: "response",
+                      id: envelope.id,
+                      timestamp: 1_710_000_007_301,
+                      traceId: envelope.traceId
+                    })
+                  )
+                ],
+                { discard: true }
+              )
+            },
+            run: (onEnvelope) =>
+              Stream.fromQueue(queue).pipe(
+                Stream.runForEach(onEnvelope),
+                Effect.andThen(Effect.never)
+              )
+          },
+          {
+            nextRequestId: () => "power-monitor-suspend-rpc",
+            nextTraceId: () => "trace-power-monitor-suspend-rpc"
+          }
+        )
+      )
+
+      const event = yield* runScoped(
+        Effect.gen(function* () {
+          const power = yield* PowerMonitor
+          return yield* power.onSuspend().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+        }),
+        Layer.provide(
+          PowerMonitor.layer,
+          Layer.provide(PowerMonitorSurface.clientLayer, protocolLayer)
+        )
+      )
+
+      expect(event).toEqual(new PowerMonitorSuspendEvent({ reason: "sleep" }))
+      expect(requests.map((request) => request.method)).toEqual(["PowerMonitor.events.Suspend"])
+    })
+  ))
+
+test("PowerMonitorRpcs keeps callable method names limited to capability queries", () => {
+  expect([...PowerMonitorMethodNames]).toEqual(expectedPowerMonitorMethods)
+  expect(rpcMethodNames("PowerMonitor", PowerMonitorRpcs)).toEqual([
+    "isSupported",
+    "events.Suspend",
+    "events.Resume",
+    "events.Shutdown",
+    "events.LockScreen",
+    "events.UnlockScreen",
+    "events.PowerSourceChanged"
   ])
 })
 
@@ -10588,7 +10708,13 @@ test("native host RPC runtime denies protected PowerMonitor support queries befo
             Effect.sync(() => {
               calls.push("isSupported")
               return new PowerMonitorSupportedResult({ supported: true })
-            })
+            }),
+          "PowerMonitor.events.Suspend": () => Stream.empty,
+          "PowerMonitor.events.Resume": () => Stream.empty,
+          "PowerMonitor.events.Shutdown": () => Stream.empty,
+          "PowerMonitor.events.LockScreen": () => Stream.empty,
+          "PowerMonitor.events.UnlockScreen": () => Stream.empty,
+          "PowerMonitor.events.PowerSourceChanged": () => Stream.empty
         },
         { originAuth: RendererOriginAuth.unsafeDisabledForTests }
       )

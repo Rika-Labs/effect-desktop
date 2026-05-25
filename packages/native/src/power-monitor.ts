@@ -6,11 +6,10 @@ import {
   type HostProtocolError
 } from "@orika/bridge"
 import { type DesktopRpcClient } from "@orika/core"
-import { Context, Effect, Layer, Schema, Stream } from "effect"
+import { Context, Effect, Layer, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
-import { subscribeNativeEvent } from "./event-stream.js"
 import {
   PowerMonitorIsSupportedInput,
   PowerMonitorLockScreenEvent,
@@ -43,18 +42,45 @@ export const PowerMonitorIsSupported = NativeSurface.rpc("PowerMonitor", "isSupp
   support: PowerMonitorSupport
 })
 
-export const PowerMonitorRpcEvents = Object.freeze({
-  Suspend: { payload: PowerMonitorSuspendEvent },
-  Resume: { payload: PowerMonitorResumeEvent },
-  Shutdown: { payload: PowerMonitorShutdownEvent },
-  LockScreen: { payload: PowerMonitorLockScreenEvent },
-  UnlockScreen: { payload: PowerMonitorUnlockScreenEvent },
-  PowerSourceChanged: { payload: PowerMonitorSourceChangedEvent }
+const PowerMonitorSuspend = NativeSurface.event("PowerMonitor", "Suspend", {
+  payload: PowerMonitorSuspendEvent,
+  support: PowerMonitorSupport
 })
 
-export type PowerMonitorRpcEvents = typeof PowerMonitorRpcEvents
+const PowerMonitorResume = NativeSurface.event("PowerMonitor", "Resume", {
+  payload: PowerMonitorResumeEvent,
+  support: PowerMonitorSupport
+})
 
-const PowerMonitorRpcGroup = RpcGroup.make(PowerMonitorIsSupported)
+const PowerMonitorShutdown = NativeSurface.event("PowerMonitor", "Shutdown", {
+  payload: PowerMonitorShutdownEvent,
+  support: PowerMonitorSupport
+})
+
+const PowerMonitorLockScreen = NativeSurface.event("PowerMonitor", "LockScreen", {
+  payload: PowerMonitorLockScreenEvent,
+  support: PowerMonitorSupport
+})
+
+const PowerMonitorUnlockScreen = NativeSurface.event("PowerMonitor", "UnlockScreen", {
+  payload: PowerMonitorUnlockScreenEvent,
+  support: PowerMonitorSupport
+})
+
+const PowerMonitorPowerSourceChanged = NativeSurface.event("PowerMonitor", "PowerSourceChanged", {
+  payload: PowerMonitorSourceChangedEvent,
+  support: PowerMonitorSupport
+})
+
+const PowerMonitorRpcGroup = RpcGroup.make(
+  PowerMonitorIsSupported,
+  PowerMonitorSuspend,
+  PowerMonitorResume,
+  PowerMonitorShutdown,
+  PowerMonitorLockScreen,
+  PowerMonitorUnlockScreen,
+  PowerMonitorPowerSourceChanged
+)
 
 export const PowerMonitorRpcs: RpcGroup.RpcGroup<PowerMonitorRpc> = PowerMonitorRpcGroup
 
@@ -123,69 +149,92 @@ export const PowerMonitorHandlersLive = PowerMonitorRpcGroup.toLayer({
       const monitor = yield* PowerMonitor
       const supported = yield* monitor.isSupported(input.method)
       return new PowerMonitorSupportedResult({ supported })
-    })
+    }),
+  "PowerMonitor.events.Suspend": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const monitor = yield* PowerMonitor
+        return monitor.onSuspend()
+      })
+    ),
+  "PowerMonitor.events.Resume": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const monitor = yield* PowerMonitor
+        return monitor.onResume()
+      })
+    ),
+  "PowerMonitor.events.Shutdown": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const monitor = yield* PowerMonitor
+        return monitor.onShutdown()
+      })
+    ),
+  "PowerMonitor.events.LockScreen": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const monitor = yield* PowerMonitor
+        return monitor.onLockScreen()
+      })
+    ),
+  "PowerMonitor.events.UnlockScreen": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const monitor = yield* PowerMonitor
+        return monitor.onUnlockScreen()
+      })
+    ),
+  "PowerMonitor.events.PowerSourceChanged": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const monitor = yield* PowerMonitor
+        return monitor.onPowerSourceChanged()
+      })
+    )
 })
 
 export const PowerMonitorSurface = NativeSurface.make("PowerMonitor", PowerMonitorRpcGroup, {
   service: PowerMonitorClient,
   capabilities: PowerMonitorMethodNames,
   handlers: PowerMonitorHandlersLive,
-  client: (client) => powerMonitorClientFromRpcClient(client, undefined),
-  bridgeClient: (client, exchange) => powerMonitorClientFromRpcClient(client, exchange)
+  client: (client) => powerMonitorClientFromRpcClient(client),
+  bridgeClient: (client, exchange) => powerMonitorBridgeClientFromRpcClient(client, exchange)
 })
 
 const powerMonitorClientFromRpcClient = (
-  client: DesktopRpcClient<PowerMonitorRpc>,
-  exchange: BridgeClientExchange | undefined
+  client: DesktopRpcClient<PowerMonitorRpc>
 ): PowerMonitorClientApi =>
   Object.freeze({
     onSuspend: () =>
-      supportedPowerMonitorEvent(
-        client,
-        exchange,
-        "onSuspend",
-        "PowerMonitor.Suspend",
-        PowerMonitorSuspendEvent
+      runPowerMonitorRpcStream(
+        client["PowerMonitor.events.Suspend"](undefined),
+        "PowerMonitor.events.Suspend"
       ),
     onResume: () =>
-      supportedPowerMonitorEvent(
-        client,
-        exchange,
-        "onResume",
-        "PowerMonitor.Resume",
-        PowerMonitorResumeEvent
+      runPowerMonitorRpcStream(
+        client["PowerMonitor.events.Resume"](undefined),
+        "PowerMonitor.events.Resume"
       ),
     onShutdown: () =>
-      supportedPowerMonitorEvent(
-        client,
-        exchange,
-        "onShutdown",
-        "PowerMonitor.Shutdown",
-        PowerMonitorShutdownEvent
+      runPowerMonitorRpcStream(
+        client["PowerMonitor.events.Shutdown"](undefined),
+        "PowerMonitor.events.Shutdown"
       ),
     onLockScreen: () =>
-      supportedPowerMonitorEvent(
-        client,
-        exchange,
-        "onLockScreen",
-        "PowerMonitor.LockScreen",
-        PowerMonitorLockScreenEvent
+      runPowerMonitorRpcStream(
+        client["PowerMonitor.events.LockScreen"](undefined),
+        "PowerMonitor.events.LockScreen"
       ),
     onUnlockScreen: () =>
-      supportedPowerMonitorEvent(
-        client,
-        exchange,
-        "onUnlockScreen",
-        "PowerMonitor.UnlockScreen",
-        PowerMonitorUnlockScreenEvent
+      runPowerMonitorRpcStream(
+        client["PowerMonitor.events.UnlockScreen"](undefined),
+        "PowerMonitor.events.UnlockScreen"
       ),
     onPowerSourceChanged: () =>
-      supportedPowerMonitorEvent(
-        client,
-        exchange,
-        "onPowerSourceChanged",
-        "PowerMonitor.PowerSourceChanged",
-        PowerMonitorSourceChangedEvent
+      runPowerMonitorRpcStream(
+        client["PowerMonitor.events.PowerSourceChanged"](undefined),
+        "PowerMonitor.events.PowerSourceChanged"
       ),
     isSupported: (method) =>
       runPowerMonitorRpc(
@@ -194,12 +243,46 @@ const powerMonitorClientFromRpcClient = (
       )
   } satisfies PowerMonitorClientApi)
 
+const powerMonitorBridgeClientFromRpcClient = (
+  client: DesktopRpcClient<PowerMonitorRpc>,
+  exchange: BridgeClientExchange
+): PowerMonitorClientApi =>
+  Object.freeze({
+    ...powerMonitorClientFromRpcClient(client),
+    onSuspend: () =>
+      supportedPowerMonitorEvent(client, "onSuspend", "PowerMonitor.Suspend", () =>
+        NativeSurface.subscribeEvent(exchange, PowerMonitorSuspend)
+      ),
+    onResume: () =>
+      supportedPowerMonitorEvent(client, "onResume", "PowerMonitor.Resume", () =>
+        NativeSurface.subscribeEvent(exchange, PowerMonitorResume)
+      ),
+    onShutdown: () =>
+      supportedPowerMonitorEvent(client, "onShutdown", "PowerMonitor.Shutdown", () =>
+        NativeSurface.subscribeEvent(exchange, PowerMonitorShutdown)
+      ),
+    onLockScreen: () =>
+      supportedPowerMonitorEvent(client, "onLockScreen", "PowerMonitor.LockScreen", () =>
+        NativeSurface.subscribeEvent(exchange, PowerMonitorLockScreen)
+      ),
+    onUnlockScreen: () =>
+      supportedPowerMonitorEvent(client, "onUnlockScreen", "PowerMonitor.UnlockScreen", () =>
+        NativeSurface.subscribeEvent(exchange, PowerMonitorUnlockScreen)
+      ),
+    onPowerSourceChanged: () =>
+      supportedPowerMonitorEvent(
+        client,
+        "onPowerSourceChanged",
+        "PowerMonitor.PowerSourceChanged",
+        () => NativeSurface.subscribeEvent(exchange, PowerMonitorPowerSourceChanged)
+      )
+  } satisfies PowerMonitorClientApi)
+
 const supportedPowerMonitorEvent = <A>(
   client: DesktopRpcClient<PowerMonitorRpc>,
-  exchange: BridgeClientExchange | undefined,
   method: PowerMonitorMethod,
-  eventMethod: string,
-  schema: Schema.Codec<A, unknown, never, never>
+  operation: string,
+  event: () => Stream.Stream<A, PowerMonitorError, never>
 ): Stream.Stream<A, PowerMonitorError, never> =>
   Stream.unwrap(
     runPowerMonitorRpc(
@@ -207,18 +290,10 @@ const supportedPowerMonitorEvent = <A>(
       "PowerMonitor.isSupported"
     ).pipe(
       Effect.map((result) =>
-        result.supported
-          ? subscribePowerMonitorEvent(exchange, eventMethod, schema)
-          : Stream.fail(unsupportedError(eventMethod))
+        result.supported ? event() : Stream.fail(unsupportedError(operation))
       )
     )
   )
-
-const subscribePowerMonitorEvent = <A>(
-  exchange: BridgeClientExchange | undefined,
-  method: string,
-  schema: Schema.Codec<A, unknown, never, never>
-): Stream.Stream<A, PowerMonitorError, never> => subscribeNativeEvent(exchange, method, schema)
 
 const runPowerMonitorRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
@@ -230,6 +305,12 @@ const runPowerMonitorRpc = <A, E>(
       Effect.fail(makeHostProtocolInvalidOutputError(operation, formatUnknownError(defect)))
     )
   )
+
+const runPowerMonitorRpcStream = <A, E>(
+  stream: Stream.Stream<A, E, never>,
+  _operation: string
+): Stream.Stream<A, PowerMonitorError, never> =>
+  stream.pipe(Stream.mapError(mapPowerMonitorRpcClientError))
 
 const mapPowerMonitorRpcClientError = (error: unknown): PowerMonitorError =>
   isPowerMonitorError(error)

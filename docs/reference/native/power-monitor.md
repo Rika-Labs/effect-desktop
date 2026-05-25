@@ -30,14 +30,20 @@ host-owned event watchers instead of inferred or renderer-side state.
 
 ## Events
 
-The TypeScript event streams and Rust host-protocol event payload structs are:
+The TypeScript streams are backed by canonical Effect RPC stream contracts:
 
-- `onSuspend()` emits `PowerMonitorSuspendEvent`.
-- `onResume()` emits `PowerMonitorResumeEvent`.
-- `onShutdown()` emits `PowerMonitorShutdownEvent`.
-- `onLockScreen()` emits `PowerMonitorLockScreenEvent`.
-- `onUnlockScreen()` emits `PowerMonitorUnlockScreenEvent`.
-- `onPowerSourceChanged()` emits `PowerMonitorSourceChangedEvent`.
+| TypeScript stream        | RPC stream tag                           | Payload schema                   |
+| ------------------------ | ---------------------------------------- | -------------------------------- |
+| `onSuspend()`            | `PowerMonitor.events.Suspend`            | `PowerMonitorSuspendEvent`       |
+| `onResume()`             | `PowerMonitor.events.Resume`             | `PowerMonitorResumeEvent`        |
+| `onShutdown()`           | `PowerMonitor.events.Shutdown`           | `PowerMonitorShutdownEvent`      |
+| `onLockScreen()`         | `PowerMonitor.events.LockScreen`         | `PowerMonitorLockScreenEvent`    |
+| `onUnlockScreen()`       | `PowerMonitor.events.UnlockScreen`       | `PowerMonitorUnlockScreenEvent`  |
+| `onPowerSourceChanged()` | `PowerMonitor.events.PowerSourceChanged` | `PowerMonitorSourceChangedEvent` |
+
+Direct clients consume the `PowerMonitor.events.*` RPC streams. The native/web
+bridge maps those RPC tags to the host event methods such as
+`PowerMonitor.Suspend` at the boundary.
 
 ## Errors
 
