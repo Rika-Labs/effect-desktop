@@ -1,10 +1,11 @@
 import {
   type HostProtocolError,
+  hostProtocolErrorFromRpcClientError,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError
 } from "@orika/bridge"
-import { Effect, Schema } from "effect"
+import { Effect, Schema, Stream } from "effect"
 
 export const StrictNativeParseOptions = { onExcessProperty: "error" } as const
 
@@ -25,15 +26,18 @@ export const runNativeRpc = <A, E>(
   surface: string
 ): Effect.Effect<A, HostProtocolError, never> =>
   effect.pipe(
-    Effect.mapError((error) =>
-      isHostProtocolError(error)
-        ? error
-        : makeHostProtocolInternalError(`${surface} RPC client failed`, surface)
-    ),
+    Effect.mapError((error) => mapNativeRpcClientError(error, surface)),
     Effect.catchDefect((defect) =>
       Effect.fail(makeHostProtocolInvalidOutputError(operation, formatUnknownError(defect)))
     )
   )
+
+export const runNativeRpcStream = <A, E>(
+  stream: Stream.Stream<A, E, never>,
+  _operation: string,
+  surface: string
+): Stream.Stream<A, HostProtocolError, never> =>
+  stream.pipe(Stream.mapError((error) => mapNativeRpcClientError(error, surface)))
 
 export const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) {
@@ -42,6 +46,12 @@ export const formatUnknownError = (error: unknown): string => {
 
   return String(error)
 }
+
+const mapNativeRpcClientError = (error: unknown, surface: string): HostProtocolError =>
+  isHostProtocolError(error)
+    ? error
+    : (hostProtocolErrorFromRpcClientError(error) ??
+      makeHostProtocolInternalError(`${surface} RPC client failed`, surface))
 
 const isHostProtocolError = (error: unknown): error is HostProtocolError =>
   typeof error === "object" &&

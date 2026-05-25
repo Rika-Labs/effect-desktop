@@ -8,8 +8,7 @@ import {
   AutostartEvent,
   AutostartStatus
 } from "./contracts/autostart.js"
-import { subscribeNativeEvent } from "./event-stream.js"
-import { decodeNativeInput, runNativeRpc } from "./native-client.js"
+import { decodeNativeInput, runNativeRpc, runNativeRpcStream } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
 
@@ -48,11 +47,17 @@ export const AutostartDisable = NativeSurface.rpc(Surface, "disable", {
   support: AutostartSupport
 })
 
-export const AutostartRpcEvents = Object.freeze({
-  Event: { payload: AutostartEvent }
+const AutostartEventStream = NativeSurface.event(Surface, "Event", {
+  payload: AutostartEvent,
+  support: AutostartSupport
 })
 
-const AutostartRpcGroup = RpcGroup.make(AutostartIsEnabled, AutostartEnable, AutostartDisable)
+const AutostartRpcGroup = RpcGroup.make(
+  AutostartIsEnabled,
+  AutostartEnable,
+  AutostartDisable,
+  AutostartEventStream
+)
 
 export const AutostartRpcs: RpcGroup.RpcGroup<AutostartRpc> = AutostartRpcGroup
 
@@ -71,9 +76,7 @@ export class AutostartClient extends Context.Service<AutostartClient, AutostartC
   "@orika/native/AutostartClient"
 ) {}
 
-export type AutostartServiceApi = AutostartClientApi
-
-export class Autostart extends Context.Service<Autostart, AutostartServiceApi>()(
+export class Autostart extends Context.Service<Autostart, AutostartClientApi>()(
   "@orika/native/Autostart"
 ) {
   static readonly layer = Layer.effect(Autostart)(
@@ -84,7 +87,7 @@ export class Autostart extends Context.Service<Autostart, AutostartServiceApi>()
         enable: (input) => client.enable(input),
         disable: () => client.disable(),
         events: () => client.events()
-      } satisfies AutostartServiceApi)
+      } satisfies AutostartClientApi)
     })
   )
 }
@@ -109,7 +112,14 @@ export const AutostartHandlersLive = AutostartRpcGroup.toLayer({
     Effect.gen(function* () {
       const autostart = yield* Autostart
       return yield* autostart.disable()
-    })
+    }),
+  "Autostart.events.Event": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const autostart = yield* Autostart
+        return autostart.events()
+      })
+    )
 })
 
 export const AutostartSurface = NativeSurface.make("Autostart", AutostartRpcGroup, {
@@ -117,12 +127,26 @@ export const AutostartSurface = NativeSurface.make("Autostart", AutostartRpcGrou
   capabilities: AutostartMethodNames,
   handlers: AutostartHandlersLive,
   client: (client) => autostartClientFromRpcClient(client),
-  bridgeClient: (client, exchange) => autostartClientFromRpcClient(client, exchange)
+  bridgeClient: (client, exchange) => autostartBridgeClientFromRpcClient(client, exchange)
 })
 
-const autostartClientFromRpcClient = (
+const autostartClientFromRpcClient = (client: DesktopRpcClient<AutostartRpc>): AutostartClientApi =>
+  Object.freeze({
+    isEnabled: () => runAutostartRpc(client["Autostart.isEnabled"](), "Autostart.isEnabled"),
+    enable: (input) =>
+      decodeAutostartEnableInput(input ?? {}, "Autostart.enable").pipe(
+        Effect.flatMap((decoded) =>
+          runAutostartRpc(client["Autostart.enable"](decoded), "Autostart.enable")
+        )
+      ),
+    disable: () => runAutostartRpc(client["Autostart.disable"](), "Autostart.disable"),
+    events: () =>
+      runAutostartRpcStream(client["Autostart.events.Event"](undefined), "Autostart.events.Event")
+  } satisfies AutostartClientApi)
+
+const autostartBridgeClientFromRpcClient = (
   client: DesktopRpcClient<AutostartRpc>,
-  exchange?: BridgeClientExchange
+  exchange: BridgeClientExchange
 ): AutostartClientApi =>
   Object.freeze({
     isEnabled: () => runAutostartRpc(client["Autostart.isEnabled"](), "Autostart.isEnabled"),
@@ -133,7 +157,7 @@ const autostartClientFromRpcClient = (
         )
       ),
     disable: () => runAutostartRpc(client["Autostart.disable"](), "Autostart.disable"),
-    events: () => subscribeNativeEvent(exchange, "Autostart.Event", AutostartEvent)
+    events: () => NativeSurface.subscribeEvent(exchange, AutostartEventStream)
   } satisfies AutostartClientApi)
 
 const decodeAutostartEnableInput = (
@@ -146,3 +170,8 @@ const runAutostartRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
   operation: string
 ): Effect.Effect<A, AutostartError> => runNativeRpc(effect, operation, Surface)
+
+const runAutostartRpcStream = <A, E>(
+  stream: Stream.Stream<A, E, never>,
+  operation: string
+): Stream.Stream<A, AutostartError> => runNativeRpcStream(stream, operation, Surface)

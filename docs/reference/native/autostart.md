@@ -22,6 +22,7 @@ reports whether the registration exists for the current app identity.
 | `isEnabled` | `AutostartStatus` | supported       |
 | `enable`    | `AutostartStatus` | supported       |
 | `disable`   | `AutostartStatus` | supported       |
+| `events()`  | `AutostartEvent` stream | supported |
 
 ## Mechanisms
 
@@ -41,9 +42,13 @@ per-user XDG autostart desktop file under `$XDG_CONFIG_HOME/autostart` or
 
 ## Events
 
-The current event stream is `events()`. Event phases are `checked`, `enabled`,
-`disabled`, and `failed`. The host emits an event after `isEnabled`, `enable`,
-and `disable` when a runtime event sink is installed.
+The service method `events()` is backed by canonical Effect RPC stream
+`Autostart.events.Event`. The bridge host method remains `Autostart.Event` at
+the native/web protocol boundary.
+
+Event phases are `checked`, `enabled`, `disabled`, and `failed`. The host emits
+an event after `isEnabled`, `enable`, and `disable` when a runtime event sink is
+installed.
 
 ## Validation
 

@@ -61,14 +61,12 @@ export {
   AutostartHandlersLive,
   AutostartLive,
   AutostartMethodNames,
-  AutostartRpcEvents,
   AutostartRpcs,
   AutostartSurface,
   type AutostartClientApi,
   type AutostartError,
   type AutostartRpc,
-  type AutostartRpcHandlers,
-  type AutostartServiceApi
+  type AutostartRpcHandlers
 } from "./autostart.js"
 export {
   AttachmentIntake,

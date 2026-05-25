@@ -122,7 +122,6 @@ import {
   Autostart,
   AutostartLive,
   AutostartMethodNames,
-  AutostartRpcEvents,
   AutostartRpcs,
   Native,
   NativeCapabilities,
@@ -6351,10 +6350,13 @@ test("AutostartRpcs declares the Phase 8 Autostart method and event surface", ()
   expect(Array.from(AutostartRpcs.requests.keys())).toEqual([
     "Autostart.isEnabled",
     "Autostart.enable",
-    "Autostart.disable"
+    "Autostart.disable",
+    "Autostart.events.Event"
   ])
-  expect(rpcMethodNames("Autostart", AutostartRpcs)).toEqual(expectedAutostartMethods)
-  expect(Object.keys(AutostartRpcEvents)).toEqual(["Event"])
+  expect(rpcMethodNames("Autostart", AutostartRpcs)).toEqual([
+    ...expectedAutostartMethods,
+    "events.Event"
+  ])
 })
 
 test("Autostart service delegates through a substitutable AutostartClient port", () =>
@@ -6522,7 +6524,8 @@ test("native host RPC runtime denies protected Autostart calls before handlers r
           "Autostart.disable": () =>
             Effect.succeed(
               new AutostartStatus({ enabled: false, mechanism: "linux-xdg-autostart" })
-            )
+            ),
+          "Autostart.events.Event": () => Stream.empty
         },
         { originAuth: RendererOriginAuth.unsafeDisabledForTests }
       )

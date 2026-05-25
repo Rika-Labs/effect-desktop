@@ -1,13 +1,110 @@
 import { expect, test } from "bun:test"
 import {
   type BridgeClientExchange,
+  type HostProtocolEnvelope,
   HostProtocolEventEnvelope,
-  HostProtocolInvalidOutputError
+  HostProtocolInvalidOutputError,
+  type HostProtocolRequestEnvelope,
+  HostProtocolResponseEnvelope,
+  HostProtocolStreamByRequestEnvelope,
+  makeDesktopClientProtocol,
+  rpcSupport
 } from "@orika/bridge"
-import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Schema, Stream } from "effect"
+import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Queue, Schema, Stream } from "effect"
+import { RpcClient, RpcSchema } from "effect/unstable/rpc"
 
-import { Autostart, AutostartLive, AutostartSurface } from "./autostart.js"
+import {
+  Autostart,
+  AutostartClient,
+  AutostartLive,
+  AutostartRpcs,
+  AutostartSurface
+} from "./autostart.js"
 import { AutostartEvent } from "./contracts/autostart.js"
+
+test("Autostart event schema is owned by the RPC stream contract", async () => {
+  const autostartModule = await import("./autostart.js")
+  const eventRpc = AutostartRpcs.requests.get("Autostart.events.Event")
+
+  expect("AutostartRpcEvents" in autostartModule).toBe(false)
+  expect(eventRpc).toBeDefined()
+  expect(eventRpc === undefined ? false : RpcSchema.isStreamSchema(eventRpc.successSchema)).toBe(
+    true
+  )
+  if (eventRpc !== undefined && RpcSchema.isStreamSchema(eventRpc.successSchema)) {
+    expect(eventRpc.successSchema.success).toBe(AutostartEvent)
+    expect(eventRpc.pipe(rpcSupport)).toEqual({ status: "supported" })
+  }
+
+  const eventDoc = AutostartSurface.schemaDocs.find((doc) => doc.tag === "Autostart.events.Event")
+  expect(eventDoc?.kind).toBe("stream")
+  expect(eventDoc?.callable).toBe(true)
+  expect(eventDoc?.support).toEqual({ status: "supported" })
+})
+
+test("Autostart direct client consumes the canonical RPC event stream", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
+      const requests: HostProtocolRequestEnvelope[] = []
+      const protocolLayer = Layer.effect(RpcClient.Protocol)(
+        makeDesktopClientProtocol(
+          {
+            send: (envelope) => {
+              if (envelope.kind !== "request") {
+                return Effect.void
+              }
+              requests.push(envelope)
+              return Effect.all(
+                [
+                  Queue.offer(
+                    queue,
+                    new HostProtocolStreamByRequestEnvelope({
+                      kind: "stream",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_001,
+                      traceId: envelope.traceId,
+                      payload: { phase: "checked", mechanism: "macos-login-item" }
+                    })
+                  ),
+                  Queue.offer(
+                    queue,
+                    new HostProtocolResponseEnvelope({
+                      kind: "response",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_002,
+                      traceId: envelope.traceId
+                    })
+                  )
+                ],
+                { discard: true }
+              )
+            },
+            run: (onEnvelope) =>
+              Stream.fromQueue(queue).pipe(
+                Stream.runForEach(onEnvelope),
+                Effect.andThen(Effect.never)
+              )
+          },
+          {
+            nextRequestId: () => "autostart-event-rpc",
+            nextTraceId: () => "trace-autostart-event-rpc"
+          }
+        )
+      )
+
+      const event = yield* runScoped(
+        Effect.gen(function* () {
+          const autostart = yield* AutostartClient
+          return yield* autostart.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+        }),
+        Layer.provide(AutostartSurface.clientLayer, protocolLayer)
+      )
+
+      expect(event).toEqual(new AutostartEvent({ phase: "checked", mechanism: "macos-login-item" }))
+      expect(requests.map((request) => request.method)).toEqual(["Autostart.events.Event"])
+    })
+  ))
 
 test("Autostart contracts reject inconsistent event phase payloads", () => {
   for (const payload of [
