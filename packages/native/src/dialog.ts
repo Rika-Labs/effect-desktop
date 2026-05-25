@@ -5,11 +5,7 @@ import { Context, Effect, Layer } from "effect"
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
 import { decodeNativeInput, runNativeRpc } from "./native-client.js"
-import {
-  DialogMethodNames,
-  DialogRpcEvents as DialogRpcEventsValue,
-  DialogRpcs
-} from "./dialog-rpc.js"
+import { DialogMethodNames, DialogRpcs } from "./dialog-rpc.js"
 import {
   DialogConfirmInput,
   type DialogConfirmOptions,
@@ -35,9 +31,6 @@ export {
   DialogSaveFile,
   DialogRpcs
 } from "./dialog-rpc.js"
-
-export const DialogRpcEvents = DialogRpcEventsValue
-export type DialogRpcEvents = typeof DialogRpcEvents
 
 export type DialogError = HostProtocolError
 

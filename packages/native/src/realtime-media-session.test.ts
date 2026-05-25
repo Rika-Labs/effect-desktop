@@ -1,11 +1,27 @@
 import {
   type BridgeClientExchange,
   type BridgeClientResponse,
+  type HostProtocolEnvelope,
   HostProtocolEventEnvelope,
-  type HostProtocolRequestEnvelope
+  HostProtocolResponseEnvelope,
+  type HostProtocolRequestEnvelope,
+  HostProtocolStreamByRequestEnvelope,
+  makeDesktopClientProtocol,
+  rpcSupport
 } from "@orika/bridge"
-import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Stream } from "effect"
+import {
+  Cause,
+  Effect,
+  Exit,
+  Layer,
+  ManagedRuntime,
+  Option,
+  Queue,
+  type Schema,
+  Stream
+} from "effect"
 import { expect, test } from "bun:test"
+import { RpcClient, RpcSchema } from "effect/unstable/rpc"
 
 import {
   Native,
@@ -14,7 +30,6 @@ import {
   RealtimeMediaSessionLive,
   RealtimeMediaSessionMethodNames,
   RealtimeMediaSessionRpcs,
-  RealtimeMediaSessionRpcEvents,
   makeNativeCapabilitiesLayer,
   makeRealtimeMediaSessionMemoryClient,
   makeRealtimeMediaSessionPermissionDeniedError,
@@ -25,10 +40,27 @@ import {
 import {
   RealtimeMediaDeviceStateEvent,
   RealtimeMediaInterruptionEvent,
+  RealtimeMediaPermissionStateEvent,
   RealtimeMediaSessionOpenInput,
   RealtimeMediaSessionSelectDeviceInput,
+  RealtimeMediaSessionStateEvent,
   RealtimeMediaSessionSupportedResult
 } from "./contracts/index.js"
+
+const RealtimeMediaSessionEventTags = [
+  "RealtimeMediaSession.events.DeviceState",
+  "RealtimeMediaSession.events.PermissionState",
+  "RealtimeMediaSession.events.Interruption",
+  "RealtimeMediaSession.events.SessionState"
+] as const
+
+test("RealtimeMediaSession public surface omits the side event object", async () => {
+  const mediaModule = await import("./realtime-media-session.js")
+  const rootModule = await import("./index.js")
+
+  expect("RealtimeMediaSessionRpcEvents" in mediaModule).toBe(false)
+  expect("RealtimeMediaSessionRpcEvents" in rootModule).toBe(false)
+})
 
 test("RealtimeMediaSession declares a narrow RPC and event surface", () => {
   expect([...RealtimeMediaSessionMethodNames]).toEqual([
@@ -43,14 +75,35 @@ test("RealtimeMediaSession declares a narrow RPC and event surface", () => {
     "RealtimeMediaSession.close",
     "RealtimeMediaSession.selectDevice",
     "RealtimeMediaSession.interrupt",
-    "RealtimeMediaSession.isSupported"
+    "RealtimeMediaSession.isSupported",
+    ...RealtimeMediaSessionEventTags
   ])
-  expect(Object.keys(RealtimeMediaSessionRpcEvents)).toEqual([
-    "DeviceState",
-    "PermissionState",
-    "Interruption",
-    "SessionState"
-  ])
+})
+
+test("RealtimeMediaSession event schemas are owned by RPC stream contracts", () => {
+  const expectedSchemas: ReadonlyArray<
+    readonly [string, Schema.Codec<unknown, unknown, never, never>]
+  > = [
+    ["RealtimeMediaSession.events.DeviceState", RealtimeMediaDeviceStateEvent],
+    ["RealtimeMediaSession.events.PermissionState", RealtimeMediaPermissionStateEvent],
+    ["RealtimeMediaSession.events.Interruption", RealtimeMediaInterruptionEvent],
+    ["RealtimeMediaSession.events.SessionState", RealtimeMediaSessionStateEvent]
+  ]
+
+  for (const [tag, schema] of expectedSchemas) {
+    const eventRpc = RealtimeMediaSessionRpcs.requests.get(tag)
+    expect(eventRpc).toBeDefined()
+    expect(eventRpc === undefined ? false : RpcSchema.isStreamSchema(eventRpc.successSchema)).toBe(
+      true
+    )
+    if (eventRpc !== undefined && RpcSchema.isStreamSchema(eventRpc.successSchema)) {
+      expect(eventRpc.successSchema.success).toBe(schema)
+      expect(eventRpc.pipe(rpcSupport)).toMatchObject({
+        status: "partial",
+        reason: "host-media-startup-unverified"
+      })
+    }
+  }
 })
 
 test("RealtimeMediaSession memory client exercises success, partitioned streams, and replay", () =>
@@ -216,6 +269,88 @@ test("RealtimeMediaSession bridge client sends typed envelopes and decodes event
     })
   ))
 
+test("RealtimeMediaSession direct client consumes canonical RPC event streams", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const result = yield* directRealtimeMediaSessionInterruption({
+        type: "interruption",
+        profileId: "p1",
+        sessionId: "s1",
+        reason: "background"
+      })
+
+      expect(result.event).toEqual(
+        new RealtimeMediaInterruptionEvent({
+          type: "interruption",
+          profileId: "p1",
+          sessionId: "s1",
+          reason: "background"
+        })
+      )
+      expect(result.methods.toSorted()).toEqual([...RealtimeMediaSessionEventTags].toSorted())
+    })
+  ))
+
+test("RealtimeMediaSession direct client exposes the unpartitioned canonical event stream", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const result = yield* directRealtimeMediaSessionInterruption(
+        {
+          type: "interruption",
+          profileId: "p1",
+          sessionId: "s1",
+          reason: "background"
+        },
+        "all"
+      )
+
+      expect(result.event).toEqual(
+        new RealtimeMediaInterruptionEvent({
+          type: "interruption",
+          profileId: "p1",
+          sessionId: "s1",
+          reason: "background"
+        })
+      )
+      expect(result.methods.toSorted()).toEqual([...RealtimeMediaSessionEventTags].toSorted())
+    })
+  ))
+
+test("RealtimeMediaSession bridge client exposes the unpartitioned event stream", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const requests: HostProtocolRequestEnvelope[] = []
+      const exchange = realtimeMediaSessionExchange(requests, (request) => ({
+        kind: "success",
+        payload:
+          request.method === "RealtimeMediaSession.isSupported" ? { supported: true } : undefined
+      }))
+
+      const result = yield* runScoped(
+        Effect.gen(function* () {
+          const media = yield* RealtimeMediaSession
+          return yield* media.events().pipe(Stream.take(1), Stream.runCollect)
+        }),
+        Layer.provide(
+          RealtimeMediaSessionLive,
+          RealtimeMediaSessionSurface.bridgeClientLayer(exchange)
+        )
+      )
+
+      expect(Array.from(result)).toEqual([
+        new RealtimeMediaInterruptionEvent({
+          type: "interruption",
+          profileId: "p1",
+          sessionId: "s1",
+          reason: "background"
+        })
+      ])
+      expect(requests.map((request) => [request.method, request.payload])).toEqual([
+        ["RealtimeMediaSession.isSupported", null]
+      ])
+    })
+  ))
+
 test("RealtimeMediaSession bridge event streams fail typed unsupported when host startup is unverified", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -365,6 +500,84 @@ const realtimeMediaSessionExchange = (
         )
       : Stream.empty
 })
+
+const directRealtimeMediaSessionInterruption = (
+  payload: unknown,
+  mode: "all" | "session" = "session"
+) =>
+  Effect.gen(function* () {
+    const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
+    const requests: HostProtocolRequestEnvelope[] = []
+    let requestId = 0
+    const protocolLayer = Layer.effect(RpcClient.Protocol)(
+      makeDesktopClientProtocol(
+        {
+          send: (envelope) => {
+            if (envelope.kind !== "request") {
+              return Effect.void
+            }
+            requests.push(envelope)
+            const eventEnvelope =
+              envelope.method === "RealtimeMediaSession.events.Interruption"
+                ? Queue.offer(
+                    queue,
+                    new HostProtocolStreamByRequestEnvelope({
+                      kind: "stream",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_001,
+                      traceId: envelope.traceId,
+                      payload
+                    })
+                  )
+                : Effect.void
+            return Effect.all(
+              [
+                eventEnvelope,
+                Queue.offer(
+                  queue,
+                  new HostProtocolResponseEnvelope({
+                    kind: "response",
+                    id: envelope.id,
+                    timestamp: 1_710_000_000_002,
+                    traceId: envelope.traceId
+                  })
+                )
+              ],
+              { discard: true }
+            )
+          },
+          run: (onEnvelope) =>
+            Stream.fromQueue(queue).pipe(
+              Stream.runForEach(onEnvelope),
+              Effect.andThen(Effect.never)
+            )
+        },
+        {
+          nextRequestId: () => `realtime-media-event-request-${requestId++}`,
+          nextTraceId: () => "realtime-media-event-trace"
+        }
+      )
+    )
+
+    const event = yield* runScoped(
+      Effect.gen(function* () {
+        const media = yield* RealtimeMediaSession
+        const stream =
+          mode === "all"
+            ? media.events()
+            : media.interruptions({ profileId: "p1", sessionId: "s1" })
+        return yield* stream.pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+      }),
+      Layer.provide(RealtimeMediaSessionLive, RealtimeMediaSessionSurface.clientLayer).pipe(
+        Layer.provide(protocolLayer)
+      )
+    )
+
+    return {
+      event,
+      methods: requests.map((request) => request.method)
+    }
+  })
 
 const invalidOpenInput = (): RealtimeMediaSessionOpenInput => {
   const input = new RealtimeMediaSessionOpenInput({

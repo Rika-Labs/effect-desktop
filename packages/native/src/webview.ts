@@ -12,7 +12,6 @@ import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
-import { subscribeNativeEvent } from "./event-stream.js"
 export * from "./contracts/webview.js"
 import {
   type WebViewCapabilityName,
@@ -343,14 +342,25 @@ export const WebViewCapabilityFacts = Object.freeze([
   webViewCapabilityFact("attachDebugger", WebViewDebuggerSupport)
 ])
 
-export const WebViewRpcEvents = Object.freeze({
-  NavigationBlocked: { payload: WebViewNavigationBlockedEvent },
-  ApiCall: { payload: WebViewApiCallEvent },
-  Runtime: { payload: WebViewRuntimeEvent },
-  Frame: { payload: WebViewFrameEvent }
+const WebViewNavigationBlocked = NativeSurface.event("WebView", "NavigationBlocked", {
+  payload: WebViewNavigationBlockedEvent,
+  support: WebViewNavigationPolicySupport
 })
 
-export type WebViewRpcEvents = typeof WebViewRpcEvents
+const WebViewApiCall = NativeSurface.event("WebView", "ApiCall", {
+  payload: WebViewApiCallEvent,
+  support: NativeSurface.support.supported
+})
+
+const WebViewRuntime = NativeSurface.event("WebView", "RuntimeEvent", {
+  payload: WebViewRuntimeEvent,
+  support: NativeSurface.support.supported
+})
+
+const WebViewFrame = NativeSurface.event("WebView", "FrameEvent", {
+  payload: WebViewFrameEvent,
+  support: WebViewFrameRoutingSupport
+})
 
 const WebViewRpcGroup = RpcGroup.make(
   WebViewCreate,
@@ -366,7 +376,11 @@ const WebViewRpcGroup = RpcGroup.make(
   WebViewOpenDevTools,
   WebViewCloseDevTools,
   WebViewSetNavigationPolicy,
-  WebViewDestroy
+  WebViewDestroy,
+  WebViewNavigationBlocked,
+  WebViewApiCall,
+  WebViewRuntime,
+  WebViewFrame
 )
 
 export const WebViewRpcs: RpcGroup.RpcGroup<WebViewRpc> = WebViewRpcGroup
@@ -552,7 +566,35 @@ export const WebViewHandlersLive = WebViewRpcGroup.toLayer({
     Effect.gen(function* () {
       const webview = yield* WebView
       yield* webview.destroy(input.webview)
-    })
+    }),
+  "WebView.events.NavigationBlocked": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const webview = yield* WebView
+        return webview.onNavigationBlocked()
+      })
+    ),
+  "WebView.events.ApiCall": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const webview = yield* WebView
+        return webview.onApiCall()
+      })
+    ),
+  "WebView.events.RuntimeEvent": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const webview = yield* WebView
+        return webview.onRuntimeEvent()
+      })
+    ),
+  "WebView.events.FrameEvent": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const webview = yield* WebView
+        return webview.onFrameEvent()
+      })
+    )
 })
 
 export const WebViewSurface = NativeSurface.make("WebView", WebViewRpcGroup, {
@@ -560,8 +602,8 @@ export const WebViewSurface = NativeSurface.make("WebView", WebViewRpcGroup, {
   capabilities: WebViewCapabilityMethods,
   handlers: WebViewHandlersLive,
   capabilityFacts: WebViewCapabilityFacts,
-  client: (client) => webViewClientFromRpcClient(client, undefined),
-  bridgeClient: (client, exchange) => webViewClientFromRpcClient(client, exchange)
+  client: (client) => webViewClientFromRpcClient(client),
+  bridgeClient: (client, exchange) => webViewBridgeClientFromRpcClient(client, exchange)
 })
 
 export const webViewCapability = (
@@ -599,10 +641,7 @@ const makeWebViewService = (client: WebViewClientApi): WebViewServiceApi => {
   return Object.freeze(service)
 }
 
-const webViewClientFromRpcClient = (
-  client: DesktopRpcClient<WebViewRpc>,
-  exchange: BridgeClientExchange | undefined
-): WebViewClientApi => {
+const webViewClientFromRpcClient = (client: DesktopRpcClient<WebViewRpc>): WebViewClientApi => {
   const webViewClient: WebViewClientApi = {
     create: (input) =>
       decodeWebViewCreateInput(input).pipe(
@@ -690,43 +729,58 @@ const webViewClientFromRpcClient = (
           runWebViewRpc(client["WebView.destroy"](decoded), "WebView.destroy")
         )
       ),
-    onNavigationBlocked: () => subscribeWebViewNavigationBlockedEvent(exchange),
-    onApiCall: () => subscribeWebViewApiCallEvent(exchange),
-    onRuntimeEvent: (webview) => subscribeWebViewRuntimeEvent(exchange, webview),
-    onFrameEvent: (webview) => subscribeWebViewFrameEvent(exchange, webview)
+    onNavigationBlocked: () =>
+      runWebViewRpcStream(
+        client["WebView.events.NavigationBlocked"](undefined),
+        "WebView.events.NavigationBlocked"
+      ),
+    onApiCall: () =>
+      runWebViewRpcStream(client["WebView.events.ApiCall"](undefined), "WebView.events.ApiCall"),
+    onRuntimeEvent: (webview) => {
+      const stream = runWebViewRpcStream(
+        client["WebView.events.RuntimeEvent"](undefined),
+        "WebView.events.RuntimeEvent"
+      )
+      return webview === undefined
+        ? stream
+        : stream.pipe(Stream.filter((event) => event.webview.id === webview.id))
+    },
+    onFrameEvent: (webview) => {
+      const stream = runWebViewRpcStream(
+        client["WebView.events.FrameEvent"](undefined),
+        "WebView.events.FrameEvent"
+      )
+      return webview === undefined
+        ? stream
+        : stream.pipe(Stream.filter((event) => event.webview.id === webview.id))
+    }
   }
 
   return Object.freeze(webViewClient)
 }
 
-const subscribeWebViewNavigationBlockedEvent = (
-  exchange: BridgeClientExchange | undefined
-): Stream.Stream<WebViewNavigationBlockedEvent, WebViewError, never> =>
-  subscribeNativeEvent(exchange, "WebView.NavigationBlocked", WebViewNavigationBlockedEvent)
-
-const subscribeWebViewApiCallEvent = (
-  exchange: BridgeClientExchange | undefined
-): Stream.Stream<WebViewApiCallEvent, WebViewError, never> =>
-  subscribeNativeEvent(exchange, "WebView.ApiCall", WebViewApiCallEvent)
-
-const subscribeWebViewRuntimeEvent = (
-  exchange: BridgeClientExchange | undefined,
-  webview?: WebViewHandle
-): Stream.Stream<WebViewRuntimeEvent, WebViewError, never> => {
-  const stream = subscribeNativeEvent(exchange, "WebView.RuntimeEvent", WebViewRuntimeEvent)
-  return webview === undefined
-    ? stream
-    : stream.pipe(Stream.filter((event) => event.webview.id === webview.id))
-}
-
-const subscribeWebViewFrameEvent = (
-  exchange: BridgeClientExchange | undefined,
-  webview?: WebViewHandle
-): Stream.Stream<WebViewFrameEvent, WebViewError, never> => {
-  const stream = subscribeNativeEvent(exchange, "WebView.FrameEvent", WebViewFrameEvent)
-  return webview === undefined
-    ? stream
-    : stream.pipe(Stream.filter((event) => event.webview.id === webview.id))
+const webViewBridgeClientFromRpcClient = (
+  client: DesktopRpcClient<WebViewRpc>,
+  exchange: BridgeClientExchange
+): WebViewClientApi => {
+  const webViewClient = webViewClientFromRpcClient(client)
+  return Object.freeze({
+    ...webViewClient,
+    onNavigationBlocked: () => NativeSurface.subscribeEvent(exchange, WebViewNavigationBlocked),
+    onApiCall: () => NativeSurface.subscribeEvent(exchange, WebViewApiCall),
+    onRuntimeEvent: (webview) => {
+      const stream = NativeSurface.subscribeEvent(exchange, WebViewRuntime)
+      return webview === undefined
+        ? stream
+        : stream.pipe(Stream.filter((event) => event.webview.id === webview.id))
+    },
+    onFrameEvent: (webview) => {
+      const stream = NativeSurface.subscribeEvent(exchange, WebViewFrame)
+      return webview === undefined
+        ? stream
+        : stream.pipe(Stream.filter((event) => event.webview.id === webview.id))
+    }
+  } satisfies WebViewClientApi)
 }
 
 const defaultWebViewCreateOptions = (
@@ -818,6 +872,11 @@ const runWebViewRpc = <A, E>(
       Effect.fail(makeHostProtocolInvalidOutputError(operation, formatUnknownError(defect)))
     )
   )
+
+const runWebViewRpcStream = <A, E>(
+  stream: Stream.Stream<A, E, never>,
+  _operation: string
+): Stream.Stream<A, WebViewError, never> => stream.pipe(Stream.mapError(mapWebViewRpcClientError))
 
 const mapWebViewRpcClientError = (error: unknown): WebViewError =>
   isWebViewError(error)

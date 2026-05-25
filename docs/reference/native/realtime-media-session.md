@@ -41,6 +41,15 @@ before opening a session.
 
 All streams are partitioned by explicit `profileId` and `sessionId`. The memory client uses a bounded replaying `PubSub`, so tests can subscribe after setup and still observe recent events.
 
+The four event payload schemas are owned by canonical Effect RPC stream
+contracts: `RealtimeMediaSession.events.DeviceState`,
+`RealtimeMediaSession.events.PermissionState`,
+`RealtimeMediaSession.events.Interruption`, and
+`RealtimeMediaSession.events.SessionState`. The native bridge lowers those
+contracts to the existing host event methods
+`RealtimeMediaSession.DeviceState`, `RealtimeMediaSession.PermissionState`,
+`RealtimeMediaSession.Interruption`, and `RealtimeMediaSession.SessionState`.
+
 The production host emits host lifecycle events for `open`, `selectDevice`, `interrupt`, `close`, and CPAL stream failure:
 
 - `open` records a host-owned session, starts the selected microphone and speaker streams, emits permission state, device state, and active session state. If the OS denies capture or the device cannot be opened, `open` fails before a session is registered.
@@ -70,7 +79,10 @@ Use `makeRealtimeMediaSessionMemoryClient()` for deterministic success and failu
 
 ## Architecture-debt sweep
 
-No additional Effect wrapper debt was found in the touched RealtimeMediaSession, host adapter, or host transport area. The event-aware bridge client is already routed through `NativeSurface.make({ bridgeClient })`; this change keeps the new host behavior behind the existing native/web boundary instead of adding another bridge DSL. No follow-up issue was opened.
+Issue #1829 removed the public `RealtimeMediaSessionRpcEvents` side object by
+moving event payload ownership into canonical Effect RPC streams. The bridge
+client remains the native/web boundary adapter because it preserves host event
+method names and keeps the `isSupported` preflight before subscription.
 
 ## Related
 

@@ -1,14 +1,25 @@
 import { expect, test } from "bun:test"
 import {
   type BridgeClientExchange,
+  type HostProtocolEnvelope,
   HostProtocolEventEnvelope,
-  HostProtocolInvalidOutputError
+  HostProtocolInvalidOutputError,
+  HostProtocolResponseEnvelope,
+  type HostProtocolRequestEnvelope,
+  HostProtocolStreamByRequestEnvelope,
+  makeDesktopClientProtocol
 } from "@orika/bridge"
 import { makeResourceId } from "@orika/core"
-import { Cause, Effect, Exit, Schema, Stream } from "effect"
+import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Queue, Schema, Stream } from "effect"
+import { RpcClient, RpcSchema } from "effect/unstable/rpc"
 
-import { WebViewFrameEvent, WebViewRuntimeEvent } from "./contracts/webview.js"
-import { WebViewClient, WebViewSurface } from "./webview.js"
+import {
+  WebViewApiCallEvent,
+  WebViewFrameEvent,
+  WebViewNavigationBlockedEvent,
+  WebViewRuntimeEvent
+} from "./contracts/webview.js"
+import { WebViewClient, WebViewRpcs, WebViewSurface } from "./webview.js"
 
 const webviewHandle = {
   kind: "webview",
@@ -25,6 +36,40 @@ const webviewFrameHandle = {
   ownerScope: "webview:webview-1",
   state: "open"
 } as const
+
+test("WebView public surface omits the side event object", async () => {
+  const webViewModule = await import("./webview.js")
+  const rootModule = await import("./index.js")
+
+  expect("WebViewRpcEvents" in webViewModule).toBe(false)
+  expect("WebViewRpcEvents" in rootModule).toBe(false)
+})
+
+test("WebView event schemas are owned by RPC stream contracts", () => {
+  const expectedSchemas: ReadonlyArray<
+    readonly [string, Schema.Codec<unknown, unknown, never, never>]
+  > = [
+    ["WebView.events.NavigationBlocked", WebViewNavigationBlockedEvent],
+    ["WebView.events.ApiCall", WebViewApiCallEvent],
+    ["WebView.events.RuntimeEvent", WebViewRuntimeEvent],
+    ["WebView.events.FrameEvent", WebViewFrameEvent]
+  ]
+
+  for (const [tag, schema] of expectedSchemas) {
+    const eventRpc = WebViewRpcs.requests.get(tag)
+    const eventDoc = WebViewSurface.schemaDocs.find((doc) => doc.tag === tag)
+
+    expect(eventRpc).toBeDefined()
+    expect(eventRpc === undefined ? false : RpcSchema.isStreamSchema(eventRpc.successSchema)).toBe(
+      true
+    )
+    if (eventRpc !== undefined && RpcSchema.isStreamSchema(eventRpc.successSchema)) {
+      expect(eventRpc.successSchema.success).toBe(schema)
+    }
+    expect(eventDoc?.kind).toBe("stream")
+    expect(eventDoc?.callable).toBe(true)
+  }
+})
 
 test("WebView runtime events require phase-specific payload fields", () =>
   Effect.runPromise(
@@ -281,7 +326,102 @@ test("WebView frame bridge events reject inconsistent payloads as InvalidOutput"
     })
   ))
 
+test("WebView direct client consumes canonical RPC event streams", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const result = yield* directWebViewRuntimeEvent({
+        webview: webviewHandle,
+        phase: "page-load-started",
+        url: "https://example.test/"
+      })
+
+      expect(result.event).toMatchObject({
+        webview: webviewHandle,
+        phase: "page-load-started",
+        url: "https://example.test/"
+      })
+      expect(result.methods).toEqual(["WebView.events.RuntimeEvent"])
+    })
+  ))
+
 const frameEventBase = () => ({
   webview: webviewHandle,
   frame: webviewFrameHandle
 })
+
+const directWebViewRuntimeEvent = (payload: unknown) =>
+  Effect.gen(function* () {
+    const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
+    const requests: HostProtocolRequestEnvelope[] = []
+    const protocolLayer = Layer.effect(RpcClient.Protocol)(
+      makeDesktopClientProtocol(
+        {
+          send: (envelope) => {
+            if (envelope.kind !== "request") {
+              return Effect.void
+            }
+            requests.push(envelope)
+            return Effect.all(
+              [
+                Queue.offer(
+                  queue,
+                  new HostProtocolStreamByRequestEnvelope({
+                    kind: "stream",
+                    id: envelope.id,
+                    timestamp: 1_710_000_000_001,
+                    traceId: envelope.traceId,
+                    payload
+                  })
+                ),
+                Queue.offer(
+                  queue,
+                  new HostProtocolResponseEnvelope({
+                    kind: "response",
+                    id: envelope.id,
+                    timestamp: 1_710_000_000_002,
+                    traceId: envelope.traceId
+                  })
+                )
+              ],
+              { discard: true }
+            )
+          },
+          run: (onEnvelope) =>
+            Stream.fromQueue(queue).pipe(
+              Stream.runForEach(onEnvelope),
+              Effect.andThen(Effect.never)
+            )
+        },
+        {
+          nextRequestId: () => "webview-runtime-event-request",
+          nextTraceId: () => "webview-runtime-event-trace"
+        }
+      )
+    )
+
+    const event = yield* runScoped(
+      Effect.gen(function* () {
+        const client = yield* WebViewClient
+        return yield* client
+          .onRuntimeEvent(webviewHandle)
+          .pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+      }),
+      Layer.provide(WebViewSurface.clientLayer, protocolLayer)
+    )
+
+    return {
+      event,
+      methods: requests.map((request) => request.method)
+    }
+  })
+
+const runScoped = <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  layer: Layer.Layer<R, never, never>
+): Effect.Effect<A, E, never> =>
+  Effect.gen(function* () {
+    const runtime = ManagedRuntime.make(layer)
+    const result = yield* Effect.promise(() => runtime.runPromise(effect))
+    yield* Effect.promise(() => runtime.dispose())
+    return result
+  })

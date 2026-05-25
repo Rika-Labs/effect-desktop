@@ -10,7 +10,7 @@ effect_version: 4
 
 `WebRequest` declares the typed interception surface for ordered request and response interceptors scoped to a `SessionProfileHandle` — blocking requests, redirecting requests, modifying response headers, and observing interceptor lifecycle events.
 
-The public service is Layer-first and test-substitutable. The TypeScript service checks `native.invoke` permissions before client side effects and exposes `WebRequest.Event` as a typed stream. The memory client proves the support query and event paths without renderer monkeypatching.
+The public service is Layer-first and test-substitutable. The TypeScript service checks `native.invoke` permissions before client side effects and exposes `events(profile?)` as a typed stream. The payload schema is owned by the canonical `WebRequest.events.Event` RPC stream contract; the native bridge lowers that stream to the existing `WebRequest.Event` host event method. The memory client proves the support query and event paths without renderer monkeypatching.
 
 ## Methods
 
@@ -21,7 +21,7 @@ The only callable RPC on this surface is the support query:
 | `isSupported` | `void`                          | `{ supported, reason? }` |
 | `events`      | optional `SessionProfileHandle` | stream of events         |
 
-`events(profile?)` emits `registered` and `removed` lifecycle events with order, request phase, action, URL pattern, profile, and interceptor handle.
+`events(profile?)` emits `registered` and `removed` lifecycle events with order, request phase, action, URL pattern, profile, and interceptor handle. Direct generated clients consume `WebRequest.events.Event`; bridge-backed clients subscribe to `WebRequest.Event` and keep filtering by `profile.id` in TypeScript.
 
 ## Capability facts (non-callable)
 

@@ -54,6 +54,10 @@ before a native popup is created and emits the same event with a popup-policy
 reason. `openExternal` approval is still modeled as policy denial rather than
 automatic delegation to `Shell.openExternal`.
 
+The navigation-blocked payload schema is owned by the canonical
+`WebView.events.NavigationBlocked` RPC stream contract. Bridge clients preserve
+the existing `WebView.NavigationBlocked` host event method.
+
 Subframe identity is not host-backed today. `listFrames` and `postToFrame` are
 non-callable capability facts advertised with `host-frame-routing-unavailable`;
 `WebView.FrameEvent` is Schema-typed but has no host adapter. The current
@@ -68,6 +72,11 @@ media session, file-input, download, and browser permission prompt events are
 declared in the event phase contract but are not emitted by the current Wry host
 adapter because Wry does not expose portable public callbacks for them on all
 desktop targets.
+
+`WebView.events.ApiCall`, `WebView.events.RuntimeEvent`, and
+`WebView.events.FrameEvent` own the canonical RPC stream schemas for preload,
+runtime, and frame events. Bridge clients continue to subscribe to
+`WebView.ApiCall`, `WebView.RuntimeEvent`, and `WebView.FrameEvent`.
 
 `Download` now exposes typed start, pause, resume, cancel, list, and event
 contracts scoped to `SessionProfileHandle`, but the host adapter is still

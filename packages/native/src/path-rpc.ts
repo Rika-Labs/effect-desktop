@@ -52,10 +52,6 @@ export const PathDownloads = nativeRpc("Path", "downloads", {
   support: NativeRpcSupport.supported
 })
 
-export const PathRpcEvents = Object.freeze({})
-
-export type PathRpcEvents = typeof PathRpcEvents
-
 const PathRpcGroup = RpcGroup.make(
   PathAppData,
   PathCache,

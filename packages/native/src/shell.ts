@@ -20,7 +20,7 @@ import {
   ShellShowItemInFolderInput,
   ShellTrashItemInput
 } from "./contracts/shell.js"
-import { ShellMethodNames, ShellRpcEvents as ShellRpcEventsValue, ShellRpcs } from "./shell-rpc.js"
+import { ShellMethodNames, ShellRpcs } from "./shell-rpc.js"
 
 export {
   ShellMethodNames,
@@ -59,10 +59,6 @@ const ShellUrlControlCharacters = /[\u0000-\u001f\u007f]/u
 const ShellPathControlCharacters = /[\u0000-\u001f\u007f]/u
 
 export type ShellError = HostProtocolError
-
-export const ShellRpcEvents = ShellRpcEventsValue
-
-export type ShellRpcEvents = typeof ShellRpcEvents
 
 const ShellRpcGroup = ShellRpcs
 

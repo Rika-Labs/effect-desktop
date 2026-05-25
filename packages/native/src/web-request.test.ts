@@ -1,11 +1,18 @@
 import { expect, test } from "bun:test"
 import {
   type BridgeClientExchange,
+  type HostProtocolEnvelope,
   HostProtocolEventEnvelope,
-  HostProtocolInvalidOutputError
+  HostProtocolInvalidOutputError,
+  HostProtocolResponseEnvelope,
+  type HostProtocolRequestEnvelope,
+  HostProtocolStreamByRequestEnvelope,
+  makeDesktopClientProtocol,
+  rpcSupport
 } from "@orika/bridge"
 import { makeResourceId } from "@orika/core"
-import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Schema, Stream } from "effect"
+import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Queue, Schema, Stream } from "effect"
+import { RpcClient, RpcSchema } from "effect/unstable/rpc"
 
 import { makeNativeCapabilityManifest } from "./capabilities.js"
 import {
@@ -58,6 +65,14 @@ const interceptorSnapshot = {
   urlPattern: "https://example.test/*",
   order: 0
 } as const
+
+test("WebRequest public surface omits the side event object", async () => {
+  const webRequestModule = await import("./web-request.js")
+  const rootModule = await import("./index.js")
+
+  expect("WebRequestRpcEvents" in webRequestModule).toBe(false)
+  expect("WebRequestRpcEvents" in rootModule).toBe(false)
+})
 
 test("WebRequest before-request redirect action requires a matching redirect URL", () =>
   Effect.runPromise(
@@ -277,11 +292,21 @@ test("WebRequest events reject inconsistent failure messages", () => {
   }
 })
 
-test("WebRequest exposes only isSupported as a callable RPC", () => {
+test("WebRequest event schema is owned by the RPC stream contract", () => {
   const callableTags = Array.from(WebRequestRpcs.requests.keys()).toSorted()
-  expect(callableTags).toEqual(["WebRequest.isSupported"])
+  expect(callableTags).toEqual(["WebRequest.events.Event", "WebRequest.isSupported"])
   for (const method of UnsupportedMethods) {
     expect(callableTags).not.toContain(`WebRequest.${method}`)
+  }
+
+  const eventRpc = WebRequestRpcs.requests.get("WebRequest.events.Event")
+  expect(eventRpc).toBeDefined()
+  expect(eventRpc === undefined ? false : RpcSchema.isStreamSchema(eventRpc.successSchema)).toBe(
+    true
+  )
+  if (eventRpc !== undefined && RpcSchema.isStreamSchema(eventRpc.successSchema)) {
+    expect(eventRpc.successSchema.success).toBe(WebRequestEvent)
+    expect(eventRpc.pipe(rpcSupport)).toEqual(UnsupportedSupport)
   }
 })
 
@@ -310,7 +335,14 @@ test("WebRequest capability facts surface in the manifest and stay non-callable"
       const callableTags = WebRequestSurface.schemaDocs
         .filter((doc) => doc.callable)
         .map((doc) => doc.tag)
-      expect(callableTags).toEqual(["WebRequest.isSupported"])
+      expect(callableTags.toSorted()).toEqual(["WebRequest.events.Event", "WebRequest.isSupported"])
+
+      const eventDoc = WebRequestSurface.schemaDocs.find(
+        (doc) => doc.tag === "WebRequest.events.Event"
+      )
+      expect(eventDoc?.kind).toBe("stream")
+      expect(eventDoc?.callable).toBe(true)
+      expect(eventDoc?.support).toEqual(UnsupportedSupport)
 
       const nonCallableTags = WebRequestSurface.schemaDocs
         .filter((doc) => !doc.callable)
@@ -319,6 +351,16 @@ test("WebRequest capability facts surface in the manifest and stay non-callable"
       expect(nonCallableTags).toEqual(
         UnsupportedMethods.map((method) => `WebRequest.${method}`).toSorted()
       )
+    })
+  ))
+
+test("WebRequest direct client consumes the canonical RPC event stream", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const result = yield* directWebRequestEvent(eventBase())
+
+      expect(result.event).toMatchObject(eventBase())
+      expect(result.methods).toEqual(["WebRequest.events.Event"])
     })
   ))
 
@@ -438,6 +480,7 @@ test("WebRequest bridge client rejects inconsistent event messages as InvalidOut
 const eventBase = () => ({
   type: "web-request-event",
   timestamp: 1_710_000_000_000,
+  phase: "registered",
   interceptor: webRequestInterceptor,
   profile: sessionProfileHandle,
   requestPhase: "before-request",
@@ -445,6 +488,72 @@ const eventBase = () => ({
   action: "block",
   order: 1
 })
+
+const directWebRequestEvent = (payload: unknown) =>
+  Effect.gen(function* () {
+    const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
+    const requests: HostProtocolRequestEnvelope[] = []
+    const protocolLayer = Layer.effect(RpcClient.Protocol)(
+      makeDesktopClientProtocol(
+        {
+          send: (envelope) => {
+            if (envelope.kind !== "request") {
+              return Effect.void
+            }
+            requests.push(envelope)
+            return Effect.all(
+              [
+                Queue.offer(
+                  queue,
+                  new HostProtocolStreamByRequestEnvelope({
+                    kind: "stream",
+                    id: envelope.id,
+                    timestamp: 1_710_000_000_001,
+                    traceId: envelope.traceId,
+                    payload
+                  })
+                ),
+                Queue.offer(
+                  queue,
+                  new HostProtocolResponseEnvelope({
+                    kind: "response",
+                    id: envelope.id,
+                    timestamp: 1_710_000_000_002,
+                    traceId: envelope.traceId
+                  })
+                )
+              ],
+              { discard: true }
+            )
+          },
+          run: (onEnvelope) =>
+            Stream.fromQueue(queue).pipe(
+              Stream.runForEach(onEnvelope),
+              Effect.andThen(Effect.never)
+            )
+        },
+        {
+          nextRequestId: () => "web-request-event-request",
+          nextTraceId: () => "web-request-event-trace"
+        }
+      )
+    )
+
+    const event = yield* runScoped(
+      Effect.gen(function* () {
+        const client = yield* WebRequestClient
+        return yield* client
+          .events(sessionProfileHandle)
+          .pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+      }),
+      Layer.provide(WebRequestSurface.clientLayer, protocolLayer)
+    )
+
+    return {
+      event,
+      methods: requests.map((request) => request.method)
+    }
+  })
 
 const runScoped = <A, E, R>(
   effect: Effect.Effect<A, E, R>,

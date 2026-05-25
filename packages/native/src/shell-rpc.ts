@@ -41,10 +41,6 @@ export const ShellTrashItem = nativeRpc("Shell", "trashItem", {
   support: NativeRpcSupport.supported
 })
 
-export const ShellRpcEvents = Object.freeze({})
-
-export type ShellRpcEvents = typeof ShellRpcEvents
-
 const ShellRpcGroup = RpcGroup.make(
   ShellOpenExternal,
   ShellShowItemInFolder,

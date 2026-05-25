@@ -72,8 +72,11 @@ setting.
 
 ## Events
 
-The current TypeScript event stream is `onAppearanceChanged()`, which emits a
-`SystemAppearanceChangedEvent` snapshot:
+The TypeScript event stream is `onAppearanceChanged()`, which emits a
+`SystemAppearanceChangedEvent` snapshot. The payload schema is owned by the
+canonical `SystemAppearance.events.AppearanceChanged` RPC stream contract; the
+native bridge lowers that stream to the existing
+`SystemAppearance.AppearanceChanged` host event method.
 
 ```ts
 {

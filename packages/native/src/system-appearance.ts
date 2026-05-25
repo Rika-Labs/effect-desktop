@@ -10,7 +10,6 @@ import { Context, Effect, Layer, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
-import { subscribeNativeEvent } from "./event-stream.js"
 import {
   type SystemAppearanceColor,
   SystemAppearanceAccentColorResult,
@@ -23,8 +22,8 @@ import {
   SystemAppearanceSupportedResult
 } from "./contracts/system-appearance.js"
 import {
+  SystemAppearanceAppearanceChanged,
   SystemAppearanceCapabilityMethods,
-  SystemAppearanceRpcEvents as SystemAppearanceRpcEventsValue,
   SystemAppearanceRpcs
 } from "./system-appearance-rpc.js"
 
@@ -33,6 +32,7 @@ export {
   SystemAppearanceGetAppearance,
   SystemAppearanceGetReducedMotion,
   SystemAppearanceGetReducedTransparency,
+  SystemAppearanceAppearanceChanged,
   SystemAppearanceIsSupported,
   SystemAppearanceMethodNames,
   SystemAppearanceRpcs,
@@ -43,9 +43,6 @@ export type SystemAppearanceError = HostProtocolError
 
 const UnsupportedReason = "host-adapter-unimplemented"
 const StrictParseOptions = { onExcessProperty: "error" } as const
-
-export const SystemAppearanceRpcEvents = SystemAppearanceRpcEventsValue
-export type SystemAppearanceRpcEvents = typeof SystemAppearanceRpcEvents
 
 const SystemAppearanceRpcGroup = SystemAppearanceRpcs
 
@@ -161,7 +158,14 @@ export const SystemAppearanceHandlersLive = SystemAppearanceRpcGroup.toLayer({
       const appearance = yield* SystemAppearance
       const supported = yield* appearance.isSupported(input.method)
       return new SystemAppearanceSupportedResult({ supported })
-    })
+    }),
+  "SystemAppearance.events.AppearanceChanged": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const appearance = yield* SystemAppearance
+        return appearance.onAppearanceChanged()
+      })
+    )
 })
 
 export const SystemAppearanceSurface = NativeSurface.make(
@@ -171,14 +175,13 @@ export const SystemAppearanceSurface = NativeSurface.make(
     service: SystemAppearanceClient,
     capabilities: SystemAppearanceCapabilityMethods,
     handlers: SystemAppearanceHandlersLive,
-    client: (client) => systemAppearanceClientFromRpcClient(client, undefined),
-    bridgeClient: (client, exchange) => systemAppearanceClientFromRpcClient(client, exchange)
+    client: (client) => systemAppearanceClientFromRpcClient(client),
+    bridgeClient: (client, exchange) => systemAppearanceBridgeClientFromRpcClient(client, exchange)
   }
 )
 
 const systemAppearanceClientFromRpcClient = (
-  client: DesktopRpcClient<SystemAppearanceRpc>,
-  exchange: BridgeClientExchange | undefined
+  client: DesktopRpcClient<SystemAppearanceRpc>
 ): SystemAppearanceClientApi =>
   Object.freeze({
     getAppearance: () =>
@@ -201,7 +204,11 @@ const systemAppearanceClientFromRpcClient = (
         client["SystemAppearance.getReducedTransparency"](undefined),
         "SystemAppearance.getReducedTransparency"
       ),
-    onAppearanceChanged: () => supportedAppearanceChangedEvent(client, exchange),
+    onAppearanceChanged: () =>
+      runSystemAppearanceRpcStream(
+        client["SystemAppearance.events.AppearanceChanged"](undefined),
+        "SystemAppearance.events.AppearanceChanged"
+      ),
     isSupported: (method) =>
       runSystemAppearanceRpc(
         client["SystemAppearance.isSupported"](new SystemAppearanceIsSupportedInput({ method })),
@@ -209,9 +216,18 @@ const systemAppearanceClientFromRpcClient = (
       )
   } satisfies SystemAppearanceClientApi)
 
+const systemAppearanceBridgeClientFromRpcClient = (
+  client: DesktopRpcClient<SystemAppearanceRpc>,
+  exchange: BridgeClientExchange
+): SystemAppearanceClientApi =>
+  Object.freeze({
+    ...systemAppearanceClientFromRpcClient(client),
+    onAppearanceChanged: () => supportedAppearanceChangedEvent(client, exchange)
+  } satisfies SystemAppearanceClientApi)
+
 const supportedAppearanceChangedEvent = (
   client: DesktopRpcClient<SystemAppearanceRpc>,
-  exchange: BridgeClientExchange | undefined
+  exchange: BridgeClientExchange
 ): Stream.Stream<SystemAppearanceChangedEvent, SystemAppearanceError, never> =>
   Stream.unwrap(
     runSystemAppearanceRpc(
@@ -222,17 +238,15 @@ const supportedAppearanceChangedEvent = (
     ).pipe(
       Effect.map((result) =>
         result.supported
-          ? subscribeSystemAppearanceEvent(exchange, "SystemAppearance.AppearanceChanged")
+          ? NativeSurface.subscribeEvent(
+              exchange,
+              SystemAppearanceAppearanceChanged,
+              StrictParseOptions
+            )
           : Stream.fail(unsupportedError("SystemAppearance.AppearanceChanged"))
       )
     )
   )
-
-const subscribeSystemAppearanceEvent = (
-  exchange: BridgeClientExchange | undefined,
-  method: "SystemAppearance.AppearanceChanged"
-): Stream.Stream<SystemAppearanceChangedEvent, SystemAppearanceError, never> =>
-  subscribeNativeEvent(exchange, method, SystemAppearanceChangedEvent, StrictParseOptions)
 
 const runSystemAppearanceRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
@@ -244,6 +258,12 @@ const runSystemAppearanceRpc = <A, E>(
       Effect.fail(makeHostProtocolInvalidOutputError(operation, formatUnknownError(defect)))
     )
   )
+
+const runSystemAppearanceRpcStream = <A, E>(
+  stream: Stream.Stream<A, E, never>,
+  _operation: string
+): Stream.Stream<A, SystemAppearanceError, never> =>
+  stream.pipe(Stream.mapError(mapSystemAppearanceRpcClientError))
 
 const mapSystemAppearanceRpcClientError = (error: unknown): SystemAppearanceError =>
   isSystemAppearanceError(error)

@@ -10,8 +10,7 @@ import {
 import { type DesktopRpcClient, P } from "@orika/core"
 import { Context, Effect, Layer, PubSub, Schema, Stream } from "effect"
 
-import { subscribeNativeEvent } from "./event-stream.js"
-import { decodeNativeInput, runNativeRpc } from "./native-client.js"
+import { decodeNativeInput, runNativeRpc, runNativeRpcStream } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
 import {
@@ -80,21 +79,36 @@ export const RealtimeMediaSessionIsSupported = NativeSurface.rpc(Surface, "isSup
   support: NativeSurface.support.supported
 })
 
-export const RealtimeMediaSessionRpcEvents = Object.freeze({
-  DeviceState: { payload: RealtimeMediaDeviceStateEvent },
-  PermissionState: { payload: RealtimeMediaPermissionStateEvent },
-  Interruption: { payload: RealtimeMediaInterruptionEvent },
-  SessionState: { payload: RealtimeMediaSessionStateEvent }
+const RealtimeMediaDeviceState = NativeSurface.event(Surface, "DeviceState", {
+  payload: RealtimeMediaDeviceStateEvent,
+  support: MacOsRealtimeMediaSessionSupport
 })
 
-export type RealtimeMediaSessionRpcEvents = typeof RealtimeMediaSessionRpcEvents
+const RealtimeMediaPermissionState = NativeSurface.event(Surface, "PermissionState", {
+  payload: RealtimeMediaPermissionStateEvent,
+  support: MacOsRealtimeMediaSessionSupport
+})
+
+const RealtimeMediaInterruption = NativeSurface.event(Surface, "Interruption", {
+  payload: RealtimeMediaInterruptionEvent,
+  support: MacOsRealtimeMediaSessionSupport
+})
+
+const RealtimeMediaSessionState = NativeSurface.event(Surface, "SessionState", {
+  payload: RealtimeMediaSessionStateEvent,
+  support: MacOsRealtimeMediaSessionSupport
+})
 
 const RealtimeMediaSessionRpcGroup = RpcGroup.make(
   RealtimeMediaSessionOpen,
   RealtimeMediaSessionClose,
   RealtimeMediaSessionSelectDevice,
   RealtimeMediaSessionInterrupt,
-  RealtimeMediaSessionIsSupported
+  RealtimeMediaSessionIsSupported,
+  RealtimeMediaDeviceState,
+  RealtimeMediaPermissionState,
+  RealtimeMediaInterruption,
+  RealtimeMediaSessionState
 )
 
 export const RealtimeMediaSessionRpcs: RpcGroup.RpcGroup<RealtimeMediaSessionRpc> =
@@ -134,7 +148,7 @@ export interface RealtimeMediaSessionClientApi {
     never
   >
   readonly events: (
-    input: RealtimeMediaSessionIdentity
+    input?: RealtimeMediaSessionIdentity
   ) => Stream.Stream<RealtimeMediaSessionEvent, RealtimeMediaSessionError, never>
 }
 
@@ -160,7 +174,7 @@ export interface RealtimeMediaSessionServiceApi extends Omit<
     input: RealtimeMediaSessionIdentity
   ) => Stream.Stream<RealtimeMediaSessionStateEvent, RealtimeMediaSessionError, never>
   readonly events: (
-    input: RealtimeMediaSessionIdentity
+    input?: RealtimeMediaSessionIdentity
   ) => Stream.Stream<RealtimeMediaSessionEvent, RealtimeMediaSessionError, never>
 }
 
@@ -225,7 +239,35 @@ export const RealtimeMediaSessionHandlersLive = RealtimeMediaSessionRpcGroup.toL
     Effect.gen(function* () {
       const media = yield* RealtimeMediaSession
       return yield* media.isSupported()
-    })
+    }),
+  "RealtimeMediaSession.events.DeviceState": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const media = yield* RealtimeMediaSession
+        return media.events().pipe(Stream.filter(isRealtimeMediaDeviceStateEvent))
+      })
+    ),
+  "RealtimeMediaSession.events.PermissionState": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const media = yield* RealtimeMediaSession
+        return media.events().pipe(Stream.filter(isRealtimeMediaPermissionStateEvent))
+      })
+    ),
+  "RealtimeMediaSession.events.Interruption": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const media = yield* RealtimeMediaSession
+        return media.events().pipe(Stream.filter(isRealtimeMediaInterruptionEvent))
+      })
+    ),
+  "RealtimeMediaSession.events.SessionState": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const media = yield* RealtimeMediaSession
+        return media.events().pipe(Stream.filter(isRealtimeMediaSessionStateEvent))
+      })
+    )
 })
 
 export const RealtimeMediaSessionSurface = NativeSurface.make(
@@ -235,8 +277,9 @@ export const RealtimeMediaSessionSurface = NativeSurface.make(
     service: RealtimeMediaSessionClient,
     capabilities: RealtimeMediaSessionCapabilityMethods,
     handlers: RealtimeMediaSessionHandlersLive,
-    client: (client) => realtimeMediaSessionClientFromRpcClient(client, undefined),
-    bridgeClient: (client, exchange) => realtimeMediaSessionClientFromRpcClient(client, exchange)
+    client: (client) => realtimeMediaSessionClientFromRpcClient(client),
+    bridgeClient: (client, exchange) =>
+      realtimeMediaSessionBridgeClientFromRpcClient(client, exchange)
   }
 )
 
@@ -336,18 +379,20 @@ export const makeRealtimeMediaSessionMemoryClient = (
           })
         ),
       events: (input) =>
-        Stream.unwrap(
-          validateRealtimeMediaSessionIdentity(input, "RealtimeMediaSession.events").pipe(
-            Effect.map((valid) =>
-              Stream.fromPubSub(pubsub).pipe(
-                Stream.filter(
-                  (event) =>
-                    event.profileId === valid.profileId && event.sessionId === valid.sessionId
+        input === undefined
+          ? Stream.fromPubSub(pubsub)
+          : Stream.unwrap(
+              validateRealtimeMediaSessionIdentity(input, "RealtimeMediaSession.events").pipe(
+                Effect.map((valid) =>
+                  Stream.fromPubSub(pubsub).pipe(
+                    Stream.filter(
+                      (event) =>
+                        event.profileId === valid.profileId && event.sessionId === valid.sessionId
+                    )
+                  )
                 )
               )
             )
-          )
-        )
     } satisfies RealtimeMediaSessionClientApi)
   })
 
@@ -377,11 +422,13 @@ export const makeRealtimeMediaSessionUnsupportedClient = (): RealtimeMediaSessio
         })
       ),
     events: (input) =>
-      Stream.unwrap(
-        validateRealtimeMediaSessionIdentity(input, "RealtimeMediaSession.events").pipe(
-          Effect.map(() => Stream.fail(unsupportedError("RealtimeMediaSession.events")))
-        )
-      )
+      input === undefined
+        ? Stream.fail(unsupportedError("RealtimeMediaSession.events"))
+        : Stream.unwrap(
+            validateRealtimeMediaSessionIdentity(input, "RealtimeMediaSession.events").pipe(
+              Effect.map(() => Stream.fail(unsupportedError("RealtimeMediaSession.events")))
+            )
+          )
   } satisfies RealtimeMediaSessionClientApi)
 
 export const makeRealtimeMediaSessionPermissionDeniedError = (
@@ -396,8 +443,7 @@ export const makeRealtimeMediaSessionPermissionDeniedError = (
   })
 
 const realtimeMediaSessionClientFromRpcClient = (
-  client: DesktopRpcClient<RealtimeMediaSessionRpc>,
-  exchange: BridgeClientExchange | undefined
+  client: DesktopRpcClient<RealtimeMediaSessionRpc>
 ): RealtimeMediaSessionClientApi =>
   Object.freeze({
     open: (input) =>
@@ -442,37 +488,62 @@ const realtimeMediaSessionClientFromRpcClient = (
         "RealtimeMediaSession.isSupported"
       ),
     events: (input) =>
-      Stream.unwrap(
-        validateRealtimeMediaSessionIdentity(input, "RealtimeMediaSession.events").pipe(
-          Effect.flatMap((valid) =>
-            runRealtimeMediaSessionRpc(
-              client["RealtimeMediaSession.isSupported"](undefined),
-              "RealtimeMediaSession.isSupported"
-            ).pipe(
-              Effect.map((support) => {
-                if (!support.supported) {
-                  return Stream.fail(
-                    unsupportedError(
-                      "RealtimeMediaSession.events",
-                      support.reason ?? UnsupportedReason
-                    )
-                  )
-                }
-                return subscribeRealtimeMediaSessionEvent(exchange).pipe(
-                  Stream.filter(
-                    (event) =>
-                      event.profileId === valid.profileId && event.sessionId === valid.sessionId
+      filterRealtimeMediaSessionEvents(realtimeMediaSessionEventStreams(client), input)
+  } satisfies RealtimeMediaSessionClientApi)
+
+const realtimeMediaSessionBridgeClientFromRpcClient = (
+  client: DesktopRpcClient<RealtimeMediaSessionRpc>,
+  exchange: BridgeClientExchange
+): RealtimeMediaSessionClientApi =>
+  Object.freeze({
+    ...realtimeMediaSessionClientFromRpcClient(client),
+    events: (input) =>
+      filterRealtimeMediaSessionEvents(
+        Stream.unwrap(
+          runRealtimeMediaSessionRpc(
+            client["RealtimeMediaSession.isSupported"](undefined),
+            "RealtimeMediaSession.isSupported"
+          ).pipe(
+            Effect.map((support) => {
+              if (!support.supported) {
+                return Stream.fail(
+                  unsupportedError(
+                    "RealtimeMediaSession.events",
+                    support.reason ?? UnsupportedReason
                   )
                 )
-              })
-            )
+              }
+              return subscribeRealtimeMediaSessionEvent(exchange)
+            })
           )
-        )
+        ),
+        input
       )
   } satisfies RealtimeMediaSessionClientApi)
 
-const subscribeRealtimeMediaSessionEvent = (
-  exchange: BridgeClientExchange | undefined
+const filterRealtimeMediaSessionEvents = (
+  stream: Stream.Stream<RealtimeMediaSessionEvent, RealtimeMediaSessionError, never>,
+  input: RealtimeMediaSessionIdentity | undefined
+): Stream.Stream<RealtimeMediaSessionEvent, RealtimeMediaSessionError, never> => {
+  if (input === undefined) {
+    return stream
+  }
+
+  return Stream.unwrap(
+    validateRealtimeMediaSessionIdentity(input, "RealtimeMediaSession.events").pipe(
+      Effect.map((valid) =>
+        stream.pipe(
+          Stream.filter(
+            (event) => event.profileId === valid.profileId && event.sessionId === valid.sessionId
+          )
+        )
+      )
+    )
+  )
+}
+
+const realtimeMediaSessionEventStreams = (
+  client: DesktopRpcClient<RealtimeMediaSessionRpc>
 ): Stream.Stream<RealtimeMediaSessionEvent, RealtimeMediaSessionError, never> => {
   const asEvent = <A extends RealtimeMediaSessionEvent>(
     stream: Stream.Stream<A, RealtimeMediaSessionError, never>
@@ -481,33 +552,47 @@ const subscribeRealtimeMediaSessionEvent = (
   return Stream.mergeAll(
     [
       asEvent(
-        subscribeNativeEvent(
-          exchange,
-          "RealtimeMediaSession.DeviceState",
-          RealtimeMediaDeviceStateEvent
+        runRealtimeMediaSessionRpcStream(
+          client["RealtimeMediaSession.events.DeviceState"](undefined),
+          "RealtimeMediaSession.events.DeviceState"
         )
       ),
       asEvent(
-        subscribeNativeEvent(
-          exchange,
-          "RealtimeMediaSession.PermissionState",
-          RealtimeMediaPermissionStateEvent
+        runRealtimeMediaSessionRpcStream(
+          client["RealtimeMediaSession.events.PermissionState"](undefined),
+          "RealtimeMediaSession.events.PermissionState"
         )
       ),
       asEvent(
-        subscribeNativeEvent(
-          exchange,
-          "RealtimeMediaSession.Interruption",
-          RealtimeMediaInterruptionEvent
+        runRealtimeMediaSessionRpcStream(
+          client["RealtimeMediaSession.events.Interruption"](undefined),
+          "RealtimeMediaSession.events.Interruption"
         )
       ),
       asEvent(
-        subscribeNativeEvent(
-          exchange,
-          "RealtimeMediaSession.SessionState",
-          RealtimeMediaSessionStateEvent
+        runRealtimeMediaSessionRpcStream(
+          client["RealtimeMediaSession.events.SessionState"](undefined),
+          "RealtimeMediaSession.events.SessionState"
         )
       )
+    ],
+    { concurrency: "unbounded" }
+  )
+}
+
+const subscribeRealtimeMediaSessionEvent = (
+  exchange: BridgeClientExchange
+): Stream.Stream<RealtimeMediaSessionEvent, RealtimeMediaSessionError, never> => {
+  const asEvent = <A extends RealtimeMediaSessionEvent>(
+    stream: Stream.Stream<A, RealtimeMediaSessionError, never>
+  ): Stream.Stream<RealtimeMediaSessionEvent, RealtimeMediaSessionError, never> => stream
+
+  return Stream.mergeAll(
+    [
+      asEvent(NativeSurface.subscribeEvent(exchange, RealtimeMediaDeviceState)),
+      asEvent(NativeSurface.subscribeEvent(exchange, RealtimeMediaPermissionState)),
+      asEvent(NativeSurface.subscribeEvent(exchange, RealtimeMediaInterruption)),
+      asEvent(NativeSurface.subscribeEvent(exchange, RealtimeMediaSessionState))
     ],
     { concurrency: "unbounded" }
   )
@@ -580,6 +665,12 @@ const runRealtimeMediaSessionRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
   operation: string
 ): Effect.Effect<A, RealtimeMediaSessionError, never> => runNativeRpc(effect, operation, Surface)
+
+const runRealtimeMediaSessionRpcStream = <A, E>(
+  stream: Stream.Stream<A, E, never>,
+  operation: string
+): Stream.Stream<A, RealtimeMediaSessionError, never> =>
+  runNativeRpcStream(stream, operation, Surface)
 
 const isRealtimeMediaDeviceStateEvent = (
   event: RealtimeMediaSessionEvent

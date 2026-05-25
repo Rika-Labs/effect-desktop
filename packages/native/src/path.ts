@@ -10,7 +10,7 @@ import { Context, Effect, Layer } from "effect"
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
 import { CanonicalPath } from "./contracts/path.js"
-import { PathMethodNames, PathRpcEvents as PathRpcEventsValue, PathRpcs } from "./path-rpc.js"
+import { PathMethodNames, PathRpcs } from "./path-rpc.js"
 
 export {
   PathAppData,
@@ -24,10 +24,6 @@ export {
 } from "./path-rpc.js"
 
 export type PathError = HostProtocolError
-
-export const PathRpcEvents = PathRpcEventsValue
-
-export type PathRpcEvents = typeof PathRpcEvents
 
 const PathRpcGroup = PathRpcs
 

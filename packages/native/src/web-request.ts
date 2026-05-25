@@ -9,8 +9,7 @@ import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import type { SessionProfileHandle } from "./contracts/session-profile.js"
 import { WebRequestEvent, WebRequestSupportedResult } from "./contracts/web-request.js"
-import { subscribeNativeEvent } from "./event-stream.js"
-import { runNativeRpc } from "./native-client.js"
+import { runNativeRpc, runNativeRpcStream } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
 
@@ -53,11 +52,12 @@ export const WebRequestCapabilityFacts = Object.freeze([
   webRequestCapabilityFact("removeListener")
 ])
 
-export const WebRequestRpcEvents = Object.freeze({
-  Event: { payload: WebRequestEvent }
+const WebRequestEventStream = NativeSurface.event(Surface, "Event", {
+  payload: WebRequestEvent,
+  support: UnsupportedSupport
 })
 
-const WebRequestRpcGroup = RpcGroup.make(WebRequestIsSupported)
+const WebRequestRpcGroup = RpcGroup.make(WebRequestIsSupported, WebRequestEventStream)
 
 export const WebRequestRpcs: RpcGroup.RpcGroup<WebRequestRpc> = WebRequestRpcGroup
 
@@ -102,15 +102,22 @@ export const WebRequestHandlersLive = WebRequestRpcGroup.toLayer({
     Effect.gen(function* () {
       const webRequest = yield* WebRequest
       return yield* webRequest.isSupported()
-    })
+    }),
+  "WebRequest.events.Event": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const webRequest = yield* WebRequest
+        return webRequest.events()
+      })
+    )
 })
 
 export const WebRequestSurface = NativeSurface.make(Surface, WebRequestRpcGroup, {
   service: WebRequestClient,
   handlers: WebRequestHandlersLive,
   capabilityFacts: WebRequestCapabilityFacts,
-  client: (client) => webRequestClientFromRpcClient(client, undefined),
-  bridgeClient: (client, exchange) => webRequestClientFromRpcClient(client, exchange)
+  client: (client) => webRequestClientFromRpcClient(client),
+  bridgeClient: (client, exchange) => webRequestBridgeClientFromRpcClient(client, exchange)
 })
 
 export const makeWebRequestMemoryClient = (): Effect.Effect<WebRequestClientApi, never, never> =>
@@ -137,14 +144,27 @@ const makeWebRequestService = (client: WebRequestClientApi): WebRequestServiceAp
   } satisfies WebRequestServiceApi)
 
 const webRequestClientFromRpcClient = (
-  client: DesktopRpcClient<WebRequestRpc>,
-  exchange: BridgeClientExchange | undefined
+  client: DesktopRpcClient<WebRequestRpc>
 ): WebRequestClientApi =>
   Object.freeze({
     isSupported: () =>
       runWebRequestRpc(client["WebRequest.isSupported"](undefined), "WebRequest.isSupported"),
     events: (profile) =>
-      subscribeNativeEvent(exchange, EventMethod, WebRequestEvent).pipe(
+      runWebRequestRpcStream(
+        client["WebRequest.events.Event"](undefined),
+        "WebRequest.events.Event"
+      ).pipe(Stream.filter((event) => profile === undefined || event.profile.id === profile.id))
+  } satisfies WebRequestClientApi)
+
+const webRequestBridgeClientFromRpcClient = (
+  client: DesktopRpcClient<WebRequestRpc>,
+  exchange: BridgeClientExchange
+): WebRequestClientApi =>
+  Object.freeze({
+    isSupported: () =>
+      runWebRequestRpc(client["WebRequest.isSupported"](undefined), "WebRequest.isSupported"),
+    events: (profile) =>
+      NativeSurface.subscribeEvent(exchange, WebRequestEventStream).pipe(
         Stream.filter((event) => profile === undefined || event.profile.id === profile.id)
       )
   } satisfies WebRequestClientApi)
@@ -153,6 +173,11 @@ const runWebRequestRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
   operation: string
 ): Effect.Effect<A, WebRequestError, never> => runNativeRpc(effect, operation, Surface)
+
+const runWebRequestRpcStream = <A, E>(
+  stream: Stream.Stream<A, E, never>,
+  operation: string
+): Stream.Stream<A, WebRequestError, never> => runNativeRpcStream(stream, operation, Surface)
 
 const unsupportedError = (operation: string): HostProtocolError =>
   new HostProtocolUnsupportedError({

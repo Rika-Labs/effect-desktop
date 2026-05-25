@@ -155,7 +155,6 @@ import {
   DialogOpenDirectory,
   DialogOpenFile,
   DialogRpcs,
-  DialogRpcEvents,
   DialogLive,
   DialogMethodNames,
   DialogSurface,
@@ -237,7 +236,6 @@ import {
   ScreenRpcs,
   ScreenLive,
   ScreenMethodNames,
-  ScreenRpcEvents,
   ScreenSurface,
   Shell,
   ShellHandlersLive,
@@ -248,7 +246,6 @@ import {
   SystemAppearance,
   SystemAppearanceHandlersLive,
   SystemAppearanceRpcs,
-  SystemAppearanceRpcEvents,
   SystemAppearanceLive,
   SystemAppearanceMethodNames,
   SystemAppearanceSurface,
@@ -270,7 +267,6 @@ import {
   WebViewCapabilityFacts,
   WebViewHandlersLive,
   WebViewRpcs,
-  WebViewRpcEvents,
   WebViewLive,
   WebViewMethodNames,
   WebViewSurface,
@@ -573,7 +569,14 @@ test("NativeSurface.hostRuntime preserves host service requirements", () => {
       Effect.gen(function* () {
         yield* Window
         return new ScreenSupportedResult({ supported: true })
-      })
+      }),
+    "Screen.events.DisplaysChanged": () =>
+      Stream.unwrap(
+        Effect.gen(function* () {
+          yield* Window
+          return Stream.empty
+        })
+      )
   })
   type ScreenHostRuntimeRequirements = Assert<
     IsEqual<BridgeRuntimeRequirements<typeof runtime>, Window | PermissionRegistry>
@@ -657,7 +660,14 @@ test("ScreenSurface.hostRuntime preserves host service requirements", () => {
       Effect.gen(function* () {
         yield* Window
         return new ScreenSupportedResult({ supported: true })
-      })
+      }),
+    "Screen.events.DisplaysChanged": () =>
+      Stream.unwrap(
+        Effect.gen(function* () {
+          yield* Window
+          return Stream.empty
+        })
+      )
   })
   type ScreenHostRuntimeRequirements = Assert<
     IsEqual<BridgeRuntimeRequirements<typeof runtime>, Window | PermissionRegistry>
@@ -2526,12 +2536,12 @@ test("AppMetadata propagates unsupported platform and host failure", () =>
 
 test("WebViewRpcs declares the Phase 7 WebView method and event surface", () => {
   expect([...WebViewMethodNames]).toEqual(expectedWebViewMethods)
-  expect(rpcMethodNames("WebView", WebViewRpcs)).toEqual(expectedWebViewMethods)
-  expect(Object.keys(WebViewRpcEvents)).toEqual([
-    "NavigationBlocked",
-    "ApiCall",
-    "Runtime",
-    "Frame"
+  expect(rpcMethodNames("WebView", WebViewRpcs)).toEqual([
+    ...expectedWebViewMethods,
+    "events.NavigationBlocked",
+    "events.ApiCall",
+    "events.RuntimeEvent",
+    "events.FrameEvent"
   ])
 })
 
@@ -4648,7 +4658,6 @@ test("Tray service propagates unsupported platform and host failure", () =>
 test("DialogRpcs declares the Phase 7 Dialog method surface", () => {
   expect([...DialogMethodNames]).toEqual(expectedDialogMethods)
   expect(rpcMethodNames("Dialog", DialogRpcs)).toEqual(expectedDialogMethods)
-  expect(Object.keys(DialogRpcEvents)).toEqual([])
   expect(DialogOpenFile.pipe(rpcSupport)).toMatchObject({
     status: "partial",
     reason: "linux-zenity-multi-selection-unavailable"
@@ -8506,12 +8515,12 @@ test("ScreenRpcs declares the Phase 8 Screen method surface", () => {
     "Screen.getDisplays",
     "Screen.getPrimaryDisplay",
     "Screen.getPointerPoint",
-    "Screen.isSupported"
+    "Screen.isSupported",
+    "Screen.events.DisplaysChanged"
   ])
   expect("tag" in ScreenRpcs).toBe(false)
   expect("events" in ScreenRpcs).toBe(false)
   expect("spec" in ScreenRpcs).toBe(false)
-  expect(Object.keys(ScreenRpcEvents)).toEqual(["DisplaysChanged"])
 })
 
 test("ScreenSurface derives server, client, test, and metadata surfaces from the RpcGroup", () =>
@@ -8542,7 +8551,8 @@ test("ScreenSurface derives server, client, test, and metadata surfaces from the
         "Screen.getDisplays",
         "Screen.getPrimaryDisplay",
         "Screen.getPointerPoint",
-        "Screen.isSupported"
+        "Screen.isSupported",
+        "Screen.events.DisplaysChanged"
       ])
       expect(
         ScreenSurface.schemaDocs.map((doc) => ({
@@ -8603,6 +8613,21 @@ test("ScreenSurface derives server, client, test, and metadata surfaces from the
           success: ScreenSupportedResult,
           error: HostProtocolErrorSchema,
           stream: Option.none(),
+          support: { status: "supported" },
+          capability: { kind: "none" }
+        },
+        {
+          name: "displaysChanged",
+          tag: "Screen.events.DisplaysChanged",
+          kind: "stream",
+          callable: true,
+          payload: Schema.Void,
+          success: ScreenDisplaysChangedEvent,
+          error: HostProtocolErrorSchema,
+          stream: Option.some({
+            chunk: ScreenDisplaysChangedEvent,
+            error: HostProtocolErrorSchema
+          }),
           support: { status: "supported" },
           capability: { kind: "none" }
         }
@@ -9223,7 +9248,9 @@ test("native host RPC runtime denies protected Screen calls before handlers run"
             }),
           "Screen.getPrimaryDisplay": () => Effect.succeed(primaryDisplay),
           "Screen.getPointerPoint": () => Effect.succeed(new ScreenPoint({ x: 12, y: 34 })),
-          "Screen.isSupported": () => Effect.succeed(new ScreenSupportedResult({ supported: true }))
+          "Screen.isSupported": () =>
+            Effect.succeed(new ScreenSupportedResult({ supported: true })),
+          "Screen.events.DisplaysChanged": () => Stream.empty
         },
         { originAuth: RendererOriginAuth.unsafeDisabledForTests }
       )
@@ -9268,7 +9295,8 @@ test("native host RPC runtime audits Screen.getDisplays permission use", () => {
         }),
       "Screen.getPrimaryDisplay": () => Effect.succeed(primaryDisplay),
       "Screen.getPointerPoint": () => Effect.succeed(new ScreenPoint({ x: 12, y: 34 })),
-      "Screen.isSupported": () => Effect.succeed(new ScreenSupportedResult({ supported: true }))
+      "Screen.isSupported": () => Effect.succeed(new ScreenSupportedResult({ supported: true })),
+      "Screen.events.DisplaysChanged": () => Stream.empty
     },
     { originAuth: RendererOriginAuth.unsafeDisabledForTests }
   )
@@ -9327,7 +9355,8 @@ test("native host RPC runtime lets permission-free Screen support calls pass thr
             Effect.sync(() => {
               calls.push(input.method)
               return new ScreenSupportedResult({ supported: input.method === "getDisplays" })
-            })
+            }),
+          "Screen.events.DisplaysChanged": () => Stream.empty
         },
         { originAuth: RendererOriginAuth.unsafeDisabledForTests }
       )
@@ -9362,7 +9391,9 @@ test("native host RPC runtime uses the Effect Clock for inspector state timestam
           "Screen.getDisplays": () => Effect.succeed(new ScreenDisplaysResult({ displays: [] })),
           "Screen.getPrimaryDisplay": () => Effect.succeed(primaryDisplay),
           "Screen.getPointerPoint": () => Effect.succeed(new ScreenPoint({ x: 12, y: 34 })),
-          "Screen.isSupported": () => Effect.succeed(new ScreenSupportedResult({ supported: true }))
+          "Screen.isSupported": () =>
+            Effect.succeed(new ScreenSupportedResult({ supported: true })),
+          "Screen.events.DisplaysChanged": () => Stream.empty
         }),
         {
           originAuth: RendererOriginAuth.unsafeDisabledForTests,
@@ -9504,9 +9535,10 @@ test("Screen bridge client rejects invalid primary display topologies as Invalid
 
 test("SystemAppearanceRpcs declares the Phase 8 SystemAppearance method and event surface", () => {
   expect([...SystemAppearanceMethodNames]).toEqual(expectedSystemAppearanceMethods)
-  expect(rpcMethodNames("SystemAppearance", SystemAppearanceRpcs)).toEqual(
-    expectedSystemAppearanceMethods
-  )
+  expect(rpcMethodNames("SystemAppearance", SystemAppearanceRpcs)).toEqual([
+    ...expectedSystemAppearanceMethods,
+    "events.AppearanceChanged"
+  ])
   expect(
     SystemAppearanceRpcs.requests.get("SystemAppearance.getAccentColor")!.pipe(rpcSupport)
   ).toEqual({
@@ -9545,7 +9577,17 @@ test("SystemAppearanceRpcs declares the Phase 8 SystemAppearance method and even
       { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
     ]
   })
-  expect(Object.keys(SystemAppearanceRpcEvents)).toEqual(["AppearanceChanged"])
+  expect(
+    SystemAppearanceRpcs.requests.get("SystemAppearance.events.AppearanceChanged")!.pipe(rpcSupport)
+  ).toEqual({
+    status: "partial",
+    reason: "host-system-appearance-snapshot",
+    platforms: [
+      { platform: "macos", status: "supported" },
+      { platform: "windows", status: "supported" },
+      { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
+    ]
+  })
 })
 
 test("SystemAppearance service maps result wrappers to public values", () =>
@@ -9831,7 +9873,8 @@ test("native host RPC runtime denies protected SystemAppearance support queries 
             Effect.sync(() => {
               calls.push("isSupported")
               return new SystemAppearanceSupportedResult({ supported: true })
-            })
+            }),
+          "SystemAppearance.events.AppearanceChanged": () => Stream.empty
         },
         { originAuth: RendererOriginAuth.unsafeDisabledForTests }
       )

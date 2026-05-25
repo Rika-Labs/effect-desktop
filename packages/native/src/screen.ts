@@ -13,7 +13,6 @@ import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
-import { subscribeNativeEvent } from "./event-stream.js"
 import {
   ScreenDisplay,
   ScreenDisplaysChangedEvent,
@@ -23,14 +22,11 @@ import {
   ScreenPoint,
   ScreenSupportedResult
 } from "./contracts/screen.js"
-import {
-  ScreenCapabilityMethods,
-  ScreenRpcEvents as ScreenRpcEventsValue,
-  ScreenRpcs
-} from "./screen-rpc.js"
+import { ScreenCapabilityMethods, ScreenDisplaysChanged, ScreenRpcs } from "./screen-rpc.js"
 
 export {
   ScreenGetDisplays,
+  ScreenDisplaysChanged,
   ScreenGetPointerPoint,
   ScreenGetPrimaryDisplay,
   ScreenIsSupported,
@@ -41,9 +37,6 @@ export {
 export type ScreenError = HostProtocolError
 
 const ScreenRpcGroup = ScreenRpcs
-
-export const ScreenRpcEvents = ScreenRpcEventsValue
-export type ScreenRpcEvents = typeof ScreenRpcEvents
 
 export type ScreenRpc = RpcGroup.Rpcs<typeof ScreenRpcGroup>
 
@@ -111,15 +104,22 @@ export const ScreenHandlersLive = ScreenRpcGroup.toLayer({
       const screen = yield* Screen
       const supported = yield* screen.isSupported(input.method)
       return new ScreenSupportedResult({ supported })
-    })
+    }),
+  "Screen.events.DisplaysChanged": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const screen = yield* Screen
+        return screen.onDisplaysChanged()
+      })
+    )
 })
 
 export const ScreenSurface = NativeSurface.make("Screen", ScreenRpcGroup, {
   service: ScreenClient,
   capabilities: ScreenCapabilityMethods,
   handlers: ScreenHandlersLive,
-  client: (client) => screenClientFromRpcClient(client, undefined),
-  bridgeClient: (client, exchange) => screenClientFromRpcClient(client, exchange)
+  client: (client) => screenClientFromRpcClient(client),
+  bridgeClient: (client, exchange) => screenBridgeClientFromRpcClient(client, exchange)
 })
 
 export const makeScreenBridgeClientLayer = (
@@ -155,10 +155,7 @@ const normalizeScreenBridgeRequest = (
   })
 }
 
-const screenClientFromRpcClient = (
-  client: DesktopRpcClient<ScreenRpc>,
-  exchange: BridgeClientExchange | undefined
-): ScreenClientApi =>
+const screenClientFromRpcClient = (client: DesktopRpcClient<ScreenRpc>): ScreenClientApi =>
   Object.freeze({
     getDisplays: () =>
       runScreenRpc(client["Screen.getDisplays"](undefined)).pipe(
@@ -170,11 +167,24 @@ const screenClientFromRpcClient = (
       ),
     getPointerPoint: () => runScreenRpc(client["Screen.getPointerPoint"](undefined)),
     onDisplaysChanged: () =>
-      subscribeNativeEvent(exchange, "Screen.DisplaysChanged", ScreenDisplaysChangedEvent).pipe(
-        Stream.mapEffect(validateScreenDisplaysChangedEvent)
-      ),
+      runScreenRpcStream(
+        client["Screen.events.DisplaysChanged"](undefined),
+        "Screen.events.DisplaysChanged"
+      ).pipe(Stream.mapEffect(validateScreenDisplaysChangedEvent)),
     isSupported: (method) =>
       runScreenRpc(client["Screen.isSupported"](new ScreenIsSupportedInput({ method })))
+  } satisfies ScreenClientApi)
+
+const screenBridgeClientFromRpcClient = (
+  client: DesktopRpcClient<ScreenRpc>,
+  exchange: BridgeClientExchange
+): ScreenClientApi =>
+  Object.freeze({
+    ...screenClientFromRpcClient(client),
+    onDisplaysChanged: () =>
+      NativeSurface.subscribeEvent(exchange, ScreenDisplaysChanged).pipe(
+        Stream.mapEffect(validateScreenDisplaysChangedEvent)
+      )
   } satisfies ScreenClientApi)
 
 const runScreenRpc = <A, E>(
@@ -187,6 +197,11 @@ const runScreenRpc = <A, E>(
       Effect.fail(makeHostProtocolInvalidOutputError(operation, formatUnknownError(defect)))
     )
   )
+
+const runScreenRpcStream = <A, E>(
+  stream: Stream.Stream<A, E, never>,
+  _operation: string
+): Stream.Stream<A, ScreenError, never> => stream.pipe(Stream.mapError(mapScreenRpcClientError))
 
 const mapScreenRpcClientError = (error: unknown): ScreenError =>
   isScreenError(error)

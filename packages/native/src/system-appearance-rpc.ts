@@ -9,7 +9,12 @@ import {
   SystemAppearanceResult,
   SystemAppearanceSupportedResult
 } from "./contracts/system-appearance.js"
-import { nativeAuthority, nativeRpc, NativeRpcSupport } from "./native-rpc-descriptor.js"
+import {
+  nativeAuthority,
+  nativeEvent,
+  nativeRpc,
+  NativeRpcSupport
+} from "./native-rpc-descriptor.js"
 
 const UnsupportedReason = "host-adapter-unimplemented"
 const HostSnapshotReason = "host-system-appearance-snapshot"
@@ -66,18 +71,22 @@ export const SystemAppearanceIsSupported = nativeRpc("SystemAppearance", "isSupp
   support: NativeRpcSupport.supported
 })
 
-export const SystemAppearanceRpcEvents = Object.freeze({
-  AppearanceChanged: { payload: SystemAppearanceChangedEvent }
-})
-
-export type SystemAppearanceRpcEvents = typeof SystemAppearanceRpcEvents
+export const SystemAppearanceAppearanceChanged = nativeEvent(
+  "SystemAppearance",
+  "AppearanceChanged",
+  {
+    payload: SystemAppearanceChangedEvent,
+    support: SystemAppearanceSnapshotSupport
+  }
+)
 
 const SystemAppearanceRpcGroup = RpcGroup.make(
   SystemAppearanceGetAppearance,
   SystemAppearanceGetAccentColor,
   SystemAppearanceGetReducedMotion,
   SystemAppearanceGetReducedTransparency,
-  SystemAppearanceIsSupported
+  SystemAppearanceIsSupported,
+  SystemAppearanceAppearanceChanged
 )
 
 export const SystemAppearanceRpcs: RpcGroup.RpcGroup<SystemAppearanceRpc> = SystemAppearanceRpcGroup

@@ -62,10 +62,6 @@ export const DialogConfirm = nativeRpc("Dialog", "confirm", {
   support: NativeRpcSupport.supported
 })
 
-export const DialogRpcEvents = Object.freeze({})
-
-export type DialogRpcEvents = typeof DialogRpcEvents
-
 const DialogRpcGroup = RpcGroup.make(
   DialogOpenFile,
   DialogOpenDirectory,

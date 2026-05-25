@@ -9,7 +9,12 @@ import {
   ScreenPoint,
   ScreenSupportedResult
 } from "./contracts/screen.js"
-import { nativeAuthority, nativeRpc, NativeRpcSupport } from "./native-rpc-descriptor.js"
+import {
+  nativeAuthority,
+  nativeEvent,
+  nativeRpc,
+  NativeRpcSupport
+} from "./native-rpc-descriptor.js"
 
 export const ScreenGetDisplays = nativeRpc("Screen", "getDisplays", {
   payload: Schema.Void,
@@ -43,20 +48,20 @@ export const ScreenIsSupported = nativeRpc("Screen", "isSupported", {
   support: NativeRpcSupport.supported
 })
 
+export const ScreenDisplaysChanged = nativeEvent("Screen", "DisplaysChanged", {
+  payload: ScreenDisplaysChangedEvent,
+  support: NativeRpcSupport.supported
+})
+
 const ScreenRpcGroup = RpcGroup.make(
   ScreenGetDisplays,
   ScreenGetPrimaryDisplay,
   ScreenGetPointerPoint,
-  ScreenIsSupported
+  ScreenIsSupported,
+  ScreenDisplaysChanged
 )
 
 export const ScreenRpcs: RpcGroup.RpcGroup<ScreenRpc> = ScreenRpcGroup
-
-export const ScreenRpcEvents = Object.freeze({
-  DisplaysChanged: { payload: ScreenDisplaysChangedEvent }
-})
-
-export type ScreenRpcEvents = typeof ScreenRpcEvents
 
 export type ScreenRpc = RpcGroup.Rpcs<typeof ScreenRpcGroup>
 

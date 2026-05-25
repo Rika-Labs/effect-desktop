@@ -39,11 +39,13 @@ permission-free so callers can probe before enabling Screen-dependent features.
 | ------------------------ | ------------------------------- |
 | `Screen.DisplaysChanged` | `{ displays: ScreenDisplay[] }` |
 
-The native host emits `Screen.DisplaysChanged` from Tao window scale-factor
-changes. The event includes the same `scaleFactor` field as `getDisplays`.
-General monitor hot-plug events are limited by the current Tao event surface, so
-callers that need exact topology should refresh with `getDisplays` after the
-event.
+The TypeScript stream is `onDisplaysChanged()`. Its payload schema is owned by
+the canonical `Screen.events.DisplaysChanged` RPC stream contract; the native
+bridge lowers that stream to the existing `Screen.DisplaysChanged` host event
+method. The native host emits the event from Tao window scale-factor changes.
+The event includes the same `scaleFactor` field as `getDisplays`. General
+monitor hot-plug events are limited by the current Tao event surface, so callers
+that need exact topology should refresh with `getDisplays` after the event.
 
 ## Types
 
