@@ -98,6 +98,17 @@ test("native service files construct RPCs through shared descriptor helpers", ()
     })
   ))
 
+test("NativeSurface.make does not assert the service key type", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        Bun.file(new URL("./native-surface.ts", import.meta.url)).text()
+      )
+
+      expect(source).not.toContain("options.service as Context.Key")
+    })
+  ))
+
 test("NativeSurface bridgeClientLayer passes exchange to event-aware mapped clients", () =>
   Effect.runPromise(
     Effect.gen(function* () {
