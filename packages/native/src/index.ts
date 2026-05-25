@@ -433,10 +433,7 @@ export {
 } from "./transient-window-role.js"
 export {
   ExecutionSandbox,
-  ExecutionSandboxCapabilityFacts,
-  ExecutionSandboxClient,
   ExecutionSandboxHandlersLive,
-  ExecutionSandboxLive,
   ExecutionSandboxMethodNames,
   ExecutionSandboxRpcs,
   ExecutionSandboxSurface,
@@ -445,8 +442,7 @@ export {
   type ExecutionSandboxClientApi,
   type ExecutionSandboxError,
   type ExecutionSandboxRpc,
-  type ExecutionSandboxRpcHandlers,
-  type ExecutionSandboxServiceApi
+  type ExecutionSandboxRpcHandlers
 } from "./execution-sandbox.js"
 export {
   LocalToolRuntime,

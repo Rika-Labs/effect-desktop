@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
 import type {
   BridgeClientExchange,
   HostProtocolEnvelope,
@@ -13,15 +14,14 @@ import {
 import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Queue, Schema, Stream } from "effect"
 import { RpcClient, RpcSchema } from "effect/unstable/rpc"
 
+import { makeNativeCapabilityManifest } from "./capabilities.js"
 import {
   ExecutionSandbox,
-  ExecutionSandboxCapabilityFacts,
-  ExecutionSandboxClient,
+  type ExecutionSandboxClientApi,
   ExecutionSandboxRpcs,
   ExecutionSandboxSurface,
   makeExecutionSandboxMemoryClient,
-  makeExecutionSandboxUnsupportedClient,
-  ExecutionSandboxLive
+  makeExecutionSandboxUnsupportedClient
 } from "./execution-sandbox.js"
 import {
   ExecutionSandboxEvent,
@@ -30,13 +30,29 @@ import {
 
 const UnsupportedMethods = ["create", "run", "destroy"] as const
 
-test("ExecutionSandbox public surface omits the side event object", async () => {
-  const sandboxModule = await import("./execution-sandbox.js")
-  const rootModule = await import("./index.js")
+test("ExecutionSandbox public surface omits shallow service and side exports", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        readFile(new URL("execution-sandbox.ts", import.meta.url), "utf8")
+      )
+      const indexSource = yield* Effect.promise(() =>
+        readFile(new URL("index.ts", import.meta.url), "utf8")
+      )
 
-  expect("ExecutionSandboxRpcEvents" in sandboxModule).toBe(false)
-  expect("ExecutionSandboxRpcEvents" in rootModule).toBe(false)
-})
+      for (const removedName of [
+        "ExecutionSandbox" + "CapabilityFacts",
+        "class ExecutionSandboxClient",
+        "ExecutionSandboxLive",
+        "ExecutionSandboxServiceApi",
+        "makeExecutionSandboxService",
+        "ExecutionSandboxRpcEvents"
+      ]) {
+        expect(source).not.toContain(removedName)
+        expect(indexSource).not.toContain(removedName)
+      }
+    })
+  ))
 
 test("ExecutionSandbox event schema is owned by the RPC stream contract", () => {
   const callableTags = Array.from(ExecutionSandboxRpcs.requests.keys()).toSorted()
@@ -55,35 +71,45 @@ test("ExecutionSandbox event schema is owned by the RPC stream contract", () => 
   }
 })
 
-test("ExecutionSandbox declares create, run, destroy as non-callable capability facts", () => {
-  const factTags = ExecutionSandboxCapabilityFacts.map((fact) => fact.tag).toSorted()
-  expect(factTags).toEqual(
-    UnsupportedMethods.map((method) => `ExecutionSandbox.${method}`).toSorted()
-  )
-  for (const fact of ExecutionSandboxCapabilityFacts) {
-    expect(fact.support.status).toBe("unsupported")
-  }
+test("ExecutionSandbox declares create, run, destroy as non-callable capability facts", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const facts = executionSandboxCapabilityFacts()
+      const factTags = facts.map((fact) => fact.tag).toSorted()
+      expect(factTags).toEqual(
+        UnsupportedMethods.map((method) => `ExecutionSandbox.${method}`).toSorted()
+      )
+      for (const fact of facts) {
+        expect(fact.support.status).toBe("unsupported")
+      }
 
-  const callableTags = ExecutionSandboxSurface.schemaDocs
-    .filter((doc) => doc.callable)
-    .map((doc) => doc.tag)
-    .toSorted()
-  expect(callableTags).toEqual(["ExecutionSandbox.events.Event", "ExecutionSandbox.isSupported"])
+      const manifest = yield* makeNativeCapabilityManifest([
+        { schemaDocs: ExecutionSandboxSurface.schemaDocs }
+      ])
+      const byTag = new Map(manifest.map((fact) => [fact.tag, fact] as const))
+      for (const method of UnsupportedMethods) {
+        const fact = byTag.get(`ExecutionSandbox.${method}`)
+        expect(fact).toBeDefined()
+        expect(fact?.support.status).toBe("unsupported")
+        expect(fact?.capability.kind).toBe("native.invoke")
+      }
 
-  const eventDoc = ExecutionSandboxSurface.schemaDocs.find(
-    (doc) => doc.tag === "ExecutionSandbox.events.Event"
-  )
-  expect(eventDoc?.kind).toBe("stream")
-  expect(eventDoc?.callable).toBe(true)
+      const callableTags = ExecutionSandboxSurface.schemaDocs
+        .filter((doc) => doc.callable)
+        .map((doc) => doc.tag)
+        .toSorted()
+      expect(callableTags).toEqual([
+        "ExecutionSandbox.events.Event",
+        "ExecutionSandbox.isSupported"
+      ])
 
-  const nonCallableTags = ExecutionSandboxSurface.schemaDocs
-    .filter((doc) => !doc.callable)
-    .map((doc) => doc.tag)
-    .toSorted()
-  expect(nonCallableTags).toEqual(
-    UnsupportedMethods.map((method) => `ExecutionSandbox.${method}`).toSorted()
-  )
-})
+      const eventDoc = ExecutionSandboxSurface.schemaDocs.find(
+        (doc) => doc.tag === "ExecutionSandbox.events.Event"
+      )
+      expect(eventDoc?.kind).toBe("stream")
+      expect(eventDoc?.callable).toBe(true)
+    })
+  ))
 
 test("ExecutionSandbox contracts reject event phases with inconsistent payloads", () => {
   const baseEvent = {
@@ -123,7 +149,7 @@ test("ExecutionSandbox isSupported reports supported result through the service"
           const sandbox = yield* ExecutionSandbox
           return yield* sandbox.isSupported()
         }),
-        Layer.provide(ExecutionSandboxLive, Layer.succeed(ExecutionSandboxClient)(client))
+        executionSandboxLayer(client)
       )
       expect(result).toEqual(new ExecutionSandboxSupportedResult({ supported: true }))
     })
@@ -138,7 +164,7 @@ test("ExecutionSandbox unsupported client reports the host-unavailable reason", 
           const sandbox = yield* ExecutionSandbox
           return yield* sandbox.isSupported()
         }),
-        Layer.provide(ExecutionSandboxLive, Layer.succeed(ExecutionSandboxClient)(client))
+        executionSandboxLayer(client)
       )
       expect(result.supported).toBe(false)
       expect(result.reason).toBe("host-adapter-unimplemented")
@@ -171,8 +197,8 @@ test("ExecutionSandbox bridge client fails event stream as unsupported before su
       const exit = yield* Effect.promise(() =>
         runtime.runPromise(
           Effect.gen(function* () {
-            const client = yield* ExecutionSandboxClient
-            return yield* Effect.exit(client.events().pipe(Stream.take(1), Stream.runCollect))
+            const sandbox = yield* ExecutionSandbox
+            return yield* Effect.exit(sandbox.events().pipe(Stream.take(1), Stream.runCollect))
           })
         )
       )
@@ -208,8 +234,8 @@ test("ExecutionSandbox bridge client sends a typed isSupported envelope", () =>
       const result = yield* Effect.promise(() =>
         runtime.runPromise(
           Effect.gen(function* () {
-            const client = yield* ExecutionSandboxClient
-            return yield* client.isSupported()
+            const sandbox = yield* ExecutionSandbox
+            return yield* sandbox.isSupported()
           })
         )
       )
@@ -273,8 +299,8 @@ const directExecutionSandboxEvent = (payload: unknown) =>
 
     const event = yield* runScoped(
       Effect.gen(function* () {
-        const client = yield* ExecutionSandboxClient
-        return yield* client.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+        const sandbox = yield* ExecutionSandbox
+        return yield* sandbox.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
       }),
       Layer.provide(ExecutionSandboxSurface.clientLayer, protocolLayer)
     )
@@ -302,6 +328,12 @@ const runScoped = <A, E, R>(
     yield* Effect.promise(() => runtime.dispose())
     return result
   })
+
+const executionSandboxLayer = (client: ExecutionSandboxClientApi): Layer.Layer<ExecutionSandbox> =>
+  Layer.succeed(ExecutionSandbox)(client)
+
+const executionSandboxCapabilityFacts = () =>
+  ExecutionSandboxSurface.schemaDocs.filter((doc) => !doc.callable)
 
 const expectExitFailure = (
   exit: Exit.Exit<unknown, HostProtocolError>,

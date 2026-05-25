@@ -1,6 +1,6 @@
 import { type HostProtocolError, HostProtocolUnsupportedError, RpcGroup } from "@orika/bridge"
 import { type DesktopRpcClient, P } from "@orika/core"
-import { Context, Effect, Layer, Schema, Stream } from "effect"
+import { Context, Effect, Schema, Stream } from "effect"
 
 import { runNativeRpc, runNativeRpcStream } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
@@ -39,7 +39,7 @@ const executionSandboxCapabilityFact = (method: "create" | "run" | "destroy") =>
     support: UnsupportedSupport
   })
 
-export const ExecutionSandboxCapabilityFacts = Object.freeze([
+const UnsupportedCapabilityFacts = Object.freeze([
   executionSandboxCapabilityFact("create"),
   executionSandboxCapabilityFact("run"),
   executionSandboxCapabilityFact("destroy")
@@ -68,33 +68,10 @@ export interface ExecutionSandboxClientApi {
   readonly events: () => Stream.Stream<ExecutionSandboxEvent, ExecutionSandboxError, never>
 }
 
-export class ExecutionSandboxClient extends Context.Service<
-  ExecutionSandboxClient,
-  ExecutionSandboxClientApi
->()("@orika/native/ExecutionSandboxClient") {}
-
-export interface ExecutionSandboxServiceApi {
-  readonly isSupported: () => Effect.Effect<
-    ExecutionSandboxSupportedResult,
-    ExecutionSandboxError,
-    never
-  >
-  readonly events: () => Stream.Stream<ExecutionSandboxEvent, ExecutionSandboxError, never>
-}
-
 export class ExecutionSandbox extends Context.Service<
   ExecutionSandbox,
-  ExecutionSandboxServiceApi
->()("@orika/native/ExecutionSandbox") {
-  static readonly layer = Layer.effect(ExecutionSandbox)(
-    Effect.gen(function* () {
-      const client = yield* ExecutionSandboxClient
-      return makeExecutionSandboxService(client)
-    })
-  )
-}
-
-export const ExecutionSandboxLive = ExecutionSandbox.layer
+  ExecutionSandboxClientApi
+>()("@orika/native/ExecutionSandbox") {}
 
 export type ExecutionSandboxRpc = RpcGroup.Rpcs<typeof ExecutionSandboxRpcGroup>
 
@@ -119,9 +96,9 @@ export const ExecutionSandboxHandlersLive = ExecutionSandboxRpcGroup.toLayer({
 })
 
 export const ExecutionSandboxSurface = NativeSurface.make(Surface, ExecutionSandboxRpcGroup, {
-  service: ExecutionSandboxClient,
+  service: ExecutionSandbox,
   handlers: ExecutionSandboxHandlersLive,
-  capabilityFacts: ExecutionSandboxCapabilityFacts,
+  capabilityFacts: UnsupportedCapabilityFacts,
   client: (client) => executionSandboxClientFromRpcClient(client),
   bridgeClient: (client) => executionSandboxBridgeClientFromRpcClient(client)
 })
@@ -149,14 +126,6 @@ export const makeExecutionSandboxUnsupportedClient = (): ExecutionSandboxClientA
       ),
     events: () => Stream.fail(unsupportedError(ExecutionSandboxEventMethod))
   } satisfies ExecutionSandboxClientApi)
-
-const makeExecutionSandboxService = (
-  client: ExecutionSandboxClientApi
-): ExecutionSandboxServiceApi =>
-  Object.freeze({
-    isSupported: () => client.isSupported(),
-    events: () => client.events()
-  } satisfies ExecutionSandboxServiceApi)
 
 const executionSandboxClientFromRpcClient = (
   client: DesktopRpcClient<ExecutionSandboxRpc>

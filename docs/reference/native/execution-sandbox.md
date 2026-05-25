@@ -10,7 +10,8 @@ effect_version: 4
 
 Product-neutral isolated execution sandbox service. The contract describes creating a sandbox with explicit cwd, environment, filesystem, network, budget, and cleanup policy, running a command inside that sandbox, and destroying the sandbox when the resource is no longer needed. The create, run, and destroy operations are declared as capability facts but are not callable in this build; `isSupported` and the `ExecutionSandbox.events.Event` stream are the genuinely callable Effect RPC surface.
 
-The public service is Layer-first and test-substitutable.
+The public service is Layer-first and test-substitutable. Tests can inject a
+deterministic client with `Layer.succeed(ExecutionSandbox)(client)`.
 
 ## Methods
 
@@ -72,7 +73,11 @@ Production OS isolation is tracked in [issue #1406](https://github.com/Rika-Labs
 
 ## Testing
 
-Use `makeExecutionSandboxMemoryClient()` for deterministic create/run/destroy and event tests without OS prompts. Use `makeExecutionSandboxUnsupportedClient()` when a test needs the typed unsupported path.
+Use `makeExecutionSandboxMemoryClient()` for deterministic `isSupported` and
+event tests without OS prompts. Use `makeExecutionSandboxUnsupportedClient()`
+when a test needs the typed unsupported path. The `create`, `run`, and
+`destroy` operations are manifest facts only until a native sandbox adapter is
+implemented.
 
 ## Related
 

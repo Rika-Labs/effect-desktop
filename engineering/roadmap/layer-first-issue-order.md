@@ -161,6 +161,7 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 |         #1870 Flatten ScopedAccessGrant service boundary and events | Closed | Removes the `ScopedAccessGrantClient -> ScopedAccessGrant` forwarding split, public side exports, and moves scoped access events into canonical RPC streams.          |
 |    #1871 Keep TransientWindowRole capability facts private metadata | Closed | Removes the remaining public capability-fact side object from the already-flattened TransientWindowRole surface while preserving unsupported manifest facts.          |
 |       #1872 Keep SelectionContext capability facts private metadata | Closed | Removes the remaining public capability-fact side object from the already-flattened SelectionContext surface while preserving unsupported manifest facts.             |
+|           #1873 Flatten ExecutionSandbox service boundary and facts | Closed | Removes the `ExecutionSandboxClient -> ExecutionSandbox` forwarding split and keeps unsupported sandbox lifecycle facts private to the surface metadata.              |
 
 ## Execution Progress
 

@@ -166,8 +166,6 @@ import {
   DockRpcs,
   DockMethodNames,
   DockSurface,
-  ExecutionSandbox,
-  ExecutionSandboxLive,
   ExecutionSandboxSurface,
   GlobalShortcut,
   GlobalShortcutCapabilityFacts,
@@ -482,7 +480,6 @@ test("native services expose canonical static layers", () => {
   expect(ClipboardLive).toBe(Clipboard.layer)
   expect(CrashReporterLive).toBe(CrashReporter.layer)
   expect(DialogLive).toBe(Dialog.layer)
-  expect(ExecutionSandboxLive).toBe(ExecutionSandbox.layer)
   expect(GlobalShortcutLive).toBe(GlobalShortcut.layer)
   expect(NotificationLive).toBe(Notification.layer)
   expect(PowerMonitorLive).toBe(PowerMonitor.layer)
