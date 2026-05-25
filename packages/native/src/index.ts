@@ -118,9 +118,7 @@ export {
 } from "./native.js"
 export {
   NativeFileSystem,
-  NativeFileSystemClient,
   NativeFileSystemHandlersLive,
-  NativeFileSystemLive,
   NativeFileSystemMethodNames,
   NativeFileSystemRpcEvents,
   NativeFileSystemRpcs,
@@ -128,8 +126,7 @@ export {
   type NativeFileSystemClientApi,
   type NativeFileSystemError,
   type NativeFileSystemRpc,
-  type NativeFileSystemRpcHandlers,
-  type NativeFileSystemServiceApi
+  type NativeFileSystemRpcHandlers
 } from "./native-file-system.js"
 export {
   makeNativeNetworkMemoryClient,

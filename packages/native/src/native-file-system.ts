@@ -6,7 +6,7 @@ import {
   RpcGroup
 } from "@orika/bridge"
 import { type DesktopRpcClient, P } from "@orika/core"
-import { Context, Effect, Layer, Schema, Stream } from "effect"
+import { Context, Effect, Schema, Stream } from "effect"
 
 import {
   NativeFileSystemEvent,
@@ -122,33 +122,10 @@ export interface NativeFileSystemClientApi {
   readonly events: () => Stream.Stream<NativeFileSystemEvent, NativeFileSystemError, never>
 }
 
-export class NativeFileSystemClient extends Context.Service<
-  NativeFileSystemClient,
-  NativeFileSystemClientApi
->()("@orika/native/NativeFileSystemClient") {}
-
-export type NativeFileSystemServiceApi = NativeFileSystemClientApi
-
 export class NativeFileSystem extends Context.Service<
   NativeFileSystem,
-  NativeFileSystemServiceApi
->()("@orika/native/NativeFileSystem") {
-  static readonly layer = Layer.effect(NativeFileSystem)(
-    Effect.gen(function* () {
-      const client = yield* NativeFileSystemClient
-      return NativeFileSystem.of({
-        open: (input) => client.open(input),
-        stat: (input) => client.stat(input),
-        watch: (input) => client.watch(input),
-        stopWatching: (input) => client.stopWatching(input),
-        isSupported: () => client.isSupported(),
-        events: () => client.events()
-      } satisfies NativeFileSystemServiceApi)
-    })
-  )
-}
-
-export const NativeFileSystemLive = NativeFileSystem.layer
+  NativeFileSystemClientApi
+>()("@orika/native/NativeFileSystem") {}
 
 export type NativeFileSystemRpc = RpcGroup.Rpcs<typeof NativeFileSystemRpcGroup>
 export type NativeFileSystemRpcHandlers<R = never> = NativeRpcHandlers<
@@ -188,7 +165,7 @@ export const NativeFileSystemSurface = NativeSurface.make(
   "NativeFileSystem",
   NativeFileSystemRpcGroup,
   {
-    service: NativeFileSystemClient,
+    service: NativeFileSystem,
     capabilities: NativeFileSystemCapabilityMethods,
     handlers: NativeFileSystemHandlersLive,
     client: (client) => nativeFileSystemClientFromRpcClient(client),

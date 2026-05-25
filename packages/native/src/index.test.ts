@@ -188,7 +188,6 @@ import {
   MenuMethodNames,
   MenuSurface,
   NativeFileSystem,
-  NativeFileSystemLive,
   NativeFileSystemMethodNames,
   NativeFileSystemRpcEvents,
   NativeFileSystemRpcs,
@@ -314,7 +313,6 @@ import {
   MenuClient,
   ContextMenuClient,
   PathClient,
-  NativeFileSystemClient,
   UpdaterClient,
   SystemAppearanceClient,
   DockClient,
@@ -504,7 +502,6 @@ test("native services expose canonical static layers", () => {
   expect(ExecutionSandboxLive).toBe(ExecutionSandbox.layer)
   expect(GlobalShortcutLive).toBe(GlobalShortcut.layer)
   expect(MenuLive).toBe(Menu.layer)
-  expect(NativeFileSystemLive).toBe(NativeFileSystem.layer)
   expect(NotificationLive).toBe(Notification.layer)
   expect(PathLive).toBe(Path.layer)
   expect(PowerMonitorLive).toBe(PowerMonitor.layer)
@@ -6943,7 +6940,35 @@ test("NativeFileSystemRpcs declares the native filesystem method and event surfa
   expect(Object.keys(NativeFileSystemRpcEvents)).toEqual(["Event"])
 })
 
-test("NativeFileSystem service delegates through a substitutable NativeFileSystemClient port", () =>
+test("NativeFileSystem public surface omits shallow service and layer helpers", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        readFile(new URL("native-file-system.ts", import.meta.url), "utf8")
+      )
+      const indexSource = yield* Effect.promise(() =>
+        readFile(new URL("index.ts", import.meta.url), "utf8")
+      )
+      const nativeFileSystemModule = yield* Effect.promise(() => import("./native-file-system.js"))
+      const rootModule = yield* Effect.promise(() => import("./index.js"))
+
+      for (const removedName of [
+        "class NativeFileSystemClient",
+        "NativeFileSystemServiceApi",
+        "NativeFileSystemLive",
+        "NativeFileSystem.layer"
+      ]) {
+        expect(source).not.toContain(removedName)
+        expect(indexSource).not.toContain(removedName)
+      }
+      expect("NativeFileSystemClient" in nativeFileSystemModule).toBe(false)
+      expect("NativeFileSystemClient" in rootModule).toBe(false)
+      expect("NativeFileSystemLive" in nativeFileSystemModule).toBe(false)
+      expect("NativeFileSystemLive" in rootModule).toBe(false)
+    })
+  ))
+
+test("NativeFileSystem service delegates through a substitutable service value", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
@@ -6970,10 +6995,7 @@ test("NativeFileSystem service delegates through a substitutable NativeFileSyste
 
             return { events, metadata, opened, stopped, support, watch }
           }),
-          Layer.provide(
-            NativeFileSystemLive,
-            Layer.succeed(NativeFileSystemClient)(nativeFileSystemClient(calls))
-          )
+          Layer.succeed(NativeFileSystem)(nativeFileSystemClient(calls))
         )
       )
 
@@ -7067,7 +7089,7 @@ test("NativeFileSystem bridge client sends typed host envelopes and decodes even
 
             return { events, metadata, opened, stopped, support, watch }
           }),
-          Layer.provide(NativeFileSystemLive, NativeFileSystemSurface.bridgeClientLayer(exchange))
+          NativeFileSystemSurface.bridgeClientLayer(exchange)
         )
       )
 
@@ -7212,7 +7234,7 @@ test("NativeFileSystem bridge client rejects inconsistent event phase payloads a
             filesystem.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
           )
         }),
-        Layer.provide(NativeFileSystemLive, NativeFileSystemSurface.bridgeClientLayer(exchange))
+        NativeFileSystemSurface.bridgeClientLayer(exchange)
       )
 
       expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
@@ -7225,11 +7247,8 @@ test("NativeFileSystem bridge client rejects invalid inputs before transport", (
       const requests: HostProtocolRequestEnvelope[] = []
       const client = yield* runScoped(
         NativeFileSystem.asEffect(),
-        Layer.provide(
-          NativeFileSystemLive,
-          NativeFileSystemSurface.bridgeClientLayer(
-            nativeFileSystemExchange(requests, () => ({ kind: "success", payload: undefined }))
-          )
+        NativeFileSystemSurface.bridgeClientLayer(
+          nativeFileSystemExchange(requests, () => ({ kind: "success", payload: undefined }))
         )
       )
 
@@ -7373,10 +7392,7 @@ test("NativeFileSystem service propagates unsupported platform and host failure"
             filesystem.open({ path: new CanonicalPath({ path: "/tmp/report.txt" }) })
           )
         }),
-        Layer.provide(
-          NativeFileSystemLive,
-          Layer.succeed(NativeFileSystemClient)(unsupportedClient)
-        )
+        Layer.succeed(NativeFileSystem)(unsupportedClient)
       )
       const hostFailureExit = yield* runScoped(
         Effect.gen(function* () {
@@ -7385,10 +7401,7 @@ test("NativeFileSystem service propagates unsupported platform and host failure"
             filesystem.open({ path: new CanonicalPath({ path: "/tmp/report.txt" }) })
           )
         }),
-        Layer.provide(
-          NativeFileSystemLive,
-          Layer.succeed(NativeFileSystemClient)(hostFailureClient)
-        )
+        Layer.succeed(NativeFileSystem)(hostFailureClient)
       )
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
