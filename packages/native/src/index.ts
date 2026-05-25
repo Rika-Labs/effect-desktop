@@ -838,17 +838,14 @@ export {
 } from "./screen.js"
 export {
   Shell,
-  ShellClient,
   ShellHandlersLive,
-  ShellLive,
   ShellMethodNames,
   ShellRpcs,
   ShellSurface,
   type ShellClientApi,
   type ShellError,
   type ShellRpc,
-  type ShellRpcHandlers,
-  type ShellServiceApi
+  type ShellRpcHandlers
 } from "./shell.js"
 export {
   SystemAppearance,

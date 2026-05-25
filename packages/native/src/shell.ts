@@ -8,7 +8,7 @@ import {
   type HostProtocolError
 } from "@orika/bridge"
 import { P, type DesktopRpcClient } from "@orika/core"
-import { Context, Effect, Layer, Schema } from "effect"
+import { Context, Effect, Schema } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
@@ -75,27 +75,7 @@ export interface ShellClientApi {
   readonly trashItem: (path: string) => Effect.Effect<void, ShellError, never>
 }
 
-export class ShellClient extends Context.Service<ShellClient, ShellClientApi>()(
-  "@orika/native/ShellClient"
-) {}
-
-export type ShellServiceApi = ShellClientApi
-
-export class Shell extends Context.Service<Shell, ShellServiceApi>()("@orika/native/Shell") {
-  static readonly layer = Layer.effect(Shell)(
-    Effect.gen(function* () {
-      const client = yield* ShellClient
-      return Shell.of({
-        openExternal: (url, options) => client.openExternal(url, options),
-        showItemInFolder: (path) => client.showItemInFolder(path),
-        openPath: (path, options) => client.openPath(path, options),
-        trashItem: (path) => client.trashItem(path)
-      } satisfies ShellServiceApi)
-    })
-  )
-}
-
-export const ShellLive = Shell.layer
+export class Shell extends Context.Service<Shell, ShellClientApi>()("@orika/native/Shell") {}
 
 export type ShellRpc = RpcGroup.Rpcs<typeof ShellRpcGroup>
 
@@ -131,7 +111,7 @@ export const ShellHandlersLive = ShellRpcGroup.toLayer({
 })
 
 export const ShellSurface = NativeSurface.make("Shell", ShellRpcGroup, {
-  service: ShellClient,
+  service: Shell,
   capabilities: ShellMethodNames,
   handlers: ShellHandlersLive,
   client: (client) => shellClientFromRpcClient(client)

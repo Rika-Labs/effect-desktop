@@ -239,7 +239,6 @@ import {
   Shell,
   ShellHandlersLive,
   ShellRpcs,
-  ShellLive,
   ShellMethodNames,
   ShellSurface,
   SystemAppearance,
@@ -323,7 +322,6 @@ import {
   NativeFileSystemClient,
   SafeStorageClient,
   UpdaterClient,
-  ShellClient,
   SystemAppearanceClient,
   DockClient,
   GlobalShortcutClient
@@ -519,7 +517,6 @@ test("native services expose canonical static layers", () => {
   expect(ProtocolLive).toBe(Protocol.layer)
   expect(SafeStorageLive).toBe(SafeStorage.layer)
   expect(ScreenLive).toBe(Screen.layer)
-  expect(ShellLive).toBe(Shell.layer)
   expect(SystemAppearanceLive).toBe(SystemAppearance.layer)
   expect(TrayLive).toBe(Tray.layer)
   expect(UpdaterLive).toBe(Updater.layer)
@@ -8309,7 +8306,7 @@ test("ShellRpcs declares the Phase 8 Shell method surface", () => {
   })
 })
 
-test("Shell service delegates through a substitutable ShellClient port", () =>
+test("Shell service delegates through a substitutable service value", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
@@ -8321,7 +8318,7 @@ test("Shell service delegates through a substitutable ShellClient port", () =>
           yield* shell.openPath("/tmp/report.txt")
           yield* shell.trashItem("/tmp/old-report.txt")
         }),
-        Layer.provide(ShellLive, Layer.succeed(ShellClient)(shellClient(calls)))
+        shellLayer(shellClient(calls))
       )
 
       expect(calls).toEqual([
@@ -8357,14 +8354,14 @@ test("Shell service propagates unsupported platform and host failure", () =>
           const shell = yield* Shell
           return yield* Effect.exit(shell.openExternal("https://example.com/docs"))
         }),
-        Layer.provide(ShellLive, Layer.succeed(ShellClient)(unsupportedClient))
+        shellLayer(unsupportedClient)
       )
       const hostFailureExit = yield* runScoped(
         Effect.gen(function* () {
           const shell = yield* Shell
           return yield* Effect.exit(shell.openExternal("https://example.com/docs"))
         }),
-        Layer.provide(ShellLive, Layer.succeed(ShellClient)(hostFailureClient))
+        shellLayer(hostFailureClient)
       )
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
@@ -8388,11 +8385,8 @@ test("Shell bridge client validates schemes and path argv before transport", () 
           yield* client.openPath("C:\\Temp\\install.cmd", { allowExecutable: true })
           return { cmdExecutableExit, executableExit, fileExit, metacharExit }
         }),
-        Layer.provide(
-          ShellLive,
-          ShellSurface.bridgeClientLayer(
-            shellExchange(requests, () => ({ kind: "success", payload: undefined }))
-          )
+        ShellSurface.bridgeClientLayer(
+          shellExchange(requests, () => ({ kind: "success", payload: undefined }))
         )
       )
 
@@ -8422,11 +8416,8 @@ test("Shell bridge client validates external URL schemes", () =>
           )
           return { denied, javascriptDenied }
         }),
-        Layer.provide(
-          ShellLive,
-          ShellSurface.bridgeClientLayer(
-            shellExchange(requests, () => ({ kind: "success", payload: undefined }))
-          )
+        ShellSurface.bridgeClientLayer(
+          shellExchange(requests, () => ({ kind: "success", payload: undefined }))
         )
       )
 
@@ -8444,11 +8435,8 @@ test("Shell bridge client rejects control characters in external URLs before tra
       const requests: HostProtocolRequestEnvelope[] = []
       const client = yield* runScoped(
         Shell.asEffect(),
-        Layer.provide(
-          ShellLive,
-          ShellSurface.bridgeClientLayer(
-            shellExchange(requests, () => ({ kind: "success", payload: undefined }))
-          )
+        ShellSurface.bridgeClientLayer(
+          shellExchange(requests, () => ({ kind: "success", payload: undefined }))
         )
       )
 
@@ -13936,11 +13924,8 @@ test("Shell bridge client rejects empty path strings as InvalidArgument", () =>
       const requests: HostProtocolRequestEnvelope[] = []
       const client = yield* runScoped(
         Shell.asEffect(),
-        Layer.provide(
-          ShellLive,
-          ShellSurface.bridgeClientLayer(
-            shellExchange(requests, () => ({ kind: "success", payload: undefined }))
-          )
+        ShellSurface.bridgeClientLayer(
+          shellExchange(requests, () => ({ kind: "success", payload: undefined }))
         )
       )
 
@@ -13961,11 +13946,8 @@ test("Shell bridge client rejects control characters in path inputs as InvalidAr
       const requests: HostProtocolRequestEnvelope[] = []
       const client = yield* runScoped(
         Shell.asEffect(),
-        Layer.provide(
-          ShellLive,
-          ShellSurface.bridgeClientLayer(
-            shellExchange(requests, () => ({ kind: "success", payload: undefined }))
-          )
+        ShellSurface.bridgeClientLayer(
+          shellExchange(requests, () => ({ kind: "success", payload: undefined }))
         )
       )
 
@@ -13986,11 +13968,8 @@ test("Shell bridge client rejects unsafe path argv shapes as InvalidArgument", (
       const requests: HostProtocolRequestEnvelope[] = []
       const client = yield* runScoped(
         Shell.asEffect(),
-        Layer.provide(
-          ShellLive,
-          ShellSurface.bridgeClientLayer(
-            shellExchange(requests, () => ({ kind: "success", payload: undefined }))
-          )
+        ShellSurface.bridgeClientLayer(
+          shellExchange(requests, () => ({ kind: "success", payload: undefined }))
         )
       )
 
@@ -15037,6 +15016,8 @@ const shellClient = (calls: string[]): ShellClientApi => ({
     recordVoid(calls, `openPath:${path}:${options?.allowExecutable ?? false}`),
   trashItem: (path) => recordVoid(calls, `trashItem:${path}`)
 })
+
+const shellLayer = (client: ShellClientApi): Layer.Layer<Shell> => Layer.succeed(Shell)(client)
 
 const screenClient = (calls: string[]): ScreenClientApi => ({
   getDisplays: () =>

@@ -132,6 +132,7 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 |             #1833 Remove renderer SQL wrapper aliases | Closed | Removes zero-policy SQLite WASM helper aliases and narrows PGlite to only the optional dependency boundary or upstream Effect SQL config pass-through.            |
 | #1838 Flatten BrowsingData pass-through service split | Closed | Removes the `BrowsingDataClient` -> `BrowsingData` forwarding layer unless it owns durable desktop policy beyond bridge/client boundary wiring.                   |
 |    #1839 Flatten Autostart pass-through service split | Closed | Removes the `AutostartClient` -> `Autostart` forwarding layer while keeping the canonical Autostart RPC/event stream boundary semantics.                          |
+|        #1840 Flatten Shell pass-through service split | Closed | Removes the `ShellClient` -> `Shell` forwarding layer while keeping Shell validation, permission mapping, and RPC boundary semantics.                             |
 
 ## Execution Progress
 
