@@ -1,13 +1,8 @@
-import {
-  type BridgeClientExchange,
-  type HostProtocolError,
-  HostProtocolUnsupportedError,
-  RpcGroup
-} from "@orika/bridge"
+import { type HostProtocolError, HostProtocolUnsupportedError, RpcGroup } from "@orika/bridge"
 import { type DesktopRpcClient, P } from "@orika/core"
-import { Context, Effect, Layer, Schema, Stream } from "effect"
+import { Context, Effect, Schema, Stream } from "effect"
 
-import { runNativeRpc } from "./native-client.js"
+import { runNativeRpc, runNativeRpcStream } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
 import {
@@ -46,17 +41,21 @@ const scopedAccessGrantCapabilityFact = (method: "grant" | "resolve" | "revoke")
     support: UnsupportedSupport
   })
 
-export const ScopedAccessGrantCapabilityFacts = Object.freeze([
+const UnsupportedCapabilityFacts = Object.freeze([
   scopedAccessGrantCapabilityFact("grant"),
   scopedAccessGrantCapabilityFact("resolve"),
   scopedAccessGrantCapabilityFact("revoke")
 ])
 
-export const ScopedAccessGrantRpcEvents = Object.freeze({
-  Event: { payload: ScopedAccessGrantEvent }
+const ScopedAccessGrantEventStream = NativeSurface.event(Surface, "Event", {
+  payload: ScopedAccessGrantEvent,
+  support: UnsupportedSupport
 })
 
-const ScopedAccessGrantRpcGroup = RpcGroup.make(ScopedAccessGrantIsSupported)
+const ScopedAccessGrantRpcGroup = RpcGroup.make(
+  ScopedAccessGrantIsSupported,
+  ScopedAccessGrantEventStream
+)
 
 export const ScopedAccessGrantRpcs: RpcGroup.RpcGroup<ScopedAccessGrantRpc> =
   ScopedAccessGrantRpcGroup
@@ -72,33 +71,10 @@ export interface ScopedAccessGrantClientApi {
   readonly events: () => Stream.Stream<ScopedAccessGrantEvent, ScopedAccessGrantError, never>
 }
 
-export class ScopedAccessGrantClient extends Context.Service<
-  ScopedAccessGrantClient,
-  ScopedAccessGrantClientApi
->()("@orika/native/ScopedAccessGrantClient") {}
-
-export interface ScopedAccessGrantServiceApi {
-  readonly isSupported: () => Effect.Effect<
-    ScopedAccessGrantSupportedResult,
-    ScopedAccessGrantError,
-    never
-  >
-  readonly events: () => Stream.Stream<ScopedAccessGrantEvent, ScopedAccessGrantError, never>
-}
-
 export class ScopedAccessGrant extends Context.Service<
   ScopedAccessGrant,
-  ScopedAccessGrantServiceApi
->()("@orika/native/ScopedAccessGrant") {
-  static readonly layer = Layer.effect(ScopedAccessGrant)(
-    Effect.gen(function* () {
-      const client = yield* ScopedAccessGrantClient
-      return makeScopedAccessGrantService(client)
-    })
-  )
-}
-
-export const ScopedAccessGrantLive = ScopedAccessGrant.layer
+  ScopedAccessGrantClientApi
+>()("@orika/native/ScopedAccessGrant") {}
 
 export type ScopedAccessGrantRpc = RpcGroup.Rpcs<typeof ScopedAccessGrantRpcGroup>
 
@@ -112,15 +88,22 @@ export const ScopedAccessGrantHandlersLive = ScopedAccessGrantRpcGroup.toLayer({
     Effect.gen(function* () {
       const service = yield* ScopedAccessGrant
       return yield* service.isSupported()
-    })
+    }),
+  "ScopedAccessGrant.events.Event": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const service = yield* ScopedAccessGrant
+        return service.events()
+      })
+    )
 })
 
 export const ScopedAccessGrantSurface = NativeSurface.make(Surface, ScopedAccessGrantRpcGroup, {
-  service: ScopedAccessGrantClient,
+  service: ScopedAccessGrant,
   handlers: ScopedAccessGrantHandlersLive,
-  capabilityFacts: ScopedAccessGrantCapabilityFacts,
-  client: (client) => scopedAccessGrantClientFromRpcClient(client, undefined),
-  bridgeClient: (client, exchange) => scopedAccessGrantClientFromRpcClient(client, exchange)
+  capabilityFacts: UnsupportedCapabilityFacts,
+  client: (client) => scopedAccessGrantClientFromRpcClient(client),
+  bridgeClient: (client) => scopedAccessGrantBridgeClientFromRpcClient(client)
 })
 
 export const makeScopedAccessGrantMemoryClient = (): Effect.Effect<
@@ -144,17 +127,24 @@ export const makeScopedAccessGrantUnsupportedClient = (): ScopedAccessGrantClien
     events: () => Stream.fail(unsupportedError(ScopedAccessGrantEventMethod))
   } satisfies ScopedAccessGrantClientApi)
 
-const makeScopedAccessGrantService = (
-  client: ScopedAccessGrantClientApi
-): ScopedAccessGrantServiceApi =>
-  Object.freeze({
-    isSupported: () => client.isSupported(),
-    events: () => client.events()
-  } satisfies ScopedAccessGrantServiceApi)
-
 const scopedAccessGrantClientFromRpcClient = (
-  client: DesktopRpcClient<ScopedAccessGrantRpc>,
-  _exchange: BridgeClientExchange | undefined
+  client: DesktopRpcClient<ScopedAccessGrantRpc>
+): ScopedAccessGrantClientApi =>
+  Object.freeze({
+    isSupported: () =>
+      runScopedAccessGrantRpc(
+        client["ScopedAccessGrant.isSupported"](undefined),
+        "ScopedAccessGrant.isSupported"
+      ),
+    events: () =>
+      runScopedAccessGrantRpcStream(
+        client["ScopedAccessGrant.events.Event"](undefined),
+        "ScopedAccessGrant.events.Event"
+      )
+  } satisfies ScopedAccessGrantClientApi)
+
+const scopedAccessGrantBridgeClientFromRpcClient = (
+  client: DesktopRpcClient<ScopedAccessGrantRpc>
 ): ScopedAccessGrantClientApi =>
   Object.freeze({
     isSupported: () =>
@@ -169,6 +159,11 @@ const runScopedAccessGrantRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
   operation: string
 ): Effect.Effect<A, ScopedAccessGrantError, never> => runNativeRpc(effect, operation, Surface)
+
+const runScopedAccessGrantRpcStream = <A, E>(
+  stream: Stream.Stream<A, E, never>,
+  operation: string
+): Stream.Stream<A, ScopedAccessGrantError, never> => runNativeRpcStream(stream, operation, Surface)
 
 const unsupportedError = (operation: string): HostProtocolError =>
   new HostProtocolUnsupportedError({

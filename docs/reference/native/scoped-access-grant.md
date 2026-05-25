@@ -12,14 +12,22 @@ Product-neutral scoped access grant service for future file and directory access
 
 The public service is Layer-first and test-substitutable. The current callable boundary reports support status and exposes typed events. Persistent grant mutation is intentionally absent until the host owns real OS grant material.
 
+`ScopedAccessGrant` is the single public Effect service key. Tests can provide a
+client directly with `Layer.succeed(ScopedAccessGrant)(client)`.
+
 ## Methods
 
-The surface exposes only the genuinely callable methods below.
+The surface exposes only the genuinely callable service methods below.
 
 | Method        | Payload | Success                       |
 | ------------- | ------- | ----------------------------- |
 | `isSupported` | `void`  | `{ supported, reason? }`      |
 | `events`      | `void`  | stream of scoped grant events |
+
+The event stream is represented in the RPC contract as
+`ScopedAccessGrant.events.Event`. The bridge host method name remains
+`ScopedAccessGrant.Event`; bridge-backed clients fail typed `Unsupported` before
+opening that raw subscription until a host adapter exists.
 
 ## Capability facts (non-callable)
 
@@ -73,7 +81,10 @@ accepts a request and later fails to provide durable access.
 
 ## Testing
 
-Use `makeScopedAccessGrantMemoryClient()` for deterministic `isSupported` and event tests without native prompts. Use `makeScopedAccessGrantUnsupportedClient()` when a test needs the typed unsupported path.
+Use `makeScopedAccessGrantMemoryClient()` for deterministic `isSupported` and
+event tests without native prompts. Use `makeScopedAccessGrantUnsupportedClient()`
+when a test needs the typed unsupported path. Provide either client with
+`Layer.succeed(ScopedAccessGrant)(client)`.
 
 ## Related
 

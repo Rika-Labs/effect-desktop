@@ -491,12 +491,8 @@ export {
 } from "./transactional-file-mutation.js"
 export {
   ScopedAccessGrant,
-  ScopedAccessGrantCapabilityFacts,
-  ScopedAccessGrantClient,
   ScopedAccessGrantHandlersLive,
-  ScopedAccessGrantLive,
   ScopedAccessGrantMethodNames,
-  ScopedAccessGrantRpcEvents,
   ScopedAccessGrantRpcs,
   ScopedAccessGrantSurface,
   makeScopedAccessGrantMemoryClient,
@@ -504,8 +500,7 @@ export {
   type ScopedAccessGrantClientApi,
   type ScopedAccessGrantError,
   type ScopedAccessGrantRpc,
-  type ScopedAccessGrantRpcHandlers,
-  type ScopedAccessGrantServiceApi
+  type ScopedAccessGrantRpcHandlers
 } from "./scoped-access-grant.js"
 export {
   SelectionContext,
