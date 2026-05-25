@@ -162,6 +162,7 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 |    #1871 Keep TransientWindowRole capability facts private metadata | Closed | Removes the remaining public capability-fact side object from the already-flattened TransientWindowRole surface while preserving unsupported manifest facts.          |
 |       #1872 Keep SelectionContext capability facts private metadata | Closed | Removes the remaining public capability-fact side object from the already-flattened SelectionContext surface while preserving unsupported manifest facts.             |
 |           #1873 Flatten ExecutionSandbox service boundary and facts | Closed | Removes the `ExecutionSandboxClient -> ExecutionSandbox` forwarding split and keeps unsupported sandbox lifecycle facts private to the surface metadata.              |
+|               #1874 Keep Download capability facts private metadata | Closed | Removes the remaining public capability-fact side object from the already-flattened Download surface while preserving unsupported manifest facts.                     |
 
 ## Execution Progress
 

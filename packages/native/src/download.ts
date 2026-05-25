@@ -47,7 +47,7 @@ const downloadCapabilityFact = (method: "start" | "pause" | "resume" | "cancel" 
     support: UnsupportedSupport
   })
 
-export const DownloadCapabilityFacts = Object.freeze([
+const UnsupportedCapabilityFacts = Object.freeze([
   downloadCapabilityFact("start"),
   downloadCapabilityFact("pause"),
   downloadCapabilityFact("resume"),
@@ -96,7 +96,7 @@ export const DownloadHandlersLive = DownloadRpcGroup.toLayer({
 export const DownloadSurface = NativeSurface.make(Surface, DownloadRpcGroup, {
   service: Download,
   handlers: DownloadHandlersLive,
-  capabilityFacts: DownloadCapabilityFacts,
+  capabilityFacts: UnsupportedCapabilityFacts,
   client: (client) => downloadClientFromRpcClient(client),
   bridgeClient: (client, exchange) => downloadBridgeClientFromRpcClient(client, exchange)
 })

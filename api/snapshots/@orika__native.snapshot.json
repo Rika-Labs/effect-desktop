@@ -1044,11 +1044,6 @@
       "signature": "export class Download extends Context.Service<Download, DownloadClientApi>()( \"@orika/native/Download\" ) {}"
     },
     {
-      "name": "DownloadCapabilityFacts",
-      "kind": "value",
-      "signature": "const DownloadCapabilityFacts: readonly import(\"@orika/core\").DesktopRpcCapabilityFact[]"
-    },
-    {
       "name": "DownloadClientApi",
       "kind": "interface",
       "signature": "export interface DownloadClientApi { readonly isSupported: () => Effect.Effect<DownloadSupportedResult, DownloadError, never> readonly events: (download?: DownloadHandle) => Stream.Stream<DownloadEvent, DownloadError, never> }"

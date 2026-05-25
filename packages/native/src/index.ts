@@ -345,7 +345,6 @@ export {
 } from "./dialog.js"
 export {
   Download,
-  DownloadCapabilityFacts,
   DownloadHandlersLive,
   DownloadMethodNames,
   DownloadRpcs,

@@ -18,7 +18,6 @@ import { makeNativeCapabilityManifest } from "./capabilities.js"
 import { DownloadEvent, DownloadProgressedEvent, DownloadSnapshot } from "./contracts/download.js"
 import {
   Download,
-  DownloadCapabilityFacts,
   type DownloadClientApi,
   DownloadRpcs,
   DownloadSurface,
@@ -39,6 +38,7 @@ test("Download public surface omits shallow service and layer helpers", () =>
       )
 
       for (const removedName of [
+        "Download" + "CapabilityFacts",
         "DownloadServiceApi",
         "class DownloadClient",
         "DownloadLive",
@@ -113,9 +113,10 @@ test("Download unsupported client reports the host-unavailable reason", () =>
   ))
 
 test("Download declares the 5 unsupported methods as non-callable capability facts", () => {
-  const factTags = DownloadCapabilityFacts.map((fact) => fact.tag).toSorted()
+  const facts = downloadCapabilityFacts()
+  const factTags = facts.map((fact) => fact.tag).toSorted()
   expect(factTags).toEqual(UnsupportedMethods.map((method) => `Download.${method}`).toSorted())
-  for (const fact of DownloadCapabilityFacts) {
+  for (const fact of facts) {
     expect(fact.support.status).toBe("unsupported")
   }
 })
@@ -603,6 +604,8 @@ const runScoped = <A, E, R>(
 
 const downloadLayer = (client: DownloadClientApi): Layer.Layer<Download> =>
   Layer.succeed(Download)(client)
+
+const downloadCapabilityFacts = () => DownloadSurface.schemaDocs.filter((doc) => !doc.callable)
 
 const downloadHandle = (id = "download:1") =>
   ({
