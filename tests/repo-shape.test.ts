@@ -79,6 +79,7 @@ const STALE_UPDATER_HOW_TO_TOKENS = [
   "allowDowngrade",
   "Every install emits an audit event"
 ] as const
+const STALE_PLATFORM_BROWSER_PGLITE_OPTIONS = ["connectionString"] as const
 const STALE_PACKAGE_README_PHRASES = [
   "public API remains reserved for Phase 4+",
   "Public renderer-facing APIs",
@@ -556,6 +557,23 @@ describe("SQLite docs", () => {
     expect(markdown).toContain("PermissionRegistry")
     expect(markdown).toContain("ResourceRegistryLive")
     expect(markdown).toContain("PermissionRegistry.make")
+  })
+})
+
+describe("Platform browser docs", () => {
+  test("PGlite examples use the current RendererPgliteOptions shape", () => {
+    const relativePath = "docs/reference/platform-browser.md"
+    const markdown = readFileSync(join(REPO_ROOT, relativePath), "utf8")
+    const violations: string[] = []
+
+    for (const token of STALE_PLATFORM_BROWSER_PGLITE_OPTIONS) {
+      if (markdown.includes(token)) {
+        violations.push(`${relativePath}: RendererPgliteLive does not expose ${token}`)
+      }
+    }
+
+    expect(violations).toEqual([])
+    expect(markdown).toContain('dataDir: "idb://renderer-db"')
   })
 })
 

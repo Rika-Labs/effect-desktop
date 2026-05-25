@@ -129,6 +129,7 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 |     #1827 Model notification events as RPC streams | Closed | Removes the empty `ClipboardRpcEvents` object and moves Notification click/action events into canonical `Notification.events.*` RPC streams.                      |
 | #1828 Model ExecutionSandbox events as RPC streams | Closed | Removes `ExecutionSandboxRpcEvents` by moving sandbox lifecycle events into the canonical `ExecutionSandbox.events.Event` RPC stream.                             |
 |   #1829 Remove remaining native event side objects | Closed | Removes empty Dialog/Path/Shell side objects and moves WebRequest, RealtimeMediaSession, WebView, Screen, and SystemAppearance events into canonical RPC streams. |
+|          #1833 Remove renderer SQL wrapper aliases | Open   | Removes zero-policy SQLite WASM helper aliases and narrows PGlite to only the optional dependency boundary or upstream Effect SQL config pass-through.            |
 
 ## Execution Progress
 

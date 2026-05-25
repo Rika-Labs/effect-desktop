@@ -52,13 +52,19 @@ await Effect.runPromise(program.pipe(Effect.provide(SqliteLive)))
 
 ## PGlite
 
-`RendererPgliteLive(options)` — Postgres-compatible storage via `@electric-sql/pglite`. Requires the optional `@effect/sql-pglite` and `@electric-sql/pglite` packages installed in your renderer.
+`RendererPgliteLive(options)` — Postgres-compatible storage via `@electric-sql/pglite`. Requires the optional `@effect/sql-pglite` and `@electric-sql/pglite` packages installed in your renderer. Use `dataDir` for a PGlite storage location such as IndexedDB-backed browser storage.
 
 ```ts
 const PgliteLive = RendererPgliteLive({
-  connectionString: "idb://renderer-db"
+  dataDir: "idb://renderer-db"
 })
 ```
+
+Current packaged macOS system WebView QA shows PGlite layer acquisition does not
+complete under the fixed `app://localhost` renderer scheme; track packaged
+runtime support in [#1832](https://github.com/Rika-Labs/orika/issues/1832).
+Use IndexedDB or SQLite WASM for packaged renderer storage until that issue is
+resolved.
 
 ## IndexedDB
 
@@ -117,12 +123,12 @@ upstream Effect modules.
 
 ## When to use what
 
-| Need                                               | Use                                 |
-| -------------------------------------------------- | ----------------------------------- |
-| Small key/value, occasional reads                  | IndexedDB or `BrowserKeyValueStore` |
-| Tabular data, joins, aggregates                    | `RendererSqliteWorkerLive`          |
-| Postgres-compatible queries, syncing with a server | `RendererPgliteLive`                |
-| Anything that should survive the renderer reload   | All of the above (IndexedDB-backed) |
+| Need                                               | Use                                                                  |
+| -------------------------------------------------- | -------------------------------------------------------------------- |
+| Small key/value, occasional reads                  | IndexedDB or `BrowserKeyValueStore`                                  |
+| Tabular data, joins, aggregates                    | `RendererSqliteWorkerLive`                                           |
+| Postgres-compatible queries, syncing with a server | `RendererPgliteLive` outside packaged system WebView; see #1832      |
+| Anything that should survive the renderer reload   | IndexedDB-backed stores; PGlite packaged support is tracked in #1832 |
 
 ## Why renderer-side storage matters
 

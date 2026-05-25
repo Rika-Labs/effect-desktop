@@ -21,6 +21,7 @@ const PNG_CONTENT_TYPE: &str = "image/png";
 const JPEG_CONTENT_TYPE: &str = "image/jpeg";
 const WEBP_CONTENT_TYPE: &str = "image/webp";
 const ICO_CONTENT_TYPE: &str = "image/x-icon";
+const WASM_CONTENT_TYPE: &str = "application/wasm";
 const WOFF2_CONTENT_TYPE: &str = "font/woff2";
 const WOFF_CONTENT_TYPE: &str = "font/woff";
 const TTF_CONTENT_TYPE: &str = "font/ttf";
@@ -140,6 +141,8 @@ fn content_type_for_path(path: &str) -> &'static str {
         WEBP_CONTENT_TYPE
     } else if path.ends_with(".ico") {
         ICO_CONTENT_TYPE
+    } else if path.ends_with(".wasm") {
+        WASM_CONTENT_TYPE
     } else if path.ends_with(".woff2") {
         WOFF2_CONTENT_TYPE
     } else if path.ends_with(".woff") {
@@ -160,6 +163,7 @@ mod tests {
     use super::{
         renderer_asset_root_from_manifest_str, resolve, resolve_from_root,
         source_renderer_asset_root, CSS_CONTENT_TYPE, HTML_CONTENT_TYPE, JAVASCRIPT_CONTENT_TYPE,
+        WASM_CONTENT_TYPE,
     };
     use std::{
         fs::{create_dir_all, remove_dir_all, write},
@@ -222,6 +226,21 @@ mod tests {
         assert!(!css.bytes.is_empty(), "css asset should have content");
         assert_eq!(js.content_type, JAVASCRIPT_CONTENT_TYPE);
         assert!(!js.bytes.is_empty(), "js asset should have content");
+
+        remove_dir_all(root).expect("temp root should remove");
+    }
+
+    #[test]
+    fn wasm_assets_resolve_with_streaming_compile_mime_type() {
+        let root = temp_root("effect-desktop-host-assets-wasm");
+        let dist = root.join("dist");
+        write_asset_fixture(&dist);
+        write(dist.join("module.wasm"), b"\0asm").expect("wasm fixture should write");
+
+        let wasm = resolve_from_root(&dist, "/module.wasm").expect("wasm asset should resolve");
+
+        assert_eq!(wasm.content_type, WASM_CONTENT_TYPE);
+        assert_eq!(wasm.bytes, b"\0asm");
 
         remove_dir_all(root).expect("temp root should remove");
     }
