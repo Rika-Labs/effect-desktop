@@ -5,7 +5,7 @@ import {
   RpcGroup
 } from "@orika/bridge"
 import { type DesktopRpcClient, P } from "@orika/core"
-import { Context, Effect, Layer, Schema, Stream } from "effect"
+import { Context, Effect, Schema, Stream } from "effect"
 
 import type { SessionProfileHandle } from "./contracts/session-profile.js"
 import { WebRequestEvent, WebRequestSupportedResult } from "./contracts/web-request.js"
@@ -70,29 +70,9 @@ export interface WebRequestClientApi {
   ) => Stream.Stream<WebRequestEvent, WebRequestError, never>
 }
 
-export class WebRequestClient extends Context.Service<WebRequestClient, WebRequestClientApi>()(
-  "@orika/native/WebRequestClient"
-) {}
-
-export interface WebRequestServiceApi {
-  readonly isSupported: () => Effect.Effect<WebRequestSupportedResult, WebRequestError, never>
-  readonly events: (
-    profile?: SessionProfileHandle
-  ) => Stream.Stream<WebRequestEvent, WebRequestError, never>
-}
-
-export class WebRequest extends Context.Service<WebRequest, WebRequestServiceApi>()(
+export class WebRequest extends Context.Service<WebRequest, WebRequestClientApi>()(
   "@orika/native/WebRequest"
-) {
-  static readonly layer = Layer.effect(WebRequest)(
-    Effect.gen(function* () {
-      const client = yield* WebRequestClient
-      return makeWebRequestService(client)
-    })
-  )
-}
-
-export const WebRequestLive = WebRequest.layer
+) {}
 
 export type WebRequestRpc = RpcGroup.Rpcs<typeof WebRequestRpcGroup>
 export type WebRequestRpcHandlers<R = never> = NativeRpcHandlers<typeof WebRequestRpcGroup, R>
@@ -113,7 +93,7 @@ export const WebRequestHandlersLive = WebRequestRpcGroup.toLayer({
 })
 
 export const WebRequestSurface = NativeSurface.make(Surface, WebRequestRpcGroup, {
-  service: WebRequestClient,
+  service: WebRequest,
   handlers: WebRequestHandlersLive,
   capabilityFacts: WebRequestCapabilityFacts,
   client: (client) => webRequestClientFromRpcClient(client),
@@ -136,12 +116,6 @@ export const makeWebRequestUnsupportedClient = (): WebRequestClientApi =>
       ),
     events: () => Stream.fail(unsupportedError(EventMethod))
   } satisfies WebRequestClientApi)
-
-const makeWebRequestService = (client: WebRequestClientApi): WebRequestServiceApi =>
-  Object.freeze({
-    isSupported: () => client.isSupported(),
-    events: (profile) => client.events(profile)
-  } satisfies WebRequestServiceApi)
 
 const webRequestClientFromRpcClient = (
   client: DesktopRpcClient<WebRequestRpc>

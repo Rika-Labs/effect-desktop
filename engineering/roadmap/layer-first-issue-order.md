@@ -137,6 +137,7 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 |        #1842 Model RecentDocuments events as RPC streams | Closed | Removes the remaining `RecentDocumentsRpcEvents` side object by moving RecentDocuments lifecycle events into the canonical `RecentDocuments.events.Event` stream.   |
 |   #1843 Flatten NativeNetwork pass-through service split | Closed | Removes the `NativeNetworkClient` -> `NativeNetwork` forwarding layer while keeping NativeNetwork capability facts and event stream semantics.                      |
 |     #1844 Route direct native events through RPC streams | Closed | Splits direct and bridge event clients for NativeNetwork and Download so direct clients use canonical `*.events.Event` RPC streams instead of bridge subscriptions. |
+|      #1845 Flatten WebRequest pass-through service split | Closed | Removes the `WebRequestClient` -> `WebRequest` forwarding layer while keeping WebRequest support metadata, direct/bridge event routing, and profile filtering.      |
 
 ## Execution Progress
 

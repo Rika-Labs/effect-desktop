@@ -673,17 +673,14 @@ export {
   makeWebRequestUnsupportedClient,
   WebRequest,
   WebRequestCapabilityFacts,
-  WebRequestClient,
   WebRequestHandlersLive,
-  WebRequestLive,
   WebRequestMethodNames,
   WebRequestRpcs,
   WebRequestSurface,
   type WebRequestClientApi,
   type WebRequestError,
   type WebRequestRpc,
-  type WebRequestRpcHandlers,
-  type WebRequestServiceApi
+  type WebRequestRpcHandlers
 } from "./web-request.js"
 export {
   Notification,

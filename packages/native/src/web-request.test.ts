@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
 import {
   type BridgeClientExchange,
   type HostProtocolEnvelope,
@@ -25,10 +26,9 @@ import {
   makeWebRequestUnsupportedClient,
   WebRequest,
   WebRequestCapabilityFacts,
-  WebRequestClient,
+  type WebRequestClientApi,
   WebRequestRpcs,
-  WebRequestSurface,
-  WebRequestLive
+  WebRequestSurface
 } from "./web-request.js"
 
 const UnsupportedMethods = ["onBeforeRequest", "onHeadersReceived", "removeListener"] as const
@@ -66,13 +66,35 @@ const interceptorSnapshot = {
   order: 0
 } as const
 
-test("WebRequest public surface omits the side event object", async () => {
-  const webRequestModule = await import("./web-request.js")
-  const rootModule = await import("./index.js")
+test("WebRequest public surface omits shallow service and layer helpers", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        readFile(new URL("web-request.ts", import.meta.url), "utf8")
+      )
+      const indexSource = yield* Effect.promise(() =>
+        readFile(new URL("index.ts", import.meta.url), "utf8")
+      )
+      const webRequestModule = yield* Effect.promise(() => import("./web-request.js"))
+      const rootModule = yield* Effect.promise(() => import("./index.js"))
 
-  expect("WebRequestRpcEvents" in webRequestModule).toBe(false)
-  expect("WebRequestRpcEvents" in rootModule).toBe(false)
-})
+      for (const removedName of [
+        "WebRequestRpcEvents",
+        "class WebRequestClient",
+        "WebRequestLive",
+        "WebRequestServiceApi",
+        "makeWebRequestService",
+        "makeWebRequestClientLayer",
+        "makeWebRequestServiceLayer",
+        "makeWebRequestBridgeClientLayer"
+      ]) {
+        expect(source).not.toContain(removedName)
+        expect(indexSource).not.toContain(removedName)
+      }
+      expect("WebRequestRpcEvents" in webRequestModule).toBe(false)
+      expect("WebRequestRpcEvents" in rootModule).toBe(false)
+    })
+  ))
 
 test("WebRequest before-request redirect action requires a matching redirect URL", () =>
   Effect.runPromise(
@@ -373,7 +395,7 @@ test("WebRequest isSupported reports supported result through the service", () =
           const service = yield* WebRequest
           return yield* service.isSupported()
         }),
-        Layer.provide(WebRequestLive, Layer.succeed(WebRequestClient)(client))
+        webRequestLayer(client)
       )
       expect(result.supported).toBe(true)
     })
@@ -388,7 +410,7 @@ test("WebRequest unsupported client reports the host-unavailable reason", () =>
           const service = yield* WebRequest
           return yield* service.isSupported()
         }),
-        Layer.provide(WebRequestLive, Layer.succeed(WebRequestClient)(client))
+        webRequestLayer(client)
       )
       expect(result.supported).toBe(false)
       expect(result.reason).toBe("host-web-request-unavailable")
@@ -404,7 +426,7 @@ test("WebRequest unsupported client fails the event stream as unsupported", () =
           const service = yield* WebRequest
           return yield* Effect.exit(service.events().pipe(Stream.take(1), Stream.runCollect))
         }),
-        Layer.provide(WebRequestLive, Layer.succeed(WebRequestClient)(client))
+        webRequestLayer(client)
       )
 
       expectExitFailure(exit, (error) => {
@@ -431,7 +453,7 @@ test("WebRequest bridge client subscribes to the host event channel", () =>
 
       const collected = yield* runScoped(
         Effect.gen(function* () {
-          const client = yield* WebRequestClient
+          const client = yield* WebRequest
           return yield* client.events().pipe(Stream.runCollect)
         }),
         WebRequestSurface.bridgeClientLayer(exchange)
@@ -470,7 +492,7 @@ test("WebRequest bridge client rejects inconsistent event messages as InvalidOut
             webRequest.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
           )
         }),
-        Layer.provide(WebRequest.layer, WebRequestSurface.bridgeClientLayer(exchange))
+        WebRequestSurface.bridgeClientLayer(exchange)
       )
 
       expectInvalidOutput(exit)
@@ -541,7 +563,7 @@ const directWebRequestEvent = (payload: unknown) =>
 
     const event = yield* runScoped(
       Effect.gen(function* () {
-        const client = yield* WebRequestClient
+        const client = yield* WebRequest
         return yield* client
           .events(sessionProfileHandle)
           .pipe(Stream.runHead, Effect.map(Option.getOrThrow))
@@ -565,6 +587,9 @@ const runScoped = <A, E, R>(
     yield* Effect.promise(() => runtime.dispose())
     return result
   })
+
+const webRequestLayer = (client: WebRequestClientApi): Layer.Layer<WebRequest> =>
+  Layer.succeed(WebRequest)(client)
 
 const expectExitFailure = <A>(
   exit: Exit.Exit<A, unknown>,
