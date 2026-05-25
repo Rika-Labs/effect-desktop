@@ -8,7 +8,7 @@ effect_version: 4
 
 # `Updater`
 
-Auto-update service contract. The TypeScript surface is Schema-typed and test-substitutable. The native host currently supports an executable local subset: signed-manifest check, local file artifact staging for that verified manifest, committing the staged artifact into the host-owned current-bundle path, and status for those host-owned steps. `Updater.check` verifies a caller-supplied manifest JSON string against caller-supplied Ed25519 trust anchors, then reports whether that manifest version differs from `currentVersion`. `Updater.download` can stage the verified manifest's current-platform `file://` artifact after checking its signed byte count and SHA-256 digest. `Updater.install` commits the staged artifact. `Updater.installAndRestart` commits the staged artifact and emits `Updater.PreparingRestart`; `Updater.readyForRestart` acknowledges that renderer work is quiesced before restart. `Updater.getStatus` reports the host-owned result as `idle`, `update-available`, `downloading`, `downloaded`, `installing`, or `error`.
+Auto-update service contract. The TypeScript surface is Schema-typed and test-substitutable. The native host currently supports an executable local subset: signed-manifest check, local file artifact staging for that verified manifest, committing the staged artifact into the host-owned current-bundle path, and status for those host-owned steps. `Updater.check` verifies a caller-supplied manifest JSON string against caller-supplied Ed25519 trust anchors, then reports whether that manifest version differs from `currentVersion`. `Updater.download` can stage the verified manifest's current-platform `file://` artifact after checking its signed byte count and SHA-256 digest. `Updater.install` commits the staged artifact. `Updater.installAndRestart` commits the staged artifact and emits `Updater.events.PreparingRestart`; `Updater.readyForRestart` acknowledges that renderer work is quiesced before restart. `Updater.getStatus` reports the host-owned result as `idle`, `update-available`, `downloading`, `downloaded`, `installing`, or `error`.
 
 The host does not fetch feeds, download network artifacts, enforce update policy, or relaunch the process into an installed update yet. The current restart path is a typed readiness handshake over the local staged install.
 
@@ -31,6 +31,14 @@ The host does not fetch feeds, download network artifacts, enforce update policy
 | `getStatus`         | `void`                                            | updater status result                                      | supported       |
 | `readyForRestart`   | `void`                                            | `void`                                                     | supported       |
 
+## Events
+
+`onPreparingRestart()` consumes the canonical
+`Updater.events.PreparingRestart` RPC stream and emits
+`UpdaterPreparingRestartEvent` payloads with the restart readiness deadline. The
+native/web bridge maps that RPC stream to the host event method
+`Updater.PreparingRestart` at the boundary and keeps strict payload decoding.
+
 ## Types
 
 `UpdaterCheckOptions`, `UpdaterDownloadOptions`, `UpdaterInstallOptions`.
@@ -47,7 +55,7 @@ The host does not fetch feeds, download network artifacts, enforce update policy
 
 `Updater.install` requires a prior staged artifact. Missing staged state is `InvalidState`; version mismatch is `NotFound`; filesystem commit failures are typed host failures with staging diagnostics. The staged artifact remains on disk until cleanup so diagnostics and rollback metadata remain available.
 
-`Updater.installAndRestart` has the same staged-artifact requirement, then emits `Updater.PreparingRestart` with a deadline. `Updater.readyForRestart` requires a pending restart handshake and records the acknowledgement in host status. Late readiness is a terminal host error with a recovery breadcrumb from the native updater primitive.
+`Updater.installAndRestart` has the same staged-artifact requirement, then emits `Updater.events.PreparingRestart` with a deadline. `Updater.readyForRestart` requires a pending restart handshake and records the acknowledgement in host status. Late readiness is a terminal host error with a recovery breadcrumb from the native updater primitive.
 
 `Updater.getStatus` is limited to signed-manifest check, local artifact staging, local install commit, and restart-readiness state. It does not report feed polling, network download, process relaunch, or rollback execution yet.
 

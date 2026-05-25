@@ -235,7 +235,6 @@ import {
   Updater,
   UpdaterHandlersLive,
   UpdaterRpcs,
-  UpdaterRpcEvents,
   UpdaterLive,
   UpdaterMethodNames,
   UpdaterSurface,
@@ -1287,6 +1286,7 @@ const expectedUpdaterMethods: Array<(typeof UpdaterMethodNames)[number]> = [
   "getStatus",
   "readyForRestart"
 ]
+const expectedUpdaterEventRpcTags = ["Updater.events.PreparingRestart"] as const
 const updaterCheckInput = (currentVersion = "1.0.0") => ({
   currentVersion,
   manifestJson: '{"schemaVersion":1}',
@@ -8250,9 +8250,110 @@ test("Linux SafeStorage client reports unimplemented adapter as unavailable with
 
 test("UpdaterRpcs declares the Phase 8 Updater method surface", () => {
   expect([...UpdaterMethodNames]).toEqual(expectedUpdaterMethods)
-  expect(rpcMethodNames("Updater", UpdaterRpcs)).toEqual(expectedUpdaterMethods)
-  expect(Object.keys(UpdaterRpcEvents)).toEqual(["PreparingRestart"])
+  expect(rpcMethodNames("Updater", UpdaterRpcs)).toEqual([
+    ...expectedUpdaterMethods,
+    "events.PreparingRestart"
+  ])
 })
+
+test("Updater restart event schema is owned by the RPC stream contract", async () => {
+  const updaterModule = await import("./updater.js")
+  const rootModule = await import("./index.js")
+  const eventRpc = UpdaterRpcs.requests.get("Updater.events.PreparingRestart")
+
+  expect("UpdaterRpcEvents" in updaterModule).toBe(false)
+  expect("UpdaterRpcEvents" in rootModule).toBe(false)
+  expect(Array.from(UpdaterRpcs.requests.keys())).toEqual([
+    ...expectedUpdaterMethods.map((method) => `Updater.${method}`),
+    ...expectedUpdaterEventRpcTags
+  ])
+  expect(eventRpc).toBeDefined()
+  expect(eventRpc === undefined ? false : RpcSchema.isStreamSchema(eventRpc.successSchema)).toBe(
+    true
+  )
+  if (eventRpc !== undefined && RpcSchema.isStreamSchema(eventRpc.successSchema)) {
+    expect(eventRpc.successSchema.success).toBe(UpdaterPreparingRestartEvent)
+    expect(eventRpc.pipe(rpcSupport)).toEqual({
+      status: "partial",
+      reason: "signed-manifest-restart-handshake-only",
+      platforms: [
+        { platform: "macos", status: "partial", reason: "signed-manifest-restart-handshake-only" },
+        {
+          platform: "windows",
+          status: "partial",
+          reason: "signed-manifest-restart-handshake-only"
+        },
+        { platform: "linux", status: "partial", reason: "signed-manifest-restart-handshake-only" }
+      ]
+    })
+  }
+})
+
+test("Updater direct client consumes the canonical restart event stream", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
+      const requests: HostProtocolRequestEnvelope[] = []
+      const protocolLayer = Layer.effect(RpcClient.Protocol)(
+        makeDesktopClientProtocol(
+          {
+            send: (envelope) => {
+              if (envelope.kind !== "request") {
+                return Effect.void
+              }
+              requests.push(envelope)
+              return Effect.all(
+                [
+                  Queue.offer(
+                    queue,
+                    new HostProtocolStreamByRequestEnvelope({
+                      kind: "stream",
+                      id: envelope.id,
+                      timestamp: 1_710_000_008_300,
+                      traceId: envelope.traceId,
+                      payload: { deadlineMs: 5_000 }
+                    })
+                  ),
+                  Queue.offer(
+                    queue,
+                    new HostProtocolResponseEnvelope({
+                      kind: "response",
+                      id: envelope.id,
+                      timestamp: 1_710_000_008_301,
+                      traceId: envelope.traceId
+                    })
+                  )
+                ],
+                { discard: true }
+              )
+            },
+            run: (onEnvelope) =>
+              Stream.fromQueue(queue).pipe(
+                Stream.runForEach(onEnvelope),
+                Effect.andThen(Effect.never)
+              )
+          },
+          {
+            nextRequestId: () => "updater-preparing-restart-rpc",
+            nextTraceId: () => "trace-updater-preparing-restart-rpc"
+          }
+        )
+      )
+
+      const event = yield* runScoped(
+        Effect.gen(function* () {
+          const updater = yield* Updater
+          return yield* updater
+            .onPreparingRestart()
+            .pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+        }),
+        Layer.provide(Updater.layer, Layer.provide(UpdaterSurface.clientLayer, protocolLayer))
+      )
+
+      expect(event).toEqual(new UpdaterPreparingRestartEvent({ deadlineMs: 5_000 }))
+      expect(requests.map((request) => request.method)).toEqual(["Updater.events.PreparingRestart"])
+    })
+  ))
 
 test("Updater.download support metadata keeps network artifact download unavailable", () => {
   expect(UpdaterRpcs.requests.get("Updater.download")!.pipe(rpcSupport)).toEqual({

@@ -11,7 +11,6 @@ import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
-import { subscribeNativeEvent } from "./event-stream.js"
 import {
   UpdaterCheckInput,
   UpdaterCheckResult,
@@ -112,11 +111,10 @@ export const UpdaterReadyForRestart = NativeSurface.rpc("Updater", "readyForRest
   support: NativeSurface.support.supported
 })
 
-export const UpdaterRpcEvents = Object.freeze({
-  PreparingRestart: { payload: UpdaterPreparingRestartEvent }
+const UpdaterPreparingRestart = NativeSurface.event("Updater", "PreparingRestart", {
+  payload: UpdaterPreparingRestartEvent,
+  support: UpdaterRestartSupport
 })
-
-export type UpdaterRpcEvents = typeof UpdaterRpcEvents
 
 const UpdaterRpcGroup = RpcGroup.make(
   UpdaterCheck,
@@ -124,7 +122,8 @@ const UpdaterRpcGroup = RpcGroup.make(
   UpdaterInstall,
   UpdaterInstallAndRestart,
   UpdaterGetStatus,
-  UpdaterReadyForRestart
+  UpdaterReadyForRestart,
+  UpdaterPreparingRestart
 )
 
 export const UpdaterRpcs: RpcGroup.RpcGroup<UpdaterRpc> = UpdaterRpcGroup
@@ -221,34 +220,27 @@ export const UpdaterHandlersLive = UpdaterRpcGroup.toLayer({
     Effect.gen(function* () {
       const updater = yield* Updater
       yield* updater.readyForRestart()
-    })
+    }),
+  "Updater.events.PreparingRestart": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const updater = yield* Updater
+        return updater.onPreparingRestart()
+      })
+    )
 })
 
 export const UpdaterSurface = NativeSurface.make("Updater", UpdaterRpcGroup, {
   service: UpdaterClient,
   capabilities: UpdaterMethodNames,
   handlers: UpdaterHandlersLive,
-  client: (client) =>
-    updaterClientFromRpcClient(client, () =>
-      Stream.fail(
-        makeHostProtocolInvalidOutputError(
-          "Updater.PreparingRestart",
-          "event exchange does not support subscriptions"
-        )
-      )
-    ),
-  bridgeClient: (client, exchange) =>
-    updaterClientFromRpcClient(client, () =>
-      subscribeUpdaterEvent(exchange, "Updater.PreparingRestart")
-    )
+  client: (client) => updaterClientFromRpcClient(client),
+  bridgeClient: (client, exchange) => updaterBridgeClientFromRpcClient(client, exchange)
 })
 
 const StrictParseOptions = { onExcessProperty: "error" } as const
 
-const updaterClientFromRpcClient = (
-  client: DesktopRpcClient<UpdaterRpc>,
-  onPreparingRestart: () => Stream.Stream<UpdaterPreparingRestartEvent, UpdaterError, never>
-): UpdaterClientApi =>
+const updaterClientFromRpcClient = (client: DesktopRpcClient<UpdaterRpc>): UpdaterClientApi =>
   Object.freeze({
     check: (input) =>
       decodeUpdaterCheckInput(input, "Updater.check").pipe(
@@ -277,14 +269,22 @@ const updaterClientFromRpcClient = (
     getStatus: () => runUpdaterRpc(client["Updater.getStatus"](undefined), "Updater.getStatus"),
     readyForRestart: () =>
       runUpdaterRpc(client["Updater.readyForRestart"](undefined), "Updater.readyForRestart"),
-    onPreparingRestart
+    onPreparingRestart: () =>
+      runUpdaterRpcStream(
+        client["Updater.events.PreparingRestart"](undefined),
+        "Updater.events.PreparingRestart"
+      )
   } satisfies UpdaterClientApi)
 
-const subscribeUpdaterEvent = (
-  exchange: BridgeClientExchange,
-  method: "Updater.PreparingRestart"
-): Stream.Stream<UpdaterPreparingRestartEvent, UpdaterError, never> =>
-  subscribeNativeEvent(exchange, method, UpdaterPreparingRestartEvent, StrictParseOptions)
+const updaterBridgeClientFromRpcClient = (
+  client: DesktopRpcClient<UpdaterRpc>,
+  exchange: BridgeClientExchange
+): UpdaterClientApi =>
+  Object.freeze({
+    ...updaterClientFromRpcClient(client),
+    onPreparingRestart: () =>
+      NativeSurface.subscribeEvent(exchange, UpdaterPreparingRestart, StrictParseOptions)
+  } satisfies UpdaterClientApi)
 
 const decodeUpdaterCheckInput = (
   input: unknown,
@@ -343,6 +343,11 @@ const runUpdaterRpc = <A, E>(
       Effect.fail(makeHostProtocolInvalidOutputError(operation, formatUnknownError(defect)))
     )
   )
+
+const runUpdaterRpcStream = <A, E>(
+  stream: Stream.Stream<A, E, never>,
+  _operation: string
+): Stream.Stream<A, UpdaterError, never> => stream.pipe(Stream.mapError(mapUpdaterRpcClientError))
 
 const mapUpdaterRpcClientError = (error: unknown): UpdaterError =>
   isUpdaterError(error)

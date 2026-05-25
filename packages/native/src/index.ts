@@ -810,7 +810,6 @@ export {
   UpdaterHandlersLive,
   UpdaterLive,
   UpdaterMethodNames,
-  UpdaterRpcEvents,
   UpdaterRpcs,
   UpdaterSurface,
   type UpdaterCheckOptions,
