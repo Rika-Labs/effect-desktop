@@ -45,7 +45,7 @@ const nativeNetworkCapabilityFact = (
     support: UnsupportedSupport
   })
 
-export const NativeNetworkCapabilityFacts = Object.freeze([
+const UnsupportedCapabilityFacts = Object.freeze([
   nativeNetworkCapabilityFact("fetch"),
   nativeNetworkCapabilityFact("upload"),
   nativeNetworkCapabilityFact("connectWebSocket"),
@@ -94,7 +94,7 @@ export const NativeNetworkHandlersLive = NativeNetworkRpcGroup.toLayer({
 export const NativeNetworkSurface = NativeSurface.make(Surface, NativeNetworkRpcGroup, {
   service: NativeNetwork,
   handlers: NativeNetworkHandlersLive,
-  capabilityFacts: NativeNetworkCapabilityFacts,
+  capabilityFacts: UnsupportedCapabilityFacts,
   client: (client) => nativeNetworkClientFromRpcClient(client),
   bridgeClient: (client, exchange) => nativeNetworkBridgeClientFromRpcClient(client, exchange)
 })

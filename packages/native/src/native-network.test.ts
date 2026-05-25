@@ -20,7 +20,6 @@ import {
   makeNativeNetworkMemoryClient,
   makeNativeNetworkUnsupportedClient,
   NativeNetwork,
-  NativeNetworkCapabilityFacts,
   NativeNetworkRpcs,
   NativeNetworkSurface,
   type NativeNetworkClientApi
@@ -55,6 +54,7 @@ test("NativeNetwork public surface omits shallow service and layer helpers", () 
       )
 
       for (const removedName of [
+        "NativeNetwork" + "CapabilityFacts",
         "class NativeNetworkClient",
         "NativeNetworkLive",
         "NativeNetworkServiceApi",
@@ -253,11 +253,11 @@ test("NativeNetwork bridge client rejects inconsistent isSupported output as Inv
   ))
 
 test("NativeNetwork declares the 5 unsupported methods as non-callable capability facts", () => {
-  const factTags = NativeNetworkCapabilityFacts.map((fact) => fact.tag).toSorted()
+  const facts = nativeNetworkCapabilityFacts()
+  const factTags = facts.map((fact) => fact.tag).toSorted()
   expect(factTags).toEqual(UnsupportedMethods.map((method) => `NativeNetwork.${method}`).toSorted())
-  for (const fact of NativeNetworkCapabilityFacts) {
+  for (const fact of facts) {
     expect(fact.support).toEqual(UnsupportedSupport)
-    expect(fact.capability.kind).toBe("native.invoke")
   }
 })
 
@@ -273,6 +273,7 @@ test("NativeNetwork capability facts surface in the manifest and stay non-callab
         const fact = byTag.get(`NativeNetwork.${method}`)
         expect(fact).toBeDefined()
         expect(fact?.support).toEqual(UnsupportedSupport)
+        expect(fact?.capability.kind).toBe("native.invoke")
       }
 
       const callableFactTags = NativeNetworkSurface.schemaDocs
@@ -520,6 +521,9 @@ const runScoped = <A, E, R>(
 
 const nativeNetworkLayer = (client: NativeNetworkClientApi): Layer.Layer<NativeNetwork> =>
   Layer.succeed(NativeNetwork)(client)
+
+const nativeNetworkCapabilityFacts = () =>
+  NativeNetworkSurface.schemaDocs.filter((doc) => !doc.callable)
 
 const requestHandle = () =>
   ({

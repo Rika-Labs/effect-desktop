@@ -2364,11 +2364,6 @@
       "signature": "export class NativeNetwork extends Context.Service<NativeNetwork, NativeNetworkClientApi>()( \"@orika/native/NativeNetwork\" ) {}"
     },
     {
-      "name": "NativeNetworkCapabilityFacts",
-      "kind": "value",
-      "signature": "const NativeNetworkCapabilityFacts: readonly import(\"@orika/core\").DesktopRpcCapabilityFact[]"
-    },
-    {
       "name": "NativeNetworkClientApi",
       "kind": "interface",
       "signature": "export interface NativeNetworkClientApi { readonly isSupported: () => Effect.Effect<NativeNetworkSupportedResult, NativeNetworkError, never> readonly events: () => Stream.Stream<NativeNetworkEvent, NativeNetworkError, never> }"

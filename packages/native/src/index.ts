@@ -129,7 +129,6 @@ export {
   makeNativeNetworkMemoryClient,
   makeNativeNetworkUnsupportedClient,
   NativeNetwork,
-  NativeNetworkCapabilityFacts,
   NativeNetworkHandlersLive,
   NativeNetworkMethodNames,
   NativeNetworkRpcs,
