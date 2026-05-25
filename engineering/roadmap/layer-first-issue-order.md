@@ -155,6 +155,7 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 |                              #1861 Model Menu events as RPC streams | Closed | Moves menu activation events into the canonical `Menu.events.Activated` RPC stream and removes shallow Menu side exports.                                             |
 |                       #1862 Model CookieStore events as RPC streams | Closed | Moves cookie-store mutation events into the canonical `CookieStore.events.Event` RPC stream and removes shallow CookieStore side exports.                             |
 |                    #1863 Model SessionProfile events as RPC streams | Closed | Moves session-profile lifecycle events into the canonical `SessionProfile.events.Event` RPC stream and removes shallow SessionProfile side exports.                   |
+|                    #1864 Flatten SessionPermission and model events | Closed | Flattens the SessionPermission forwarding service and moves permission events into `SessionPermission.events.Event` while keeping unsupported capability facts local. |
 
 ## Execution Progress
 

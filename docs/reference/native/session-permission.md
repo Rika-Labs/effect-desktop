@@ -8,9 +8,9 @@ effect_version: 4
 
 # `SessionPermission`
 
-`SessionPermission` declares profile-scoped browser permission requests, decisions, decision listing, and events for camera, microphone, notifications, geolocation, clipboard, and display capture. The `SessionProfileHandle` is the partition identity; decisions do not live in global browser state.
+`SessionPermission` declares profile-scoped browser permission request, decision, and failure events for camera, microphone, notifications, geolocation, clipboard, and display capture. The `SessionProfileHandle` is the partition identity; decisions do not live in global browser state.
 
-The public service is Layer-first and test-substitutable. The TypeScript service validates Schema contracts before transport, checks `native.invoke` permissions before client side effects, and exposes `SessionPermission.Event` as a typed stream. The memory client records pending requests and decisions under `profile.id` so tests can prove partition isolation and event replay.
+The public service is Layer-first and test-substitutable. The TypeScript service validates Schema contracts before transport, checks `native.invoke` permissions before client side effects, and exposes `SessionPermission.events.Event` as the typed RPC stream. Bridge clients keep host wire compatibility by subscribing to `SessionPermission.Event`.
 
 ## Methods
 
@@ -20,6 +20,8 @@ The surface exposes only the genuinely callable methods below.
 | ------------- | ------------------------------- | -------------------------- |
 | `isSupported` | `void`                          | `{ supported, reason? }`   |
 | `events`      | optional `SessionProfileHandle` | stream of request/decision |
+
+`events(profile?)` consumes `SessionPermission.events.Event` and filters events by `profile.id` when a profile is supplied. The stream is published with unsupported support metadata until the host routes real profile-bound WebView permission callbacks.
 
 ## Capability facts (non-callable)
 
@@ -75,7 +77,9 @@ The host does not yet receive portable browser permission callbacks from profile
 | Windows  | `unsupported` | `host-session-permission-unavailable` |
 | Linux    | `unsupported` | `host-session-permission-unavailable` |
 
-`isSupported` returns `{ supported: false, reason: "host-session-permission-unavailable" }` from the host. Use `makeSessionPermissionMemoryClient()` for deterministic `isSupported` and event tests; use `makeSessionPermissionUnsupportedClient()` for the typed unsupported path.
+`isSupported` returns `{ supported: false, reason: "host-session-permission-unavailable" }` from the host. Use `makeSessionPermissionMemoryClient()` for deterministic `isSupported` and empty event-stream tests; use `makeSessionPermissionUnsupportedClient()` for the typed unsupported path.
+
+Architecture-debt sweep outcome for #1864: removed the `SessionPermissionClient` forwarding service, `SessionPermissionLive`, `makeSessionPermissionService`, `SessionPermissionRpcEvents`, and the public `SessionPermissionCapabilityFacts` side export. The unsupported capability facts remain local to `SessionPermissionSurface` because they publish truthful non-callable support metadata for `request`, `decide`, and `listDecisions`.
 
 ## Related
 

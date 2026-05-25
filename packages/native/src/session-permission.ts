@@ -5,15 +5,14 @@ import {
   RpcGroup
 } from "@orika/bridge"
 import { type DesktopRpcClient, P } from "@orika/core"
-import { Context, Effect, Layer, Schema, Stream } from "effect"
+import { Context, Effect, Schema, Stream } from "effect"
 
 import {
   SessionPermissionEvent,
   SessionPermissionSupportedResult
 } from "./contracts/session-permission.js"
 import type { SessionProfileHandle } from "./contracts/session-profile.js"
-import { subscribeNativeEvent } from "./event-stream.js"
-import { runNativeRpc } from "./native-client.js"
+import { runNativeRpc, runNativeRpcStream } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
 
@@ -48,17 +47,21 @@ const sessionPermissionCapabilityFact = (method: "request" | "decide" | "listDec
     support: UnsupportedSupport
   })
 
-export const SessionPermissionCapabilityFacts = Object.freeze([
+const UnsupportedCapabilityFacts = Object.freeze([
   sessionPermissionCapabilityFact("request"),
   sessionPermissionCapabilityFact("decide"),
   sessionPermissionCapabilityFact("listDecisions")
 ])
 
-export const SessionPermissionRpcEvents = Object.freeze({
-  Event: { payload: SessionPermissionEvent }
+const SessionPermissionEventStream = NativeSurface.event(Surface, "Event", {
+  payload: SessionPermissionEvent,
+  support: UnsupportedSupport
 })
 
-const SessionPermissionRpcGroup = RpcGroup.make(SessionPermissionIsSupported)
+const SessionPermissionRpcGroup = RpcGroup.make(
+  SessionPermissionIsSupported,
+  SessionPermissionEventStream
+)
 
 export const SessionPermissionRpcs: RpcGroup.RpcGroup<SessionPermissionRpc> =
   SessionPermissionRpcGroup
@@ -76,35 +79,10 @@ export interface SessionPermissionClientApi {
   ) => Stream.Stream<SessionPermissionEvent, SessionPermissionError, never>
 }
 
-export class SessionPermissionClient extends Context.Service<
-  SessionPermissionClient,
-  SessionPermissionClientApi
->()("@orika/native/SessionPermissionClient") {}
-
-export interface SessionPermissionServiceApi {
-  readonly isSupported: () => Effect.Effect<
-    SessionPermissionSupportedResult,
-    SessionPermissionError,
-    never
-  >
-  readonly events: (
-    profile?: SessionProfileHandle
-  ) => Stream.Stream<SessionPermissionEvent, SessionPermissionError, never>
-}
-
 export class SessionPermission extends Context.Service<
   SessionPermission,
-  SessionPermissionServiceApi
->()("@orika/native/SessionPermission") {
-  static readonly layer = Layer.effect(SessionPermission)(
-    Effect.gen(function* () {
-      const client = yield* SessionPermissionClient
-      return makeSessionPermissionService(client)
-    })
-  )
-}
-
-export const SessionPermissionLive = SessionPermission.layer
+  SessionPermissionClientApi
+>()("@orika/native/SessionPermission") {}
 
 export type SessionPermissionRpc = RpcGroup.Rpcs<typeof SessionPermissionRpcGroup>
 export type SessionPermissionRpcHandlers<R = never> = NativeRpcHandlers<
@@ -117,15 +95,22 @@ export const SessionPermissionHandlersLive = SessionPermissionRpcGroup.toLayer({
     Effect.gen(function* () {
       const permissions = yield* SessionPermission
       return yield* permissions.isSupported()
-    })
+    }),
+  "SessionPermission.events.Event": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const permissions = yield* SessionPermission
+        return permissions.events()
+      })
+    )
 })
 
 export const SessionPermissionSurface = NativeSurface.make(Surface, SessionPermissionRpcGroup, {
-  service: SessionPermissionClient,
+  service: SessionPermission,
   handlers: SessionPermissionHandlersLive,
-  capabilityFacts: SessionPermissionCapabilityFacts,
-  client: (client) => sessionPermissionClientFromRpcClient(client, undefined),
-  bridgeClient: (client, exchange) => sessionPermissionClientFromRpcClient(client, exchange)
+  capabilityFacts: UnsupportedCapabilityFacts,
+  client: (client) => sessionPermissionClientFromRpcClient(client),
+  bridgeClient: (client, exchange) => sessionPermissionBridgeClientFromRpcClient(client, exchange)
 })
 
 export const makeSessionPermissionMemoryClient = (): Effect.Effect<
@@ -149,17 +134,8 @@ export const makeSessionPermissionUnsupportedClient = (): SessionPermissionClien
     events: () => Stream.fail(unsupportedError(EventMethod))
   } satisfies SessionPermissionClientApi)
 
-const makeSessionPermissionService = (
-  client: SessionPermissionClientApi
-): SessionPermissionServiceApi =>
-  Object.freeze({
-    isSupported: () => client.isSupported(),
-    events: (profile) => client.events(profile)
-  } satisfies SessionPermissionServiceApi)
-
 const sessionPermissionClientFromRpcClient = (
-  client: DesktopRpcClient<SessionPermissionRpc>,
-  exchange: BridgeClientExchange | undefined
+  client: DesktopRpcClient<SessionPermissionRpc>
 ): SessionPermissionClientApi =>
   Object.freeze({
     isSupported: () =>
@@ -168,7 +144,24 @@ const sessionPermissionClientFromRpcClient = (
         "SessionPermission.isSupported"
       ),
     events: (profile) =>
-      subscribeNativeEvent(exchange, EventMethod, SessionPermissionEvent).pipe(
+      runSessionPermissionRpcStream(
+        client["SessionPermission.events.Event"](undefined),
+        "SessionPermission.events.Event"
+      ).pipe(Stream.filter((event) => profile === undefined || event.profile.id === profile.id))
+  } satisfies SessionPermissionClientApi)
+
+const sessionPermissionBridgeClientFromRpcClient = (
+  client: DesktopRpcClient<SessionPermissionRpc>,
+  exchange: BridgeClientExchange
+): SessionPermissionClientApi =>
+  Object.freeze({
+    isSupported: () =>
+      runSessionPermissionRpc(
+        client["SessionPermission.isSupported"](undefined),
+        "SessionPermission.isSupported"
+      ),
+    events: (profile) =>
+      NativeSurface.subscribeEvent(exchange, SessionPermissionEventStream).pipe(
         Stream.filter((event) => profile === undefined || event.profile.id === profile.id)
       )
   } satisfies SessionPermissionClientApi)
@@ -177,6 +170,11 @@ const runSessionPermissionRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
   operation: string
 ): Effect.Effect<A, SessionPermissionError, never> => runNativeRpc(effect, operation, Surface)
+
+const runSessionPermissionRpcStream = <A, E>(
+  stream: Stream.Stream<A, E, never>,
+  operation: string
+): Stream.Stream<A, SessionPermissionError, never> => runNativeRpcStream(stream, operation, Surface)
 
 const unsupportedError = (operation: string): HostProtocolError =>
   new HostProtocolUnsupportedError({

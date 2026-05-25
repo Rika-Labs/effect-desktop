@@ -854,19 +854,14 @@ export {
   makeSessionPermissionMemoryClient,
   makeSessionPermissionUnsupportedClient,
   SessionPermission,
-  SessionPermissionCapabilityFacts,
-  SessionPermissionClient,
   SessionPermissionHandlersLive,
-  SessionPermissionLive,
   SessionPermissionMethodNames,
-  SessionPermissionRpcEvents,
   SessionPermissionRpcs,
   SessionPermissionSurface,
   type SessionPermissionClientApi,
   type SessionPermissionError,
   type SessionPermissionRpc,
-  type SessionPermissionRpcHandlers,
-  type SessionPermissionServiceApi
+  type SessionPermissionRpcHandlers
 } from "./session-permission.js"
 export {
   makeSessionProfileMemoryClient,
