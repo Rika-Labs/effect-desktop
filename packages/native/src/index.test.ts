@@ -120,7 +120,6 @@ import {
   Association,
   AssociationMethodNames,
   AssociationRpcs,
-  AssociationRpcEvents,
   AssociationSurface,
   Autostart,
   AutostartMethodNames,
@@ -6042,10 +6041,13 @@ test("AssociationRpcs declares the Phase 8 Association method and event surface"
   expect(Array.from(AssociationRpcs.requests.keys())).toEqual([
     "Association.isDefaultProtocolClient",
     "Association.setDefaultProtocolClient",
-    "Association.getFileAssociations"
+    "Association.getFileAssociations",
+    "Association.events.Event"
   ])
-  expect(rpcMethodNames("Association", AssociationRpcs)).toEqual(expectedAssociationMethods)
-  expect(Object.keys(AssociationRpcEvents)).toEqual(["Event"])
+  expect(rpcMethodNames("Association", AssociationRpcs)).toEqual([
+    ...expectedAssociationMethods,
+    "events.Event"
+  ])
 })
 
 test("Association contracts reject inconsistent event phase payloads", () => {
@@ -6270,7 +6272,8 @@ test("native host RPC runtime denies protected Association calls before handlers
             }),
           "Association.setDefaultProtocolClient": () => Effect.void,
           "Association.getFileAssociations": () =>
-            Effect.succeed(new AssociationFileAssociationsResult({ associations: [] }))
+            Effect.succeed(new AssociationFileAssociationsResult({ associations: [] })),
+          "Association.events.Event": () => Stream.empty
         },
         { originAuth: RendererOriginAuth.unsafeDisabledForTests }
       )

@@ -149,6 +149,7 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 | #1854 Avoid recursive test client layers for flattened RPC surfaces | Closed | Fixes generated `testClientLayer` behavior when a flattened surface provides and requires the same Effect service tag without reintroducing shallow wrapper services. |
 |                    #1856 Remove NativeSurface service-key assertion | Closed | Removes the remaining native direct-vs-mapped service-key assertion while preserving bridge client construction and host runtime semantics.                           |
 |                       #1857 Model AppMetadata events as RPC streams | Closed | Removes the remaining `AppMetadataRpcEvents` side object by moving AppMetadata lifecycle events into the canonical `AppMetadata.events.Event` RPC stream.             |
+|                       #1858 Model Association events as RPC streams | Closed | Removes the remaining `AssociationRpcEvents` side object by moving Association lifecycle events into the canonical `Association.events.Event` RPC stream.             |
 
 ## Execution Progress
 

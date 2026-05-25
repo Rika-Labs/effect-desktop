@@ -37,10 +37,11 @@ extensions are associated with this app?"
 
 ## Events
 
-The current event stream is `events()`. Event phases are
+The current event stream is `events()`, backed by the
+`Association.events.Event` RPC stream contract. Event phases are
 `protocol-checked`, `protocol-updated`, `file-associations-checked`, and
-`failed`. The host emits an event after supported association queries and
-mutations when a runtime event sink is installed.
+`failed`. Bridge clients still translate that contract to the host wire event
+method `Association.Event`.
 
 ## Validation
 

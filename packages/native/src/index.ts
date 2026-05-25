@@ -46,7 +46,6 @@ export {
   Association,
   AssociationHandlersLive,
   AssociationMethodNames,
-  AssociationRpcEvents,
   AssociationRpcs,
   AssociationSurface,
   type AssociationClientApi,

@@ -11,8 +11,7 @@ import {
   type AssociationProtocolOptions,
   AssociationProtocolStatus
 } from "./contracts/association.js"
-import { subscribeNativeEvent } from "./event-stream.js"
-import { decodeNativeInput, runNativeRpc } from "./native-client.js"
+import { decodeNativeInput, runNativeRpc, runNativeRpcStream } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
 
@@ -66,14 +65,16 @@ export const AssociationGetFileAssociations = NativeSurface.rpc(Surface, "getFil
   support: AssociationSupport
 })
 
-export const AssociationRpcEvents = Object.freeze({
-  Event: { payload: AssociationEvent }
+const AssociationEventStream = NativeSurface.event(Surface, "Event", {
+  payload: AssociationEvent,
+  support: AssociationSupport
 })
 
 const AssociationRpcGroup = RpcGroup.make(
   AssociationIsDefaultProtocolClient,
   AssociationSetDefaultProtocolClient,
-  AssociationGetFileAssociations
+  AssociationGetFileAssociations,
+  AssociationEventStream
 )
 
 export const AssociationRpcs: RpcGroup.RpcGroup<AssociationRpc> = AssociationRpcGroup
@@ -119,7 +120,14 @@ export const AssociationHandlersLive = AssociationRpcGroup.toLayer({
     Effect.gen(function* () {
       const association = yield* Association
       return yield* association.getFileAssociations(input)
-    })
+    }),
+  "Association.events.Event": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const association = yield* Association
+        return association.events()
+      })
+    )
 })
 
 export const AssociationSurface = NativeSurface.make("Association", AssociationRpcGroup, {
@@ -127,12 +135,11 @@ export const AssociationSurface = NativeSurface.make("Association", AssociationR
   capabilities: AssociationMethodNames,
   handlers: AssociationHandlersLive,
   client: (client) => associationClientFromRpcClient(client),
-  bridgeClient: (client, exchange) => associationClientFromRpcClient(client, exchange)
+  bridgeClient: (client, exchange) => associationBridgeClientFromRpcClient(client, exchange)
 })
 
 const associationClientFromRpcClient = (
-  client: DesktopRpcClient<AssociationRpc>,
-  exchange?: BridgeClientExchange
+  client: DesktopRpcClient<AssociationRpc>
 ): AssociationClientApi =>
   Object.freeze({
     isDefaultProtocolClient: (input) =>
@@ -162,7 +169,46 @@ const associationClientFromRpcClient = (
           )
         )
       ),
-    events: () => subscribeNativeEvent(exchange, "Association.Event", AssociationEvent)
+    events: () =>
+      runAssociationRpcStream(
+        client["Association.events.Event"](undefined),
+        "Association.events.Event"
+      )
+  } satisfies AssociationClientApi)
+
+const associationBridgeClientFromRpcClient = (
+  client: DesktopRpcClient<AssociationRpc>,
+  exchange: BridgeClientExchange
+): AssociationClientApi =>
+  Object.freeze({
+    isDefaultProtocolClient: (input) =>
+      decodeAssociationProtocolInput(input, "Association.isDefaultProtocolClient").pipe(
+        Effect.flatMap((decoded) =>
+          runAssociationRpc(
+            client["Association.isDefaultProtocolClient"](decoded),
+            "Association.isDefaultProtocolClient"
+          )
+        )
+      ),
+    setDefaultProtocolClient: (input) =>
+      decodeAssociationProtocolInput(input, "Association.setDefaultProtocolClient").pipe(
+        Effect.flatMap((decoded) =>
+          runAssociationRpc(
+            client["Association.setDefaultProtocolClient"](decoded),
+            "Association.setDefaultProtocolClient"
+          )
+        )
+      ),
+    getFileAssociations: (input) =>
+      decodeAssociationFileAssociationsInput(input ?? {}, "Association.getFileAssociations").pipe(
+        Effect.flatMap((decoded) =>
+          runAssociationRpc(
+            client["Association.getFileAssociations"](decoded),
+            "Association.getFileAssociations"
+          )
+        )
+      ),
+    events: () => NativeSurface.subscribeEvent(exchange, AssociationEventStream)
   } satisfies AssociationClientApi)
 
 const decodeAssociationProtocolInput = (
@@ -181,3 +227,8 @@ const runAssociationRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
   operation: string
 ): Effect.Effect<A, AssociationError, never> => runNativeRpc(effect, operation, Surface)
+
+const runAssociationRpcStream = <A, E>(
+  stream: Stream.Stream<A, E, never>,
+  operation: string
+): Stream.Stream<A, AssociationError, never> => runNativeRpcStream(stream, operation, Surface)
