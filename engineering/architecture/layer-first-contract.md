@@ -69,7 +69,7 @@ The `RpcGroup` remains the source of truth for endpoint tags, request and respon
 
 - `serverLayer` binds the handler layer into a desktop app.
 - `clientLayer` creates the service client from an Effect RPC protocol.
-- `testClientLayer` creates the same service client against the handler layer for deterministic tests.
+- `testClientLayer(dependencies?)` creates the same service client against the handler layer for deterministic tests, with handler dependencies supplied before the generated client service is introduced.
 - `schemaDocs` exposes the documented endpoint shape without introducing another DSL.
 - `contractLaws` exposes executable checks for bridge-compatible tags, unique renderer endpoint names, and schema-backed endpoints.
 

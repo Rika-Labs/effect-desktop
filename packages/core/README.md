@@ -17,7 +17,7 @@ resource ownership.
 
 ### Desktop RPC surfaces
 
-`Desktop.Rpc.surface(name, group, options)` packages one Effect `RpcGroup` into the Layer-first artifacts needed by a framework capability: server layer, generated client layer, deterministic test client layer, schema docs, and contract-law checks.
+`Desktop.Rpc.surface(name, group, options)` packages one Effect `RpcGroup` into the Layer-first artifacts needed by a framework capability: server layer, generated client layer, deterministic test client layer factory, schema docs, and contract-law checks.
 
 The `RpcGroup` remains the source of truth for endpoint tags, schemas, endpoint kind metadata, capability metadata, and support metadata. Use the direct surface shape when the public service is the generated `DesktopRpcClient<Rpcs>`. Use the mapped shape when a capability already owns a durable service API and needs to hide generated RPC calls behind it.
 

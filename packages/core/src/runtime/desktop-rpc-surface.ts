@@ -8,7 +8,7 @@ import {
   type RpcSupportMetadata
 } from "@orika/bridge"
 import { Context, Data, Effect, Layer, Option, Schema } from "effect"
-import { Rpc, RpcClient, RpcClientError, RpcGroup, RpcSchema, RpcTest } from "effect/unstable/rpc"
+import { Rpc, RpcClient, RpcClientError, RpcGroup, RpcSchema, RpcServer } from "effect/unstable/rpc"
 
 import {
   rpc as desktopRpc,
@@ -121,13 +121,25 @@ export interface DesktopRpcSurface<
     never,
     RpcClient.Protocol | Rpc.MiddlewareClient<Rpcs>
   >
-  readonly testClientLayer: Layer.Layer<
-    ServiceId,
-    ServerE,
-    ServerR | Rpc.Middleware<Rpcs> | Rpc.MiddlewareClient<Rpcs>
-  >
+  readonly testClientLayer: DesktopRpcTestClientLayerFactory<Rpcs, ServiceId, ServerE, ServerR>
   readonly schemaDocs: readonly DesktopRpcSchemaDoc[]
   readonly contractLaws: readonly DesktopRpcContractLaw[]
+}
+
+export interface DesktopRpcTestClientLayerFactory<
+  Rpcs extends Rpc.AnyWithProps,
+  ServiceId,
+  ServerE,
+  ServerR
+> {
+  (): Layer.Layer<ServiceId, ServerE, ServerR | Rpc.Middleware<Rpcs> | Rpc.MiddlewareClient<Rpcs>>
+  <DependencyE, DependencyR>(
+    dependencies: Layer.Layer<ServerR, DependencyE, DependencyR>
+  ): Layer.Layer<
+    ServiceId,
+    ServerE | DependencyE,
+    DependencyR | Rpc.Middleware<Rpcs> | Rpc.MiddlewareClient<Rpcs>
+  >
 }
 
 export function surface<
@@ -175,6 +187,56 @@ export function surface<
     "client" in options ? options.client(client) : client
   const facts = options.capabilityFacts ?? []
   assertCapabilityFacts(tag, group, facts)
+  const baseTestClientLayer: Layer.Layer<
+    ServiceId,
+    never,
+    Rpc.ToHandler<Rpcs> | Rpc.Middleware<Rpcs> | Rpc.MiddlewareClient<Rpcs>
+  > = Layer.effectContext(
+    Effect.gen(function* () {
+      const serverContext = yield* Effect.context<Rpc.ToHandler<Rpcs> | Rpc.Middleware<Rpcs>>()
+      let rpcClient!: Effect.Success<ReturnType<typeof RpcClient.makeNoSerialization<Rpcs, never>>>
+      const server = yield* RpcServer.makeNoSerialization(group, {
+        onFromServer: (response) => rpcClient.write(response)
+      })
+      rpcClient = yield* RpcClient.makeNoSerialization(group, {
+        supportsAck: true,
+        onFromClient: ({ message }) =>
+          Effect.withFiber((fiber) =>
+            server
+              .write(0, message)
+              .pipe(
+                Effect.provideContext(
+                  Context.merge(serverContext, Context.omit(service)(fiber.context))
+                )
+              )
+          )
+      })
+      return Context.make(service, toService(rpcClient.client))
+    })
+  )
+  const testClientLayerFromHandlers = <E, R>(
+    handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>
+  ): Layer.Layer<ServiceId, E, R | Rpc.Middleware<Rpcs> | Rpc.MiddlewareClient<Rpcs>> =>
+    Layer.provide(baseTestClientLayer, handlers)
+  function testClientLayer(): Layer.Layer<
+    ServiceId,
+    ServerE,
+    ServerR | Rpc.Middleware<Rpcs> | Rpc.MiddlewareClient<Rpcs>
+  >
+  function testClientLayer<DependencyE, DependencyR>(
+    dependencies: Layer.Layer<ServerR, DependencyE, DependencyR>
+  ): Layer.Layer<
+    ServiceId,
+    ServerE | DependencyE,
+    DependencyR | Rpc.Middleware<Rpcs> | Rpc.MiddlewareClient<Rpcs>
+  >
+  function testClientLayer<DependencyE, DependencyR>(
+    dependencies?: Layer.Layer<ServerR, DependencyE, DependencyR>
+  ) {
+    return dependencies === undefined
+      ? testClientLayerFromHandlers(options.handlers)
+      : Layer.provide(testClientLayerFromHandlers(options.handlers), dependencies)
+  }
 
   return Object.freeze({
     _tag: "DesktopRpcSurface" as const,
@@ -182,12 +244,7 @@ export function surface<
     group,
     serverLayer: desktopRpc(group, options.handlers),
     clientLayer: Layer.effect(service, RpcClient.make(group).pipe(Effect.map(toService))),
-    testClientLayer: Layer.effect(
-      service,
-      RpcTest.makeClient(group).pipe(
-        Effect.map((client) => toService(client as DesktopRpcClient<Rpcs>))
-      )
-    ).pipe(Layer.provide(options.handlers)),
+    testClientLayer,
     schemaDocs: schemaDocs(group, facts),
     contractLaws: contractLaws(tag, group)
   })

@@ -541,7 +541,7 @@
     {
       "name": "DesktopRpcSurface",
       "kind": "interface",
-      "signature": "export interface DesktopRpcSurface< Tag extends string, Group extends RpcGroup.RpcGroup<Rpcs>, Rpcs extends Rpc.AnyWithProps, ServiceId, ServerE, ServerR > { readonly _tag: \"DesktopRpcSurface\" readonly tag: Tag readonly group: Group readonly serverLayer: DesktopRpcsLayer< ServerE, DesktopRpcBoundServerRequirements<Rpcs, ServerR>, ServerR > readonly clientLayer: Layer.Layer< ServiceId, never, RpcClient.Protocol | Rpc.MiddlewareClient<Rpcs> > readonly testClientLayer: Layer.Layer< ServiceId, ServerE, ServerR | Rpc.Middleware<Rpcs> | Rpc.MiddlewareClient<Rpcs> > readonly schemaDocs: readonly DesktopRpcSchemaDoc[] readonly contractLaws: readonly DesktopRpcContractLaw[] }"
+      "signature": "export interface DesktopRpcSurface< Tag extends string, Group extends RpcGroup.RpcGroup<Rpcs>, Rpcs extends Rpc.AnyWithProps, ServiceId, ServerE, ServerR > { readonly _tag: \"DesktopRpcSurface\" readonly tag: Tag readonly group: Group readonly serverLayer: DesktopRpcsLayer< ServerE, DesktopRpcBoundServerRequirements<Rpcs, ServerR>, ServerR > readonly clientLayer: Layer.Layer< ServiceId, never, RpcClient.Protocol | Rpc.MiddlewareClient<Rpcs> > readonly testClientLayer: DesktopRpcTestClientLayerFactory<Rpcs, ServiceId, ServerE, ServerR> readonly schemaDocs: readonly DesktopRpcSchemaDoc[] readonly contractLaws: readonly DesktopRpcContractLaw[] }"
     },
     {
       "name": "DesktopRpcSurfaceDirectOptions",
@@ -562,6 +562,11 @@
       "name": "DesktopRpcSurfaceOptionsBase",
       "kind": "interface",
       "signature": "export interface DesktopRpcSurfaceOptionsBase<Rpcs extends Rpc.AnyWithProps, ServerE, ServerR> { readonly handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, ServerE, ServerR> readonly capabilityFacts?: readonly DesktopRpcCapabilityFact[] }"
+    },
+    {
+      "name": "DesktopRpcTestClientLayerFactory",
+      "kind": "interface",
+      "signature": "export interface DesktopRpcTestClientLayerFactory< Rpcs extends Rpc.AnyWithProps, ServiceId, ServerE, ServerR > { (): Layer.Layer<ServiceId, ServerE, ServerR | Rpc.Middleware<Rpcs> | Rpc.MiddlewareClient<Rpcs>> <DependencyE, DependencyR>( dependencies: Layer.Layer<ServerR, DependencyE, DependencyR> ): Layer.Layer< ServiceId, ServerE | DependencyE, DependencyR | Rpc.Middleware<Rpcs> | Rpc.MiddlewareClient<Rpcs> > }"
     },
     {
       "name": "DesktopRuntime",

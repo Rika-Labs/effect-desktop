@@ -41,11 +41,15 @@ interface DesktopSurface<Rpcs> {
   readonly group: RpcGroup<Rpcs>
   readonly serverLayer: Layer.Layer<...>
   readonly clientLayer: Layer.Layer<...>
-  readonly testClientLayer: Layer.Layer<...>
+  readonly testClientLayer: (dependencies?: Layer.Layer<...>) => Layer.Layer<...>
   readonly schemaDocs: ReadonlyArray<SchemaDoc>
   readonly contractLaws: ReadonlyArray<ContractLaw>
 }
 ```
+
+Call `testClientLayer()` when handlers need no extra services. Pass the same
+service dependencies the handlers need when testing a flattened surface whose
+generated client and handler dependency share one service tag.
 
 ## `Rpc.supportedGroup(group)`
 

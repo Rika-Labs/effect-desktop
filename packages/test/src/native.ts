@@ -122,10 +122,10 @@ export const WindowTest = (): Layer.Layer<Window | TestWindowState, never, Resou
 export const ClipboardClientTest = (
   options: TestClipboardOptions = {}
 ): Layer.Layer<ClipboardClient> =>
-  Layer.provide(ClipboardSurface.testClientLayer, makeClipboardScenarioLayer(options))
+  ClipboardSurface.testClientLayer(makeClipboardScenarioLayer(options))
 
 export const DialogClientTest = (options: TestDialogOptions = {}): Layer.Layer<DialogClient> =>
-  Layer.provide(DialogSurface.testClientLayer, makeDialogScenarioLayer(options))
+  DialogSurface.testClientLayer(makeDialogScenarioLayer(options))
 
 export type TestDesktopServices =
   | Clipboard

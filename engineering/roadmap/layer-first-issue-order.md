@@ -146,7 +146,7 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 |                        #1851 Remove empty native event side objects | Closed | Removes remaining empty `Protocol`/`SafeStorage`/`Dock`/`CrashReporter` event side objects that do not own event contracts or bridge policy.                          |
 |                       #1852 Flatten Dock pass-through service split | Closed | Removes the `DockClient` -> `Dock` forwarding layer while keeping Dock support metadata, capability facts, Linux unavailable semantics, and RPC errors.               |
 |                     #1853 Flatten Screen pass-through service split | Closed | Removes the `ScreenClient` -> `Screen` forwarding layer while keeping Screen display validation, bridge request normalization, events, and RPC errors.                |
-| #1854 Avoid recursive test client layers for flattened RPC surfaces | Open   | Fixes generated `testClientLayer` behavior when a flattened surface provides and requires the same Effect service tag without reintroducing shallow wrapper services. |
+| #1854 Avoid recursive test client layers for flattened RPC surfaces | Closed | Fixes generated `testClientLayer` behavior when a flattened surface provides and requires the same Effect service tag without reintroducing shallow wrapper services. |
 
 ## Execution Progress
 

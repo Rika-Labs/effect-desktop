@@ -2255,7 +2255,7 @@ test("native test layers are derived from DesktopRpc surfaces", () => {
   ])
 
   const malformedRuntime = ManagedRuntime.make(
-    Layer.provide(ClipboardSurface.testClientLayer, makeClipboardScenarioLayer({}))
+    ClipboardSurface.testClientLayer(makeClipboardScenarioLayer({}))
   )
 
   return Effect.runPromise(

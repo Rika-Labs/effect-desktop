@@ -4961,7 +4961,7 @@ test("Clipboard handlers preserve unsupported support reasons from the service b
       const calls: string[] = []
       const supportReason = "host-clipboard-unavailable"
       const testLayer = Layer.provide(
-        ClipboardSurface.testClientLayer,
+        ClipboardSurface.testClientLayer(),
         Layer.provide(
           ClipboardLive,
           Layer.succeed(ClipboardClient)({
@@ -8721,7 +8721,7 @@ test("ScreenSurface derives server, client, test, and metadata surfaces from the
       expect(ScreenSurface.group).toBe(ScreenRpcs)
       expect(Array.isArray(ScreenSurface.serverLayer)).toBe(true)
       expect(Layer.isLayer(ScreenSurface.clientLayer)).toBe(true)
-      expect(Layer.isLayer(ScreenSurface.testClientLayer)).toBe(true)
+      expect(Layer.isLayer(ScreenSurface.testClientLayer())).toBe(true)
       // Identity assertion: inspect the declaration data and confirm (group, handlers)
       // was threaded through unchanged.
       const screenRegistrations = yield* snapshotSurfaceRegistrations(ScreenSurface.serverLayer)
@@ -8994,7 +8994,7 @@ test("native DesktopRpc surfaces derive server, client, test, and metadata layer
         expect(surfaceRegistrations[0]?.group).toBe(group)
         expect(Object.is(surfaceRegistrations[0]?.handlers, handlers)).toBe(true)
         expect(Layer.isLayer(surface.clientLayer)).toBe(true)
-        expect(Layer.isLayer(surface.testClientLayer)).toBe(true)
+        expect(Layer.isLayer(surface.testClientLayer())).toBe(true)
         expect(surface.schemaDocs.map((doc) => doc.tag)).toEqual(Array.from(tags))
         const callableDocs = surface.schemaDocs.filter((doc) => doc.callable)
         expect(callableDocs.map((doc) => Option.getOrUndefined(doc.error))).toEqual(
@@ -9008,8 +9008,7 @@ test("ClipboardSurface test client layer runs Clipboard RPCs through the generat
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const testLayer = Layer.provide(
-        ClipboardSurface.testClientLayer,
+      const testLayer = ClipboardSurface.testClientLayer(
         Layer.provide(ClipboardLive, Layer.succeed(ClipboardClient)(clipboardClient(calls)))
       )
       const result = yield* runScoped(
@@ -9044,8 +9043,7 @@ test("DialogSurface test client layer runs Dialog RPCs through the generated ser
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const testLayer = Layer.provide(
-        DialogSurface.testClientLayer,
+      const testLayer = DialogSurface.testClientLayer(
         Layer.provide(DialogLive, Layer.succeed(DialogClient)(dialogClient(calls)))
       )
       const result = yield* runScoped(
@@ -9070,6 +9068,37 @@ test("DialogSurface test client layer runs Dialog RPCs through the generated ser
         "saveFile:/tmp/report.txt",
         "message:info:Done",
         "confirm:Continue?"
+      ])
+    })
+  ))
+
+test("ScreenSurface test client layer runs Screen RPCs through the flattened service requirement", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const calls: string[] = []
+      const testLayer = ScreenSurface.testClientLayer(Layer.succeed(Screen)(screenClient(calls)))
+      const result = yield* runScoped(
+        Effect.gen(function* () {
+          const screen = yield* Screen
+          return {
+            displays: yield* screen.getDisplays(),
+            primary: yield* screen.getPrimaryDisplay(),
+            pointer: yield* screen.getPointerPoint(),
+            pointerSupported: yield* screen.isSupported("getPointerPoint")
+          }
+        }),
+        testLayer
+      )
+
+      expect(result.displays).toEqual([primaryDisplay])
+      expect(result.primary).toEqual(primaryDisplay)
+      expect(result.pointer).toEqual(new ScreenPoint({ x: 12, y: 34 }))
+      expect(result.pointerSupported).toBe(true)
+      expect(calls).toEqual([
+        "getDisplays",
+        "getPrimaryDisplay",
+        "getPointerPoint",
+        "isSupported:getPointerPoint"
       ])
     })
   ))

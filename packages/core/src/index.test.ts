@@ -1024,7 +1024,7 @@ test("Desktop.Rpc.surface derives server, client, test, docs, and laws from one 
       { nextTraceId: () => "trace-surface-client" }
     )
   )
-  const TestSurfaceRuntime = ManagedRuntime.make(surface.testClientLayer)
+  const TestSurfaceRuntime = ManagedRuntime.make(surface.testClientLayer())
   const LiveSurfaceRuntime = ManagedRuntime.make(Layer.provide(surface.clientLayer, protocolLayer))
 
   return Effect.runPromise(
@@ -1063,7 +1063,7 @@ test("Desktop.Rpc.surface derives server, client, test, docs, and laws from one 
       expect(surface.group).toBe(NotesRpcs)
       expect(Array.isArray(surface.serverLayer)).toBe(true)
       expect(Layer.isLayer(surface.clientLayer)).toBe(true)
-      expect(Layer.isLayer(surface.testClientLayer)).toBe(true)
+      expect(Layer.isLayer(surface.testClientLayer())).toBe(true)
       const surfaceRegistrations = surface.serverLayer
       expect(surfaceRegistrations).toHaveLength(1)
       expect(surfaceRegistrations[0]?.group).toBe(NotesRpcs)
