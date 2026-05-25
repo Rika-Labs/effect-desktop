@@ -55,7 +55,6 @@ import {
   usePermission
 } from "./index.js"
 import { stableEndpointInputDependency } from "./endpoints.js"
-import { layerLocalStorage, layerSessionStorage } from "./storage/kv.js"
 import { makeDatabase, makeMigration, makeTable, makeVersion } from "./storage/idb.js"
 import { disposeRuntime } from "./provider.js"
 
@@ -83,6 +82,7 @@ const reactDesktopSourceUrl = new URL("desktop.tsx", import.meta.url)
 const reactProviderSourceUrl = new URL("provider.tsx", import.meta.url)
 const reactCurrentWindowSourceUrl = new URL("current-window.ts", import.meta.url)
 const reactWindowsSourceUrl = new URL("windows.ts", import.meta.url)
+const reactStorageKvSourceUrl = new URL("storage/kv.ts", import.meta.url)
 const workspaceRootUrl = new URL("../../../", import.meta.url)
 const reactRootBundleEntryUrl = new URL(".tmp-react-root-bundle-entry.tsx", workspaceRootUrl)
 const reactWindowBundleEntryUrl = new URL(".tmp-react-window-bundle-entry.tsx", reactPackageRootUrl)
@@ -120,6 +120,19 @@ test("React package exports point at checked-in source files", () =>
       }
 
       expect(missing).toEqual([])
+    })
+  ))
+
+test("React package does not expose platform-browser key-value storage aliases", () =>
+  PlatformRuntime.runPromise(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const packageJson = decodeReactPackageJson(
+        yield* fs.readFileString(urlToPath(reactPackageJsonUrl))
+      )
+
+      expect(Object.keys(packageJson.exports)).not.toContain("./storage/kv")
+      expect(yield* fs.exists(urlToPath(reactStorageKvSourceUrl))).toBe(false)
     })
   ))
 
@@ -868,11 +881,6 @@ test("endpoint input dependencies are stable for equivalent object payloads", ()
 
 test("storage/idb exposes migration builder helper", () => {
   expect(typeof makeMigration).toBe("function")
-})
-
-test("storage/kv exposes key-value layers", () => {
-  expect(typeof layerLocalStorage).toBe("object")
-  expect(typeof layerSessionStorage).toBe("object")
 })
 
 test("storage/idb exposes schema constructor helpers", () => {

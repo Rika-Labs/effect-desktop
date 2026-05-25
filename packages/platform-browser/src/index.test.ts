@@ -28,7 +28,6 @@ import {
   RendererSqliteWorkerLive
 } from "./index.js"
 import { makeDatabase, makeMigration, makeTable, makeVersion } from "./storage/idb.js"
-import { layerLocalStorage, layerSessionStorage } from "./storage/kv.js"
 
 const PlatformBrowserPackageExportTarget = Schema.Union([
   Schema.String,
@@ -48,6 +47,7 @@ const decodePlatformBrowserPackageJson = Schema.decodeUnknownSync(
 
 const packageJsonPath = fileURLToPath(new URL("../package.json", import.meta.url))
 const packageRootPath = fileURLToPath(new URL("../", import.meta.url))
+const storageKvPath = fileURLToPath(new URL("storage/kv.ts", import.meta.url))
 
 const PlatformRuntime = ManagedRuntime.make(BunServices.layer)
 
@@ -80,6 +80,19 @@ test("platform-browser package exports point at checked-in source files", () =>
       }
 
       expect(missing).toEqual([])
+    })
+  ))
+
+test("platform-browser package does not expose zero-policy key-value storage aliases", () =>
+  PlatformRuntime.runPromise(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const packageJson = decodePlatformBrowserPackageJson(
+        yield* fs.readFileString(packageJsonPath)
+      )
+
+      expect(Object.keys(packageJson.exports)).not.toContain("./storage/kv")
+      expect(yield* fs.exists(storageKvPath)).toBe(false)
     })
   ))
 
@@ -232,11 +245,6 @@ test("BrowserContext.layer fails explicitly when IndexedDB globals are absent", 
 
 test("IndexedDbQueryBuilder exports make", () => {
   expect(typeof IndexedDbQueryBuilder.make).toBe("function")
-})
-
-test("storage/kv exposes key-value layers", () => {
-  expect(typeof layerLocalStorage).toBe("object")
-  expect(typeof layerSessionStorage).toBe("object")
 })
 
 test("storage/idb exposes schema constructor helpers", () => {

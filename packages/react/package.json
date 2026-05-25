@@ -46,10 +46,6 @@
       "types": "./src/storage/idb.ts",
       "default": "./src/storage/idb.ts"
     },
-    "./storage/kv": {
-      "types": "./src/storage/kv.ts",
-      "default": "./src/storage/kv.ts"
-    },
     "./windows": {
       "types": "./src/windows.ts",
       "default": "./src/windows.ts"

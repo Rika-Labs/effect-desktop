@@ -83,7 +83,9 @@ const dbLayer = IndexedDb.layer({ name: "notes-db", version: 1, tables: [NotesTa
 
 `./storage/idb.ts` — IndexedDB-backed key/value store layer.
 
-`./storage/kv.ts` — generic key/value store layer (memory or IndexedDB).
+Use `BrowserKeyValueStore.layerLocalStorage` or
+`BrowserKeyValueStore.layerSessionStorage` directly for browser key/value
+storage. ORIKA does not wrap those upstream Effect layers.
 
 ## When to use what
 
