@@ -35,7 +35,6 @@ export {
   AppMetadata,
   AppMetadataHandlersLive,
   AppMetadataMethodNames,
-  AppMetadataRpcEvents,
   AppMetadataRpcs,
   AppMetadataSurface,
   type AppMetadataClientApi,

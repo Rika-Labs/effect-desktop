@@ -44,9 +44,10 @@ otherwise. This does not emit native open-file/open-url events by itself.
 
 ## Events
 
-The current event stream is `events()`. Event phases are `info-read`,
-`paths-read`, `launch-context-read`, and `failed`. Native event delivery is
-reserved for future metadata refresh events.
+The current event stream is `events()`, backed by the
+`AppMetadata.events.Event` RPC stream contract. Event phases are `info-read`,
+`paths-read`, `launch-context-read`, and `failed`. Bridge clients still
+translate that contract to the host wire event method `AppMetadata.Event`.
 
 ## Errors
 

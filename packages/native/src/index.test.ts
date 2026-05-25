@@ -115,7 +115,6 @@ import {
   AppSurface,
   AppMetadata,
   AppMetadataMethodNames,
-  AppMetadataRpcEvents,
   AppMetadataRpcs,
   AppMetadataSurface,
   Association,
@@ -2176,10 +2175,13 @@ test("AppMetadataRpcs declares the Phase 8 AppMetadata method and event surface"
   expect(Array.from(AppMetadataRpcs.requests.keys())).toEqual([
     "AppMetadata.getInfo",
     "AppMetadata.getPaths",
-    "AppMetadata.getLaunchContext"
+    "AppMetadata.getLaunchContext",
+    "AppMetadata.events.Event"
   ])
-  expect(rpcMethodNames("AppMetadata", AppMetadataRpcs)).toEqual(expectedAppMetadataMethods)
-  expect(Object.keys(AppMetadataRpcEvents)).toEqual(["Event"])
+  expect(rpcMethodNames("AppMetadata", AppMetadataRpcs)).toEqual([
+    ...expectedAppMetadataMethods,
+    "events.Event"
+  ])
 })
 
 test("AppMetadata contracts reject inconsistent event phase payloads", () => {
@@ -2397,7 +2399,8 @@ test("native host RPC runtime denies protected AppMetadata calls before handlers
               return appMetadataInfo
             }),
           "AppMetadata.getPaths": () => Effect.succeed(appMetadataPaths),
-          "AppMetadata.getLaunchContext": () => Effect.succeed(appMetadataLaunchContext)
+          "AppMetadata.getLaunchContext": () => Effect.succeed(appMetadataLaunchContext),
+          "AppMetadata.events.Event": () => Stream.empty
         },
         { originAuth: RendererOriginAuth.unsafeDisabledForTests }
       )
@@ -2435,7 +2438,8 @@ test("native host RPC runtime allows declared AppMetadata permissions", () =>
               return appMetadataInfo
             }),
           "AppMetadata.getPaths": () => Effect.succeed(appMetadataPaths),
-          "AppMetadata.getLaunchContext": () => Effect.succeed(appMetadataLaunchContext)
+          "AppMetadata.getLaunchContext": () => Effect.succeed(appMetadataLaunchContext),
+          "AppMetadata.events.Event": () => Stream.empty
         },
         { originAuth: RendererOriginAuth.unsafeDisabledForTests }
       )

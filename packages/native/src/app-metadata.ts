@@ -1,10 +1,4 @@
-import {
-  type BridgeClientExchange,
-  type HostProtocolError,
-  type RpcCapabilityMetadata,
-  type RpcEndpointKind,
-  RpcGroup
-} from "@orika/bridge"
+import { type BridgeClientExchange, type HostProtocolError, RpcGroup } from "@orika/bridge"
 import { type DesktopRpcClient, P } from "@orika/core"
 import { Context, Effect, Schema, Stream } from "effect"
 
@@ -14,8 +8,7 @@ import {
   AppMetadataLaunchContext,
   AppMetadataPaths
 } from "./contracts/app-metadata.js"
-import { subscribeNativeEvent } from "./event-stream.js"
-import { runNativeRpc } from "./native-client.js"
+import { runNativeRpc, runNativeRpcStream } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
 
@@ -26,30 +19,44 @@ const AppMetadataSupport = NativeSurface.support.supported
 
 export type AppMetadataError = HostProtocolError
 
-export const AppMetadataGetInfo = appMetadataRpc(
-  "getInfo",
-  AppMetadataInfo,
-  P.nativeInvoke({ primitive: Surface, methods: ["getInfo"] })
-)
-export const AppMetadataGetPaths = appMetadataRpc(
-  "getPaths",
-  AppMetadataPaths,
-  P.nativeInvoke({ primitive: Surface, methods: ["getPaths"] })
-)
-export const AppMetadataGetLaunchContext = appMetadataRpc(
-  "getLaunchContext",
-  AppMetadataLaunchContext,
-  P.nativeInvoke({ primitive: Surface, methods: ["getLaunchContext"] })
-)
+export const AppMetadataGetInfo = NativeSurface.rpc(Surface, "getInfo", {
+  payload: Schema.Void,
+  success: AppMetadataInfo,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: Surface, methods: ["getInfo"] })
+  ),
+  endpoint: "query",
+  support: AppMetadataSupport
+})
+export const AppMetadataGetPaths = NativeSurface.rpc(Surface, "getPaths", {
+  payload: Schema.Void,
+  success: AppMetadataPaths,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: Surface, methods: ["getPaths"] })
+  ),
+  endpoint: "query",
+  support: AppMetadataSupport
+})
+export const AppMetadataGetLaunchContext = NativeSurface.rpc(Surface, "getLaunchContext", {
+  payload: Schema.Void,
+  success: AppMetadataLaunchContext,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: Surface, methods: ["getLaunchContext"] })
+  ),
+  endpoint: "query",
+  support: AppMetadataSupport
+})
 
-export const AppMetadataRpcEvents = Object.freeze({
-  Event: { payload: AppMetadataEvent }
+const AppMetadataEventStream = NativeSurface.event(Surface, "Event", {
+  payload: AppMetadataEvent,
+  support: AppMetadataSupport
 })
 
 const AppMetadataRpcGroup = RpcGroup.make(
   AppMetadataGetInfo,
   AppMetadataGetPaths,
-  AppMetadataGetLaunchContext
+  AppMetadataGetLaunchContext,
+  AppMetadataEventStream
 )
 
 export const AppMetadataRpcs: RpcGroup.RpcGroup<AppMetadataRpc> = AppMetadataRpcGroup
@@ -89,7 +96,14 @@ export const AppMetadataHandlersLive = AppMetadataRpcGroup.toLayer({
     Effect.gen(function* () {
       const metadata = yield* AppMetadata
       return yield* metadata.getLaunchContext()
-    })
+    }),
+  "AppMetadata.events.Event": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const metadata = yield* AppMetadata
+        return metadata.events()
+      })
+    )
 })
 
 export const AppMetadataSurface = NativeSurface.make("AppMetadata", AppMetadataRpcGroup, {
@@ -97,35 +111,42 @@ export const AppMetadataSurface = NativeSurface.make("AppMetadata", AppMetadataR
   capabilities: AppMetadataMethodNames,
   handlers: AppMetadataHandlersLive,
   client: (client) => appMetadataClientFromRpcClient(client),
-  bridgeClient: (client, exchange) => appMetadataClientFromRpcClient(client, exchange)
+  bridgeClient: (client, exchange) => appMetadataBridgeClientFromRpcClient(client, exchange)
 })
 
 const appMetadataClientFromRpcClient = (
-  client: DesktopRpcClient<AppMetadataRpc>,
-  exchange?: BridgeClientExchange
+  client: DesktopRpcClient<AppMetadataRpc>
 ): AppMetadataClientApi =>
   Object.freeze({
     getInfo: () => runAppMetadataRpc(client["AppMetadata.getInfo"](), "AppMetadata.getInfo"),
     getPaths: () => runAppMetadataRpc(client["AppMetadata.getPaths"](), "AppMetadata.getPaths"),
     getLaunchContext: () =>
       runAppMetadataRpc(client["AppMetadata.getLaunchContext"](), "AppMetadata.getLaunchContext"),
-    events: () => subscribeNativeEvent(exchange, "AppMetadata.Event", AppMetadataEvent)
+    events: () =>
+      runAppMetadataRpcStream(
+        client["AppMetadata.events.Event"](undefined),
+        "AppMetadata.events.Event"
+      )
   } satisfies AppMetadataClientApi)
 
-function appMetadataRpc<
-  const Method extends string,
-  Success extends Schema.Codec<unknown, unknown, never, never>
->(method: Method, success: Success, authority: RpcCapabilityMetadata) {
-  return NativeSurface.rpc(Surface, method, {
-    payload: Schema.Void,
-    success,
-    authority: NativeSurface.authority.custom(authority),
-    endpoint: "query" satisfies RpcEndpointKind,
-    support: AppMetadataSupport
-  })
-}
+const appMetadataBridgeClientFromRpcClient = (
+  client: DesktopRpcClient<AppMetadataRpc>,
+  exchange: BridgeClientExchange
+): AppMetadataClientApi =>
+  Object.freeze({
+    getInfo: () => runAppMetadataRpc(client["AppMetadata.getInfo"](), "AppMetadata.getInfo"),
+    getPaths: () => runAppMetadataRpc(client["AppMetadata.getPaths"](), "AppMetadata.getPaths"),
+    getLaunchContext: () =>
+      runAppMetadataRpc(client["AppMetadata.getLaunchContext"](), "AppMetadata.getLaunchContext"),
+    events: () => NativeSurface.subscribeEvent(exchange, AppMetadataEventStream)
+  } satisfies AppMetadataClientApi)
 
 const runAppMetadataRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
   operation: string
 ): Effect.Effect<A, AppMetadataError> => runNativeRpc(effect, operation, Surface)
+
+const runAppMetadataRpcStream = <A, E>(
+  stream: Stream.Stream<A, E, never>,
+  operation: string
+): Stream.Stream<A, AppMetadataError> => runNativeRpcStream(stream, operation, Surface)
