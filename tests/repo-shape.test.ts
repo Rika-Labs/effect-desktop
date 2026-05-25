@@ -80,6 +80,12 @@ const STALE_UPDATER_HOW_TO_TOKENS = [
   "Every install emits an audit event"
 ] as const
 const STALE_PLATFORM_BROWSER_PGLITE_OPTIONS = ["connectionString"] as const
+const STALE_RENDERER_SQLITE_WRAPPER_TOKENS = [
+  "RendererSqliteMemoryLive",
+  "RendererSqliteWorkerLive",
+  "RendererSqliteMemoryOptions",
+  "RendererSqliteWorkerOptions"
+] as const
 const STALE_PACKAGE_README_PHRASES = [
   "public API remains reserved for Phase 4+",
   "Public renderer-facing APIs",
@@ -561,7 +567,7 @@ describe("SQLite docs", () => {
 })
 
 describe("Platform browser docs", () => {
-  test("PGlite examples use the current RendererPgliteOptions shape", () => {
+  test("PGlite examples use the current option shape", () => {
     const relativePath = "docs/reference/platform-browser.md"
     const markdown = readFileSync(join(REPO_ROOT, relativePath), "utf8")
     const violations: string[] = []
@@ -574,6 +580,27 @@ describe("Platform browser docs", () => {
 
     expect(violations).toEqual([])
     expect(markdown).toContain('dataDir: "idb://renderer-db"')
+  })
+
+  test("SQLite WASM examples use upstream Effect layer names directly", () => {
+    const relativePaths = [
+      "docs/reference/platform-browser.md",
+      "docs/reference/services/sqlite.md",
+      "docs/storage.md",
+      "docs/how-to/use-sqlite.md"
+    ] as const
+    const violations: string[] = []
+
+    for (const relativePath of relativePaths) {
+      const markdown = readFileSync(join(REPO_ROOT, relativePath), "utf8")
+      for (const token of STALE_RENDERER_SQLITE_WRAPPER_TOKENS) {
+        if (markdown.includes(token)) {
+          violations.push(`${relativePath}: use SqliteWasmClient.layer* directly, not ${token}`)
+        }
+      }
+    }
+
+    expect(violations).toEqual([])
   })
 })
 

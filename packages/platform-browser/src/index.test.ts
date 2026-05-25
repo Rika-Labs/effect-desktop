@@ -22,9 +22,7 @@ import {
   IndexedDbQueryBuilder,
   IndexedDbTable,
   IndexedDbVersion,
-  RendererPgliteLive,
-  RendererSqliteMemoryLive,
-  RendererSqliteWorkerLive
+  RendererPgliteLive
 } from "./index.js"
 
 const PlatformBrowserPackageExportTarget = Schema.Union([
@@ -48,6 +46,7 @@ const packageRootPath = fileURLToPath(new URL("../", import.meta.url))
 const storageKvPath = fileURLToPath(new URL("storage/kv.ts", import.meta.url))
 const storageIdbPath = fileURLToPath(new URL("storage/idb.ts", import.meta.url))
 const browserContextPath = fileURLToPath(new URL("context.ts", import.meta.url))
+const sqliteWasmPath = fileURLToPath(new URL("sqlite-wasm.ts", import.meta.url))
 const indexPath = fileURLToPath(new URL("index.ts", import.meta.url))
 
 const PlatformRuntime = ManagedRuntime.make(BunServices.layer)
@@ -122,6 +121,22 @@ test("platform-browser package does not expose a zero-policy browser context wra
       expect(Object.keys(packageJson.exports)).not.toContain("./context")
       expect(yield* fs.exists(browserContextPath)).toBe(false)
       expect(source).not.toContain("BrowserContext")
+    })
+  ))
+
+test("platform-browser package does not expose zero-policy SQLite WASM aliases", () =>
+  PlatformRuntime.runPromise(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const packageJson = decodePlatformBrowserPackageJson(
+        yield* fs.readFileString(packageJsonPath)
+      )
+      const source = yield* fs.readFileString(indexPath)
+
+      expect(Object.keys(packageJson.exports)).not.toContain("./sqlite-wasm")
+      expect(yield* fs.exists(sqliteWasmPath)).toBe(false)
+      expect(source).not.toContain("RendererSqlite")
+      expect(source).not.toContain("SqliteWasmClient")
     })
   ))
 
@@ -279,8 +294,6 @@ test("IndexedDbQueryBuilder exports make", () => {
   expect(typeof IndexedDbQueryBuilder.make).toBe("function")
 })
 
-test("root exports renderer SQL layer constructors", () => {
-  expect(typeof RendererSqliteMemoryLive).toBe("function")
-  expect(typeof RendererSqliteWorkerLive).toBe("function")
+test("root exports the PGlite optional dependency boundary", () => {
   expect(typeof RendererPgliteLive).toBe("function")
 })

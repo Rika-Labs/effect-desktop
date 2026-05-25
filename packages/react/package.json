@@ -34,14 +34,6 @@
       "types": "./src/platform-browser.ts",
       "default": "./src/platform-browser.ts"
     },
-    "./sql-pglite": {
-      "types": "./src/sql-pglite.ts",
-      "default": "./src/sql-pglite.ts"
-    },
-    "./sqlite-wasm": {
-      "types": "./src/sqlite-wasm.ts",
-      "default": "./src/sqlite-wasm.ts"
-    },
     "./windows": {
       "types": "./src/windows.ts",
       "default": "./src/windows.ts"

@@ -18,6 +18,11 @@ Status is **Proposed** rather than **Accepted** because the PGlite WASM payload 
 
 Add `@effect/sql-pglite` as an optional renderer dependency, gated behind a spine flag.
 
+2026-05-25 refinement: ORIKA keeps only a small
+`@orika/platform-browser/sql-pglite` boundary for lazy optional dependency
+loading and `SqlError` mapping. React does not re-export PGlite, and the
+platform-browser boundary accepts upstream `PgliteClientConfig` directly.
+
 - `Desktop.app({ renderer: { sql: "pglite" } })` (T20) triggers inclusion of `PgliteClient.layer({ ... })` in the renderer's `MainLayer`.
 - When the flag is unset, PGlite WASM does not appear in the renderer bundle.
 - The same `Model.Class` definitions shared across T02 and T17 compile against `PgliteClient` without modification.
@@ -58,7 +63,7 @@ With the flag off, PGlite WASM must not appear in the renderer bundle — confir
 
 ## Migration notes
 
-1. Add `@effect/sql-pglite` as an `optionalDependency` (or `peerDependency` with `peerDependenciesMeta.optional = true`) in `packages/react`. Listing it under `devDependencies` would cause downstream consumers to fail at build/runtime when `renderer.sql === "pglite"` is enabled — `devDependencies` are not installed for dependents. The package must resolve in consumer installs whenever the flag is on.
+1. Keep `@effect/sql-pglite` and `@electric-sql/pglite` behind the `@orika/platform-browser` optional dependency boundary, or declare them directly in an application that bypasses that boundary.
 2. Implement `PgliteClient.layer` wiring gated on `renderer.sql === "pglite"` in the spine.
 3. Add pgvector and full-text search examples to renderer templates.
 4. Run bundle-size validation; document results in this ADR before changing status to Accepted.

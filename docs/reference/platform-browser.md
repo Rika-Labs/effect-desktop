@@ -1,6 +1,6 @@
 ---
 title: Platform browser
-description: Renderer-side IndexedDB, SQLite WASM, and PGlite layers.
+description: Renderer-side IndexedDB helpers and the optional PGlite boundary.
 kind: reference
 audience: app-developers
 effect_version: 4
@@ -8,7 +8,7 @@ effect_version: 4
 
 # Platform browser
 
-`@orika/platform-browser` exposes Effect layers for renderer-side persistence — IndexedDB, SQLite WASM (in a Web Worker), and PGlite.
+`@orika/platform-browser` exposes Effect layers for renderer-side persistence — IndexedDB helpers from `@effect/platform-browser` and ORIKA's optional PGlite dependency boundary.
 
 This package does not clear native WebView browsing data. Cache, cookies, local
 storage, IndexedDB, and history remain under the host WebView data store, and
@@ -18,29 +18,28 @@ It also does not provide native cookie read, write, remove, or watch behavior.
 ## Import
 
 ```ts
-import {
-  RendererSqliteMemoryLive,
-  RendererSqliteWorkerLive,
-  RendererPgliteLive
-} from "@orika/platform-browser"
+import { RendererPgliteLive } from "@orika/platform-browser"
 ```
 
 ## SQLite WASM
 
-`RendererSqliteMemoryLive(options)` — in-memory SQLite via `@effect/sql-sqlite-wasm`.
+ORIKA does not wrap SQLite WASM. Import the upstream Effect package directly.
 
-`RendererSqliteWorkerLive(options)` — SQLite in a Web Worker, for heavier queries off the main thread.
+`SqliteWasmClient.layerMemory(options)` — in-memory SQLite via `@effect/sql-sqlite-wasm`.
+
+`SqliteWasmClient.layer(options)` — SQLite in a Web Worker, for heavier queries off the main thread.
 
 ```ts
 import { Effect } from "effect"
-import { RendererSqliteWorkerLive, SqlClient } from "@orika/platform-browser"
+import { SqliteClient as SqliteWasmClient } from "@effect/sql-sqlite-wasm"
+import { SqlClient } from "effect/unstable/sql"
 
 const worker = Effect.acquireRelease(
   Effect.sync(() => new Worker(new URL("./sqlite-worker.ts", import.meta.url), { type: "module" })),
   (worker) => Effect.sync(() => worker.terminate())
 )
 
-const SqliteLive = RendererSqliteWorkerLive({ worker })
+const SqliteLive = SqliteWasmClient.layer({ worker })
 
 const program = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient
@@ -126,7 +125,7 @@ upstream Effect modules.
 | Need                                               | Use                                                                  |
 | -------------------------------------------------- | -------------------------------------------------------------------- |
 | Small key/value, occasional reads                  | IndexedDB or `BrowserKeyValueStore`                                  |
-| Tabular data, joins, aggregates                    | `RendererSqliteWorkerLive`                                           |
+| Tabular data, joins, aggregates                    | `SqliteWasmClient.layer` from `@effect/sql-sqlite-wasm`              |
 | Postgres-compatible queries, syncing with a server | `RendererPgliteLive` outside packaged system WebView; see #1832      |
 | Anything that should survive the renderer reload   | IndexedDB-backed stores; PGlite packaged support is tracked in #1832 |
 

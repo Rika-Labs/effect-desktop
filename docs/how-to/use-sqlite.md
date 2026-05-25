@@ -120,7 +120,10 @@ yield *
 ## When NOT to use SQLite
 
 - For preferences and small key/value, `Settings` is friendlier.
-- For renderer-side persistence in a browser context, use `RendererSqliteWorkerLive` from `@orika/platform-browser` (SQLite WASM in a Web Worker) or `RendererPgliteLive` (PGlite).
+- For renderer-side persistence in a browser context, import `SqliteClient`
+  directly from `@effect/sql-sqlite-wasm` and use `SqliteClient.layer`
+  (SQLite WASM in a Web Worker), or use `RendererPgliteLive` from
+  `@orika/platform-browser` when you need PGlite.
 
 ## Related
 

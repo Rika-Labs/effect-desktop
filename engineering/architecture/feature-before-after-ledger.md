@@ -1018,13 +1018,14 @@ const app = NextDesktop.fromManifest(Manifest)
 
 ```ts
 // Before
-const sqlite = RendererSqliteWorkerLive(options)
+const sqlite = orikaSqliteWasmAlias(options)
 const pglite = RendererPgliteLive(options)
 
 // After
-const sqlite = SqliteClient.BrowserWorkerLive(options)
-const pglite = SqliteClient.PGliteLive(options)
-// Optional providers live behind explicit platform-browser subpaths.
+const sqlite = SqliteWasmClient.layer(options)
+const pglite = RendererPgliteLive(options)
+// SQLite WASM comes directly from @effect/sql-sqlite-wasm.
+// PGlite stays behind the ORIKA boundary only for optional dependency errors.
 ```
 
 ## Devtools Features

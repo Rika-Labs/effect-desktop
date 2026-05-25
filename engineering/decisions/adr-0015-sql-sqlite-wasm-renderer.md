@@ -16,6 +16,13 @@ Storage preference: OPFS where supported (better performance, less quota pressur
 
 Add `@effect/sql-sqlite-wasm` as an optional renderer dependency, gated by a feature flag in the spine.
 
+2026-05-25 refinement: ORIKA does not expose a platform-browser or React wrapper
+around SQLite WASM. Applications and templates that need renderer SQLite import
+`SqliteClient` directly from `@effect/sql-sqlite-wasm` and provide
+`SqliteClient.layer` or `SqliteClient.layerMemory` themselves. Any future
+`renderer.sql === "wasm"` spine wiring should compose that upstream Effect layer
+directly rather than introducing an ORIKA alias.
+
 - `Desktop.app({ renderer: { sql: "wasm" } })` (T20) triggers the inclusion of `SqliteClient.layer({ filename })` in the renderer's `MainLayer`.
 - When the flag is unset, the WASM package is not bundled.
 - Shared `Model.Class` definitions live in a shared package (e.g., `packages/shared`) consumed by both runtime and renderer. One schema declaration drives both processes.
@@ -55,8 +62,8 @@ A renderer template declares a `Model.Class` table, writes a row, reloads the pa
 
 ## Migration notes
 
-1. Add `@effect/sql-sqlite-wasm` as an optional renderer dependency in `packages/react`.
+1. Add `@effect/sql-sqlite-wasm` and `@effect/wa-sqlite` to the application or template that opts into renderer SQLite.
 2. Create a shared `packages/shared/src/model/` directory for `Model.Class` definitions.
-3. Wire `SqliteClient.layer` into the renderer's `MainLayer` gated on `renderer.sql === "wasm"`.
+3. Wire upstream `SqliteClient.layer` into the renderer's `MainLayer` gated on `renderer.sql === "wasm"`.
 4. Document OPFS vs IndexedDB selection in the renderer template.
 5. Ensure T18 (`@effect/platform-browser`) is provided before T17 boots.

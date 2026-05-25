@@ -8,15 +8,4 @@ export {
   IndexedDbTable,
   IndexedDbVersion
 } from "@effect/platform-browser"
-export {
-  RendererSqliteMemoryLive,
-  RendererSqliteWorkerLive,
-  SqliteWasmClient,
-  SqlClient,
-  SqlError,
-  SqlModel,
-  type RendererSqliteClient,
-  type RendererSqliteMemoryOptions,
-  type RendererSqliteWorkerOptions
-} from "./sqlite-wasm.js"
-export { RendererPgliteLive, type RendererPgliteOptions } from "./sql-pglite.js"
+export { RendererPgliteLive, type PgliteClientConfig } from "./sql-pglite.js"

@@ -23,7 +23,7 @@ ORIKA has separate storage surfaces for renderer persistence, runtime settings, 
 
 ## Renderer storage
 
-`@orika/platform-browser` exports browser persistence helpers, IndexedDB helpers, SQLite WASM layers (`RendererSqliteWorkerLive`), and PGlite layers (`RendererPgliteLive`).
+`@orika/platform-browser` exports browser persistence helpers, IndexedDB helpers, and the optional PGlite boundary (`RendererPgliteLive`). For SQLite WASM, import `SqliteClient` directly from `@effect/sql-sqlite-wasm` and use its `layer` or `layerMemory`.
 
 These renderer-side layers are not native browsing-data controls. Effect
 Desktop does not yet expose a host-backed API to clear WebView cache, cookies,

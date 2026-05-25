@@ -86,7 +86,9 @@ Bun-only. SQLite uses Bun's built-in `bun:sqlite` binding.
 
 ## Renderer-side equivalent
 
-`@orika/platform-browser` exports `RendererSqliteWorkerLive` (SQLite WASM in a Web Worker) for renderer persistence.
+For renderer persistence, import `SqliteClient` directly from
+`@effect/sql-sqlite-wasm` and use `SqliteClient.layer` or
+`SqliteClient.layerMemory`. ORIKA does not wrap those upstream Effect layers.
 
 ## Related
 

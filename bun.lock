@@ -128,8 +128,6 @@
       "version": "2.0.0",
       "dependencies": {
         "@effect/platform-browser": "4.0.0-beta.60",
-        "@effect/sql-sqlite-wasm": "4.0.0-beta.66",
-        "@effect/wa-sqlite": "^0.1.2",
         "effect": "4.0.0-beta.60",
       },
       "devDependencies": {
@@ -285,8 +283,6 @@
 
     "@effect/sql-sqlite-bun": ["@effect/sql-sqlite-bun@4.0.0-beta.60", "", { "peerDependencies": { "effect": "^4.0.0-beta.60" } }, "sha512-vDXAGVmRZkB8gq+4KHfp3JgxqttSg+Bl6wn6YOYqGi4/X0BMMACLndY09c2+Pt4Whd4W+xNM2SD4SIo1Hd5i6w=="],
 
-    "@effect/sql-sqlite-wasm": ["@effect/sql-sqlite-wasm@4.0.0-beta.66", "", { "peerDependencies": { "@effect/wa-sqlite": "^0.1.2", "effect": "^4.0.0-beta.66" } }, "sha512-D+FjOasz1YXN6UDsfkFRXoM+4cEsk8F2rdy8XBpuFZAFnYYMsam/7qTC6oQWWBSDT/82Miahv+jPD39brsMATA=="],
-
     "@effect/tsgo": ["@effect/tsgo@0.7.2", "", { "optionalDependencies": { "@effect/tsgo-darwin-arm64": "0.7.2", "@effect/tsgo-darwin-x64": "0.7.2", "@effect/tsgo-linux-arm": "0.7.2", "@effect/tsgo-linux-arm64": "0.7.2", "@effect/tsgo-linux-x64": "0.7.2", "@effect/tsgo-win32-arm64": "0.7.2", "@effect/tsgo-win32-x64": "0.7.2" }, "bin": { "effect-tsgo": "dist/effect-tsgo.js" } }, "sha512-ZTpfpJvn4IPykmCDsPQiZ4RvhCagQfuYL4zlIk77gSf5AyxmUYjrtDshHB2RK9fnEI8qyQ9abWVmVRkVwnjHyw=="],
 
     "@effect/tsgo-darwin-arm64": ["@effect/tsgo-darwin-arm64@0.7.2", "", { "os": "darwin", "cpu": "arm64" }, "sha512-0cdsRVRarDKk+huPH71M0aDNs6WKTzZL8wMkLBKFLqqW9re4QHcduOc+pF7OSze1u/n+ksdP+h+GM6xP7aF7Bw=="],
@@ -302,8 +298,6 @@
     "@effect/tsgo-win32-arm64": ["@effect/tsgo-win32-arm64@0.7.2", "", { "os": "win32", "cpu": "arm64" }, "sha512-pUez9e/OfMSWI7EZuzJG/g+v+Cnz7n3rW4IHlZvSR3saSmN0UVNrRHebwL2fQnKbUk6l5MaZWM9NNS2ysmQYEw=="],
 
     "@effect/tsgo-win32-x64": ["@effect/tsgo-win32-x64@0.7.2", "", { "os": "win32", "cpu": "x64" }, "sha512-X1VIA/Y2buqKi1se3sgGlUTWFPTXCI0xR7fIOXe1D6FTDFFXWBmWCHvxeDuxWPnSewBVFM0mjOAQSIpTarxdow=="],
-
-    "@effect/wa-sqlite": ["@effect/wa-sqlite@0.1.2", "", {}, "sha512-2JvJ9BDkBOwfeY/gXsC0XwEKC0AwisP2W5ABJ6mx14QyXTK12MGDIybDlHieuZt1TEFSMiKfpg7yyqyRWRooJQ=="],
 
     "@electric-sql/pglite": ["@electric-sql/pglite@0.4.5", "", {}, "sha512-aGG2zGEyZzGWKy8P+9ZoNUV0jxt1+hgbeTf+bVAYyxVZZLXg3/9aFlfLxb08AYZVAfAkQlQIysmWjhc5hwDG8g=="],
 

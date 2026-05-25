@@ -83,6 +83,8 @@ const reactCurrentWindowSourceUrl = new URL("current-window.ts", import.meta.url
 const reactWindowsSourceUrl = new URL("windows.ts", import.meta.url)
 const reactStorageKvSourceUrl = new URL("storage/kv.ts", import.meta.url)
 const reactStorageIdbSourceUrl = new URL("storage/idb.ts", import.meta.url)
+const reactSqliteWasmSourceUrl = new URL("sqlite-wasm.ts", import.meta.url)
+const reactSqlPgliteSourceUrl = new URL("sql-pglite.ts", import.meta.url)
 const workspaceRootUrl = new URL("../../../", import.meta.url)
 const reactRootBundleEntryUrl = new URL(".tmp-react-root-bundle-entry.tsx", workspaceRootUrl)
 const reactWindowBundleEntryUrl = new URL(".tmp-react-window-bundle-entry.tsx", reactPackageRootUrl)
@@ -146,6 +148,21 @@ test("React package does not expose platform-browser IndexedDB constructor alias
 
       expect(Object.keys(packageJson.exports)).not.toContain("./storage/idb")
       expect(yield* fs.exists(urlToPath(reactStorageIdbSourceUrl))).toBe(false)
+    })
+  ))
+
+test("React package does not expose platform-browser SQL aliases", () =>
+  PlatformRuntime.runPromise(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const packageJson = decodeReactPackageJson(
+        yield* fs.readFileString(urlToPath(reactPackageJsonUrl))
+      )
+
+      expect(Object.keys(packageJson.exports)).not.toContain("./sqlite-wasm")
+      expect(Object.keys(packageJson.exports)).not.toContain("./sql-pglite")
+      expect(yield* fs.exists(urlToPath(reactSqliteWasmSourceUrl))).toBe(false)
+      expect(yield* fs.exists(urlToPath(reactSqlPgliteSourceUrl))).toBe(false)
     })
   ))
 
