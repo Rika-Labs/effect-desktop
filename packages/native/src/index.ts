@@ -622,12 +622,9 @@ export {
 } from "./global-shortcut.js"
 export {
   Menu,
-  MenuCapabilityFacts,
   MenuClient,
   MenuHandlersLive,
-  MenuLive,
   MenuMethodNames,
-  MenuRpcEvents,
   MenuRpcs,
   MenuSurface,
   menuCapability,

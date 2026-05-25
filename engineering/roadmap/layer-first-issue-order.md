@@ -152,6 +152,7 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 |                       #1858 Model Association events as RPC streams | Closed | Removes the remaining `AssociationRpcEvents` side object by moving Association lifecycle events into the canonical `Association.events.Event` RPC stream.             |
 |                       #1859 Model ContextMenu events as RPC streams | Closed | Moves activation events into the canonical `ContextMenu.events.Activated` RPC stream and removes shallow ContextMenu side exports.                                    |
 |                              #1860 Model Tray events as RPC streams | Closed | Moves tray activation events into the canonical `Tray.events.Activated` RPC stream and removes shallow Tray side exports.                                             |
+|                              #1861 Model Menu events as RPC streams | Closed | Moves menu activation events into the canonical `Menu.events.Activated` RPC stream and removes shallow Menu side exports.                                             |
 
 ## Execution Progress
 

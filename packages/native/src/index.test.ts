@@ -176,11 +176,8 @@ import {
   GlobalShortcutMethodNames,
   GlobalShortcutSurface,
   Menu,
-  MenuCapabilityFacts,
   MenuHandlersLive,
   MenuRpcs,
-  MenuRpcEvents,
-  MenuLive,
   MenuMethodNames,
   MenuSurface,
   NativeFileSystem,
@@ -486,7 +483,6 @@ test("native services expose canonical static layers", () => {
   expect(DialogLive).toBe(Dialog.layer)
   expect(ExecutionSandboxLive).toBe(ExecutionSandbox.layer)
   expect(GlobalShortcutLive).toBe(GlobalShortcut.layer)
-  expect(MenuLive).toBe(Menu.layer)
   expect(NotificationLive).toBe(Notification.layer)
   expect(PowerMonitorLive).toBe(PowerMonitor.layer)
   expect(SystemAppearanceLive).toBe(SystemAppearance.layer)
@@ -1166,7 +1162,15 @@ const expectedMenuMethods: Array<(typeof MenuMethodNames)[number]> = [
   "capability"
 ]
 
-const expectedMenuCapabilityFactMethods: string[] = []
+const expectedMenuActivatedSupport = {
+  status: "partial",
+  reason: "macos-menu-activation-only",
+  platforms: [
+    { platform: "macos", status: "supported" },
+    { platform: "windows", status: "unsupported", reason: "host-adapter-unimplemented" },
+    { platform: "linux", status: "unsupported", reason: "host-adapter-unimplemented" }
+  ]
+} as const
 
 const expectedContextMenuMethods: Array<(typeof ContextMenuMethodNames)[number]> = ["show"]
 
@@ -3347,32 +3351,63 @@ test("WebView capability matrix reports spec-partial features as unsupported", (
 
 test("MenuRpcs declares the Phase 7 Menu method and event surface", () => {
   expect([...MenuMethodNames]).toEqual(expectedMenuMethods)
-  expect(rpcMethodNames("Menu", MenuRpcs)).toEqual(expectedMenuMethods)
-  expect(Object.keys(MenuRpcEvents)).toEqual(["Activated"])
+  expect(Array.from(MenuRpcs.requests.keys())).toEqual([
+    "Menu.setApplicationMenu",
+    "Menu.setWindowMenu",
+    "Menu.clear",
+    "Menu.capability",
+    "Menu.events.Activated"
+  ])
+  expect(rpcMethodNames("Menu", MenuRpcs)).toEqual([...expectedMenuMethods, "events.Activated"])
 })
 
-test("Menu declares only callable native RPCs and no TypeScript helper capability facts", () => {
-  const factTags = MenuCapabilityFacts.map((fact) => fact.tag).toSorted()
-  expect(factTags).toEqual(
-    expectedMenuCapabilityFactMethods.map((method) => `Menu.${method}`).toSorted()
+test("Menu event schema is owned by the RPC stream contract", async () => {
+  const menuModule = await import("./menu.js")
+  const rootModule = await import("./index.js")
+  const callableTags = Array.from(MenuRpcs.requests.keys()).toSorted()
+  const eventRpc = MenuRpcs.requests.get("Menu.events.Activated")
+
+  for (const removedExport of ["MenuCapabilityFacts", "MenuLive", "MenuRpcEvents"]) {
+    expect(removedExport in menuModule).toBe(false)
+    expect(removedExport in rootModule).toBe(false)
+  }
+  expect(callableTags).toEqual([
+    "Menu.capability",
+    "Menu.clear",
+    "Menu.events.Activated",
+    "Menu.setApplicationMenu",
+    "Menu.setWindowMenu"
+  ])
+  expect(eventRpc).toBeDefined()
+  expect(eventRpc === undefined ? false : RpcSchema.isStreamSchema(eventRpc.successSchema)).toBe(
+    true
   )
-  for (const fact of MenuCapabilityFacts) {
-    expect(fact.support.status).toBe("unsupported")
-    expect(fact.capability.kind).toBe("native.invoke")
+  if (eventRpc !== undefined && RpcSchema.isStreamSchema(eventRpc.successSchema)) {
+    expect(eventRpc.successSchema.success).toBe(MenuActivatedEvent)
+    expect(eventRpc.pipe(rpcSupport)).toEqual(expectedMenuActivatedSupport)
   }
 
+  const eventDoc = MenuSurface.schemaDocs.find((doc) => doc.tag === "Menu.events.Activated")
+  expect(eventDoc?.kind).toBe("stream")
+  expect(eventDoc?.callable).toBe(true)
+  expect(eventDoc?.support).toEqual(expectedMenuActivatedSupport)
+})
+
+test("Menu keeps TypeScript helpers out of schema docs", () => {
   const callableTags = Array.from(MenuRpcs.requests.keys())
-  for (const method of expectedMenuCapabilityFactMethods) {
-    expect(callableTags).not.toContain(`Menu.${method}`)
-  }
+  expect(callableTags).toEqual([
+    "Menu.setApplicationMenu",
+    "Menu.setWindowMenu",
+    "Menu.clear",
+    "Menu.capability",
+    "Menu.events.Activated"
+  ])
 
   const nonCallableTags = MenuSurface.schemaDocs
     .filter((doc) => !doc.callable)
     .map((doc) => doc.tag)
     .toSorted()
-  expect(nonCallableTags).toEqual(
-    expectedMenuCapabilityFactMethods.map((method) => `Menu.${method}`).toSorted()
-  )
+  expect(nonCallableTags).toEqual([])
 })
 
 test("Menu service delegates through a substitutable MenuClient port", () =>
@@ -3395,7 +3430,7 @@ test("Menu service delegates through a substitutable MenuClient port", () =>
           return { activated, linuxAppMenu }
         }),
         Layer.mergeAll(
-          Layer.provide(MenuLive, Layer.succeed(MenuClient)(menuClient(calls))),
+          Layer.provide(Menu.layer, Layer.succeed(MenuClient)(menuClient(calls))),
           commandLayer
         )
       )
@@ -3434,7 +3469,7 @@ test("Menu bindCommand does not duplicate listeners for identical bindings", () 
           return { first, second }
         }),
         Layer.mergeAll(
-          Layer.provide(MenuLive, Layer.succeed(MenuClient)(menuClient(calls))),
+          Layer.provide(Menu.layer, Layer.succeed(MenuClient)(menuClient(calls))),
           commandLayer
         )
       )
@@ -3484,7 +3519,7 @@ test("Menu bindCommand closes the command listener with its resource scope", () 
         }),
         Layer.mergeAll(
           Layer.provide(
-            MenuLive,
+            Menu.layer,
             Layer.succeed(MenuClient)({
               ...menuClient(calls),
               onActivated: () => Stream.fromQueue(activated)
@@ -3558,7 +3593,7 @@ test("Menu bindCommand keeps listening after a command invocation failure", () =
         }),
         Layer.mergeAll(
           Layer.provide(
-            MenuLive,
+            Menu.layer,
             Layer.succeed(MenuClient)({
               ...menuClient(calls),
               onActivated: () => Stream.fromQueue(activated)
@@ -3586,6 +3621,80 @@ test("Menu bindCommand keeps listening after a command invocation failure", () =
     })
   ))
 
+test("Menu direct client consumes the canonical RPC activation stream", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
+      const requests: HostProtocolRequestEnvelope[] = []
+      const protocolLayer = Layer.effect(RpcClient.Protocol)(
+        makeDesktopClientProtocol(
+          {
+            send: (envelope) => {
+              if (envelope.kind !== "request") {
+                return Effect.void
+              }
+              requests.push(envelope)
+              return Effect.all(
+                [
+                  Queue.offer(
+                    queue,
+                    new HostProtocolStreamByRequestEnvelope({
+                      kind: "stream",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_300,
+                      traceId: envelope.traceId,
+                      payload: {
+                        itemId: "file.open",
+                        commandId: "app.file.open",
+                        windowId: "window-1"
+                      }
+                    })
+                  ),
+                  Queue.offer(
+                    queue,
+                    new HostProtocolResponseEnvelope({
+                      kind: "response",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_301,
+                      traceId: envelope.traceId
+                    })
+                  )
+                ],
+                { discard: true }
+              )
+            },
+            run: (onEnvelope) =>
+              Stream.fromQueue(queue).pipe(
+                Stream.runForEach(onEnvelope),
+                Effect.andThen(Effect.never)
+              )
+          },
+          {
+            nextRequestId: () => "menu-activated-rpc",
+            nextTraceId: () => "trace-menu-activated-rpc"
+          }
+        )
+      )
+
+      const event = yield* runScoped(
+        Effect.gen(function* () {
+          const menu = yield* Menu
+          return yield* menu.onActivated().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+        }),
+        Layer.provide(Menu.layer, Layer.provide(MenuSurface.clientLayer, protocolLayer))
+      )
+
+      expect(event).toEqual(
+        new MenuActivatedEvent({
+          itemId: "file.open",
+          commandId: "app.file.open",
+          windowId: "window-1"
+        })
+      )
+      expect(requests.map((request) => request.method)).toEqual(["Menu.events.Activated"])
+    })
+  ))
+
 test("Menu bridge client validates templates, sends host envelopes, and decodes activation events", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -3605,7 +3714,7 @@ test("Menu bridge client validates templates, sends host envelopes, and decodes 
           return { activated, bindExit }
         }),
         Layer.mergeAll(
-          Layer.provide(MenuLive, MenuSurface.bridgeClientLayer(exchange)),
+          Layer.provide(Menu.layer, MenuSurface.bridgeClientLayer(exchange)),
           commandLayer
         )
       )
@@ -3672,7 +3781,7 @@ test("Menu bridge client rejects empty activation event identifiers as InvalidOu
           }),
           Layer.mergeAll(
             Layer.provide(
-              MenuLive,
+              Menu.layer,
               MenuSurface.bridgeClientLayer(exchange, {
                 nextRequestId: nextId(["unused"]),
                 nextTraceId: nextId(["unused"]),
@@ -3715,7 +3824,7 @@ test("Menu bridge client decodes activation events with no windowId field", () =
         }),
         Layer.mergeAll(
           Layer.provide(
-            MenuLive,
+            Menu.layer,
             MenuSurface.bridgeClientLayer(exchange, {
               nextRequestId: nextId(["unused"]),
               nextTraceId: nextId(["unused"]),
@@ -3739,7 +3848,7 @@ test("Menu bridge client returns invalid templates as typed Effect failures", ()
       const client = yield* runScoped(
         Menu.asEffect(),
         Layer.provide(
-          MenuLive,
+          Menu.layer,
           MenuSurface.bridgeClientLayer(
             menuExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
@@ -3845,7 +3954,7 @@ test("Menu bridge client rejects NUL-bearing accelerators before transport", () 
       const client = yield* runScoped(
         Menu.asEffect(),
         Layer.provide(
-          MenuLive,
+          Menu.layer,
           MenuSurface.bridgeClientLayer(
             menuExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
@@ -3899,7 +4008,7 @@ test("Menu bridge client rejects application menu root items before transport", 
       const client = yield* runScoped(
         Menu.asEffect(),
         Layer.provide(
-          MenuLive,
+          Menu.layer,
           MenuSurface.bridgeClientLayer(
             menuExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
@@ -9100,10 +9209,7 @@ test("native DesktopRpc surfaces derive server, client, test, and metadata layer
           surface: MenuSurface,
           group: MenuRpcs,
           handlers: MenuHandlersLive,
-          tags: [
-            ...Array.from(MenuRpcs.requests.keys()),
-            ...MenuCapabilityFacts.map((fact) => fact.tag)
-          ]
+          tags: Array.from(MenuRpcs.requests.keys())
         },
         {
           name: "Notification",

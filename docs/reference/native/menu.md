@@ -8,7 +8,7 @@ effect_version: 4
 
 # `Menu`
 
-App and window menus. The Rust host routes application/window menu installation, menu clearing, the capability query, and macOS menu activation events for items with `commandId`. Menu items bind to command ids registered with `CommandRegistry` through the TypeScript `Menu` service, but `bindCommand` is not a callable native RPC.
+App and window menus. The Rust host routes application/window menu installation, menu clearing, the capability query, and macOS menu activation events for items with `commandId`. `Menu.events.Activated` is a callable RPC stream for template items that include a `commandId`; bridge clients keep host wire compatibility by subscribing to `Menu.Activated`. Menu items bind to command ids registered with `CommandRegistry` through the TypeScript `Menu` service, but `bindCommand` is not a callable native RPC.
 
 ## Import
 
@@ -32,11 +32,17 @@ The callable RPCs on this surface are:
 
 `setApplicationMenu`, `setWindowMenu`, and `capability` are routed by the Rust host and report supported capability metadata; `clear` is supported on macOS and reports `partial` (`macos-menu-clear-only`).
 
+## Events
+
+`Menu.events.Activated` emits `{ itemId, commandId, windowId? }` when a command-bound menu item activates. The stream reports `partial` support (`macos-menu-activation-only`): macOS is supported; Windows and Linux remain `unsupported` until their host menu adapters emit equivalent activation events.
+
 ## Command Binding
 
-`bindCommand` is a TypeScript service helper, not a host method. It validates the binding, listens for `Menu.Activated`, and invokes the matching `CommandRegistry` command in a scoped resource. The native capability manifest does not include `Menu.bindCommand`; use `Menu.capability("command binding")` to ask whether the current host can emit activation events for command-bound menu items.
+`bindCommand` is a TypeScript service helper, not a host method. It validates the binding, listens for `Menu.events.Activated`, and invokes the matching `CommandRegistry` command in a scoped resource. The native capability manifest does not include `Menu.bindCommand`; use `Menu.capability("command binding")` to ask whether the current host can emit activation events for command-bound menu items.
 
 Native command binding is currently supported by the macOS menu adapter. Windows and Linux report the capability as unsupported until their menu adapters emit equivalent activation events.
+
+Architecture-debt sweep outcome for #1861: removed `MenuRpcEvents`, the local `subscribeMenuEvent` helper, the empty `MenuCapabilityFacts` export, and the `MenuLive` alias. The `Menu` service remains because it owns durable command-binding policy over scoped activation listeners.
 
 ## Errors
 
