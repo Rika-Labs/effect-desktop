@@ -237,8 +237,6 @@ import {
   Tray,
   TrayHandlersLive,
   TrayRpcs,
-  TrayRpcEvents,
-  TrayLive,
   TrayMethodNames,
   TraySurface,
   Updater,
@@ -492,7 +490,6 @@ test("native services expose canonical static layers", () => {
   expect(NotificationLive).toBe(Notification.layer)
   expect(PowerMonitorLive).toBe(PowerMonitor.layer)
   expect(SystemAppearanceLive).toBe(SystemAppearance.layer)
-  expect(TrayLive).toBe(Tray.layer)
   expect(UpdaterLive).toBe(Updater.layer)
   expect(WebViewLive).toBe(WebView.layer)
   expect(WindowLive).toBe(Window.layer)
@@ -4369,8 +4366,50 @@ test("ContextMenu bridge client rejects empty activation event identifiers as In
 
 test("TrayRpcs declares the Phase 8 Tray method and event surface", () => {
   expect([...TrayMethodNames]).toEqual(expectedTrayMethods)
-  expect(rpcMethodNames("Tray", TrayRpcs)).toEqual(expectedTrayMethods)
-  expect(Object.keys(TrayRpcEvents)).toEqual(["Activated"])
+  expect(Array.from(TrayRpcs.requests.keys())).toEqual([
+    "Tray.create",
+    "Tray.setIcon",
+    "Tray.setTooltip",
+    "Tray.setTitle",
+    "Tray.setMenu",
+    "Tray.destroy",
+    "Tray.isSupported",
+    "Tray.events.Activated"
+  ])
+  expect(rpcMethodNames("Tray", TrayRpcs)).toEqual([...expectedTrayMethods, "events.Activated"])
+})
+
+test("Tray event schema is owned by the RPC stream contract", async () => {
+  const trayModule = await import("./tray.js")
+  const rootModule = await import("./index.js")
+  const eventRpc = TrayRpcs.requests.get("Tray.events.Activated")
+  const expectedSupport = {
+    status: "partial",
+    reason: "linux-tray-unavailable",
+    platforms: [
+      { platform: "macos", status: "supported" },
+      { platform: "windows", status: "supported" },
+      { platform: "linux", status: "unsupported", reason: "host-tray-unavailable" }
+    ]
+  } as const
+
+  for (const removedExport of ["TrayLive", "TrayRpcEvents"]) {
+    expect(removedExport in trayModule).toBe(false)
+    expect(removedExport in rootModule).toBe(false)
+  }
+  expect(eventRpc).toBeDefined()
+  expect(eventRpc === undefined ? false : RpcSchema.isStreamSchema(eventRpc.successSchema)).toBe(
+    true
+  )
+  if (eventRpc !== undefined && RpcSchema.isStreamSchema(eventRpc.successSchema)) {
+    expect(eventRpc.successSchema.success).toBe(TrayActivatedEvent)
+    expect(eventRpc.pipe(rpcSupport)).toEqual(expectedSupport)
+  }
+
+  const eventDoc = TraySurface.schemaDocs.find((doc) => doc.tag === "Tray.events.Activated")
+  expect(eventDoc?.kind).toBe("stream")
+  expect(eventDoc?.callable).toBe(true)
+  expect(eventDoc?.support).toEqual(expectedSupport)
 })
 
 test("Tray lifecycle support metadata keeps Linux unavailable until tray dependencies ship", () => {
@@ -4451,6 +4490,73 @@ test("Tray service delegates through a substitutable TrayClient port", () =>
     })
   ))
 
+test("Tray direct client consumes the canonical RPC activation stream", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
+      const requests: HostProtocolRequestEnvelope[] = []
+      const protocolLayer = Layer.effect(RpcClient.Protocol)(
+        makeDesktopClientProtocol(
+          {
+            send: (envelope) => {
+              if (envelope.kind !== "request") {
+                return Effect.void
+              }
+              requests.push(envelope)
+              return Effect.all(
+                [
+                  Queue.offer(
+                    queue,
+                    new HostProtocolStreamByRequestEnvelope({
+                      kind: "stream",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_360,
+                      traceId: envelope.traceId,
+                      payload: {
+                        tray: trayHandle,
+                        ownerWindowId: "window-1"
+                      }
+                    })
+                  ),
+                  Queue.offer(
+                    queue,
+                    new HostProtocolResponseEnvelope({
+                      kind: "response",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_361,
+                      traceId: envelope.traceId
+                    })
+                  )
+                ],
+                { discard: true }
+              )
+            },
+            run: (onEnvelope) =>
+              Stream.fromQueue(queue).pipe(
+                Stream.runForEach(onEnvelope),
+                Effect.andThen(Effect.never)
+              )
+          },
+          {
+            nextRequestId: () => "tray-activated-rpc",
+            nextTraceId: () => "trace-tray-activated-rpc"
+          }
+        )
+      )
+
+      const event = yield* runScoped(
+        Effect.gen(function* () {
+          const tray = yield* Tray
+          return yield* tray.onActivated().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+        }),
+        Layer.provide(Tray.layer, Layer.provide(TraySurface.clientLayer, protocolLayer))
+      )
+
+      expect(event).toEqual(new TrayActivatedEvent({ tray: trayHandle, ownerWindowId: "window-1" }))
+      expect(requests.map((request) => request.method)).toEqual(["Tray.events.Activated"])
+    })
+  ))
+
 test("Tray bridge client sends typed host envelopes and decodes activation events", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -4478,7 +4584,7 @@ test("Tray bridge client sends typed host envelopes and decodes activation event
 
           return { activated, created }
         }),
-        Layer.provide(TrayLive, TraySurface.bridgeClientLayer(exchange))
+        Layer.provide(Tray.layer, TraySurface.bridgeClientLayer(exchange))
       )
 
       expect(result.created).toMatchObject(trayHandle)
@@ -4532,7 +4638,7 @@ test("Tray bridge client rejects empty activation event identifiers as InvalidOu
             const tray = yield* Tray
             return yield* Effect.exit(tray.onActivated().pipe(Stream.take(1), Stream.runCollect))
           }),
-          Layer.provide(TrayLive, TraySurface.bridgeClientLayer(exchange))
+          Layer.provide(Tray.layer, TraySurface.bridgeClientLayer(exchange))
         )
 
         expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
@@ -4564,7 +4670,7 @@ test("Tray bridge client decodes activation events with no ownerWindowId field",
           const tray = yield* Tray
           return yield* tray.onActivated().pipe(Stream.take(1), Stream.runCollect)
         }),
-        Layer.provide(TrayLive, TraySurface.bridgeClientLayer(exchange))
+        Layer.provide(Tray.layer, TraySurface.bridgeClientLayer(exchange))
       )
 
       expect(Array.from(events)).toEqual([new TrayActivatedEvent({ tray: trayHandle })])
@@ -4578,7 +4684,7 @@ test("Tray bridge client rejects invalid icon and tooltip metadata before transp
       const client = yield* runScoped(
         Tray.asEffect(),
         Layer.provide(
-          TrayLive,
+          Tray.layer,
           TraySurface.bridgeClientLayer(
             trayExchange(requests, () => ({ kind: "success", payload: trayHandle }))
           )
@@ -4609,7 +4715,7 @@ test("Tray bridge client rejects stale destroy handles before host transport", (
       const client = yield* runScoped(
         Tray.asEffect(),
         Layer.provide(
-          TrayLive,
+          Tray.layer,
           TraySurface.bridgeClientLayer(
             trayExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
@@ -4640,7 +4746,8 @@ test("native host RPC runtime denies protected Tray calls before handlers run", 
           "Tray.setTitle": () => Effect.void,
           "Tray.setMenu": () => Effect.void,
           "Tray.destroy": () => Effect.void,
-          "Tray.isSupported": () => Effect.succeed(new TraySupportedResult({ supported: true }))
+          "Tray.isSupported": () => Effect.succeed(new TraySupportedResult({ supported: true })),
+          "Tray.events.Activated": () => Stream.empty
         },
         { originAuth: RendererOriginAuth.unsafeDisabledForTests }
       )

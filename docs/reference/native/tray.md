@@ -74,7 +74,8 @@ format until an Effect-native asset resolver is added.
 
 ## Events
 
-`Tray.onActivated()` streams `Tray.Activated` events for click and double-click activation:
+`Tray.onActivated()` streams `Tray.events.Activated` for click and double-click activation. Bridge
+clients keep host wire compatibility by subscribing to `Tray.Activated`:
 
 ```ts
 {
@@ -85,6 +86,10 @@ format until an Effect-native asset resolver is added.
 
 Events are emitted only for currently registered tray handles. Closing the runtime or destroying the
 tray stops routing events for that handle.
+
+Architecture-debt sweep outcome for #1860: removed `TrayRpcEvents`, the local `subscribeTrayEvent`
+helper, and the `TrayLive` alias. `Tray` and `makeTrayServiceLayer` remain because they own durable
+ResourceRegistry-backed tray lifecycle policy and deterministic resource-layer construction.
 
 ## Platform Notes
 

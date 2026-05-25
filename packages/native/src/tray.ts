@@ -19,7 +19,6 @@ import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
-import { subscribeNativeEvent } from "./event-stream.js"
 import {
   TrayActivatedEvent,
   TrayCreateInput,
@@ -106,11 +105,10 @@ export const TrayIsSupported = trayRpc("isSupported", Schema.Void, TraySupported
   kind: "none"
 })
 
-export const TrayRpcEvents = Object.freeze({
-  Activated: { payload: TrayActivatedEvent }
+const TrayActivated = NativeSurface.event("Tray", "Activated", {
+  payload: TrayActivatedEvent,
+  support: TrayPlatformSupport
 })
-
-export type TrayRpcEvents = typeof TrayRpcEvents
 
 const TrayRpcGroup = RpcGroup.make(
   TrayCreate,
@@ -119,7 +117,8 @@ const TrayRpcGroup = RpcGroup.make(
   TraySetTitle,
   TraySetMenu,
   TrayDestroy,
-  TrayIsSupported
+  TrayIsSupported,
+  TrayActivated
 )
 
 export const TrayRpcs: RpcGroup.RpcGroup<TrayRpc> = TrayRpcGroup
@@ -238,14 +237,12 @@ const makeTrayService = (client: TrayClientApi, options: TrayServiceOptions): Tr
   } satisfies TrayServiceApi)
 }
 
-export const TrayLive = Tray.layer
-
 export const makeTrayServiceLayer = (
   client: TrayClientApi,
   options?: TrayServiceOptions
 ): Layer.Layer<Tray> =>
   options === undefined
-    ? Layer.provide(TrayLive, Layer.succeed(TrayClient)(client))
+    ? Layer.provide(Tray.layer, Layer.succeed(TrayClient)(client))
     : Layer.succeed(Tray, makeTrayService(client, options))
 
 export type TrayRpc = RpcGroup.Rpcs<typeof TrayRpcGroup>
@@ -288,22 +285,26 @@ export const TrayHandlersLive = TrayRpcGroup.toLayer({
       const tray = yield* Tray
       const supported = yield* tray.isSupported()
       return new TraySupportedResult({ supported })
-    })
+    }),
+  "Tray.events.Activated": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const tray = yield* Tray
+        return tray.onActivated()
+      })
+    )
 })
 
 export const TraySurface = NativeSurface.make("Tray", TrayRpcGroup, {
   service: TrayClient,
   capabilities: TrayCapabilityMethods,
   handlers: TrayHandlersLive,
-  client: (client) => trayClientFromRpcClient(client, undefined),
-  bridgeClient: (client, exchange) => trayClientFromRpcClient(client, exchange)
+  client: (client) => trayClientFromRpcClient(client),
+  bridgeClient: (client, exchange) => trayBridgeClientFromRpcClient(client, exchange)
 })
 
-const trayClientFromRpcClient = (
-  client: DesktopRpcClient<TrayRpc>,
-  exchange: BridgeClientExchange | undefined
-): TrayClientApi => {
-  const trayClient: TrayClientApi = {
+const trayClientFromRpcClient = (client: DesktopRpcClient<TrayRpc>): TrayClientApi =>
+  Object.freeze({
     create: (input) =>
       decodeTrayCreateInput(input).pipe(
         Effect.flatMap((decoded) => runTrayRpc(client["Tray.create"](decoded), "Tray.create"))
@@ -330,18 +331,45 @@ const trayClientFromRpcClient = (
       decodeTrayDestroyInput({ tray: toTrayHandle(tray) }).pipe(
         Effect.flatMap((decoded) => runTrayRpc(client["Tray.destroy"](decoded), "Tray.destroy"))
       ),
-    onActivated: () => subscribeTrayEvent(exchange, "Tray.Activated"),
+    onActivated: () =>
+      runTrayRpcStream(client["Tray.events.Activated"](undefined), "Tray.events.Activated"),
     isSupported: () => runTrayRpc(client["Tray.isSupported"](undefined), "Tray.isSupported")
-  }
+  } satisfies TrayClientApi)
 
-  return Object.freeze(trayClient)
-}
-
-const subscribeTrayEvent = (
-  exchange: BridgeClientExchange | undefined,
-  method: "Tray.Activated"
-): Stream.Stream<TrayActivatedEvent, TrayError, never> =>
-  subscribeNativeEvent(exchange, method, TrayActivatedEvent)
+const trayBridgeClientFromRpcClient = (
+  client: DesktopRpcClient<TrayRpc>,
+  exchange: BridgeClientExchange
+): TrayClientApi =>
+  Object.freeze({
+    create: (input) =>
+      decodeTrayCreateInput(input).pipe(
+        Effect.flatMap((decoded) => runTrayRpc(client["Tray.create"](decoded), "Tray.create"))
+      ),
+    setIcon: (tray, icon) =>
+      decodeTraySetIconInput({ tray: toTrayHandle(tray), icon }).pipe(
+        Effect.flatMap((decoded) => runTrayRpc(client["Tray.setIcon"](decoded), "Tray.setIcon"))
+      ),
+    setTooltip: (tray, tooltip) =>
+      decodeTraySetTooltipInput({ tray: toTrayHandle(tray), tooltip }).pipe(
+        Effect.flatMap((decoded) =>
+          runTrayRpc(client["Tray.setTooltip"](decoded), "Tray.setTooltip")
+        )
+      ),
+    setTitle: (tray, title) =>
+      decodeTraySetTitleInput({ tray: toTrayHandle(tray), title }).pipe(
+        Effect.flatMap((decoded) => runTrayRpc(client["Tray.setTitle"](decoded), "Tray.setTitle"))
+      ),
+    setMenu: (tray, menu) =>
+      decodeTraySetMenuInput({ tray: toTrayHandle(tray), menu }).pipe(
+        Effect.flatMap((decoded) => runTrayRpc(client["Tray.setMenu"](decoded), "Tray.setMenu"))
+      ),
+    destroy: (tray) =>
+      decodeTrayDestroyInput({ tray: toTrayHandle(tray) }).pipe(
+        Effect.flatMap((decoded) => runTrayRpc(client["Tray.destroy"](decoded), "Tray.destroy"))
+      ),
+    onActivated: () => NativeSurface.subscribeEvent(exchange, TrayActivated),
+    isSupported: () => runTrayRpc(client["Tray.isSupported"](undefined), "Tray.isSupported")
+  } satisfies TrayClientApi)
 
 const toTrayHandle = (handle: TrayHandle): TrayHandle =>
   Object.freeze({
@@ -432,6 +460,11 @@ const runTrayRpc = <A, E>(
       Effect.fail(makeHostProtocolInvalidOutputError(operation, formatUnknownError(defect)))
     )
   )
+
+const runTrayRpcStream = <A, E>(
+  stream: Stream.Stream<A, E, never>,
+  _operation: string
+): Stream.Stream<A, TrayError, never> => stream.pipe(Stream.mapError(mapTrayRpcClientError))
 
 const mapTrayRpcClientError = (error: unknown): TrayError =>
   isTrayError(error) ? error : makeHostProtocolInternalError("Tray RPC client failed", "Tray")

@@ -151,6 +151,7 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 |                       #1857 Model AppMetadata events as RPC streams | Closed | Removes the remaining `AppMetadataRpcEvents` side object by moving AppMetadata lifecycle events into the canonical `AppMetadata.events.Event` RPC stream.             |
 |                       #1858 Model Association events as RPC streams | Closed | Removes the remaining `AssociationRpcEvents` side object by moving Association lifecycle events into the canonical `Association.events.Event` RPC stream.             |
 |                       #1859 Model ContextMenu events as RPC streams | Closed | Moves activation events into the canonical `ContextMenu.events.Activated` RPC stream and removes shallow ContextMenu side exports.                                    |
+|                              #1860 Model Tray events as RPC streams | Closed | Moves tray activation events into the canonical `Tray.events.Activated` RPC stream and removes shallow Tray side exports.                                             |
 
 ## Execution Progress
 
