@@ -752,9 +752,7 @@ export {
 } from "./realtime-media-session.js"
 export {
   RecentDocuments,
-  RecentDocumentsClient,
   RecentDocumentsHandlersLive,
-  RecentDocumentsLive,
   RecentDocumentsMethodNames,
   RecentDocumentsRpcEvents,
   RecentDocumentsRpcs,
@@ -762,8 +760,7 @@ export {
   type RecentDocumentsClientApi,
   type RecentDocumentsError,
   type RecentDocumentsRpc,
-  type RecentDocumentsRpcHandlers,
-  type RecentDocumentsServiceApi
+  type RecentDocumentsRpcHandlers
 } from "./recent-documents.js"
 export {
   PowerMonitor,

@@ -218,7 +218,6 @@ import {
   PowerMonitorMethodNames,
   PowerMonitorSurface,
   RecentDocuments,
-  RecentDocumentsLive,
   RecentDocumentsMethodNames,
   RecentDocumentsRpcEvents,
   RecentDocumentsRpcs,
@@ -318,7 +317,6 @@ import {
   ContextMenuClient,
   PathClient,
   ProtocolClient,
-  RecentDocumentsClient,
   NativeFileSystemClient,
   SafeStorageClient,
   UpdaterClient,
@@ -6605,7 +6603,7 @@ test("RecentDocumentsRpcs declares the Phase 8 RecentDocuments method and event 
   expect(Object.keys(RecentDocumentsRpcEvents)).toEqual(["Event"])
 })
 
-test("RecentDocuments service delegates through a substitutable RecentDocumentsClient port", () =>
+test("RecentDocuments service delegates through a substitutable service value", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
@@ -6620,10 +6618,7 @@ test("RecentDocuments service delegates through a substitutable RecentDocumentsC
 
             return { documents, events }
           }),
-          Layer.provide(
-            RecentDocumentsLive,
-            Layer.succeed(RecentDocumentsClient)(recentDocumentsClient(calls))
-          )
+          recentDocumentsLayer(recentDocumentsClient(calls))
         )
       )
 
@@ -6666,7 +6661,7 @@ test("RecentDocuments bridge client sends typed host envelopes and decodes event
 
             return { documents, events }
           }),
-          Layer.provide(RecentDocumentsLive, RecentDocumentsSurface.bridgeClientLayer(exchange))
+          RecentDocumentsSurface.bridgeClientLayer(exchange)
         )
       )
 
@@ -6711,17 +6706,14 @@ test("RecentDocuments bridge client accepts safe absolute document paths", () =>
               const events = yield* recentDocuments.events().pipe(Stream.take(1), Stream.runCollect)
               return { documents, events }
             }),
-            Layer.provide(
-              RecentDocumentsLive,
-              RecentDocumentsSurface.bridgeClientLayer(
-                recentDocumentsExchange(
-                  requests,
-                  (request) =>
-                    request.method === "RecentDocuments.list"
-                      ? { kind: "success", payload: { documents: [{ path: { path } }] } }
-                      : { kind: "success", payload: undefined },
-                  path
-                )
+            RecentDocumentsSurface.bridgeClientLayer(
+              recentDocumentsExchange(
+                requests,
+                (request) =>
+                  request.method === "RecentDocuments.list"
+                    ? { kind: "success", payload: { documents: [{ path: { path } }] } }
+                    : { kind: "success", payload: undefined },
+                path
               )
             )
           )
@@ -6749,11 +6741,8 @@ test("RecentDocuments bridge client rejects invalid paths before transport", () 
       const requests: HostProtocolRequestEnvelope[] = []
       const client = yield* runScoped(
         RecentDocuments.asEffect(),
-        Layer.provide(
-          RecentDocumentsLive,
-          RecentDocumentsSurface.bridgeClientLayer(
-            recentDocumentsExchange(requests, () => ({ kind: "success", payload: undefined }))
-          )
+        RecentDocumentsSurface.bridgeClientLayer(
+          recentDocumentsExchange(requests, () => ({ kind: "success", payload: undefined }))
         )
       )
 
@@ -6797,10 +6786,7 @@ test("RecentDocuments bridge client rejects unsafe list and event paths as Inval
           const recentDocuments = yield* RecentDocuments
           return yield* Effect.exit(recentDocuments.list())
         }),
-        Layer.provide(
-          RecentDocumentsLive,
-          RecentDocumentsSurface.bridgeClientLayer(invalidListExchange)
-        )
+        RecentDocumentsSurface.bridgeClientLayer(invalidListExchange)
       )
       const eventExit = yield* runScoped(
         Effect.gen(function* () {
@@ -6809,10 +6795,7 @@ test("RecentDocuments bridge client rejects unsafe list and event paths as Inval
             recentDocuments.events().pipe(Stream.take(1), Stream.runCollect)
           )
         }),
-        Layer.provide(
-          RecentDocumentsLive,
-          RecentDocumentsSurface.bridgeClientLayer(invalidEventExchange)
-        )
+        RecentDocumentsSurface.bridgeClientLayer(invalidEventExchange)
       )
 
       expectExitFailure(listExit, (error) => hasErrorTag(error, "InvalidOutput"))
@@ -6866,7 +6849,7 @@ test("RecentDocuments rejects inconsistent event phase payloads before exposing 
             recentDocuments.events().pipe(Stream.take(1), Stream.runCollect)
           )
         }),
-        Layer.provide(RecentDocumentsLive, RecentDocumentsSurface.bridgeClientLayer(exchange))
+        RecentDocumentsSurface.bridgeClientLayer(exchange)
       )
 
       expectExitFailure(bridgeExit, (error) => hasErrorTag(error, "InvalidOutput"))
@@ -6938,7 +6921,7 @@ test("RecentDocuments service propagates unsupported platform and host failure",
             recentDocuments.add({ path: new CanonicalPath({ path: "/tmp/report.txt" }) })
           )
         }),
-        Layer.provide(RecentDocumentsLive, Layer.succeed(RecentDocumentsClient)(unsupportedClient))
+        recentDocumentsLayer(unsupportedClient)
       )
       const hostFailureExit = yield* runScoped(
         Effect.gen(function* () {
@@ -6947,7 +6930,7 @@ test("RecentDocuments service propagates unsupported platform and host failure",
             recentDocuments.add({ path: new CanonicalPath({ path: "/tmp/report.txt" }) })
           )
         }),
-        Layer.provide(RecentDocumentsLive, Layer.succeed(RecentDocumentsClient)(hostFailureClient))
+        recentDocumentsLayer(hostFailureClient)
       )
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
@@ -14549,6 +14532,9 @@ const recentDocumentsClient = (calls: string[]): RecentDocumentsClientApi => ({
       })
     })
 })
+
+const recentDocumentsLayer = (client: RecentDocumentsClientApi): Layer.Layer<RecentDocuments> =>
+  Layer.succeed(RecentDocuments)(client)
 
 const nativeFileSystemClient = (calls: string[]): NativeFileSystemClientApi => ({
   open: (input) =>

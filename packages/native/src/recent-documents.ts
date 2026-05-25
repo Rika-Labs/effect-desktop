@@ -1,6 +1,6 @@
 import { type BridgeClientExchange, type HostProtocolError, RpcGroup } from "@orika/bridge"
 import { type DesktopRpcClient, P } from "@orika/core"
-import { Context, Effect, Layer, Schema, Stream } from "effect"
+import { Context, Effect, Schema, Stream } from "effect"
 
 import {
   RecentDocumentsAddInput,
@@ -69,30 +69,9 @@ export interface RecentDocumentsClientApi {
   readonly events: () => Stream.Stream<RecentDocumentsEvent, RecentDocumentsError>
 }
 
-export class RecentDocumentsClient extends Context.Service<
-  RecentDocumentsClient,
-  RecentDocumentsClientApi
->()("@orika/native/RecentDocumentsClient") {}
-
-export type RecentDocumentsServiceApi = RecentDocumentsClientApi
-
-export class RecentDocuments extends Context.Service<RecentDocuments, RecentDocumentsServiceApi>()(
+export class RecentDocuments extends Context.Service<RecentDocuments, RecentDocumentsClientApi>()(
   "@orika/native/RecentDocuments"
-) {
-  static readonly layer = Layer.effect(RecentDocuments)(
-    Effect.gen(function* () {
-      const client = yield* RecentDocumentsClient
-      return RecentDocuments.of({
-        add: (input) => client.add(input),
-        clear: () => client.clear(),
-        list: () => client.list(),
-        events: () => client.events()
-      } satisfies RecentDocumentsServiceApi)
-    })
-  )
-}
-
-export const RecentDocumentsLive = RecentDocuments.layer
+) {}
 
 export type RecentDocumentsRpc = RpcGroup.Rpcs<typeof RecentDocumentsRpcGroup>
 export type RecentDocumentsRpcHandlers<R = never> = NativeRpcHandlers<
@@ -122,7 +101,7 @@ export const RecentDocumentsSurface = NativeSurface.make(
   "RecentDocuments",
   RecentDocumentsRpcGroup,
   {
-    service: RecentDocumentsClient,
+    service: RecentDocuments,
     capabilities: RecentDocumentsMethodNames,
     handlers: RecentDocumentsHandlersLive,
     client: (client) => recentDocumentsClientFromRpcClient(client),
