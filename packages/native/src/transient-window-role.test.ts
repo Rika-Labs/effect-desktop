@@ -18,7 +18,6 @@ import {
   makeTransientWindowRoleMemoryClient,
   makeTransientWindowRoleUnsupportedClient,
   TransientWindowRole,
-  TransientWindowRoleCapabilityFacts,
   type TransientWindowRoleClientApi,
   TransientWindowRoleRpcs,
   TransientWindowRoleSurface
@@ -37,6 +36,7 @@ test("TransientWindowRole public surface omits shallow service and layer helpers
       )
 
       for (const removedName of [
+        "TransientWindowRole" + "CapabilityFacts",
         "TransientWindowRoleServiceApi",
         "class TransientWindowRoleClient",
         "TransientWindowRoleLive",
@@ -92,17 +92,18 @@ test("TransientWindowRole event schema is owned by the RPC stream contract", asy
 })
 
 test("TransientWindowRole declares open/reposition/dismiss as non-callable capability facts", () => {
-  const factTags = TransientWindowRoleCapabilityFacts.map((fact) => fact.tag).toSorted()
+  const facts = transientWindowRoleCapabilityFacts()
+  const factTags = facts.map((fact) => fact.tag).toSorted()
   expect(factTags).toEqual(
     UnsupportedMethods.map((method) => `TransientWindowRole.${method}`).toSorted()
   )
-  for (const fact of TransientWindowRoleCapabilityFacts) {
+  for (const fact of facts) {
     expect(fact.support.status).toBe("unsupported")
   }
 })
 
 test("TransientWindowRole.open stays unsupported until a role adapter owns rendered content", () => {
-  const openFact = TransientWindowRoleCapabilityFacts.find(
+  const openFact = transientWindowRoleCapabilityFacts().find(
     (fact) => fact.tag === "TransientWindowRole.open"
   )
 
@@ -119,7 +120,7 @@ test("TransientWindowRole.open stays unsupported until a role adapter owns rende
 })
 
 test("TransientWindowRole.reposition stays unsupported until a role adapter owns placement", () => {
-  const repositionFact = TransientWindowRoleCapabilityFacts.find(
+  const repositionFact = transientWindowRoleCapabilityFacts().find(
     (fact) => fact.tag === "TransientWindowRole.reposition"
   )
 
@@ -136,7 +137,7 @@ test("TransientWindowRole.reposition stays unsupported until a role adapter owns
 })
 
 test("TransientWindowRole.dismiss stays unsupported until an open role adapter owns handles", () => {
-  const dismissFact = TransientWindowRoleCapabilityFacts.find(
+  const dismissFact = transientWindowRoleCapabilityFacts().find(
     (fact) => fact.tag === "TransientWindowRole.dismiss"
   )
 
@@ -425,6 +426,9 @@ const runScoped = <A, E, R>(
 const transientWindowRoleLayer = (
   client: TransientWindowRoleClientApi
 ): Layer.Layer<TransientWindowRole> => Layer.succeed(TransientWindowRole)(client)
+
+const transientWindowRoleCapabilityFacts = () =>
+  TransientWindowRoleSurface.schemaDocs.filter((doc) => !doc.callable)
 
 const expectExitFailure = <A>(
   exit: Exit.Exit<A, unknown>,

@@ -159,7 +159,7 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 |                      #1865 Model BrowsingData events as RPC streams | Closed | Moves browsing-data clear events into the canonical `BrowsingData.events.Event` RPC stream and removes shallow BrowsingData side exports.                             |
 |               #1868 Flatten Window service and event side contracts | Closed | Removes Window's remaining `WindowClient -> Window` forwarding split and event side objects once the large Window surface can migrate to canonical RPC streams.       |
 |         #1870 Flatten ScopedAccessGrant service boundary and events | Closed | Removes the `ScopedAccessGrantClient -> ScopedAccessGrant` forwarding split, public side exports, and moves scoped access events into canonical RPC streams.          |
-|    #1871 Keep TransientWindowRole capability facts private metadata | Open   | Removes the remaining public capability-fact side object from the already-flattened TransientWindowRole surface while preserving unsupported manifest facts.          |
+|    #1871 Keep TransientWindowRole capability facts private metadata | Closed | Removes the remaining public capability-fact side object from the already-flattened TransientWindowRole surface while preserving unsupported manifest facts.          |
 
 ## Execution Progress
 

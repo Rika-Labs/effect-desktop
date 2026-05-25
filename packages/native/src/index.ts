@@ -422,7 +422,6 @@ export {
   makeTransientWindowRoleMemoryClient,
   makeTransientWindowRoleUnsupportedClient,
   TransientWindowRole,
-  TransientWindowRoleCapabilityFacts,
   TransientWindowRoleHandlersLive,
   TransientWindowRoleMethodNames,
   TransientWindowRoleRpcs,

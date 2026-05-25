@@ -3464,11 +3464,6 @@
       "signature": "export class TransientWindowRole extends Context.Service< TransientWindowRole, TransientWindowRoleClientApi >()(\"@orika/native/TransientWindowRole\") {}"
     },
     {
-      "name": "TransientWindowRoleCapabilityFacts",
-      "kind": "value",
-      "signature": "const TransientWindowRoleCapabilityFacts: readonly import(\"@orika/core\").DesktopRpcCapabilityFact[]"
-    },
-    {
       "name": "TransientWindowRoleClientApi",
       "kind": "interface",
       "signature": "export interface TransientWindowRoleClientApi { readonly isSupported: () => Effect.Effect< TransientWindowRoleSupportedResult, TransientWindowRoleError, never > readonly events: () => Stream.Stream<TransientWindowRoleEvent, TransientWindowRoleError, never> }"

@@ -46,7 +46,7 @@ const transientWindowRoleCapabilityFact = (method: "open" | "reposition" | "dism
     support: UnsupportedSupport
   })
 
-export const TransientWindowRoleCapabilityFacts = Object.freeze([
+const UnsupportedCapabilityFacts = Object.freeze([
   transientWindowRoleCapabilityFact("open"),
   transientWindowRoleCapabilityFact("reposition"),
   transientWindowRoleCapabilityFact("dismiss")
@@ -104,7 +104,7 @@ export const TransientWindowRoleHandlersLive = TransientWindowRoleRpcGroup.toLay
 export const TransientWindowRoleSurface = NativeSurface.make(Surface, TransientWindowRoleRpcGroup, {
   service: TransientWindowRole,
   handlers: TransientWindowRoleHandlersLive,
-  capabilityFacts: TransientWindowRoleCapabilityFacts,
+  capabilityFacts: UnsupportedCapabilityFacts,
   client: (client) => transientWindowRoleClientFromRpcClient(client),
   bridgeClient: (client) => transientWindowRoleBridgeClientFromRpcClient(client)
 })
