@@ -23,7 +23,7 @@ The `RpcGroup` remains the source of truth for endpoint tags, schemas, endpoint 
 
 `Desktop.Rpc.supportedGroup(group)` filters a descriptor group to RPCs annotated as supported. Unsupported RPCs remain available to schema docs and descriptors, but they are absent from `SupportedDesktopRpcClient<Rpcs>`.
 
-`packages/native/src/screen.ts` is the current full surface proof. `packages/native/src/window.ts` is the supported-client proof: `WindowRpcs` keeps the full descriptor surface, while `WindowSupportedRpcs` generates only the callable `create` and `close` client methods.
+`packages/native/src/screen.ts` is the current direct-surface proof. `packages/native/src/window.ts` is the mapped-surface proof: `WindowRpcs` owns the wire contract, while the public `Window` service owns desktop defaults, resource reconciliation, and bridge event subscription policy.
 
 ### SQLite
 

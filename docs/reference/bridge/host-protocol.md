@@ -18,7 +18,8 @@ import {
   HOST_PING_METHOD,
   HOST_VERSION_METHOD,
   WINDOW_CREATE_METHOD,
-  WINDOW_DESTROY_METHOD
+  WINDOW_DESTROY_METHOD,
+  WINDOW_EVENT_METHOD
 } from "@orika/bridge"
 ```
 
@@ -29,6 +30,7 @@ import {
 - `HOST_VERSION_METHOD = "host.version"` — handshake version exchange.
 - `WINDOW_CREATE_METHOD = "Window.create"` — open a window.
 - `WINDOW_DESTROY_METHOD = "Window.destroy"` — close a window.
+- `WINDOW_EVENT_METHOD = "Window.Event"` — raw host window event stream.
 
 ## Handshake clients
 
@@ -38,7 +40,7 @@ import { makeHostHandshakeClient, makeHostWindowClient } from "@orika/bridge"
 
 `makeHostHandshakeClient(exchange)` returns `{ version(), ping() }`.
 
-`makeHostWindowClient(exchange, options)` returns `{ create(...), destroy(...) }`.
+`makeHostWindowClient(exchange, options)` returns the raw host Window client used by native adapters, including lifecycle, lookup, bounds/state/chrome methods, and `events()` for `Window.Event`.
 
 ## Why constants
 

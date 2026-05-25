@@ -10,7 +10,7 @@ import { Context, Effect, Layer, Option, Ref, Schema, Semaphore, Stream } from "
 import { KeyValueStore } from "effect/unstable/persistence"
 
 import { Screen, type ScreenClientApi } from "./screen.js"
-import { Window, type WindowServiceApi } from "./window.js"
+import { Window, type WindowApi } from "./window.js"
 import { ScreenDisplay } from "./contracts/screen.js"
 import { WindowBounds, type WindowHandle } from "./contracts/window.js"
 
@@ -273,7 +273,7 @@ const currentDisplays = (
   )
 
 const validateWindowAccess = (
-  windowService: WindowServiceApi,
+  windowService: WindowApi,
   window: WindowHandle,
   operation: string
 ): Effect.Effect<void, WindowPersistenceError, never> =>

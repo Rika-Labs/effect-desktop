@@ -17,11 +17,9 @@ Windows are native resources owned by the host and described to the runtime thro
 `@orika/native` exports:
 
 - `WindowRpcs` — canonical runtime and host Window RPC group.
-- `WindowSupportedRpcs` — host-backed supported slice.
 - `Window` — Effect service for runtime code.
-- `WindowClient` — client-side service.
 - `WindowPersistence` — native service that saves, restores, clears, and observes per-window geometry state.
-- `WindowLive`, `WindowHandlersLive`, `makeWindow*Layer` helpers.
+- `WindowHandlersLive`, `WindowSurface`, and bridge-layer helpers for runtime and renderer adapters.
 - `WindowMethodNames` for contract metadata and support checks.
 
 Browser renderer manifests use `WindowRendererRpcs` from

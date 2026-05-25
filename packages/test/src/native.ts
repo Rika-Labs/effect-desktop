@@ -28,8 +28,8 @@ import {
   type DialogServiceApi,
   type ScreenClientApi,
   type ScreenError,
-  type WindowError,
-  type WindowServiceApi
+  type WindowApi,
+  type WindowError
 } from "@orika/native"
 import {
   ClipboardImage,
@@ -339,7 +339,7 @@ export const makeWindowScenarioLayer = (): Layer.Layer<
 const makeWindowScenario = (
   registry: ResourceRegistryApi,
   windows: Ref.Ref<ReadonlyMap<string, TestWindowRecord>>
-): WindowServiceApi =>
+): WindowApi =>
   Object.freeze({
     create: (input = {}): Effect.Effect<WindowHandle, WindowError, never> =>
       Effect.gen(function* () {
@@ -480,7 +480,7 @@ const makeWindowScenario = (
     getState: (_window): Effect.Effect<WindowState, WindowError, never> =>
       Effect.succeed(defaultWindowState()),
     events: () => Stream.empty
-  } satisfies WindowServiceApi)
+  } satisfies WindowApi)
 
 const defaultWindowState = (): WindowState =>
   new WindowState({

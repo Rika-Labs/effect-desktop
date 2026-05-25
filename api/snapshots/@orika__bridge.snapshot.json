@@ -1609,6 +1609,11 @@
       "signature": "export type WindowAttentionTypeInput = Schema.Schema.Type<typeof WindowAttentionType>"
     },
     {
+      "name": "WindowBoundsEventPayload",
+      "kind": "class",
+      "signature": "export class WindowBoundsEventPayload extends Schema.Class<WindowBoundsEventPayload>( \"WindowBoundsEventPayload\" )({ type: Schema.Literal(\"window-bounds-event\"), windowId: Schema.NonEmptyString, window: Schema.optionalKey(WindowResourcePayload), bounds: WindowBoundsPayload }) {}"
+    },
+    {
       "name": "WindowBoundsInput",
       "kind": "interface",
       "signature": "export interface WindowBoundsInput { readonly x: number readonly y: number readonly width: number readonly height: number }"
@@ -1656,7 +1661,7 @@
     {
       "name": "WindowEventPayload",
       "kind": "type",
-      "signature": "const WindowEventPayload: Schema.Union<readonly [typeof WindowRegistryEventPayload, typeof WindowStateEventPayload]>"
+      "signature": "const WindowEventPayload: Schema.Union<readonly [typeof WindowRegistryEventPayload, typeof WindowStateEventPayload, typeof WindowBoundsEventPayload]>"
     },
     {
       "name": "WindowListResponse",

@@ -8,14 +8,7 @@ import {
   makeResourceId,
   MissingDesktopRpcClientError
 } from "@orika/core"
-import {
-  Native,
-  WindowHandlersLive,
-  WindowRpcs,
-  type WindowClientApi,
-  WindowLive,
-  WindowClient
-} from "@orika/native"
+import { Native, WindowHandlersLive, WindowRpcs, type WindowApi, Window } from "@orika/native"
 import type { WindowHandle } from "@orika/native/contracts"
 import { AsyncResult, Atom } from "effect/unstable/reactivity"
 import {
@@ -333,10 +326,10 @@ const testWindowState = {
   simpleFullscreen: false
 } as const
 
-const makeTestWindowClient = (current: WindowHandle, calls: string[]): WindowClientApi => ({
+const makeTestWindowClient = (current: WindowHandle, calls: string[]): WindowApi => ({
   create: (input) =>
     Effect.sync(() => {
-      calls.push(`create:${input.title ?? ""}`)
+      calls.push(`create:${input?.title ?? ""}`)
       return current
     }),
   close: (window) =>
@@ -652,10 +645,7 @@ test("ReactDesktop root exposes native Window helpers when the app declares Nati
   const window = makeTestWindowHandle("window-main")
   const WindowLayer = Desktop.rpc(
     WindowRpcs,
-    Layer.provide(
-      WindowHandlersLive,
-      Layer.provide(WindowLive, Layer.succeed(WindowClient)(makeTestWindowClient(window, calls)))
-    )
+    Layer.provide(WindowHandlersLive, Layer.succeed(Window)(makeTestWindowClient(window, calls)))
   )
   const NotesApp = Desktop.make({
     windows: Desktop.window("main", { title: "Notes" }),

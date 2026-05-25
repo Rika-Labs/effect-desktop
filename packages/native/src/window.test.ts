@@ -1,23 +1,38 @@
 import { expect, test } from "bun:test"
-import { rpcSupport, type Rpc } from "@orika/bridge"
-import { Desktop, makeResourceId } from "@orika/core"
+import {
+  type HostProtocolEnvelope,
+  HostProtocolRequestEnvelope,
+  HostProtocolResponseEnvelope,
+  HostProtocolStreamByRequestEnvelope,
+  makeDesktopClientProtocol,
+  rpcCapability,
+  rpcSupport,
+  type Rpc
+} from "@orika/bridge"
+import { Desktop, makeResourceId, P } from "@orika/core"
 import {
   makeDesktopRendererRpcTestLayer,
   RendererRpcClients
 } from "@orika/core/runtime/renderer-rpc-client"
-import { Effect, Exit, Layer, Option, Schema, Stream } from "effect"
+import { Effect, Exit, Layer, ManagedRuntime, Option, Queue, Schema, Stream } from "effect"
+import { RpcClient } from "effect/unstable/rpc"
 
 import { WindowRegistryEvent } from "./contracts/window.js"
-import {
-  WindowHandlersLive,
-  WindowRpcs,
-  type WindowClientApi,
-  WindowLive,
-  WindowClient
-} from "./window.js"
+import { Window, WindowHandlersLive, WindowRpcs, type WindowApi, WindowSurface } from "./window.js"
 import { makeWindowRendererClient, WindowRendererRpcs } from "./window-renderer-client.js"
 
 import type { WindowHandle } from "./contracts/window.js"
+
+const runScoped = <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  layer: Layer.Layer<R, never, never>
+): Effect.Effect<A, E, never> =>
+  Effect.gen(function* () {
+    const runtime = ManagedRuntime.make(layer)
+    const result = yield* Effect.promise(() => runtime.runPromise(effect))
+    yield* Effect.promise(() => runtime.dispose())
+    return result
+  })
 
 test("WindowRegistryEvent terminal flag must match phase", () => {
   for (const payload of [
@@ -80,6 +95,136 @@ test("WindowRegistryEvent terminal flag must match phase", () => {
     expect(Exit.isSuccess(exit)).toBe(true)
   }
 })
+
+test("Window public surface omits shallow service and side exports", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        Bun.file(new URL("window.ts", import.meta.url)).text()
+      )
+      const indexSource = yield* Effect.promise(() =>
+        Bun.file(new URL("index.ts", import.meta.url)).text()
+      )
+
+      for (const removedName of [
+        "class WindowClient",
+        "WindowClientApi",
+        "WindowLive",
+        "WindowRpcEvents",
+        "WindowSupportedRpcs",
+        "WindowBridgeClientOptions",
+        "makeWindowService"
+      ]) {
+        expect(source).not.toContain(removedName)
+        expect(indexSource).not.toContain(removedName)
+      }
+    })
+  ))
+
+test("Window event schema is owned by the RPC stream contract", async () => {
+  const windowModule = await import("./window.js")
+  const rootModule = await import("./index.js")
+  const callableTags = Array.from(WindowRpcs.requests.keys())
+  const eventRpc = WindowRpcs.requests.get("Window.events.Event")
+
+  for (const removedExport of [
+    "WindowRpcEvents",
+    "WindowSupportedRpcs",
+    "WindowBridgeClientOptions",
+    "WindowClient"
+  ]) {
+    expect(removedExport in windowModule).toBe(false)
+    expect(removedExport in rootModule).toBe(false)
+  }
+  expect(callableTags).toContain("Window.events.Event")
+  expect(callableTags).not.toContain("Window.subscribeEvents")
+  expect(eventRpc).toBeDefined()
+  if (eventRpc === undefined) {
+    throw new Error("missing Window.events.Event rpc")
+  }
+  expect(Option.getOrUndefined(rpcCapability(eventRpc))).toEqual(
+    P.nativeInvoke({ primitive: "Window", methods: ["subscribeEvents"] })
+  )
+  const eventDoc = WindowSurface.schemaDocs.find((doc) => doc.tag === "Window.events.Event")
+  expect(eventDoc?.callable).toBe(true)
+  expect(eventDoc?.kind).toBe("stream")
+})
+
+test("Window direct client consumes the canonical RPC event stream", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
+      const requests: HostProtocolRequestEnvelope[] = []
+      const protocolLayer = Layer.effect(RpcClient.Protocol)(
+        makeDesktopClientProtocol(
+          {
+            send: (envelope) => {
+              if (envelope.kind !== "request") {
+                return Effect.void
+              }
+              requests.push(envelope)
+              return Effect.all(
+                [
+                  Queue.offer(
+                    queue,
+                    new HostProtocolStreamByRequestEnvelope({
+                      kind: "stream",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_000,
+                      traceId: envelope.traceId,
+                      payload: {
+                        type: "window-registry-event",
+                        phase: "opened",
+                        windowId: "window-main",
+                        terminal: false
+                      }
+                    })
+                  ),
+                  Queue.offer(
+                    queue,
+                    new HostProtocolResponseEnvelope({
+                      kind: "response",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_001,
+                      traceId: envelope.traceId
+                    })
+                  )
+                ],
+                { discard: true }
+              )
+            },
+            run: (onEnvelope) =>
+              Stream.fromQueue(queue).pipe(
+                Stream.runForEach(onEnvelope),
+                Effect.andThen(Effect.never)
+              )
+          },
+          {
+            nextRequestId: () => "window-event-rpc",
+            nextTraceId: () => "trace-window-event-rpc"
+          }
+        )
+      )
+
+      const event = yield* runScoped(
+        Effect.gen(function* () {
+          const window = yield* Window
+          return yield* window.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+        }),
+        Layer.provide(WindowSurface.clientLayer, protocolLayer)
+      )
+
+      expect(event).toEqual(
+        new WindowRegistryEvent({
+          type: "window-registry-event",
+          phase: "opened",
+          windowId: "window-main",
+          terminal: false
+        })
+      )
+      expect(requests.map((request) => request.method)).toEqual(["Window.events.Event"])
+    })
+  ))
 
 test("WindowRpcs exposes only host-implemented methods through RpcGroup lowering", () => {
   expect(request("Window.create").pipe(rpcSupport)).toEqual({ status: "supported" })
@@ -214,10 +359,7 @@ test("Window renderer client constructor derives service from renderer RPC clien
   const window = makeTestWindowHandle("window-main")
   const rpcs = Desktop.rpc(
     WindowRpcs,
-    Layer.provide(
-      WindowHandlersLive,
-      Layer.provide(WindowLive, Layer.succeed(WindowClient)(makeTestWindowClient(window, calls)))
-    )
+    Layer.provide(WindowHandlersLive, Layer.succeed(Window)(makeTestWindowClient(window, calls)))
   )
 
   return Effect.runPromise(
@@ -269,10 +411,10 @@ const testWindowState = {
   simpleFullscreen: false
 } as const
 
-const makeTestWindowClient = (current: WindowHandle, calls: string[]): WindowClientApi => ({
+const makeTestWindowClient = (current: WindowHandle, calls: string[]): WindowApi => ({
   create: (input) =>
     Effect.sync(() => {
-      calls.push(`create:${input.title ?? ""}:${input.renderer ?? ""}`)
+      calls.push(`create:${input?.title ?? ""}:${input?.renderer ?? ""}`)
       return current
     }),
   close: (window) =>

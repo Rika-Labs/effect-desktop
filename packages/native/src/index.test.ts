@@ -5,6 +5,7 @@ import {
   HostProtocolInvalidArgumentError,
   HostProtocolInvalidOutputError,
   HostProtocolNotFoundError,
+  HostProtocolPermissionDeniedError,
   HostProtocolResponseEnvelope,
   HostProtocolStaleHandleError,
   HostProtocolStreamByRequestEnvelope,
@@ -78,6 +79,7 @@ import {
   type AnyDesktopRpcRegistration,
   P,
   PermissionRegistry,
+  PermissionActor,
   ResourceRegistry,
   makeCommandRegistry,
   makePermissionRegistry,
@@ -254,11 +256,7 @@ import {
   Window,
   WindowHandlersLive,
   WindowRpcs,
-  WindowRpcEvents,
-  WindowSupportedRpcs,
   WindowSurface,
-  WindowClient,
-  WindowLive,
   WindowMethodNames,
   makeCrashReporterMemoryClient,
   makeCrashReporterServiceLayer,
@@ -293,7 +291,7 @@ import {
   type TrayClientApi,
   type UpdaterClientApi,
   type WebViewClientApi,
-  type WindowClientApi,
+  type WindowApi,
   AppClient,
   WebViewClient,
   MenuClient,
@@ -448,7 +446,6 @@ test("native package root keeps contracts and implementation helpers behind subp
       const native = yield* Effect.promise(() => import("@orika/native"))
 
       expect(native.Window).toBeFunction()
-      expect(native.WindowLive).toBeDefined()
       expect(native.ClipboardSurface).toBeDefined()
       expect(native.DialogSurface).toBeDefined()
       expect(native.Native.all).toBeDefined()
@@ -470,6 +467,10 @@ test("native package root keeps contracts and implementation helpers behind subp
       expect("AppHttpServer" in native).toBe(false)
       expect("UpdateWorkflow" in native).toBe(false)
       expect("makeUnsupportedWindowClient" in native).toBe(false)
+      expect("WindowClient" in native).toBe(false)
+      expect("WindowLive" in native).toBe(false)
+      expect("WindowRpcEvents" in native).toBe(false)
+      expect("WindowSupportedRpcs" in native).toBe(false)
       expect("makeUnsupportedClipboardClient" in native).toBe(false)
       expect("makeClipboardBridgeClientLayer" in native).toBe(false)
       expect("makeHostClipboardRpcRuntime" in native).toBe(false)
@@ -488,7 +489,6 @@ test("native services expose canonical static layers", () => {
   expect(SystemAppearanceLive).toBe(SystemAppearance.layer)
   expect(UpdaterLive).toBe(Updater.layer)
   expect(WebViewLive).toBe(WebView.layer)
-  expect(WindowLive).toBe(Window.layer)
   expect(AppEventRouterLive).toBe(AppEventRouter.layer)
 })
 
@@ -795,7 +795,7 @@ test("Desktop.native preserves native server requirements on the app runtime lay
           run: () => Effect.never
         })
       )
-      const windowLayer = Layer.provide(WindowLive, Layer.succeed(WindowClient)(noopWindowClient))
+      const windowLayer = Layer.succeed(Window)(noopWindowClient)
 
       const exit = yield* Effect.exit(
         Effect.scoped(
@@ -11538,7 +11538,7 @@ test("WindowRpcs declares only callable Window methods", () => {
     "Window.list",
     "Window.getParent",
     "Window.getChildren",
-    WINDOW_SUBSCRIBE_EVENTS_METHOD,
+    "Window.events.Event",
     "Window.getBounds",
     "Window.setBounds",
     "Window.setBoundsOnDisplay",
@@ -11566,9 +11566,8 @@ test("WindowRpcs declares only callable Window methods", () => {
     "Window.setSimpleFullscreen",
     "Window.getState"
   ])
-  expect(Array.from(WindowSupportedRpcs.requests.keys())).toEqual(supportedWindowMethods)
-  const assertSupportedWindowClient = (
-    client: DesktopRpcClient<RpcGroup.Rpcs<typeof WindowSupportedRpcs>>
+  const assertWindowRpcClient = (
+    client: DesktopRpcClient<RpcGroup.Rpcs<typeof WindowRpcs>>
   ): void => {
     void client["Window.create"]
     void client["Window.close"]
@@ -11581,7 +11580,7 @@ test("WindowRpcs declares only callable Window methods", () => {
     void client["Window.list"]
     void client["Window.getParent"]
     void client["Window.getChildren"]
-    void client[WINDOW_SUBSCRIBE_EVENTS_METHOD]
+    void client["Window.events.Event"]
     void client["Window.getBounds"]
     void client["Window.setBounds"]
     void client["Window.setBoundsOnDisplay"]
@@ -11609,7 +11608,7 @@ test("WindowRpcs declares only callable Window methods", () => {
     void client["Window.setSimpleFullscreen"]
     void client["Window.getState"]
   }
-  void assertSupportedWindowClient
+  void assertWindowRpcClient
   expect(supportedWindowMethods).toEqual([
     "Window.create",
     "Window.close",
@@ -11622,7 +11621,7 @@ test("WindowRpcs declares only callable Window methods", () => {
     "Window.list",
     "Window.getParent",
     "Window.getChildren",
-    WINDOW_SUBSCRIBE_EVENTS_METHOD,
+    "Window.events.Event",
     "Window.getBounds",
     "Window.setBounds",
     "Window.setBoundsOnDisplay",
@@ -11651,7 +11650,6 @@ test("WindowRpcs declares only callable Window methods", () => {
     "Window.getState"
   ])
   expect(WindowRpcs.requests.has("Window.show")).toBe(true)
-  expect(Object.keys(WindowRpcEvents)).toEqual(["Event"])
   expect("spec" in WindowRpcs).toBe(false)
   expect("events" in WindowRpcs).toBe(false)
 })
@@ -11713,11 +11711,11 @@ test("WindowPersistence dependency RPCs declare native capabilities", () => {
   )
 })
 
-test("Window service delegates through a substitutable WindowClient port", () =>
+test("Window service delegates through a substitutable Window port", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const client: WindowClientApi = {
+      const client: WindowApi = {
         create: (input) =>
           Effect.sync(() => {
             calls.push(`create:${input?.title ?? ""}`)
@@ -11916,7 +11914,7 @@ test("Window service delegates through a substitutable WindowClient port", () =>
 
           return { bounds, byId, children, created, current, event, parent, state, windows }
         }),
-        Layer.provide(WindowLive, Layer.succeed(WindowClient)(client))
+        Layer.succeed(Window)(client)
       )
 
       expect(result.created).toEqual(windowHandle)
@@ -11982,15 +11980,15 @@ test("Window service delegates through a substitutable WindowClient port", () =>
     })
   ))
 
-test("Window service can be composed from a separately provided WindowClient", () =>
+test("Window service can be composed from a separately provided Window", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
-      const client: WindowClientApi = {
+      const client: WindowApi = {
         ...noopWindowClient,
         create: (input) =>
           Effect.sync(() => {
-            calls.push(`create:${Object.keys(input).length}`)
+            calls.push(`create:${Object.keys(input ?? {}).length}`)
             return windowHandle
           })
       }
@@ -12000,7 +11998,7 @@ test("Window service can be composed from a separately provided WindowClient", (
           const window = yield* Window
           return yield* window.create()
         }),
-        Layer.provide(WindowLive, Layer.succeed(WindowClient)(client))
+        Layer.succeed(Window)(client)
       )
 
       expect(created.id).toBe(resourceId("window-1"))
@@ -12008,7 +12006,7 @@ test("Window service can be composed from a separately provided WindowClient", (
     })
   ))
 
-test("host WindowClient adapter opens and closes through host envelopes with registry lifetime", () =>
+test("host Window adapter opens and closes through host envelopes with registry lifetime", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const requests: HostProtocolRequestEnvelope[] = []
@@ -12148,7 +12146,7 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
 
           return { created, duringLifetime, afterClose, state }
         }),
-        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+        makeWindowTestBridgeClientLayer(rpcExchange, registry)
       )
 
       const result = yield* program
@@ -12398,7 +12396,7 @@ test("host WindowClient adapter opens and closes through host envelopes with reg
     })
   ))
 
-test("host WindowClient adapter exposes explicit destroy through host destroy", () =>
+test("host Window adapter exposes explicit destroy through host destroy", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const requests: HostProtocolRequestEnvelope[] = []
@@ -12417,7 +12415,7 @@ test("host WindowClient adapter exposes explicit destroy through host destroy", 
           const afterDestroy = yield* registry.list()
           return { afterDestroy, created }
         }),
-        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+        makeWindowTestBridgeClientLayer(rpcExchange, registry)
       )
 
       expect(String(result.created.id)).toBe("host-window-1")
@@ -12429,7 +12427,7 @@ test("host WindowClient adapter exposes explicit destroy through host destroy", 
     })
   ))
 
-test("host WindowClient adapter creates owned child windows and closes children with parent", () =>
+test("host Window adapter creates owned child windows and closes children with parent", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const requests: HostProtocolRequestEnvelope[] = []
@@ -12480,7 +12478,7 @@ test("host WindowClient adapter creates owned child windows and closes children 
 
           return { afterClose, child, duringLifetime, parent }
         }),
-        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+        makeWindowTestBridgeClientLayer(rpcExchange, registry)
       )
 
       expect(String(result.parent.id)).toBe("host-parent")
@@ -12502,7 +12500,7 @@ test("host WindowClient adapter creates owned child windows and closes children 
     })
   ))
 
-test("host WindowClient adapter looks up current, id, list, and removes closed windows", () =>
+test("host Window adapter looks up current, id, list, and removes closed windows", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const requests: HostProtocolRequestEnvelope[] = []
@@ -12621,7 +12619,7 @@ test("host WindowClient adapter looks up current, id, list, and removes closed w
                 parentById
               }
             }),
-            Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+            makeWindowTestBridgeClientLayer(rpcExchange, registry)
           )
         })
       )
@@ -12685,7 +12683,7 @@ test("Window.events streams renderer-visible lifecycle events from the app route
 
               return yield* Fiber.join(eventsFiber)
             }),
-            Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+            makeWindowTestBridgeClientLayer(rpcExchange, registry)
           )
         })
       )
@@ -12767,7 +12765,7 @@ test("Window.events registers host-originated opened events in ResourceRegistry"
           const snapshot = yield* registry.list()
           return { event, snapshot }
         }),
-        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(exchange, registry))
+        makeWindowTestBridgeClientLayer(exchange, registry)
       )
 
       const event = Option.getOrThrow(result.event)
@@ -12826,7 +12824,7 @@ test("Window.events rejects host-originated opened events with mismatched handle
           const snapshot = yield* registry.list()
           return { eventExit, snapshot }
         }),
-        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(exchange, registry))
+        makeWindowTestBridgeClientLayer(exchange, registry)
       )
 
       expectExitFailure(
@@ -12874,7 +12872,7 @@ test("Window.events rejects registry events with terminal flags that do not matc
           const snapshot = yield* registry.list()
           return { eventExit, snapshot }
         }),
-        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(exchange, registry))
+        makeWindowTestBridgeClientLayer(exchange, registry)
       )
 
       expectExitFailure(
@@ -12948,7 +12946,7 @@ test("Window.events strips handles for host-originated events without local reso
           const snapshot = yield* registry.list()
           return { events, snapshot }
         }),
-        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(exchange, registry))
+        makeWindowTestBridgeClientLayer(exchange, registry)
       )
 
       expect(Array.from(result.events).map((event) => event.window)).toEqual([
@@ -13005,7 +13003,7 @@ test("Window.events closes ResourceRegistry handles for host-originated terminal
           const snapshot = yield* registry.list()
           return { created, event, snapshot }
         }),
-        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(exchange, registry))
+        makeWindowTestBridgeClientLayer(exchange, registry)
       )
 
       const event = Option.getOrThrow(result.event)
@@ -13064,7 +13062,7 @@ test("Window.events attaches host-originated state events to fresh handles", () 
           const state = yield* window.getState(created)
           return { created, event, state }
         }),
-        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(exchange, registry))
+        makeWindowTestBridgeClientLayer(exchange, registry)
       )
 
       const event = Option.getOrThrow(result.event)
@@ -13132,7 +13130,7 @@ test("Window.events attaches host-originated bounds events to fresh handles", ()
           const event = yield* window.events().pipe(Stream.take(1), Stream.runHead)
           return { created, event }
         }),
-        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(exchange, registry))
+        makeWindowTestBridgeClientLayer(exchange, registry)
       )
 
       const event = Option.getOrThrow(result.event)
@@ -13150,6 +13148,7 @@ test("Window.events attaches host-originated bounds events to fresh handles", ()
 test("Window.events checks and audits subscribe permission before opening the event stream", () =>
   Effect.runPromise(
     Effect.gen(function* () {
+      const actor = new PermissionActor({ kind: "window", id: "window-events-test" })
       const deniedRows: AuditEvent[] = []
       const deniedRegistry = yield* makeResourceRegistry()
       const deniedPermissions = yield* makePermissionRegistry({
@@ -13157,18 +13156,32 @@ test("Window.events checks and audits subscribe permission before opening the ev
         traceId: () => "trace-denied"
       })
       let deniedSubscribeCount = 0
-      const deniedRuntime = makeHostWindowRpcRuntime(windowExchange([]), undefined, {
-        originAuth: RendererOriginAuth.unsafeDisabledForTests
-      })
       const deniedExchange: BridgeClientExchange = {
-        request: (request) =>
-          runScoped(
-            deniedRuntime.dispatch(request),
-            Layer.mergeAll(
-              Layer.succeed(ResourceRegistry)(deniedRegistry),
-              Layer.succeed(PermissionRegistry)(deniedPermissions)
+        request: (request) => {
+          if (request.method !== WINDOW_SUBSCRIBE_EVENTS_METHOD) {
+            return Effect.die(`unexpected request: ${request.method}`)
+          }
+          return deniedPermissions
+            .check(P.nativeInvoke({ primitive: "Window", methods: ["subscribeEvents"] }), {
+              actor,
+              operation: WINDOW_SUBSCRIBE_EVENTS_METHOD
+            })
+            .pipe(
+              Effect.as({ kind: "success", payload: { subscribed: true } } as const),
+              Effect.catch(() =>
+                Effect.succeed({
+                  kind: "failure",
+                  error: new HostProtocolPermissionDeniedError({
+                    tag: "PermissionDenied",
+                    capability: "Window.subscribeEvents",
+                    message: "Window.subscribeEvents denied",
+                    operation: WINDOW_SUBSCRIBE_EVENTS_METHOD,
+                    recoverable: true
+                  })
+                } as const)
+              )
             )
-          ) as ReturnType<BridgeClientExchange["request"]>,
+        },
         subscribe: () => {
           deniedSubscribeCount += 1
           return Stream.empty
@@ -13181,7 +13194,7 @@ test("Window.events checks and audits subscribe permission before opening the ev
             const window = yield* Window
             return yield* window.events().pipe(Stream.take(1), Stream.runHead)
           }),
-          Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(deniedExchange, deniedRegistry))
+          makeWindowTestBridgeClientLayer(deniedExchange, deniedRegistry)
         )
       )
 
@@ -13206,18 +13219,32 @@ test("Window.events checks and audits subscribe permission before opening the ev
         }
       )
       let allowedSubscribeCount = 0
-      const allowedRuntime = makeHostWindowRpcRuntime(windowExchange([]), undefined, {
-        originAuth: RendererOriginAuth.unsafeDisabledForTests
-      })
       const allowedExchange: BridgeClientExchange = {
-        request: (request) =>
-          runScoped(
-            allowedRuntime.dispatch(request),
-            Layer.mergeAll(
-              Layer.succeed(ResourceRegistry)(allowedRegistry),
-              Layer.succeed(PermissionRegistry)(allowedPermissions)
+        request: (request) => {
+          if (request.method !== WINDOW_SUBSCRIBE_EVENTS_METHOD) {
+            return Effect.die(`unexpected request: ${request.method}`)
+          }
+          return allowedPermissions
+            .check(P.nativeInvoke({ primitive: "Window", methods: ["subscribeEvents"] }), {
+              actor,
+              operation: WINDOW_SUBSCRIBE_EVENTS_METHOD
+            })
+            .pipe(
+              Effect.as({ kind: "success", payload: { subscribed: true } } as const),
+              Effect.catch(() =>
+                Effect.succeed({
+                  kind: "failure",
+                  error: new HostProtocolPermissionDeniedError({
+                    tag: "PermissionDenied",
+                    capability: "Window.subscribeEvents",
+                    message: "Window.subscribeEvents denied",
+                    operation: WINDOW_SUBSCRIBE_EVENTS_METHOD,
+                    recoverable: true
+                  })
+                } as const)
+              )
             )
-          ) as ReturnType<BridgeClientExchange["request"]>,
+        },
         subscribe: (method) => {
           allowedSubscribeCount += 1
           return method === WINDOW_EVENT_METHOD
@@ -13244,18 +13271,16 @@ test("Window.events checks and audits subscribe permission before opening the ev
           const window = yield* Window
           return yield* window.events().pipe(Stream.take(1), Stream.runHead)
         }),
-        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(allowedExchange, allowedRegistry))
+        makeWindowTestBridgeClientLayer(allowedExchange, allowedRegistry)
       )
 
       expect(Option.getOrThrow(event).windowId).toBe("host-allowed-window")
       expect(allowedSubscribeCount).toBe(1)
       expect(allowedRows.map((row) => row.kind)).toEqual([
         "permission-granted",
-        "permission-granted",
-        "permission-used"
+        "permission-granted"
       ])
       expect(allowedRows.map((row) => row.normalizedCapability)).toEqual([
-        P.nativeInvoke({ primitive: "Window", methods: ["subscribeEvents"] }),
         P.nativeInvoke({ primitive: "Window", methods: ["subscribeEvents"] }),
         P.nativeInvoke({ primitive: "Window", methods: ["subscribeEvents"] })
       ])
@@ -13454,7 +13479,7 @@ test("Window lookup uses host transport without runtime router", () =>
           const current = yield* window.getCurrent()
           return { created, current }
         }),
-        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+        makeWindowTestBridgeClientLayer(rpcExchange, registry)
       )
 
       expect(result.current.id).toBe(result.created.id)
@@ -13508,11 +13533,11 @@ test("Window service propagates owned child unsupported platform and host failur
         operation: "Window.create",
         recoverable: false
       })
-      const unsupportedClient: WindowClientApi = {
+      const unsupportedClient: WindowApi = {
         ...noopWindowClient,
         create: () => Effect.fail(unsupported)
       }
-      const hostFailureClient: WindowClientApi = {
+      const hostFailureClient: WindowApi = {
         ...noopWindowClient,
         create: () => Effect.fail(makeHostProtocolHostUnavailableError("Window.create"))
       }
@@ -13523,14 +13548,14 @@ test("Window service propagates owned child unsupported platform and host failur
           const window = yield* Window
           return yield* Effect.exit(window.create({ parent }))
         }),
-        Layer.provide(WindowLive, Layer.succeed(WindowClient)(unsupportedClient))
+        Layer.succeed(Window)(unsupportedClient)
       )
       const hostFailureExit = yield* runScoped(
         Effect.gen(function* () {
           const window = yield* Window
           return yield* Effect.exit(window.create({ parent }))
         }),
-        Layer.provide(WindowLive, Layer.succeed(WindowClient)(hostFailureClient))
+        Layer.succeed(Window)(hostFailureClient)
       )
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
@@ -13538,7 +13563,7 @@ test("Window service propagates owned child unsupported platform and host failur
     })
   ))
 
-test("host WindowClient adapter propagates owned child create host failure", () =>
+test("host Window adapter propagates owned child create host failure", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const requests: HostProtocolRequestEnvelope[] = []
@@ -13572,7 +13597,7 @@ test("host WindowClient adapter propagates owned child create host failure", () 
           const childExit = yield* Effect.exit(window.create({ title: "Child", parent }))
           return { childExit, parent }
         }),
-        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+        makeWindowTestBridgeClientLayer(rpcExchange, registry)
       )
 
       expectExitFailure(result.childExit, (error) => hasErrorTag(error, "HostUnavailable"))
@@ -13583,7 +13608,7 @@ test("host WindowClient adapter propagates owned child create host failure", () 
     })
   ))
 
-test("host WindowClient adapter propagates lookup host failure", () =>
+test("host Window adapter propagates lookup host failure", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const requests: HostProtocolRequestEnvelope[] = []
@@ -13616,7 +13641,7 @@ test("host WindowClient adapter propagates lookup host failure", () =>
           yield* window.create({ title: "Lookup" })
           return yield* Effect.exit(window.getCurrent())
         }),
-        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+        makeWindowTestBridgeClientLayer(rpcExchange, registry)
       )
 
       expectExitFailure(result, (error) => hasErrorTag(error, "HostUnavailable"))
@@ -13627,7 +13652,7 @@ test("host WindowClient adapter propagates lookup host failure", () =>
     })
   ))
 
-test("host WindowClient adapter rejects mismatched lookup host output", () =>
+test("host Window adapter rejects mismatched lookup host output", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const requests: HostProtocolRequestEnvelope[] = []
@@ -13668,7 +13693,7 @@ test("host WindowClient adapter rejects mismatched lookup host output", () =>
           yield* window.create({ title: "Child", parent })
           return yield* Effect.exit(window.getById(String(parent.id)))
         }),
-        Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+        makeWindowTestBridgeClientLayer(rpcExchange, registry)
       )
 
       expectExitFailure(
@@ -14230,7 +14255,7 @@ test("AppEventRouter drops targeted events for closed targets with an audit row"
     })
   ))
 
-test("host WindowClient adapter declares per-window scopes and closes scoped resources", () =>
+test("host Window adapter declares per-window scopes and closes scoped resources", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const result = yield* Effect.scoped(
@@ -14252,7 +14277,7 @@ test("host WindowClient adapter declares per-window scopes and closes scoped res
 
               return { child, afterClose }
             }),
-            Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+            makeWindowTestBridgeClientLayer(rpcExchange, registry)
           )
         })
       )
@@ -14262,14 +14287,14 @@ test("host WindowClient adapter declares per-window scopes and closes scoped res
     })
   ))
 
-test("host WindowClient adapter returns typed failures for invalid input and bad handles", () =>
+test("host Window adapter returns typed failures for invalid input and bad handles", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const registry = yield* makeResourceRegistry()
       const rpcExchange = makeWindowRpcExchange(windowExchange([]), registry)
       const result = yield* runScoped(
         Effect.gen(function* () {
-          const client = yield* WindowClient
+          const client = yield* Window
           const malformedInputExit = yield* Effect.exit(
             client.show({
               ...windowHandle,
@@ -14337,7 +14362,7 @@ test("host WindowClient adapter returns typed failures for invalid input and bad
     })
   ))
 
-test("host WindowClient adapter maps malformed generated RPC successes to typed invalid output", () =>
+test("host Window adapter maps malformed generated RPC successes to typed invalid output", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const invalidCreateExchange: BridgeClientExchange = {
@@ -14352,7 +14377,7 @@ test("host WindowClient adapter maps malformed generated RPC successes to typed 
       const createExit = yield* Effect.exit(
         runScoped(
           Effect.gen(function* () {
-            const client = yield* WindowClient
+            const client = yield* Window
             return yield* client.create({})
           }),
           makeWindowTestBridgeClientLayer(invalidCreateExchange, createRegistry)
@@ -14361,7 +14386,7 @@ test("host WindowClient adapter maps malformed generated RPC successes to typed 
       const closeExit = yield* Effect.exit(
         runScoped(
           Effect.gen(function* () {
-            const client = yield* WindowClient
+            const client = yield* Window
             return yield* client.close(windowHandle)
           }),
           makeWindowTestBridgeClientLayer(invalidCloseExchange, closeRegistry)
@@ -14381,13 +14406,13 @@ test("host WindowClient adapter maps malformed generated RPC successes to typed 
     })
   ))
 
-test("host WindowClient adapter exposes only supported callable methods", () =>
+test("host Window adapter exposes only supported callable methods", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const registry = yield* makeResourceRegistry()
       const rpcExchange = makeWindowRpcExchange(windowExchange([]), registry)
       const client = yield* runScoped(
-        WindowClient.asEffect(),
+        Window.asEffect(),
         makeWindowTestBridgeClientLayer(rpcExchange, registry)
       )
 
@@ -14430,7 +14455,7 @@ test("Window bridge client rejects invalid chrome inputs before crossing the hos
             const window = yield* Window
             return yield* Effect.exit(window.create(input as WindowCreateOptions))
           }),
-          Layer.provide(WindowLive, makeWindowTestBridgeClientLayer(rpcExchange, registry))
+          makeWindowTestBridgeClientLayer(rpcExchange, registry)
         )
 
         const exit = yield* program
@@ -15621,7 +15646,7 @@ const dockClient = (calls: string[]): DockClientApi => ({
     })
 })
 
-const noopWindowClient: WindowClientApi = {
+const noopWindowClient: WindowApi = {
   create: () => Effect.succeed(windowHandle),
   close: () => Effect.void,
   destroy: () => Effect.void,
@@ -16356,10 +16381,12 @@ const makeWindowRpcExchange = (
     }).pipe(Effect.orDie)
   )
   const request: BridgeClientExchange["request"] = (request) =>
-    runScoped(
-      runtime.dispatch(request),
-      Layer.merge(registryLayer, permissionsLayer)
-    ) as ReturnType<BridgeClientExchange["request"]>
+    request.method === WINDOW_SUBSCRIBE_EVENTS_METHOD
+      ? Effect.succeed({ kind: "success", payload: { subscribed: true } })
+      : (runScoped(
+          runtime.dispatch(request),
+          Layer.merge(registryLayer, permissionsLayer)
+        ) as ReturnType<BridgeClientExchange["request"]>)
 
   const subscribe: BridgeClientExchange["subscribe"] = (method) => {
     if (method !== WINDOW_EVENT_METHOD || appEventRouter === undefined) {
@@ -16386,7 +16413,7 @@ const makeWindowRpcExchange = (
 const makeWindowTestBridgeClientLayer = (
   exchange: BridgeClientExchange,
   registry: ResourceRegistry["Service"]
-): Layer.Layer<WindowClient> =>
+): Layer.Layer<Window> =>
   Layer.provide(makeWindowBridgeClientLayer(exchange), Layer.succeed(ResourceRegistry)(registry))
 
 const rpcMethodNames = (

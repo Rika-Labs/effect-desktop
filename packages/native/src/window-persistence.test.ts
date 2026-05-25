@@ -22,11 +22,10 @@ import {
   WindowPersistenceError,
   WindowPersistenceRestoreResult,
   Screen,
-  WindowLive,
   makeWindowPersistenceLayer,
   type ScreenClientApi,
-  type WindowClientApi,
-  WindowClient
+  type WindowApi,
+  Window
 } from "./index.js"
 import { makeScreenBridgeClientLayer } from "./screen.js"
 import { makeWindowBridgeClientLayer } from "./window.js"
@@ -461,7 +460,7 @@ let fixtureSequence = 0
 
 const fixtureLayer = (options: {
   readonly calls: WindowPersistenceCalls
-  readonly windowClient?: () => Partial<WindowClientApi>
+  readonly windowClient?: () => Partial<WindowApi>
   readonly screenClient?: () => Partial<ScreenClientApi>
 }): Layer.Layer<WindowPersistence, never, never> => {
   const windowClient = makeWindowClient(options.calls, options.windowClient?.() ?? {})
@@ -470,7 +469,7 @@ const fixtureLayer = (options: {
   return Layer.provide(
     makeWindowPersistenceLayer({ path: `window-persistence-test-${String(fixtureSequence)}.json` }),
     Layer.mergeAll(
-      Layer.provide(WindowLive, Layer.succeed(WindowClient)(windowClient)),
+      Layer.succeed(Window)(windowClient),
       Layer.succeed(Screen)(screenClient),
       KeyValueStore.layerMemory
     )
@@ -491,11 +490,8 @@ const bridgeFixtureLayer = (options: {
     }),
     Layer.mergeAll(
       Layer.provide(
-        WindowLive,
-        Layer.provide(
-          makeWindowBridgeClientLayer(exchange),
-          Layer.succeed(ResourceRegistry)(registry)
-        )
+        makeWindowBridgeClientLayer(exchange),
+        Layer.succeed(ResourceRegistry)(registry)
       ),
       makeScreenBridgeClientLayer(exchange),
       KeyValueStore.layerMemory
@@ -569,8 +565,8 @@ const windowPersistenceBridgeResponse = (
 
 const makeWindowClient = (
   calls: WindowPersistenceCalls,
-  overrides: Partial<WindowClientApi>
-): WindowClientApi => ({
+  overrides: Partial<WindowApi>
+): WindowApi => ({
   create: () => Effect.succeed(windowHandle),
   close: () => Effect.void,
   destroy: () => Effect.void,

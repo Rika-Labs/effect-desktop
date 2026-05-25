@@ -268,7 +268,7 @@ test("host window client decodes Window.Event subscriptions", () =>
     Effect.gen(function* () {
       const client = makeHostWindowClient(windowExchange([]))
 
-      const events = yield* client.events().pipe(Stream.take(2), Stream.runCollect)
+      const events = yield* client.events().pipe(Stream.take(3), Stream.runCollect)
 
       expect(Array.from(events)).toEqual([
         {
@@ -300,6 +300,18 @@ test("host window client decodes Window.Event subscriptions", () =>
             fullscreen: false,
             simpleFullscreen: false
           }
+        },
+        {
+          type: "window-bounds-event",
+          windowId: "window-1",
+          window: {
+            kind: "window",
+            id: "window-1",
+            generation: 0,
+            ownerScope: "window:window-1",
+            state: "open"
+          },
+          bounds: { x: 10, y: 20, width: 640, height: 480 }
         }
       ])
     })
@@ -831,6 +843,24 @@ const windowExchange = (requests: HostProtocolRequestEnvelope[]): HostWindowExch
                 fullscreen: false,
                 simpleFullscreen: false
               }
+            }
+          }),
+          new HostProtocolEventEnvelope({
+            kind: "event",
+            method,
+            timestamp: 1_710_000_000_102,
+            traceId: "trace-window-bounds-event",
+            payload: {
+              type: "window-bounds-event",
+              windowId: "window-1",
+              window: {
+                kind: "window",
+                id: "window-1",
+                generation: 0,
+                ownerScope: "window:window-1",
+                state: "open"
+              },
+              bounds: { x: 10, y: 20, width: 640, height: 480 }
             }
           })
         )

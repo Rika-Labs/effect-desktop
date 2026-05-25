@@ -5699,20 +5699,6 @@
       }
     },
     {
-      "tag": "Window.subscribeEvents",
-      "surface": "Window",
-      "method": "subscribeEvents",
-      "capability": "native",
-      "support": {
-        "status": "supported"
-      },
-      "hostStatus": "routed",
-      "release": {
-        "status": "complete"
-      },
-      "hostMethod": "Window.Event"
-    },
-    {
       "tag": "WorkspaceIndex.close",
       "surface": "WorkspaceIndex",
       "method": "close",
@@ -5766,13 +5752,13 @@
     }
   ],
   "summary": {
-    "total": 287,
-    "routed": 239,
+    "total": 286,
+    "routed": 238,
     "missing": 0,
-    "supported": 183,
+    "supported": 182,
     "partial": 56,
     "unsupported": 48,
-    "releaseComplete": 183,
+    "releaseComplete": 182,
     "releaseTracked": 104,
     "releaseUntracked": 0
   }

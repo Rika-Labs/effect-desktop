@@ -891,21 +891,15 @@ export {
 } from "./webview.js"
 export {
   Window,
-  WindowClient,
   WindowHandlersLive,
-  WindowLive,
   WindowMethodNames,
-  WindowRpcEvents,
   WindowRpcs,
-  WindowSupportedRpcs,
   WindowSurface,
   type HostWindowRpcOptions,
-  type WindowBridgeClientOptions,
-  type WindowClientApi,
   type WindowError,
   type WindowPosition,
   type WindowRpcHandlers,
-  type WindowServiceApi,
+  type WindowApi,
   type WindowSize
 } from "./window.js"
 export {

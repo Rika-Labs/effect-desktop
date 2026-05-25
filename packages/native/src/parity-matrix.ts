@@ -278,8 +278,6 @@ const hostMethodForNativeTag = (tag: string): string => {
   switch (tag) {
     case "Window.close":
       return "Window.destroy"
-    case "Window.subscribeEvents":
-      return "Window.Event"
     default:
       return tag
   }

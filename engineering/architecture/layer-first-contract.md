@@ -26,9 +26,9 @@ export class Window extends Context.Service<Window, WindowService>()("Window", {
   })
 }) {}
 
-export const WindowLive = Layer.effect(Window)(makeLiveWindow())
-export const WindowClientLive = Layer.effect(Window)(makeRpcWindow())
-export const WindowTest = Layer.succeed(Window)(makeTestWindow())
+export const LiveWindow = Layer.effect(Window)(makeLiveWindow())
+export const RpcWindow = Layer.effect(Window)(makeRpcWindow())
+export const TestWindow = Layer.succeed(Window)(makeTestWindow())
 ```
 
 Use `Context.Tag` only for ad-hoc dependency records that are not a public framework capability.

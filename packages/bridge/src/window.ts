@@ -172,19 +172,29 @@ export class WindowStateEventPayload extends Schema.Class<WindowStateEventPayloa
   state: WindowStatePayload
 }) {}
 
-export const WindowEventPayload = Schema.Union([
-  WindowRegistryEventPayload,
-  WindowStateEventPayload
-])
-
-export type WindowEventPayload = Schema.Schema.Type<typeof WindowEventPayload>
-
 export class WindowBoundsPayload extends Schema.Class<WindowBoundsPayload>("WindowBoundsPayload")({
   x: Schema.Number.check(Schema.isFinite()),
   y: Schema.Number.check(Schema.isFinite()),
   width: PositiveFiniteNumber,
   height: PositiveFiniteNumber
 }) {}
+
+export class WindowBoundsEventPayload extends Schema.Class<WindowBoundsEventPayload>(
+  "WindowBoundsEventPayload"
+)({
+  type: Schema.Literal("window-bounds-event"),
+  windowId: Schema.NonEmptyString,
+  window: Schema.optionalKey(WindowResourcePayload),
+  bounds: WindowBoundsPayload
+}) {}
+
+export const WindowEventPayload = Schema.Union([
+  WindowRegistryEventPayload,
+  WindowStateEventPayload,
+  WindowBoundsEventPayload
+])
+
+export type WindowEventPayload = Schema.Schema.Type<typeof WindowEventPayload>
 
 export class WindowSetBoundsPayload extends Schema.Class<WindowSetBoundsPayload>(
   "WindowSetBoundsPayload"

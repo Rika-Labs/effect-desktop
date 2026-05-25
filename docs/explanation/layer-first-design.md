@@ -48,24 +48,15 @@ export const WindowCreate = windowRpc(
 )
 
 export const WindowRpcs: RpcGroup.RpcGroup<WindowRpcUnion> = WindowRpcGroup
-export const WindowSupportedRpcs = WindowRpcs // explicitly the supported subset
 
 // 2. Service tag
-export class Window extends Context.Service<Window, WindowServiceApi>()("@orika/native/Window") {}
+export class Window extends Context.Service<Window, WindowApi>()("@orika/native/Window") {}
 
-// 3. Live layer (against the bridge / host)
-export const WindowLive = Layer.effect(Window)(
-  Effect.gen(function* () {
-    const client = yield* WindowClient
-    return makeWindowService(client)
-  })
-)
-
-// 4. Native app-composition layer
+// 3. Native app-composition surface
 export const window = Native.surface(WindowSurface)
 
-// 5. Test layer
-//    Provided by @orika/test as TestWindow.layer()
+// 4. Test layer
+//    Provide Window directly, or use @orika/test.
 
 // + handler layer for the runtime side
 export const WindowHandlersLive = WindowRpcGroup.toLayer({
@@ -76,7 +67,7 @@ export const WindowHandlersLive = WindowRpcGroup.toLayer({
 export const WindowSurface = DesktopRpc.surface("Window", WindowRpcGroup, options)
 ```
 
-`WindowMethodNames` and `WindowSupportedRpcs` exist so callers can check support without running anything. `WindowRpcs` is the full descriptor for schema docs; `WindowSupportedRpcs` is the callable subset (today they're equal; later they may diverge as more methods are reserved).
+`WindowMethodNames` exists so callers can check the exported method list without running anything. `WindowRpcs` is the descriptor for schema docs, handlers, generated clients, and contract-law checks. The public `WindowApi` is mapped on top where the framework owns durable desktop policy such as optional create defaults and event-resource reconciliation.
 
 ## Composing layers in your app
 
@@ -91,9 +82,10 @@ import {
   SettingsLive,
   TelemetryLive
 } from "@orika/core"
-import { WindowLive, WindowHandlersLive, ClipboardLive, ClipboardHandlersLive } from "@orika/native"
+import { Window, WindowHandlersLive, ClipboardLive, ClipboardHandlersLive } from "@orika/native"
 
 const PermissionRegistryLive = Layer.effect(PermissionRegistry, PermissionRegistry.make)
+const WindowTest = Layer.succeed(Window)(testWindow)
 
 const RuntimeLive = Layer.mergeAll(
   PermissionRegistryLive,
@@ -101,7 +93,7 @@ const RuntimeLive = Layer.mergeAll(
   AuditEventsLive,
   SettingsLive,
   TelemetryLive,
-  WindowLive,
+  WindowTest,
   WindowHandlersLive,
   ClipboardLive,
   ClipboardHandlersLive
@@ -114,7 +106,7 @@ const RuntimeLive = Layer.mergeAll(
 
 The layer-first shape produces **deep modules** in Ousterhout's sense: each capability hides a lot behind a small, obvious surface.
 
-`Window` exposes two methods (`create`, `close`) at the renderer-callable boundary. Behind those two methods sits permission checks, scope ownership, host-protocol framing, Rust-side window registration, and audit emission. The user types `window.create.useMutation()` and gets all of it. They cannot accidentally bypass it because there is no "just call the host" alternative.
+`Window` exposes one service requirement at the runtime boundary. Behind `create`, `destroy`, `events`, and the rest of the service sits permission checks, scope ownership, host-protocol framing, Rust-side window registration, event reconciliation, and audit emission. The user types `window.create.useMutation()` and gets all of it. They cannot accidentally bypass it because there is no "just call the host" alternative.
 
 This is what the user-side rules (`AGENTS.md`'s architecture-debt sweep) protect: every shallow wrapper that doesn't add durable desktop semantics gets removed, because shallow wrappers add surface area without hiding anything. Effect's own primitives — `Layer`, `Schedule`, `Stream`, `Scope` — are deep enough on their own; wrapping them in a same-shape adapter just doubles the surface.
 

@@ -16,7 +16,12 @@ import {
   type RpcSupportMetadata,
   RpcGroup,
   type HostProtocolError,
-  WINDOW_EVENT_METHOD
+  HostProtocolRequestEnvelope,
+  validateHostProtocolNonEmptyString,
+  validateHostProtocolTimestamp,
+  validateOptionalHostProtocolNonEmptyString,
+  WINDOW_EVENT_METHOD,
+  WINDOW_SUBSCRIBE_EVENTS_METHOD
 } from "@orika/bridge"
 import {
   P,
@@ -27,7 +32,6 @@ import {
 } from "@orika/core"
 import { Context, Effect, Layer, Option, Schema, Stream } from "effect"
 
-import { subscribeNativeEvent } from "./event-stream.js"
 import { NativeSurface } from "./native-surface.js"
 import { makeNativeHostRpcRuntime } from "./native-rpc-runtime.js"
 import { type AppEventRouterApi, windowScope } from "./app-events.js"
@@ -74,6 +78,7 @@ import {
   type WindowVibrancyMaterialInput
 } from "./contracts/window.js"
 
+const Surface = "Window"
 const WindowTrafficLightsMacosOnlyReason = "traffic-light-placement-macos-only"
 
 const WindowTrafficLightsSupport = NativeSurface.support.partial(
@@ -268,13 +273,12 @@ export const WindowGetChildren = NativeSurface.rpc("Window", "getChildren", {
   endpoint: "mutation",
   support: NativeSurface.support.supported
 })
-export const WindowSubscribeEvents = NativeSurface.rpc("Window", "subscribeEvents", {
-  payload: Schema.Void,
-  success: WindowSubscribeEventsResult,
+
+const WindowEventStream = NativeSurface.event(Surface, "Event", {
+  payload: WindowEvent,
   authority: NativeSurface.authority.custom(
     P.nativeInvoke({ primitive: "Window", methods: ["subscribeEvents"] })
   ),
-  endpoint: "mutation",
   support: NativeSurface.support.supported
 })
 export const WindowGetBounds = NativeSurface.rpc("Window", "getBounds", {
@@ -525,7 +529,7 @@ const makeWindowRpcGroup = () =>
     WindowList,
     WindowGetParent,
     WindowGetChildren,
-    WindowSubscribeEvents,
+    WindowEventStream,
     WindowGetBounds,
     WindowSetBounds,
     WindowSetBoundsOnDisplay,
@@ -560,17 +564,9 @@ type WindowRpcUnion = RpcGroup.Rpcs<typeof WindowRpcGroup>
 
 export const WindowRpcs: RpcGroup.RpcGroup<WindowRpcUnion> = WindowRpcGroup
 
-export const WindowRpcEvents = Object.freeze({
-  Event: { payload: WindowEvent }
-})
-
-export type WindowRpcEvents = typeof WindowRpcEvents
-
 export type WindowSupportedRpc = WindowRpcUnion
 
-export const WindowSupportedRpcs: RpcGroup.RpcGroup<WindowSupportedRpc> = WindowRpcs
-
-export type WindowBridgeClientOptions = Omit<BridgeClientOptions, "nextRequestId">
+type WindowBridgeOptions = Omit<BridgeClientOptions, "nextRequestId">
 
 type WindowRpcClient = DesktopRpcClient<WindowRpcUnion>
 
@@ -614,13 +610,10 @@ export const WindowMethodNames = Object.freeze([
   "getState"
 ] as const)
 
-const WindowCapabilityMethodNames = Object.freeze([
-  ...WindowMethodNames,
-  "subscribeEvents"
-] as const)
+const WindowCapabilityMethodNames = WindowMethodNames
 
-export interface WindowClientApi {
-  readonly create: (input: WindowCreateOptions) => Effect.Effect<WindowHandle, WindowError, never>
+export interface WindowApi {
+  readonly create: (input?: WindowCreateOptions) => Effect.Effect<WindowHandle, WindowError, never>
   readonly close: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
   readonly destroy: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
   readonly show: (window: WindowHandle) => Effect.Effect<void, WindowError, never>
@@ -719,39 +712,32 @@ export interface WindowClientApi {
   readonly events: () => Stream.Stream<WindowEvent, WindowError, never>
 }
 
-export class WindowClient extends Context.Service<WindowClient, WindowClientApi>()(
-  "@orika/native/WindowClient"
-) {}
-
-export interface WindowServiceApi extends Omit<WindowClientApi, "create"> {
-  readonly create: (input?: WindowCreateOptions) => Effect.Effect<WindowHandle, WindowError, never>
-}
-
-export class Window extends Context.Service<Window, WindowServiceApi>()("@orika/native/Window") {
-  static readonly layer = Layer.effect(Window)(
-    Effect.gen(function* () {
-      const client = yield* WindowClient
-      return Window.of(makeWindowService(client))
-    })
-  )
-}
-
-export const WindowLive = Window.layer
+export class Window extends Context.Service<Window, WindowApi>()("@orika/native/Window") {}
 
 export const makeWindowBridgeClientLayer = (
   exchange: BridgeClientExchange,
-  options: WindowBridgeClientOptions = {}
-): Layer.Layer<WindowClient, never, ResourceRegistry> =>
+  options: WindowBridgeOptions = {}
+): Layer.Layer<Window, never, ResourceRegistry> =>
   Layer.effect(
-    WindowClient,
+    Window,
     Effect.gen(function* () {
-      const client = yield* WindowClient
+      const client = yield* Window
       const registry = yield* ResourceRegistry
-      return WindowClient.of(
+      return Window.of(
         Object.freeze({
           ...client,
-          events: () => reconcileWindowEventStream(client.events(), registry)
-        } satisfies WindowClientApi)
+          events: () =>
+            Stream.unwrap(
+              authorizeWindowEventSubscription(exchange, options).pipe(
+                Effect.map(() =>
+                  reconcileWindowEventStream(
+                    NativeSurface.subscribeEvent(exchange, WindowEventStream),
+                    registry
+                  )
+                )
+              )
+            )
+        } satisfies WindowApi)
       )
     })
   ).pipe(Layer.provide(WindowSurface.bridgeClientLayer(exchange, options)))
@@ -815,8 +801,13 @@ export const WindowHandlersLive = WindowRpcGroup.toLayer({
       const window = yield* Window
       return new WindowChildrenResult({ children: yield* window.getChildren(input.window) })
     }),
-  "Window.subscribeEvents": () =>
-    Effect.succeed(new WindowSubscribeEventsResult({ subscribed: true })),
+  "Window.events.Event": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const window = yield* Window
+        return window.events()
+      })
+    ),
   "Window.getBounds": (input) =>
     Effect.gen(function* () {
       const window = yield* Window
@@ -950,11 +941,11 @@ export const WindowHandlersLive = WindowRpcGroup.toLayer({
 })
 
 export const WindowSurface = NativeSurface.make("Window", WindowRpcGroup, {
-  service: WindowClient,
+  service: Window,
   capabilities: WindowCapabilityMethodNames,
   handlers: WindowHandlersLive,
-  client: (client) => windowClientFromRpcClient(client),
-  bridgeClient: (client, exchange) => windowClientFromRpcClient(client, exchange)
+  client: (client) => windowServiceFromRpcClient(client),
+  bridgeClient: (client, exchange) => windowBridgeServiceFromRpcClient(client, exchange)
 })
 
 export const makeHostWindowRpcRuntime = (
@@ -982,63 +973,12 @@ export interface WindowPosition {
   readonly y: number
 }
 
-const makeWindowService = (client: WindowClientApi): WindowServiceApi => {
-  const service: WindowServiceApi = {
-    create: (input) => client.create(input ?? {}),
-    close: (window) => client.close(window),
-    destroy: (window) => client.destroy(window),
-    show: (window) => client.show(window),
-    hide: (window) => client.hide(window),
-    focus: (window) => client.focus(window),
-    getCurrent: () => client.getCurrent(),
-    getById: (windowId) => client.getById(windowId),
-    list: () => client.list(),
-    getParent: (window) => client.getParent(window),
-    getChildren: (window) => client.getChildren(window),
-    getBounds: (window) => client.getBounds(window),
-    setBounds: (window, bounds) => client.setBounds(window, bounds),
-    setBoundsOnDisplay: (window, displayId, bounds) =>
-      client.setBoundsOnDisplay(window, displayId, bounds),
-    center: (window) => client.center(window),
-    centerOnDisplay: (window, displayId) => client.centerOnDisplay(window, displayId),
-    setTitle: (window, title) => client.setTitle(window, title),
-    setResizable: (window, resizable) => client.setResizable(window, resizable),
-    setDecorations: (window, decorations) => client.setDecorations(window, decorations),
-    setTrafficLights: (window, trafficLights) => client.setTrafficLights(window, trafficLights),
-    setVibrancy: (window, material) => client.setVibrancy(window, material),
-    clearVibrancy: (window) => client.clearVibrancy(window),
-    setShadow: (window, hasShadow) => client.setShadow(window, hasShadow),
-    setTitleBarStyle: (window, titleBarStyle) => client.setTitleBarStyle(window, titleBarStyle),
-    setTitleBarTransparent: (window, titleBarTransparent) =>
-      client.setTitleBarTransparent(window, titleBarTransparent),
-    setTransparent: (window, transparent) => client.setTransparent(window, transparent),
-    setAlwaysOnTop: (window, alwaysOnTop) => client.setAlwaysOnTop(window, alwaysOnTop),
-    setSkipTaskbar: (window, skipTaskbar) => client.setSkipTaskbar(window, skipTaskbar),
-    setProgress: (window, input) => client.setProgress(window, input),
-    requestAttention: (window, requestType) => client.requestAttention(window, requestType),
-    cancelAttention: (window) => client.cancelAttention(window),
-    minimize: (window) => client.minimize(window),
-    maximize: (window) => client.maximize(window),
-    restore: (window) => client.restore(window),
-    setFullscreen: (window, fullscreen) => client.setFullscreen(window, fullscreen),
-    setSimpleFullscreen: (window, simpleFullscreen) =>
-      client.setSimpleFullscreen(window, simpleFullscreen),
-    getState: (window) => client.getState(window),
-    events: () => client.events()
-  }
-
-  return Object.freeze(service)
-}
-
-function windowClientFromRpcClient(
-  client: WindowRpcClient,
-  exchange?: BridgeClientExchange
-): WindowClientApi {
+function windowServiceFromRpcClient(client: WindowRpcClient): WindowApi {
   return Object.freeze({
     create: (input) =>
       Effect.gen(function* () {
         const decoded = yield* Schema.decodeUnknownEffect(WindowCreateInput)(
-          input,
+          input ?? {},
           StrictParseOptions
         ).pipe(
           Effect.mapError((error) =>
@@ -1315,13 +1255,112 @@ function windowClientFromRpcClient(
         return yield* decodeWindowState(state, "Window.getState")
       }),
     events: () =>
+      runWindowRpcStream(client["Window.events.Event"](undefined), "Window.events.Event")
+  } satisfies WindowApi)
+}
+
+function windowBridgeServiceFromRpcClient(
+  client: WindowRpcClient,
+  exchange: BridgeClientExchange
+): WindowApi {
+  return Object.freeze({
+    ...windowServiceFromRpcClient(client),
+    events: () =>
       Stream.unwrap(
-        runWindowRpc(client["Window.subscribeEvents"](undefined), "Window.subscribeEvents").pipe(
-          Effect.map(() => subscribeNativeEvent(exchange, WINDOW_EVENT_METHOD, WindowEvent))
+        authorizeWindowEventSubscription(exchange).pipe(
+          Effect.map(() => NativeSurface.subscribeEvent(exchange, WindowEventStream))
         )
       )
-  } satisfies WindowClientApi)
+  } satisfies WindowApi)
 }
+
+let windowEventSubscriptionRequestSeq = 0
+let windowEventSubscriptionTraceSeq = 0
+
+const authorizeWindowEventSubscription = (
+  exchange: BridgeClientExchange,
+  options: WindowBridgeOptions = {}
+): Effect.Effect<void, WindowError, never> =>
+  Effect.gen(function* () {
+    const timestamp = yield* validateHostProtocolTimestamp(
+      options.now?.() ?? Date.now(),
+      WINDOW_SUBSCRIBE_EVENTS_METHOD
+    ).pipe(Effect.mapError(mapWindowRpcClientError))
+    const traceId = yield* validateHostProtocolNonEmptyString(
+      "traceId",
+      options.nextTraceId?.() ??
+        `trace-window-event-subscription-${++windowEventSubscriptionTraceSeq}`,
+      WINDOW_SUBSCRIBE_EVENTS_METHOD
+    ).pipe(Effect.mapError(mapWindowRpcClientError))
+    const windowId = yield* validateOptionalHostProtocolNonEmptyString(
+      "windowId",
+      options.windowId,
+      WINDOW_SUBSCRIBE_EVENTS_METHOD
+    ).pipe(Effect.mapError(mapWindowRpcClientError))
+    const originToken = yield* validateOptionalHostProtocolNonEmptyString(
+      "originToken",
+      options.originToken,
+      WINDOW_SUBSCRIBE_EVENTS_METHOD
+    ).pipe(Effect.mapError(mapWindowRpcClientError))
+    const request = new HostProtocolRequestEnvelope({
+      kind: "request",
+      id: `request-window-event-subscription-${++windowEventSubscriptionRequestSeq}`,
+      method: WINDOW_SUBSCRIBE_EVENTS_METHOD,
+      timestamp,
+      traceId,
+      ...Option.match(windowId, {
+        onNone: () => ({}),
+        onSome: (value) => ({ windowId: value })
+      }),
+      ...Option.match(originToken, {
+        onNone: () => ({}),
+        onSome: (value) => ({ originToken: value })
+      })
+    })
+    const normalizedRequest = options.normalizeRequest?.(request) ?? request
+    const response = yield* exchange
+      .request(normalizedRequest)
+      .pipe(Effect.mapError((error) => mapWindowRpcClientError(error)))
+    if (isBridgeClientFailureResponse(response)) {
+      return yield* Effect.fail(mapWindowRpcClientError(response.error))
+    }
+    if (isBridgeClientSuccessResponse(response)) {
+      yield* decodeWindowSubscribeEventsResult(response.payload)
+      return
+    }
+    return yield* Effect.fail(
+      makeHostProtocolInvalidOutputError(
+        WINDOW_SUBSCRIBE_EVENTS_METHOD,
+        "bridge event subscription returned an invalid response"
+      )
+    )
+  })
+
+const isBridgeClientFailureResponse = (
+  response: unknown
+): response is { readonly kind: "failure"; readonly error: unknown } =>
+  typeof response === "object" &&
+  response !== null &&
+  "kind" in response &&
+  response.kind === "failure" &&
+  "error" in response
+
+const isBridgeClientSuccessResponse = (
+  response: unknown
+): response is { readonly kind: "success"; readonly payload: unknown } =>
+  typeof response === "object" &&
+  response !== null &&
+  "kind" in response &&
+  response.kind === "success"
+
+const decodeWindowSubscribeEventsResult = (
+  input: unknown
+): Effect.Effect<WindowSubscribeEventsResult, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowSubscribeEventsResult)(input, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidOutputError(WINDOW_SUBSCRIBE_EVENTS_METHOD, formatUnknownError(error))
+    )
+  )
 
 const runWindowHandleRpc = (
   client: WindowRpcClient,
@@ -1634,6 +1673,16 @@ const decodeWindowHandle = (
     )
   )
 
+const decodeWindowEvent = (
+  input: unknown,
+  operation: string
+): Effect.Effect<WindowEvent, WindowError, never> =>
+  Schema.decodeUnknownEffect(WindowEvent)(input, StrictParseOptions).pipe(
+    Effect.mapError((error) =>
+      makeHostProtocolInvalidOutputError(operation, formatUnknownError(error))
+    )
+  )
+
 const reconcileWindowEventStream = (
   events: Stream.Stream<WindowEvent, WindowError, never>,
   registry: ResourceRegistryApi
@@ -1815,6 +1864,11 @@ const runWindowRpc = <A, E>(
       Effect.fail(makeHostProtocolInvalidOutputError(operation, formatUnknownError(defect)))
     )
   )
+
+const runWindowRpcStream = <A, E>(
+  stream: Stream.Stream<A, E, never>,
+  _operation: string
+): Stream.Stream<A, WindowError, never> => stream.pipe(Stream.mapError(mapWindowRpcClientError))
 
 const mapWindowRpcClientError = (error: unknown): WindowError =>
   isWindowError(error) ? error : makeHostProtocolInternalError("Window RPC client failed", "Window")
@@ -2028,8 +2082,18 @@ const makeHostWindowHandlers = (exchange: HostWindowExchange, options: HostWindo
         )
         return new WindowChildrenResult({ children })
       }),
-    "Window.subscribeEvents": () =>
-      Effect.succeed(new WindowSubscribeEventsResult({ subscribed: true })),
+    "Window.events.Event": () =>
+      Stream.unwrap(
+        Effect.gen(function* () {
+          const registry = yield* ResourceRegistry
+          return reconcileWindowEventStream(
+            host
+              .events()
+              .pipe(Stream.mapEffect((event) => decodeWindowEvent(event, WINDOW_EVENT_METHOD))),
+            registry
+          )
+        })
+      ),
     "Window.getBounds": (input: WindowHandleInput) =>
       Effect.gen(function* () {
         const { window } = yield* assertKnownFreshWindow(input, knownWindowIds, "Window.getBounds")

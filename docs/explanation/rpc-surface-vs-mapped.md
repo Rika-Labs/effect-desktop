@@ -30,23 +30,22 @@ Use **direct** when the capability is purely a passthrough — the runtime seman
 
 ## Mapped surface
 
-`packages/native/src/window.ts` is the worked example. The public service `Window` is a typed API that wraps `WindowSupportedRpcs`:
+`packages/native/src/window.ts` is the worked example. The public service `Window` is a typed API that hides generated RPC calls behind desktop policy:
 
 ```ts
-export interface WindowServiceApi extends Omit<WindowClientApi, "create"> {
+export interface WindowApi {
   readonly create: (input?: WindowCreateOptions) => Effect.Effect<WindowHandle, WindowError, never>
+  readonly events: () => Stream.Stream<WindowEvent, WindowError, never>
 }
 ```
 
-`Window.create` accepts an optional `WindowCreateOptions` (the client's `create` requires one) because the service applies sensible defaults when none is given. The generated client is preserved in `WindowClient` for callers that want the raw shape; the service is what application code usually consumes.
+`Window.create` accepts an optional `WindowCreateOptions` because the service applies sensible defaults when none is given. The bridge adapter also keeps raw host `Window.Event` and `Window.subscribeEvents` wiring inside the module, so callers consume the canonical `Window.events.Event` stream instead of a side contract.
 
-Use **mapped** when the framework owns durable desktop policy on top of the contract — defaults, validation, scope binding, side effects on supporting services. The generated client stays available for tests and tools; application code reads the mapped service.
+Use **mapped** when the framework owns durable desktop policy on top of the contract — defaults, validation, scope binding, side effects on supporting services. The surface-generated client stays inside the module; application code reads the mapped service.
 
 ## Supported group
 
-`Desktop.Rpc.supportedGroup(group)` filters a descriptor group down to the RPCs annotated as supported. Schema docs and descriptors still see every endpoint; the generated `SupportedDesktopRpcClient` only has the callable ones.
-
-`packages/native/src/window.ts` is the supported-client proof: `WindowRpcs` keeps the full descriptor surface, while `WindowSupportedRpcs` is what you actually call. Today both contain `create` and `close`; later, when `Window.minimize` is added to the descriptor before its handler is wired, `WindowSupportedRpcs` will keep the renderer honest.
+`Desktop.Rpc.supportedGroup(group)` filters a descriptor group down to the RPCs annotated as supported. Schema docs and descriptors still see every endpoint; the generated `SupportedDesktopRpcClient` only has the callable ones. Use it only when a capability intentionally publishes descriptor entries before they are callable.
 
 ## Choosing between them
 

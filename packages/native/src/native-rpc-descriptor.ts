@@ -38,6 +38,7 @@ export interface NativeRpcOptions<
 export interface NativeEventOptions<Payload extends Schema.Codec<unknown, unknown, never, never>> {
   readonly payload: Payload
   readonly support: RpcSupportMetadata
+  readonly authority?: NativeRpcAuthority
 }
 
 export type NativeEventRpc<
@@ -127,7 +128,12 @@ export const nativeEvent = <
   })
 
   return applySupport(
-    applyCapability(base, surface, `events.${eventName}`, nativeAuthority.none),
+    applyCapability(
+      base,
+      surface,
+      `events.${eventName}`,
+      options.authority ?? nativeAuthority.none
+    ),
     options.support
   )
 }
