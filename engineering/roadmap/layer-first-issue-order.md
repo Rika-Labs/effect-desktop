@@ -147,6 +147,7 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 |                       #1852 Flatten Dock pass-through service split | Closed | Removes the `DockClient` -> `Dock` forwarding layer while keeping Dock support metadata, capability facts, Linux unavailable semantics, and RPC errors.               |
 |                     #1853 Flatten Screen pass-through service split | Closed | Removes the `ScreenClient` -> `Screen` forwarding layer while keeping Screen display validation, bridge request normalization, events, and RPC errors.                |
 | #1854 Avoid recursive test client layers for flattened RPC surfaces | Closed | Fixes generated `testClientLayer` behavior when a flattened surface provides and requires the same Effect service tag without reintroducing shallow wrapper services. |
+|                    #1856 Remove NativeSurface service-key assertion | Open   | Removes the remaining native direct-vs-mapped service-key assertion while preserving bridge client construction and host runtime semantics.                           |
 
 ## Execution Progress
 

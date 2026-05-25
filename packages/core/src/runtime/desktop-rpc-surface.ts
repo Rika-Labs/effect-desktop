@@ -182,72 +182,81 @@ export function surface<
     | DesktopRpcSurfaceDirectOptions<Rpcs, ServiceId, ServerE, ServerR>
     | DesktopRpcSurfaceMappedOptions<Rpcs, ServiceId, Service, ServerE, ServerR>
 ): DesktopRpcSurface<Tag, Group, Rpcs, ServiceId, ServerE, ServerR> {
-  const service = options.service as Context.Key<ServiceId, DesktopRpcClient<Rpcs> | Service>
-  const toService = (client: DesktopRpcClient<Rpcs>): DesktopRpcClient<Rpcs> | Service =>
-    "client" in options ? options.client(client) : client
   const facts = options.capabilityFacts ?? []
   assertCapabilityFacts(tag, group, facts)
-  const baseTestClientLayer: Layer.Layer<
-    ServiceId,
-    never,
-    Rpc.ToHandler<Rpcs> | Rpc.Middleware<Rpcs> | Rpc.MiddlewareClient<Rpcs>
-  > = Layer.effectContext(
-    Effect.gen(function* () {
-      const serverContext = yield* Effect.context<Rpc.ToHandler<Rpcs> | Rpc.Middleware<Rpcs>>()
-      let rpcClient!: Effect.Success<ReturnType<typeof RpcClient.makeNoSerialization<Rpcs, never>>>
-      const server = yield* RpcServer.makeNoSerialization(group, {
-        onFromServer: (response) => rpcClient.write(response)
-      })
-      rpcClient = yield* RpcClient.makeNoSerialization(group, {
-        supportsAck: true,
-        onFromClient: ({ message }) =>
-          Effect.withFiber((fiber) =>
-            server
-              .write(0, message)
-              .pipe(
-                Effect.provideContext(
-                  Context.merge(serverContext, Context.omit(service)(fiber.context))
+
+  const makeSurface = <SurfaceService>(
+    service: Context.Key<ServiceId, SurfaceService>,
+    toService: (client: DesktopRpcClient<Rpcs>) => SurfaceService
+  ): DesktopRpcSurface<Tag, Group, Rpcs, ServiceId, ServerE, ServerR> => {
+    const baseTestClientLayer: Layer.Layer<
+      ServiceId,
+      never,
+      Rpc.ToHandler<Rpcs> | Rpc.Middleware<Rpcs> | Rpc.MiddlewareClient<Rpcs>
+    > = Layer.effectContext(
+      Effect.gen(function* () {
+        const serverContext = yield* Effect.context<Rpc.ToHandler<Rpcs> | Rpc.Middleware<Rpcs>>()
+        let rpcClient!: Effect.Success<
+          ReturnType<typeof RpcClient.makeNoSerialization<Rpcs, never>>
+        >
+        const server = yield* RpcServer.makeNoSerialization(group, {
+          onFromServer: (response) => rpcClient.write(response)
+        })
+        rpcClient = yield* RpcClient.makeNoSerialization(group, {
+          supportsAck: true,
+          onFromClient: ({ message }) =>
+            Effect.withFiber((fiber) =>
+              server
+                .write(0, message)
+                .pipe(
+                  Effect.provideContext(
+                    Context.merge(serverContext, Context.omit(service)(fiber.context))
+                  )
                 )
-              )
-          )
+            )
+        })
+        return Context.make(service, toService(rpcClient.client))
       })
-      return Context.make(service, toService(rpcClient.client))
+    )
+    const testClientLayerFromHandlers = <E, R>(
+      handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>
+    ): Layer.Layer<ServiceId, E, R | Rpc.Middleware<Rpcs> | Rpc.MiddlewareClient<Rpcs>> =>
+      Layer.provide(baseTestClientLayer, handlers)
+    function testClientLayer(): Layer.Layer<
+      ServiceId,
+      ServerE,
+      ServerR | Rpc.Middleware<Rpcs> | Rpc.MiddlewareClient<Rpcs>
+    >
+    function testClientLayer<DependencyE, DependencyR>(
+      dependencies: Layer.Layer<ServerR, DependencyE, DependencyR>
+    ): Layer.Layer<
+      ServiceId,
+      ServerE | DependencyE,
+      DependencyR | Rpc.Middleware<Rpcs> | Rpc.MiddlewareClient<Rpcs>
+    >
+    function testClientLayer<DependencyE, DependencyR>(
+      dependencies?: Layer.Layer<ServerR, DependencyE, DependencyR>
+    ) {
+      return dependencies === undefined
+        ? testClientLayerFromHandlers(options.handlers)
+        : Layer.provide(testClientLayerFromHandlers(options.handlers), dependencies)
+    }
+
+    return Object.freeze({
+      _tag: "DesktopRpcSurface" as const,
+      tag,
+      group,
+      serverLayer: desktopRpc(group, options.handlers),
+      clientLayer: Layer.effect(service, RpcClient.make(group).pipe(Effect.map(toService))),
+      testClientLayer,
+      schemaDocs: schemaDocs(group, facts),
+      contractLaws: contractLaws(tag, group)
     })
-  )
-  const testClientLayerFromHandlers = <E, R>(
-    handlers: Layer.Layer<Rpc.ToHandler<Rpcs>, E, R>
-  ): Layer.Layer<ServiceId, E, R | Rpc.Middleware<Rpcs> | Rpc.MiddlewareClient<Rpcs>> =>
-    Layer.provide(baseTestClientLayer, handlers)
-  function testClientLayer(): Layer.Layer<
-    ServiceId,
-    ServerE,
-    ServerR | Rpc.Middleware<Rpcs> | Rpc.MiddlewareClient<Rpcs>
-  >
-  function testClientLayer<DependencyE, DependencyR>(
-    dependencies: Layer.Layer<ServerR, DependencyE, DependencyR>
-  ): Layer.Layer<
-    ServiceId,
-    ServerE | DependencyE,
-    DependencyR | Rpc.Middleware<Rpcs> | Rpc.MiddlewareClient<Rpcs>
-  >
-  function testClientLayer<DependencyE, DependencyR>(
-    dependencies?: Layer.Layer<ServerR, DependencyE, DependencyR>
-  ) {
-    return dependencies === undefined
-      ? testClientLayerFromHandlers(options.handlers)
-      : Layer.provide(testClientLayerFromHandlers(options.handlers), dependencies)
   }
 
-  return Object.freeze({
-    _tag: "DesktopRpcSurface" as const,
-    tag,
-    group,
-    serverLayer: desktopRpc(group, options.handlers),
-    clientLayer: Layer.effect(service, RpcClient.make(group).pipe(Effect.map(toService))),
-    testClientLayer,
-    schemaDocs: schemaDocs(group, facts),
-    contractLaws: contractLaws(tag, group)
-  })
+  return "client" in options
+    ? makeSurface(options.service, options.client)
+    : makeSurface(options.service, (client) => client)
 }
 
 export const supportedGroup = <Rpcs extends Rpc.AnyWithProps>(

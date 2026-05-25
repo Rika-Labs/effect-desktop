@@ -175,6 +175,17 @@ test("Desktop RPC schema descriptor code uses Effect Rpc.AnyWithProps directly",
     })
   ))
 
+test("Desktop.Rpc.surface does not assert the service key type", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        Bun.file(new URL("./runtime/desktop-rpc-surface.ts", import.meta.url)).text()
+      )
+
+      expect(source).not.toContain("options.service as Context.Key")
+    })
+  ))
+
 test("Desktop.describeRpcs synthetic manifest does not assert config shape", () =>
   Effect.runPromise(
     Effect.gen(function* () {
