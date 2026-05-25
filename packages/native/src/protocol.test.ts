@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
 import {
   type BridgeClientExchange,
   type BridgeClientResponse,
@@ -6,7 +7,7 @@ import {
 } from "@orika/bridge"
 import { Cause, Effect, Exit, Layer, ManagedRuntime } from "effect"
 
-import { Protocol, ProtocolLive, ProtocolSurface } from "./index.js"
+import { Protocol, ProtocolSurface } from "./index.js"
 
 const expectExitFailure = <E>(
   exit: Exit.Exit<unknown, E>,
@@ -39,6 +40,34 @@ const protocolExchange = (
   }
 })
 
+test("Protocol public surface omits shallow service and layer helpers", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        readFile(new URL("protocol.ts", import.meta.url), "utf8")
+      )
+      const indexSource = yield* Effect.promise(() =>
+        readFile(new URL("index.ts", import.meta.url), "utf8")
+      )
+      const protocolModule = yield* Effect.promise(() => import("./protocol.js"))
+      const rootModule = yield* Effect.promise(() => import("./index.js"))
+
+      for (const removedName of [
+        "class ProtocolClient",
+        "ProtocolServiceApi",
+        "ProtocolLive",
+        "Protocol.layer"
+      ]) {
+        expect(source).not.toContain(removedName)
+        expect(indexSource).not.toContain(removedName)
+      }
+      expect("ProtocolClient" in protocolModule).toBe(false)
+      expect("ProtocolClient" in rootModule).toBe(false)
+      expect("ProtocolLive" in protocolModule).toBe(false)
+      expect("ProtocolLive" in rootModule).toBe(false)
+    })
+  ))
+
 test("Protocol bridge client validates asset roots as absolute local paths", () => {
   const requests: HostProtocolRequestEnvelope[] = []
   return Effect.runPromise(
@@ -70,12 +99,8 @@ test("Protocol bridge client validates asset roots as absolute local paths", () 
           ["Protocol.serveAsset", { scheme: "assets", root: "/app/assets" }]
         ])
       }),
-      ProtocolLive.pipe(
-        Layer.provide(
-          ProtocolSurface.bridgeClientLayer(
-            protocolExchange(requests, () => ({ kind: "success", payload: undefined }))
-          )
-        )
+      ProtocolSurface.bridgeClientLayer(
+        protocolExchange(requests, () => ({ kind: "success", payload: undefined }))
       )
     )
   )

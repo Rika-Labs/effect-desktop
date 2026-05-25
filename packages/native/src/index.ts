@@ -713,9 +713,7 @@ export {
 } from "./path.js"
 export {
   Protocol,
-  ProtocolClient,
   ProtocolHandlersLive,
-  ProtocolLive,
   ProtocolMethodNames,
   ProtocolRpcEvents,
   ProtocolRpcs,
@@ -723,8 +721,7 @@ export {
   type ProtocolClientApi,
   type ProtocolError,
   type ProtocolRpc,
-  type ProtocolRpcHandlers,
-  type ProtocolServiceApi
+  type ProtocolRpcHandlers
 } from "./protocol.js"
 export {
   RealtimeMediaSession,

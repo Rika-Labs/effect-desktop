@@ -207,7 +207,6 @@ import {
   Protocol,
   ProtocolHandlersLive,
   ProtocolRpcs,
-  ProtocolLive,
   ProtocolMethodNames,
   ProtocolSurface,
   PowerMonitor,
@@ -315,7 +314,6 @@ import {
   MenuClient,
   ContextMenuClient,
   PathClient,
-  ProtocolClient,
   NativeFileSystemClient,
   SafeStorageClient,
   UpdaterClient,
@@ -511,7 +509,6 @@ test("native services expose canonical static layers", () => {
   expect(NotificationLive).toBe(Notification.layer)
   expect(PathLive).toBe(Path.layer)
   expect(PowerMonitorLive).toBe(PowerMonitor.layer)
-  expect(ProtocolLive).toBe(Protocol.layer)
   expect(SafeStorageLive).toBe(SafeStorage.layer)
   expect(ScreenLive).toBe(Screen.layer)
   expect(SystemAppearanceLive).toBe(SystemAppearance.layer)
@@ -5837,7 +5834,7 @@ test("ProtocolRpcs declares the Phase 8 Protocol method surface", () => {
   expect(rpcMethodNames("Protocol", ProtocolRpcs)).toEqual(expectedProtocolMethods)
 })
 
-test("Protocol service delegates through a substitutable ProtocolClient port", () =>
+test("Protocol service delegates through a substitutable service value", () =>
   Effect.runPromise(
     Effect.gen(function* () {
       const calls: string[] = []
@@ -5849,7 +5846,7 @@ test("Protocol service delegates through a substitutable ProtocolClient port", (
           yield* protocol.serveRoute({ scheme: "myapp", route: "/settings" })
           yield* protocol.deny({ scheme: "assets", path: "/private" })
         }),
-        Layer.provide(ProtocolLive, Layer.succeed(ProtocolClient)(protocolClient(calls)))
+        Layer.succeed(Protocol)(protocolClient(calls))
       )
 
       expect(calls).toEqual([
@@ -5907,11 +5904,8 @@ test("Protocol bridge client validates custom schemes and path boundaries", () =
             uppercaseSchemeExit
           }
         }),
-        Layer.provide(
-          ProtocolLive,
-          ProtocolSurface.bridgeClientLayer(
-            protocolExchange(requests, () => ({ kind: "success", payload: undefined }))
-          )
+        ProtocolSurface.bridgeClientLayer(
+          protocolExchange(requests, () => ({ kind: "success", payload: undefined }))
         )
       )
 
@@ -5946,11 +5940,8 @@ test("Protocol bridge client rejects control characters in paths as InvalidArgum
       const requests: HostProtocolRequestEnvelope[] = []
       const client = yield* runScoped(
         Protocol.asEffect(),
-        Layer.provide(
-          ProtocolLive,
-          ProtocolSurface.bridgeClientLayer(
-            protocolExchange(requests, () => ({ kind: "success", payload: undefined }))
-          )
+        ProtocolSurface.bridgeClientLayer(
+          protocolExchange(requests, () => ({ kind: "success", payload: undefined }))
         )
       )
 
@@ -6031,14 +6022,14 @@ test("Protocol service propagates unsupported platform and host failure", () =>
           const protocol = yield* Protocol
           return yield* Effect.exit(protocol.registerAppProtocol({ scheme: "myapp" }))
         }),
-        Layer.provide(ProtocolLive, Layer.succeed(ProtocolClient)(unsupportedClient))
+        Layer.succeed(Protocol)(unsupportedClient)
       )
       const hostFailureExit = yield* runScoped(
         Effect.gen(function* () {
           const protocol = yield* Protocol
           return yield* Effect.exit(protocol.registerAppProtocol({ scheme: "myapp" }))
         }),
-        Layer.provide(ProtocolLive, Layer.succeed(ProtocolClient)(hostFailureClient))
+        Layer.succeed(Protocol)(hostFailureClient)
       )
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))

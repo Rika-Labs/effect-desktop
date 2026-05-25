@@ -7,7 +7,7 @@ import {
   type HostProtocolError
 } from "@orika/bridge"
 import { P, type DesktopRpcClient } from "@orika/core"
-import { Context, Effect, Layer, Schema } from "effect"
+import { Context, Effect, Schema } from "effect"
 import * as nodePath from "node:path"
 
 import { NativeSurface } from "./native-surface.js"
@@ -81,29 +81,9 @@ export interface ProtocolClientApi {
   readonly deny: (input: ProtocolDenyOptions) => Effect.Effect<void, ProtocolError, never>
 }
 
-export class ProtocolClient extends Context.Service<ProtocolClient, ProtocolClientApi>()(
-  "@orika/native/ProtocolClient"
-) {}
-
-export type ProtocolServiceApi = ProtocolClientApi
-
-export class Protocol extends Context.Service<Protocol, ProtocolServiceApi>()(
+export class Protocol extends Context.Service<Protocol, ProtocolClientApi>()(
   "@orika/native/Protocol"
-) {
-  static readonly layer = Layer.effect(Protocol)(
-    Effect.gen(function* () {
-      const client = yield* ProtocolClient
-      return Protocol.of({
-        registerAppProtocol: (input) => client.registerAppProtocol(input),
-        serveAsset: (input) => client.serveAsset(input),
-        serveRoute: (input) => client.serveRoute(input),
-        deny: (input) => client.deny(input)
-      } satisfies ProtocolServiceApi)
-    })
-  )
-}
-
-export const ProtocolLive = Protocol.layer
+) {}
 
 export type ProtocolRpc = RpcGroup.Rpcs<typeof ProtocolRpcGroup>
 
@@ -133,7 +113,7 @@ export const ProtocolHandlersLive = ProtocolRpcGroup.toLayer({
 })
 
 export const ProtocolSurface = NativeSurface.make("Protocol", ProtocolRpcGroup, {
-  service: ProtocolClient,
+  service: Protocol,
   capabilities: ProtocolMethodNames,
   handlers: ProtocolHandlersLive,
   client: (client) => protocolClientFromRpcClient(client)
