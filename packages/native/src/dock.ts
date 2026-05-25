@@ -106,7 +106,7 @@ const dockCapabilityFact = (method: DockCapabilityMethod) =>
     support: DockUnsupportedSupport
   })
 
-export const DockCapabilityFacts = Object.freeze([
+const UnsupportedCapabilityFacts = Object.freeze([
   dockCapabilityFact("setMenu"),
   dockCapabilityFact("setJumpList")
 ])
@@ -188,7 +188,7 @@ export const DockSurface = NativeSurface.make("Dock", DockRpcGroup, {
   service: Dock,
   capabilities: DockCapabilityMethods,
   handlers: DockHandlersLive,
-  capabilityFacts: DockCapabilityFacts,
+  capabilityFacts: UnsupportedCapabilityFacts,
   client: (client) => dockClientFromRpcClient(client)
 })
 

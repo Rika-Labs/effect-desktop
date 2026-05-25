@@ -161,7 +161,6 @@ import {
   DisplayCaptureRpcs,
   DisplayCaptureSurface,
   Dock,
-  DockCapabilityFacts,
   DockHandlersLive,
   DockRpcs,
   DockMethodNames,
@@ -1188,6 +1187,8 @@ const expectedDockMethods: Array<(typeof DockMethodNames)[number]> = [
 ]
 
 const expectedDockCapabilityFactMethods = ["setMenu", "setJumpList"]
+
+const dockCapabilityFacts = () => DockSurface.schemaDocs.filter((doc) => !doc.callable)
 
 const expectedGlobalShortcutMethods: Array<(typeof GlobalShortcutMethodNames)[number]> = [
   "isRegistered",
@@ -9188,7 +9189,7 @@ test("native DesktopRpc surfaces derive server, client, test, and metadata layer
           handlers: DockHandlersLive,
           tags: [
             ...Array.from(DockRpcs.requests.keys()),
-            ...DockCapabilityFacts.map((fact) => fact.tag)
+            ...dockCapabilityFacts().map((fact) => fact.tag)
           ]
         },
         {
@@ -10598,11 +10599,12 @@ test("DockRpcs declares the Phase 8 Dock method surface", () => {
 })
 
 test("Dock declares setMenu, setJumpList as non-callable capability facts", () => {
-  const factTags = DockCapabilityFacts.map((fact) => fact.tag).toSorted()
+  const facts = dockCapabilityFacts()
+  const factTags = facts.map((fact) => fact.tag).toSorted()
   expect(factTags).toEqual(
     expectedDockCapabilityFactMethods.map((method) => `Dock.${method}`).toSorted()
   )
-  for (const fact of DockCapabilityFacts) {
+  for (const fact of facts) {
     expect(fact.support.status).toBe("unsupported")
   }
 
@@ -10632,10 +10634,18 @@ test("Dock public surface omits shallow service and layer helpers", () =>
       const dockModule = yield* Effect.promise(() => import("./dock.js"))
       const rootModule = yield* Effect.promise(() => import("./index.js"))
 
-      for (const removedName of ["class DockClient", "DockServiceApi", "DockLive", "Dock.layer"]) {
+      for (const removedName of [
+        "Dock" + "CapabilityFacts",
+        "class DockClient",
+        "DockServiceApi",
+        "DockLive",
+        "Dock.layer"
+      ]) {
         expect(source).not.toContain(removedName)
         expect(indexSource).not.toContain(removedName)
       }
+      expect("DockCapabilityFacts" in dockModule).toBe(false)
+      expect("DockCapabilityFacts" in rootModule).toBe(false)
       expect("DockClient" in dockModule).toBe(false)
       expect("DockClient" in rootModule).toBe(false)
       expect("DockLive" in dockModule).toBe(false)

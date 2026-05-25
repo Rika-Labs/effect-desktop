@@ -24,6 +24,8 @@ Dock/taskbar-facing application state. The surface is intentionally explicit abo
 
 `setMenu` and `setJumpList` are not callable RPCs. They are advertised in the native capability manifest as capability facts with `support.status: "unsupported"` (reason: host adapter does not implement the method on any platform), but no host adapter can be invoked.
 
+Architecture-debt sweep outcome for #1878: removed the public `DockCapabilityFacts` side export. The unsupported facts remain private to `DockSurface` metadata because they publish truthful non-callable support metadata for the generated native capability manifest.
+
 | Capability fact | Intended role                                 |
 | --------------- | --------------------------------------------- |
 | `setMenu`       | Install a Dock context menu (`MenuTemplate`). |

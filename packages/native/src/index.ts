@@ -566,7 +566,6 @@ export {
 } from "./workspace-index.js"
 export {
   Dock,
-  DockCapabilityFacts,
   DockHandlersLive,
   DockMethodNames,
   DockRpcs,

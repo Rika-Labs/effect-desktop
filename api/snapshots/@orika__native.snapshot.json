@@ -994,11 +994,6 @@
       "signature": "export class Dock extends Context.Service<Dock, DockClientApi>()(\"@orika/native/Dock\") {}"
     },
     {
-      "name": "DockCapabilityFacts",
-      "kind": "value",
-      "signature": "const DockCapabilityFacts: readonly import(\"@orika/core\").DesktopRpcCapabilityFact[]"
-    },
-    {
       "name": "DockClientApi",
       "kind": "interface",
       "signature": "export interface DockClientApi { readonly setBadgeCount: (count: number) => Effect.Effect<void, DockError, never> readonly setBadgeText: (text: string | null) => Effect.Effect<void, DockError, never> readonly setProgress: ( value: number | null, options?: { readonly state?: \"normal\" | \"indeterminate\" | \"error\" | \"paused\" } ) => Effect.Effect<void, DockError, never> readonly requestAttention: (options?: { readonly critical?: boolean }) => Effect.Effect<void, DockError, never> readonly isSupported: (method: DockMethod) => Effect.Effect<boolean, DockError, never> }"
