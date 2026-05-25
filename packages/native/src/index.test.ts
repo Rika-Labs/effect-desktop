@@ -219,7 +219,6 @@ import {
   PowerMonitorSurface,
   RecentDocuments,
   RecentDocumentsMethodNames,
-  RecentDocumentsRpcEvents,
   RecentDocumentsRpcs,
   SafeStorage,
   SafeStorageHandlersLive,
@@ -6595,12 +6594,13 @@ test("RecentDocumentsRpcs declares the Phase 8 RecentDocuments method and event 
   expect(Array.from(RecentDocumentsRpcs.requests.keys())).toEqual([
     "RecentDocuments.add",
     "RecentDocuments.clear",
-    "RecentDocuments.list"
+    "RecentDocuments.list",
+    "RecentDocuments.events.Event"
   ])
-  expect(rpcMethodNames("RecentDocuments", RecentDocumentsRpcs)).toEqual(
-    expectedRecentDocumentsMethods
-  )
-  expect(Object.keys(RecentDocumentsRpcEvents)).toEqual(["Event"])
+  expect(rpcMethodNames("RecentDocuments", RecentDocumentsRpcs)).toEqual([
+    ...expectedRecentDocumentsMethods,
+    "events.Event"
+  ])
 })
 
 test("RecentDocuments service delegates through a substitutable service value", () =>
@@ -6868,7 +6868,8 @@ test("native host RPC runtime denies protected RecentDocuments calls before hand
             }),
           "RecentDocuments.clear": () => Effect.void,
           "RecentDocuments.list": () =>
-            Effect.succeed(new RecentDocumentsListResult({ documents: [] }))
+            Effect.succeed(new RecentDocumentsListResult({ documents: [] })),
+          "RecentDocuments.events.Event": () => Stream.empty
         },
         { originAuth: RendererOriginAuth.unsafeDisabledForTests }
       )

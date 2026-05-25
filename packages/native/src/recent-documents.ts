@@ -8,8 +8,7 @@ import {
   RecentDocumentsEvent,
   RecentDocumentsListResult
 } from "./contracts/recent-documents.js"
-import { subscribeNativeEvent } from "./event-stream.js"
-import { decodeNativeInput, runNativeRpc } from "./native-client.js"
+import { decodeNativeInput, runNativeRpc, runNativeRpcStream } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
 
@@ -48,14 +47,16 @@ export const RecentDocumentsList = NativeSurface.rpc(Surface, "list", {
   support: RecentDocumentsSupport
 })
 
-export const RecentDocumentsRpcEvents = Object.freeze({
-  Event: { payload: RecentDocumentsEvent }
+const RecentDocumentsEventStream = NativeSurface.event(Surface, "Event", {
+  payload: RecentDocumentsEvent,
+  support: RecentDocumentsSupport
 })
 
 const RecentDocumentsRpcGroup = RpcGroup.make(
   RecentDocumentsAdd,
   RecentDocumentsClear,
-  RecentDocumentsList
+  RecentDocumentsList,
+  RecentDocumentsEventStream
 )
 
 export const RecentDocumentsRpcs: RpcGroup.RpcGroup<RecentDocumentsRpc> = RecentDocumentsRpcGroup
@@ -94,7 +95,14 @@ export const RecentDocumentsHandlersLive = RecentDocumentsRpcGroup.toLayer({
     Effect.gen(function* () {
       const recentDocuments = yield* RecentDocuments
       return yield* recentDocuments.list()
-    })
+    }),
+  "RecentDocuments.events.Event": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const recentDocuments = yield* RecentDocuments
+        return recentDocuments.events()
+      })
+    )
 })
 
 export const RecentDocumentsSurface = NativeSurface.make(
@@ -105,13 +113,12 @@ export const RecentDocumentsSurface = NativeSurface.make(
     capabilities: RecentDocumentsMethodNames,
     handlers: RecentDocumentsHandlersLive,
     client: (client) => recentDocumentsClientFromRpcClient(client),
-    bridgeClient: (client, exchange) => recentDocumentsClientFromRpcClient(client, exchange)
+    bridgeClient: (client, exchange) => recentDocumentsBridgeClientFromRpcClient(client, exchange)
   }
 )
 
 const recentDocumentsClientFromRpcClient = (
-  client: DesktopRpcClient<RecentDocumentsRpc>,
-  exchange?: BridgeClientExchange
+  client: DesktopRpcClient<RecentDocumentsRpc>
 ): RecentDocumentsClientApi =>
   Object.freeze({
     add: (input) =>
@@ -122,7 +129,27 @@ const recentDocumentsClientFromRpcClient = (
       ),
     clear: () => runRecentDocumentsRpc(client["RecentDocuments.clear"](), "RecentDocuments.clear"),
     list: () => runRecentDocumentsRpc(client["RecentDocuments.list"](), "RecentDocuments.list"),
-    events: () => subscribeNativeEvent(exchange, "RecentDocuments.Event", RecentDocumentsEvent)
+    events: () =>
+      runRecentDocumentsRpcStream(
+        client["RecentDocuments.events.Event"](undefined),
+        "RecentDocuments.events.Event"
+      )
+  } satisfies RecentDocumentsClientApi)
+
+const recentDocumentsBridgeClientFromRpcClient = (
+  client: DesktopRpcClient<RecentDocumentsRpc>,
+  exchange: BridgeClientExchange
+): RecentDocumentsClientApi =>
+  Object.freeze({
+    add: (input) =>
+      decodeRecentDocumentsAddInput(input, "RecentDocuments.add").pipe(
+        Effect.flatMap((decoded) =>
+          runRecentDocumentsRpc(client["RecentDocuments.add"](decoded), "RecentDocuments.add")
+        )
+      ),
+    clear: () => runRecentDocumentsRpc(client["RecentDocuments.clear"](), "RecentDocuments.clear"),
+    list: () => runRecentDocumentsRpc(client["RecentDocuments.list"](), "RecentDocuments.list"),
+    events: () => NativeSurface.subscribeEvent(exchange, RecentDocumentsEventStream)
   } satisfies RecentDocumentsClientApi)
 
 const decodeRecentDocumentsAddInput = (
@@ -135,3 +162,8 @@ const runRecentDocumentsRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
   operation: string
 ): Effect.Effect<A, RecentDocumentsError> => runNativeRpc(effect, operation, Surface)
+
+const runRecentDocumentsRpcStream = <A, E>(
+  stream: Stream.Stream<A, E, never>,
+  operation: string
+): Stream.Stream<A, RecentDocumentsError> => runNativeRpcStream(stream, operation, Surface)

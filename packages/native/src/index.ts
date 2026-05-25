@@ -754,7 +754,6 @@ export {
   RecentDocuments,
   RecentDocumentsHandlersLive,
   RecentDocumentsMethodNames,
-  RecentDocumentsRpcEvents,
   RecentDocumentsRpcs,
   RecentDocumentsSurface,
   type RecentDocumentsClientApi,

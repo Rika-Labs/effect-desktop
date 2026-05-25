@@ -134,7 +134,8 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 |       #1839 Flatten Autostart pass-through service split | Closed | Removes the `AutostartClient` -> `Autostart` forwarding layer while keeping the canonical Autostart RPC/event stream boundary semantics.                          |
 |           #1840 Flatten Shell pass-through service split | Closed | Removes the `ShellClient` -> `Shell` forwarding layer while keeping Shell validation, permission mapping, and RPC boundary semantics.                             |
 | #1841 Flatten RecentDocuments pass-through service split | Closed | Removes the `RecentDocumentsClient` -> `RecentDocuments` forwarding layer while keeping RecentDocuments RPC and native event subscription semantics.              |
-|        #1842 Model RecentDocuments events as RPC streams | Open   | Removes the remaining `RecentDocumentsRpcEvents` side object by moving RecentDocuments lifecycle events into the canonical `RecentDocuments.events.Event` stream. |
+|        #1842 Model RecentDocuments events as RPC streams | Closed | Removes the remaining `RecentDocumentsRpcEvents` side object by moving RecentDocuments lifecycle events into the canonical `RecentDocuments.events.Event` stream. |
+|   #1843 Flatten NativeNetwork pass-through service split | Open   | Removes the `NativeNetworkClient` -> `NativeNetwork` forwarding layer while keeping NativeNetwork capability facts and event stream semantics.                    |
 
 ## Execution Progress
 
