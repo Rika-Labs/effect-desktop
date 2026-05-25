@@ -10,16 +10,18 @@ effect_version: 4
 
 Embedded browser views inside desktop windows.
 
-The Rust host attaches the application WebView during `Window.create`.
-`WebView.create` creates host-owned child WebViews under an explicit
-`WindowHandle` owner and supports initial URL, origin policy, optional
-`SessionProfile`, and optional preload isolation. Navigation methods own
-generated host handles for child WebViews: `loadRoute`, `loadUrl`, `reload`,
-`stop`, `goBack`, `goForward`, and `getNavigationState` route through the host
-event-loop command port. `WebView.destroy` releases the retained child WebView
-resource. Capability metadata marks the history-related navigation methods
-`partial` because history state is tracked from Wry navigation/page-load
-callbacks and host-issued commands rather than a portable browser history API.
+The Rust host attaches the application WebView during `Window.create`. That app
+renderer remains the window-owned WebView for the lifetime of the window.
+`WebView.create` creates host-owned native child WebViews under an explicit
+`WindowHandle` owner, without replacing the app renderer, and supports initial
+URL, origin policy, optional `SessionProfile`, and optional preload isolation.
+Navigation methods own generated host handles for child WebViews: `loadRoute`,
+`loadUrl`, `reload`, `stop`, `goBack`, `goForward`, and `getNavigationState`
+route through the host event-loop command port. `WebView.destroy` releases the
+retained child WebView resource. Capability metadata marks the history-related
+navigation methods `partial` because history state is tracked from Wry
+navigation/page-load callbacks and host-issued commands rather than a portable
+browser history API.
 
 `WebView.create` can bind a child WebView to a typed `SessionProfile` handle.
 The host retains a WebContext registry for profile-bound child WebViews, but

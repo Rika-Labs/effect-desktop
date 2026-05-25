@@ -36,6 +36,15 @@ pub(crate) enum WebEngineKind {
     Chrome,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum WebEngineBuildTarget {
+    Window,
+    #[cfg(not(target_os = "linux"))]
+    Child,
+    #[cfg(target_os = "linux")]
+    GtkContainer,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct WebViewCapabilities {
     engine: WebEngineKind,
@@ -93,7 +102,7 @@ impl WebEngineProvider for SystemWebEngineProvider {
             .with_url(request.url.to_string())
             .with_initialization_script(request.transport.initialization_script)
             .with_ipc_handler(request.transport.ipc_handler);
-        build_webview(builder, window).map_err(|error| {
+        build_app_webview(builder, window).map_err(|error| {
             Box::new(HostProtocolError::internal(
                 format!("failed to attach system WebView provider: {error}"),
                 WEBVIEW_CREATE_OPERATION,
@@ -215,7 +224,7 @@ pub(crate) fn attach_child_webview(
     }
     .with_on_page_load_handler(request.page_load_handler);
     let builder = builder.with_drag_drop_handler(request.drag_drop_handler);
-    let webview = build_webview(builder, window).map_err(|error| {
+    let webview = build_child_webview(builder, window).map_err(|error| {
         Box::new(HostProtocolError::internal(
             format!("failed to attach child WebView provider: {error}"),
             host_protocol::WEBVIEW_CREATE_METHOD,
@@ -654,33 +663,83 @@ pub(crate) fn renderer_transport_delivery_script(
 }
 
 #[cfg(not(target_os = "linux"))]
-fn build_webview(builder: WebViewBuilder<'_>, window: &Window) -> anyhow::Result<WebView> {
-    builder
-        .build(window)
-        .context("failed to build host webview")
+fn app_webview_build_target() -> WebEngineBuildTarget {
+    WebEngineBuildTarget::Window
 }
 
 #[cfg(target_os = "linux")]
-fn build_webview(builder: WebViewBuilder<'_>, window: &Window) -> anyhow::Result<WebView> {
+fn app_webview_build_target() -> WebEngineBuildTarget {
+    WebEngineBuildTarget::GtkContainer
+}
+
+#[cfg(not(target_os = "linux"))]
+fn child_webview_build_target() -> WebEngineBuildTarget {
+    WebEngineBuildTarget::Child
+}
+
+#[cfg(target_os = "linux")]
+fn child_webview_build_target() -> WebEngineBuildTarget {
+    WebEngineBuildTarget::GtkContainer
+}
+
+#[cfg(not(target_os = "linux"))]
+fn build_app_webview(builder: WebViewBuilder<'_>, window: &Window) -> anyhow::Result<WebView> {
+    debug_assert_eq!(app_webview_build_target(), WebEngineBuildTarget::Window);
+    builder
+        .build(window)
+        .context("failed to build app host webview")
+}
+
+#[cfg(not(target_os = "linux"))]
+fn build_child_webview(builder: WebViewBuilder<'_>, window: &Window) -> anyhow::Result<WebView> {
+    debug_assert_eq!(child_webview_build_target(), WebEngineBuildTarget::Child);
+    builder
+        .build_as_child(window)
+        .context("failed to build child host webview")
+}
+
+#[cfg(target_os = "linux")]
+fn build_app_webview(builder: WebViewBuilder<'_>, window: &Window) -> anyhow::Result<WebView> {
+    debug_assert_eq!(
+        app_webview_build_target(),
+        WebEngineBuildTarget::GtkContainer
+    );
+    build_gtk_container_webview(builder, window, "failed to build app host webview")
+}
+
+#[cfg(target_os = "linux")]
+fn build_child_webview(builder: WebViewBuilder<'_>, window: &Window) -> anyhow::Result<WebView> {
+    debug_assert_eq!(
+        child_webview_build_target(),
+        WebEngineBuildTarget::GtkContainer
+    );
+    build_gtk_container_webview(builder, window, "failed to build child host webview")
+}
+
+#[cfg(target_os = "linux")]
+fn build_gtk_container_webview(
+    builder: WebViewBuilder<'_>,
+    window: &Window,
+    context: &'static str,
+) -> anyhow::Result<WebView> {
     use tao::platform::unix::WindowExtUnix;
     use wry::WebViewBuilderExtUnix;
 
     let vbox = window
         .default_vbox()
-        .context("failed to build host webview: Tao window does not expose the default GTK box")?;
+        .with_context(|| format!("{context}: Tao window does not expose the default GTK box"))?;
 
-    builder
-        .build_gtk(vbox)
-        .context("failed to build host webview")
+    builder.build_gtk(vbox).context(context)
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        app_webview_transport_script, chrome_provider_missing_error,
-        decode_app_webview_transport_ipc, devtools_unsupported, renderer_transport_delivery_script,
-        renderer_url, web_engine_from_manifest_str, WebEngineKind,
-        WEBVIEW_CLOSE_DEVTOOLS_WINDOWS_UNAVAILABLE_REASON, WEBVIEW_DEVTOOLS_BUILD_GATED_REASON,
+        app_webview_build_target, app_webview_transport_script, child_webview_build_target,
+        chrome_provider_missing_error, decode_app_webview_transport_ipc, devtools_unsupported,
+        renderer_transport_delivery_script, renderer_url, web_engine_from_manifest_str,
+        WebEngineBuildTarget, WebEngineKind, WEBVIEW_CLOSE_DEVTOOLS_WINDOWS_UNAVAILABLE_REASON,
+        WEBVIEW_DEVTOOLS_BUILD_GATED_REASON,
     };
     use crate::scheme::{APP_PROTOCOL_SOURCE_KIND, APP_URL};
     use host_protocol::{HostProtocolEnvelope, HostProtocolError};
@@ -760,6 +819,27 @@ mod tests {
             "app://localhost/compose"
         );
         assert_eq!(renderer_url(None, None).as_ref(), APP_URL);
+    }
+
+    #[test]
+    fn app_and_child_webviews_use_distinct_native_build_targets() {
+        #[cfg(target_os = "linux")]
+        {
+            assert_eq!(
+                app_webview_build_target(),
+                WebEngineBuildTarget::GtkContainer
+            );
+            assert_eq!(
+                child_webview_build_target(),
+                WebEngineBuildTarget::GtkContainer
+            );
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            assert_eq!(app_webview_build_target(), WebEngineBuildTarget::Window);
+            assert_eq!(child_webview_build_target(), WebEngineBuildTarget::Child);
+        }
     }
 
     #[test]
