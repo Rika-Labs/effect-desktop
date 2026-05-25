@@ -511,10 +511,11 @@ mod tests {
 
         let policy = expected_csp(&header_nonce);
         assert!(policy.contains("script-src 'self' 'nonce-"));
+        assert!(policy.contains("'wasm-unsafe-eval'"));
         assert!(policy.contains("style-src 'self' 'nonce-"));
         assert!(!policy.contains("script-src 'self' 'unsafe-inline'"));
         assert!(!policy.contains("style-src 'self' 'unsafe-inline'"));
-        assert!(!policy.contains("unsafe-eval"));
+        assert!(!policy.contains("'unsafe-eval'"));
     }
 
     #[test]

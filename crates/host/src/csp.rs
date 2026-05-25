@@ -261,7 +261,7 @@ mod tests {
 
         assert_eq!(
             policy,
-            "default-src 'self'; script-src 'self' 'nonce-fixednonce'; style-src 'self' 'nonce-fixednonce'; style-src-attr 'unsafe-inline'; connect-src 'self' app:; img-src 'self' app: data: https:; font-src 'self' app: data:; media-src 'self' app:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; worker-src 'self'"
+            "default-src 'self'; script-src 'self' 'nonce-fixednonce' 'wasm-unsafe-eval'; style-src 'self' 'nonce-fixednonce'; style-src-attr 'unsafe-inline'; connect-src 'self' app:; img-src 'self' app: data: https:; font-src 'self' app: data:; media-src 'self' app:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; worker-src 'self'"
         );
         assert!(
             !policy.contains("script-src 'self' 'unsafe-inline'"),
@@ -275,7 +275,11 @@ mod tests {
             policy.contains("style-src-attr 'unsafe-inline'"),
             "inline style attributes from prerendered HTML must be permitted"
         );
-        assert!(!policy.contains("unsafe-eval"));
+        assert!(
+            policy.contains("'wasm-unsafe-eval'"),
+            "WebAssembly modules must be usable by renderer capabilities"
+        );
+        assert!(!policy.contains("'unsafe-eval'"));
     }
 
     #[test]
@@ -283,7 +287,7 @@ mod tests {
         let nonce = CspNonce::fixed("fixednonce");
         let policy = CspPolicy::default().render(&nonce);
 
-        assert!(policy.contains("script-src 'self' 'nonce-fixednonce'"));
+        assert!(policy.contains("script-src 'self' 'nonce-fixednonce' 'wasm-unsafe-eval'"));
         assert!(!policy.contains(CSP_NONCE_PLACEHOLDER));
     }
 

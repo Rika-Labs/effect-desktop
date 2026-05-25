@@ -6,7 +6,7 @@
     },
     {
       "name": "script-src",
-      "values": ["'self'", "'nonce-{N}'"]
+      "values": ["'self'", "'nonce-{N}'", "'wasm-unsafe-eval'"]
     },
     {
       "name": "style-src",

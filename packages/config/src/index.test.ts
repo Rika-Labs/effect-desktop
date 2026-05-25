@@ -22,7 +22,7 @@ import {
 const HOST_DEFAULT_CSP_FOR_NONCE = (nonce: string): string =>
   [
     "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}'`,
+    `script-src 'self' 'nonce-${nonce}' 'wasm-unsafe-eval'`,
     `style-src 'self' 'nonce-${nonce}'`,
     "style-src-attr 'unsafe-inline'",
     "connect-src 'self' app:",
@@ -38,6 +38,13 @@ const HOST_DEFAULT_CSP_FOR_NONCE = (nonce: string): string =>
 
 test("CSP defaults render the spec policy with a nonce", () => {
   expect(renderDefaultCsp("abc123")).toBe(HOST_DEFAULT_CSP_FOR_NONCE("abc123"))
+})
+
+test("CSP defaults permit WebAssembly without broad eval", () => {
+  const csp = renderDefaultCsp("abc123")
+
+  expect(csp).toContain("script-src 'self' 'nonce-abc123' 'wasm-unsafe-eval'")
+  expect(csp).not.toContain("'unsafe-eval'")
 })
 
 test("CSP defaults are schema-backed ordered policy data", () => {
@@ -338,6 +345,10 @@ test("DEFAULT_CSP_DIRECTIVES never permits 'unsafe-eval' on any directive", () =
     values.includes("'unsafe-eval'")
   )
   expect(entriesWithUnsafeEval).toEqual([])
+  expect(DEFAULT_CSP_DIRECTIVES).toContainEqual([
+    "script-src",
+    ["'self'", "'nonce-{N}'", "'wasm-unsafe-eval'"]
+  ])
 })
 
 test("CSP config can tighten a default directive", () => {

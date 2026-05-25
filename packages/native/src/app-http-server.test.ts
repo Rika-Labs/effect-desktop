@@ -105,8 +105,9 @@ test("serves HTML with nonce injected into script tags and CSP header set", () =
       const csp = (response.headers as Record<string, string>)["content-security-policy"]
       expect(typeof csp).toBe("string")
       expect(csp).toContain("script-src 'self' 'nonce-")
+      expect(csp).toContain("'wasm-unsafe-eval'")
       expect(csp).toContain("style-src 'self' 'nonce-")
-      expect(csp).not.toContain("unsafe-eval")
+      expect(csp).not.toContain("'unsafe-eval'")
       expect(csp).toContain("style-src-attr 'unsafe-inline'")
     })
   )

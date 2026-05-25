@@ -7975,7 +7975,7 @@ test("desktop build stages renderer runtime host bridge manifests and report", (
         }
         expect(rendererManifest.csp.directives.slice(0, 2)).toEqual([
           { name: "default-src", values: ["'self'"] },
-          { name: "script-src", values: ["'self'", "'nonce-{N}'"] }
+          { name: "script-src", values: ["'self'", "'nonce-{N}'", "'wasm-unsafe-eval'"] }
         ])
         expect(yield* Effect.promise(() => readFile(join(layout, "native", "host"), "utf8"))).toBe(
           "host"

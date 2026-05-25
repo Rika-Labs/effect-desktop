@@ -95,6 +95,8 @@ Legacy config files that say `web.engine: "chromium"` decode to the canonical `c
 
 Computes the effective CSP from your declared policy and any acknowledged weakenings. Returned policy is what the framework will inject into the renderer.
 
+The default `script-src` is nonce-based and includes `'wasm-unsafe-eval'` so packaged renderer database engines can compile WebAssembly. It still forbids broad `'unsafe-eval'` and inline scripts without the host-injected nonce.
+
 ## Production checks
 
 `runProductionCheck(config)` runs the static security checks defined by SPEC §15-16. Returns:
