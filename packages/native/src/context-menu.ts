@@ -1,7 +1,6 @@
 import {
   P,
   type DesktopRpcClient,
-  type DesktopRpcCapabilityFact,
   CommandRegistry,
   makeResourceId,
   PermissionActor,
@@ -16,8 +15,7 @@ import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
-import { subscribeNativeEvent } from "./event-stream.js"
-import { decodeNativeInput, runNativeRpc } from "./native-client.js"
+import { decodeNativeInput, runNativeRpc, runNativeRpcStream } from "./native-client.js"
 import { bindScopedCommand } from "./command-binding.js"
 import { commandBindingWarningError } from "./command-binding-log.js"
 import {
@@ -31,7 +29,6 @@ import {
 import type { WindowHandle } from "./window.js"
 
 const Surface = "ContextMenu"
-const EventMethod = "ContextMenu.Activated"
 
 export type ContextMenuError = HostProtocolError
 export type ContextMenuCommandBindingError = ContextMenuError | CommandRegistryError
@@ -46,15 +43,12 @@ export const ContextMenuShow = NativeSurface.rpc(Surface, "show", {
   support: NativeSurface.support.supported
 })
 
-export const ContextMenuCapabilityFacts: readonly DesktopRpcCapabilityFact[] = Object.freeze([])
-
-export const ContextMenuRpcEvents = Object.freeze({
-  Activated: { payload: ContextMenuActivatedEvent }
+const ContextMenuActivated = NativeSurface.event(Surface, "Activated", {
+  payload: ContextMenuActivatedEvent,
+  support: NativeSurface.support.supported
 })
 
-export type ContextMenuRpcEvents = typeof ContextMenuRpcEvents
-
-const ContextMenuRpcGroup = RpcGroup.make(ContextMenuShow)
+const ContextMenuRpcGroup = RpcGroup.make(ContextMenuShow, ContextMenuActivated)
 
 export const ContextMenuRpcs: RpcGroup.RpcGroup<ContextMenuRpc> = ContextMenuRpcGroup
 
@@ -102,8 +96,6 @@ export class ContextMenu extends Context.Service<ContextMenu, ContextMenuService
     })
   )
 }
-
-export const ContextMenuLive = ContextMenu.layer
 
 const bindContextMenuCommand = (
   client: ContextMenuClientApi,
@@ -167,25 +159,29 @@ export const ContextMenuHandlersLive = ContextMenuRpcGroup.toLayer({
     Effect.gen(function* () {
       const contextMenu = yield* ContextMenu
       yield* contextMenu.show(input)
-    })
+    }),
+  "ContextMenu.events.Activated": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const contextMenu = yield* ContextMenu
+        return contextMenu.onActivated()
+      })
+    )
 })
 
 export const ContextMenuSurface = NativeSurface.make("ContextMenu", ContextMenuRpcGroup, {
   service: ContextMenuClient,
   handlers: ContextMenuHandlersLive,
   capabilities: ContextMenuMethodNames,
-  capabilityFacts: ContextMenuCapabilityFacts,
-  client: (client: DesktopRpcClient<ContextMenuRpc>) =>
-    contextMenuClientFromRpcClient(client, undefined),
+  client: (client: DesktopRpcClient<ContextMenuRpc>) => contextMenuClientFromRpcClient(client),
   bridgeClient: (client: DesktopRpcClient<ContextMenuRpc>, exchange: BridgeClientExchange) =>
-    contextMenuClientFromRpcClient(client, exchange)
+    contextMenuBridgeClientFromRpcClient(client, exchange)
 })
 
 const contextMenuClientFromRpcClient = (
-  client: DesktopRpcClient<ContextMenuRpc>,
-  exchange: BridgeClientExchange | undefined
-): ContextMenuClientApi => {
-  const contextMenuClient: ContextMenuClientApi = {
+  client: DesktopRpcClient<ContextMenuRpc>
+): ContextMenuClientApi =>
+  Object.freeze({
     show: (input) =>
       decodeContextMenuShowInput(toContextMenuShowInput(input)).pipe(
         Effect.flatMap((decoded) =>
@@ -196,17 +192,35 @@ const contextMenuClientFromRpcClient = (
       decodeContextMenuBuildFromTemplateInput(input).pipe(Effect.asVoid),
     bindCommand: (itemId, commandId) =>
       decodeContextMenuBindCommandInput({ itemId, commandId }).pipe(Effect.asVoid),
-    onActivated: () => subscribeContextMenuEvent(exchange, EventMethod)
-  }
+    onActivated: () =>
+      runContextMenuRpcStream(
+        client["ContextMenu.events.Activated"](undefined),
+        "ContextMenu.events.Activated"
+      )
+  } satisfies ContextMenuClientApi)
 
-  return Object.freeze(contextMenuClient)
-}
+const contextMenuBridgeClientFromRpcClient = (
+  client: DesktopRpcClient<ContextMenuRpc>,
+  exchange: BridgeClientExchange
+): ContextMenuClientApi =>
+  Object.freeze({
+    show: (input) =>
+      decodeContextMenuShowInput(toContextMenuShowInput(input)).pipe(
+        Effect.flatMap((decoded) =>
+          runNativeRpc(client["ContextMenu.show"](decoded), "ContextMenu.show", Surface)
+        )
+      ),
+    buildFromTemplate: (input) =>
+      decodeContextMenuBuildFromTemplateInput(input).pipe(Effect.asVoid),
+    bindCommand: (itemId, commandId) =>
+      decodeContextMenuBindCommandInput({ itemId, commandId }).pipe(Effect.asVoid),
+    onActivated: () => NativeSurface.subscribeEvent(exchange, ContextMenuActivated)
+  } satisfies ContextMenuClientApi)
 
-const subscribeContextMenuEvent = (
-  exchange: BridgeClientExchange | undefined,
-  method: typeof EventMethod
-): Stream.Stream<ContextMenuActivatedEvent, ContextMenuError, never> =>
-  subscribeNativeEvent(exchange, method, ContextMenuActivatedEvent)
+const runContextMenuRpcStream = <A, E>(
+  stream: Stream.Stream<A, E, never>,
+  operation: string
+): Stream.Stream<A, ContextMenuError, never> => runNativeRpcStream(stream, operation, Surface)
 
 const contextMenuCommandResourceId = (itemId: string, commandId: string): ResourceId =>
   makeResourceId(`context-menu-command:${itemId}:${commandId}`)

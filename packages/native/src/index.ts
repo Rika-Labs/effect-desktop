@@ -212,12 +212,9 @@ export {
 } from "./clipboard.js"
 export {
   ContextMenu,
-  ContextMenuCapabilityFacts,
   ContextMenuClient,
   ContextMenuHandlersLive,
-  ContextMenuLive,
   ContextMenuMethodNames,
-  ContextMenuRpcEvents,
   ContextMenuRpcs,
   ContextMenuSurface,
   type ContextMenuClientApi,

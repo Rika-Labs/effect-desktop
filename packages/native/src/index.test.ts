@@ -136,11 +136,8 @@ import {
   ClipboardMethodNames,
   ClipboardSurface,
   ContextMenu,
-  ContextMenuCapabilityFacts,
   ContextMenuHandlersLive,
   ContextMenuRpcs,
-  ContextMenuRpcEvents,
-  ContextMenuLive,
   ContextMenuMethodNames,
   ContextMenuSurface,
   CrashReporter,
@@ -487,7 +484,6 @@ test("native package root keeps contracts and implementation helpers behind subp
 test("native services expose canonical static layers", () => {
   expect(AppLive).toBe(App.layer)
   expect(ClipboardLive).toBe(Clipboard.layer)
-  expect(ContextMenuLive).toBe(ContextMenu.layer)
   expect(CrashReporterLive).toBe(CrashReporter.layer)
   expect(DialogLive).toBe(Dialog.layer)
   expect(ExecutionSandboxLive).toBe(ExecutionSandbox.layer)
@@ -1176,8 +1172,6 @@ const expectedMenuMethods: Array<(typeof MenuMethodNames)[number]> = [
 const expectedMenuCapabilityFactMethods: string[] = []
 
 const expectedContextMenuMethods: Array<(typeof ContextMenuMethodNames)[number]> = ["show"]
-
-const expectedContextMenuCapabilityFactMethods: string[] = []
 
 const expectedDialogMethods: Array<(typeof DialogMethodNames)[number]> = [
   "openFile",
@@ -3928,32 +3922,57 @@ test("Menu bridge client rejects application menu root items before transport", 
 
 test("ContextMenuRpcs declares the Phase 8 ContextMenu method and event surface", () => {
   expect([...ContextMenuMethodNames]).toEqual(expectedContextMenuMethods)
-  expect(rpcMethodNames("ContextMenu", ContextMenuRpcs)).toEqual(expectedContextMenuMethods)
-  expect(Object.keys(ContextMenuRpcEvents)).toEqual(["Activated"])
+  expect(Array.from(ContextMenuRpcs.requests.keys())).toEqual([
+    "ContextMenu.show",
+    "ContextMenu.events.Activated"
+  ])
+  expect(rpcMethodNames("ContextMenu", ContextMenuRpcs)).toEqual([
+    ...expectedContextMenuMethods,
+    "events.Activated"
+  ])
 })
 
-test("ContextMenu declares only host-backed operations as non-callable capability facts", () => {
-  const factTags = ContextMenuCapabilityFacts.map((fact) => fact.tag).toSorted()
-  expect(factTags).toEqual(
-    expectedContextMenuCapabilityFactMethods.map((method) => `ContextMenu.${method}`).toSorted()
+test("ContextMenu event schema is owned by the RPC stream contract", async () => {
+  const contextMenuModule = await import("./context-menu.js")
+  const rootModule = await import("./index.js")
+  const callableTags = Array.from(ContextMenuRpcs.requests.keys()).toSorted()
+  const eventRpc = ContextMenuRpcs.requests.get("ContextMenu.events.Activated")
+
+  for (const removedExport of [
+    "ContextMenuCapabilityFacts",
+    "ContextMenuLive",
+    "ContextMenuRpcEvents"
+  ]) {
+    expect(removedExport in contextMenuModule).toBe(false)
+    expect(removedExport in rootModule).toBe(false)
+  }
+  expect(callableTags).toEqual(["ContextMenu.events.Activated", "ContextMenu.show"])
+  expect(eventRpc).toBeDefined()
+  expect(eventRpc === undefined ? false : RpcSchema.isStreamSchema(eventRpc.successSchema)).toBe(
+    true
   )
-  for (const fact of ContextMenuCapabilityFacts) {
-    expect(fact.support.status).toBe("unsupported")
-    expect(fact.capability.kind).toBe("native.invoke")
+  if (eventRpc !== undefined && RpcSchema.isStreamSchema(eventRpc.successSchema)) {
+    expect(eventRpc.successSchema.success).toBe(ContextMenuActivatedEvent)
+    expect(eventRpc.pipe(rpcSupport)).toEqual({ status: "supported" })
   }
 
+  const eventDoc = ContextMenuSurface.schemaDocs.find(
+    (doc) => doc.tag === "ContextMenu.events.Activated"
+  )
+  expect(eventDoc?.kind).toBe("stream")
+  expect(eventDoc?.callable).toBe(true)
+  expect(eventDoc?.support).toEqual({ status: "supported" })
+})
+
+test("ContextMenu keeps TypeScript helpers out of schema docs", () => {
   const callableTags = Array.from(ContextMenuRpcs.requests.keys())
-  for (const method of expectedContextMenuCapabilityFactMethods) {
-    expect(callableTags).not.toContain(`ContextMenu.${method}`)
-  }
+  expect(callableTags).toEqual(["ContextMenu.show", "ContextMenu.events.Activated"])
 
   const nonCallableTags = ContextMenuSurface.schemaDocs
     .filter((doc) => !doc.callable)
     .map((doc) => doc.tag)
     .toSorted()
-  expect(nonCallableTags).toEqual(
-    expectedContextMenuCapabilityFactMethods.map((method) => `ContextMenu.${method}`).toSorted()
-  )
+  expect(nonCallableTags).toEqual([])
 })
 
 test("ContextMenu service delegates through a substitutable ContextMenuClient port", () =>
@@ -3978,7 +3997,7 @@ test("ContextMenu service delegates through a substitutable ContextMenuClient po
         }),
         Layer.mergeAll(
           Layer.provide(
-            ContextMenuLive,
+            ContextMenu.layer,
             Layer.succeed(ContextMenuClient)(contextMenuClient(calls))
           ),
           commandLayer
@@ -4017,7 +4036,7 @@ test("ContextMenu bindCommand does not duplicate listeners for identical binding
         }),
         Layer.mergeAll(
           Layer.provide(
-            ContextMenuLive,
+            ContextMenu.layer,
             Layer.succeed(ContextMenuClient)(contextMenuClient(calls))
           ),
           commandLayer
@@ -4069,7 +4088,7 @@ test("ContextMenu bindCommand closes the command listener with its resource scop
         }),
         Layer.mergeAll(
           Layer.provide(
-            ContextMenuLive,
+            ContextMenu.layer,
             Layer.succeed(ContextMenuClient)({
               ...contextMenuClient(calls),
               onActivated: () => Stream.fromQueue(activated)
@@ -4105,6 +4124,85 @@ test("ContextMenu bindCommand closes the command listener with its resource scop
     })
   ))
 
+test("ContextMenu direct client consumes the canonical RPC activation stream", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
+      const requests: HostProtocolRequestEnvelope[] = []
+      const protocolLayer = Layer.effect(RpcClient.Protocol)(
+        makeDesktopClientProtocol(
+          {
+            send: (envelope) => {
+              if (envelope.kind !== "request") {
+                return Effect.void
+              }
+              requests.push(envelope)
+              return Effect.all(
+                [
+                  Queue.offer(
+                    queue,
+                    new HostProtocolStreamByRequestEnvelope({
+                      kind: "stream",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_350,
+                      traceId: envelope.traceId,
+                      payload: {
+                        itemId: "file.open",
+                        commandId: "app.file.open",
+                        windowId: "window-1"
+                      }
+                    })
+                  ),
+                  Queue.offer(
+                    queue,
+                    new HostProtocolResponseEnvelope({
+                      kind: "response",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_351,
+                      traceId: envelope.traceId
+                    })
+                  )
+                ],
+                { discard: true }
+              )
+            },
+            run: (onEnvelope) =>
+              Stream.fromQueue(queue).pipe(
+                Stream.runForEach(onEnvelope),
+                Effect.andThen(Effect.never)
+              )
+          },
+          {
+            nextRequestId: () => "context-menu-activated-rpc",
+            nextTraceId: () => "trace-context-menu-activated-rpc"
+          }
+        )
+      )
+
+      const event = yield* runScoped(
+        Effect.gen(function* () {
+          const contextMenu = yield* ContextMenu
+          return yield* contextMenu
+            .onActivated()
+            .pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+        }),
+        Layer.provide(
+          ContextMenu.layer,
+          Layer.provide(ContextMenuSurface.clientLayer, protocolLayer)
+        )
+      )
+
+      expect(event).toEqual(
+        new ContextMenuActivatedEvent({
+          itemId: "file.open",
+          commandId: "app.file.open",
+          windowId: "window-1"
+        })
+      )
+      expect(requests.map((request) => request.method)).toEqual(["ContextMenu.events.Activated"])
+    })
+  ))
+
 test("ContextMenu bridge client routes show and keeps local helpers off transport", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -4133,7 +4231,7 @@ test("ContextMenu bridge client routes show and keeps local helpers off transpor
         }),
         Layer.mergeAll(
           Layer.provide(
-            ContextMenuLive,
+            ContextMenu.layer,
             ContextMenuSurface.bridgeClientLayer(exchange, {
               nextRequestId: nextId(["context-menu-show"]),
               nextTraceId: nextId(["trace-context-menu-show"]),
@@ -4198,7 +4296,7 @@ test("ContextMenu bridge client rejects invalid popup positions before transport
           }),
           Layer.mergeAll(
             Layer.provide(
-              ContextMenuLive,
+              ContextMenu.layer,
               ContextMenuSurface.bridgeClientLayer(exchange, {
                 nextRequestId: nextId(["unused"]),
                 nextTraceId: nextId(["unused"]),
@@ -4253,7 +4351,7 @@ test("ContextMenu bridge client rejects empty activation event identifiers as In
           }),
           Layer.mergeAll(
             Layer.provide(
-              ContextMenuLive,
+              ContextMenu.layer,
               ContextMenuSurface.bridgeClientLayer(exchange, {
                 nextRequestId: nextId(["unused"]),
                 nextTraceId: nextId(["unused"]),
@@ -8847,10 +8945,7 @@ test("native DesktopRpc surfaces derive server, client, test, and metadata layer
           surface: ContextMenuSurface,
           group: ContextMenuRpcs,
           handlers: ContextMenuHandlersLive,
-          tags: [
-            ...Array.from(ContextMenuRpcs.requests.keys()),
-            ...ContextMenuCapabilityFacts.map((fact) => fact.tag)
-          ]
+          tags: Array.from(ContextMenuRpcs.requests.keys())
         },
         {
           name: "CrashReporter",

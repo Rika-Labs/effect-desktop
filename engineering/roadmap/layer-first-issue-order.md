@@ -150,6 +150,7 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 |                    #1856 Remove NativeSurface service-key assertion | Closed | Removes the remaining native direct-vs-mapped service-key assertion while preserving bridge client construction and host runtime semantics.                           |
 |                       #1857 Model AppMetadata events as RPC streams | Closed | Removes the remaining `AppMetadataRpcEvents` side object by moving AppMetadata lifecycle events into the canonical `AppMetadata.events.Event` RPC stream.             |
 |                       #1858 Model Association events as RPC streams | Closed | Removes the remaining `AssociationRpcEvents` side object by moving Association lifecycle events into the canonical `Association.events.Event` RPC stream.             |
+|                       #1859 Model ContextMenu events as RPC streams | Closed | Moves activation events into the canonical `ContextMenu.events.Activated` RPC stream and removes shallow ContextMenu side exports.                                    |
 
 ## Execution Progress
 
