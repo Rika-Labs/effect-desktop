@@ -27,6 +27,8 @@ The only callable RPC on this surface is the support query:
 
 `onBeforeRequest`, `onHeadersReceived`, and `removeListener` are not callable RPCs. They are advertised in the native capability manifest as capability facts with `support.status: "unsupported"` and reason `host-web-request-unavailable`, but no host adapter can be invoked. They describe the intended interception contract until WebView providers expose portable profile-bound request and response interception callbacks.
 
+Architecture-debt sweep outcome for #1877: removed the public `WebRequestCapabilityFacts` side export. The unsupported facts remain private to `WebRequestSurface` metadata because they publish truthful non-callable support metadata for the generated native capability manifest.
+
 | Capability fact     | Intended role                                                               |
 | ------------------- | --------------------------------------------------------------------------- |
 | `onBeforeRequest`   | Register a request interceptor with action `allow`, `block`, or `redirect`. |

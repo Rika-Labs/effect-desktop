@@ -3609,11 +3609,6 @@
       "signature": "export class WebRequest extends Context.Service<WebRequest, WebRequestClientApi>()( \"@orika/native/WebRequest\" ) {}"
     },
     {
-      "name": "WebRequestCapabilityFacts",
-      "kind": "value",
-      "signature": "const WebRequestCapabilityFacts: readonly import(\"@orika/core\").DesktopRpcCapabilityFact[]"
-    },
-    {
       "name": "WebRequestClientApi",
       "kind": "interface",
       "signature": "export interface WebRequestClientApi { readonly isSupported: () => Effect.Effect<WebRequestSupportedResult, WebRequestError, never> readonly events: ( profile?: SessionProfileHandle ) => Stream.Stream<WebRequestEvent, WebRequestError, never> }"

@@ -25,7 +25,6 @@ import {
   makeWebRequestMemoryClient,
   makeWebRequestUnsupportedClient,
   WebRequest,
-  WebRequestCapabilityFacts,
   type WebRequestClientApi,
   WebRequestRpcs,
   WebRequestSurface
@@ -79,6 +78,7 @@ test("WebRequest public surface omits shallow service and layer helpers", () =>
       const rootModule = yield* Effect.promise(() => import("./index.js"))
 
       for (const removedName of [
+        "WebRequest" + "CapabilityFacts",
         "WebRequestRpcEvents",
         "class WebRequestClient",
         "WebRequestLive",
@@ -91,6 +91,8 @@ test("WebRequest public surface omits shallow service and layer helpers", () =>
         expect(source).not.toContain(removedName)
         expect(indexSource).not.toContain(removedName)
       }
+      expect("WebRequestCapabilityFacts" in webRequestModule).toBe(false)
+      expect("WebRequestCapabilityFacts" in rootModule).toBe(false)
       expect("WebRequestRpcEvents" in webRequestModule).toBe(false)
       expect("WebRequestRpcEvents" in rootModule).toBe(false)
     })
@@ -333,9 +335,10 @@ test("WebRequest event schema is owned by the RPC stream contract", () => {
 })
 
 test("WebRequest declares onBeforeRequest/onHeadersReceived/removeListener as unsupported capability facts", () => {
-  const factTags = WebRequestCapabilityFacts.map((fact) => fact.tag).toSorted()
+  const facts = webRequestCapabilityFacts()
+  const factTags = facts.map((fact) => fact.tag).toSorted()
   expect(factTags).toEqual(UnsupportedMethods.map((method) => `WebRequest.${method}`).toSorted())
-  for (const fact of WebRequestCapabilityFacts) {
+  for (const fact of facts) {
     expect(fact.support).toEqual(UnsupportedSupport)
   }
 })
@@ -590,6 +593,8 @@ const runScoped = <A, E, R>(
 
 const webRequestLayer = (client: WebRequestClientApi): Layer.Layer<WebRequest> =>
   Layer.succeed(WebRequest)(client)
+
+const webRequestCapabilityFacts = () => WebRequestSurface.schemaDocs.filter((doc) => !doc.callable)
 
 const expectExitFailure = <A>(
   exit: Exit.Exit<A, unknown>,

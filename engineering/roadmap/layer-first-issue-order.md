@@ -165,6 +165,7 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 |               #1874 Keep Download capability facts private metadata | Closed | Removes the remaining public capability-fact side object from the already-flattened Download surface while preserving unsupported manifest facts.                     |
 |          #1875 Keep NativeNetwork capability facts private metadata | Closed | Removes the remaining public capability-fact side object from the already-flattened NativeNetwork surface while preserving unsupported manifest facts.                |
 |                    #1876 Model NetworkAuth events and private facts | Closed | Moves NetworkAuth events into the canonical `NetworkAuth.events.Event` RPC stream and keeps unsupported auth/certificate facts private to surface metadata.           |
+|             #1877 Keep WebRequest capability facts private metadata | Closed | Removes the remaining public capability-fact side object from the already-flattened WebRequest surface while preserving unsupported manifest facts.                   |
 
 ## Execution Progress
 

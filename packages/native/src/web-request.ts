@@ -46,7 +46,7 @@ const webRequestCapabilityFact = (
     support: UnsupportedSupport
   })
 
-export const WebRequestCapabilityFacts = Object.freeze([
+const UnsupportedCapabilityFacts = Object.freeze([
   webRequestCapabilityFact("onBeforeRequest"),
   webRequestCapabilityFact("onHeadersReceived"),
   webRequestCapabilityFact("removeListener")
@@ -95,7 +95,7 @@ export const WebRequestHandlersLive = WebRequestRpcGroup.toLayer({
 export const WebRequestSurface = NativeSurface.make(Surface, WebRequestRpcGroup, {
   service: WebRequest,
   handlers: WebRequestHandlersLive,
-  capabilityFacts: WebRequestCapabilityFacts,
+  capabilityFacts: UnsupportedCapabilityFacts,
   client: (client) => webRequestClientFromRpcClient(client),
   bridgeClient: (client, exchange) => webRequestBridgeClientFromRpcClient(client, exchange)
 })

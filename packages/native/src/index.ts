@@ -630,7 +630,6 @@ export {
   makeWebRequestMemoryClient,
   makeWebRequestUnsupportedClient,
   WebRequest,
-  WebRequestCapabilityFacts,
   WebRequestHandlersLive,
   WebRequestMethodNames,
   WebRequestRpcs,
