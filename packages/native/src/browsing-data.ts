@@ -5,7 +5,7 @@ import {
   RpcGroup
 } from "@orika/bridge"
 import { type DesktopRpcClient, P } from "@orika/core"
-import { Context, Effect, Layer, Schema, Stream } from "effect"
+import { Context, Effect, Schema, Stream } from "effect"
 
 import {
   type BrowsingDataType,
@@ -108,34 +108,9 @@ export interface BrowsingDataClientApi {
   ) => Stream.Stream<BrowsingDataEvent, BrowsingDataError, never>
 }
 
-export class BrowsingDataClient extends Context.Service<
-  BrowsingDataClient,
-  BrowsingDataClientApi
->()("@orika/native/BrowsingDataClient") {}
-
-export interface BrowsingDataServiceApi {
-  readonly clear: (
-    input: BrowsingDataClearOptions
-  ) => Effect.Effect<BrowsingDataClearResult, BrowsingDataError, never>
-  readonly listTypes: () => Effect.Effect<BrowsingDataListTypesResult, BrowsingDataError, never>
-  readonly isSupported: () => Effect.Effect<BrowsingDataSupportedResult, BrowsingDataError, never>
-  readonly events: (
-    profile?: SessionProfileHandle
-  ) => Stream.Stream<BrowsingDataEvent, BrowsingDataError, never>
-}
-
-export class BrowsingData extends Context.Service<BrowsingData, BrowsingDataServiceApi>()(
+export class BrowsingData extends Context.Service<BrowsingData, BrowsingDataClientApi>()(
   "@orika/native/BrowsingData"
-) {
-  static readonly layer = Layer.effect(BrowsingData)(
-    Effect.gen(function* () {
-      const client = yield* BrowsingDataClient
-      return makeBrowsingDataService(client)
-    })
-  )
-}
-
-export const BrowsingDataLive = BrowsingData.layer
+) {}
 
 export type BrowsingDataRpc = RpcGroup.Rpcs<typeof BrowsingDataRpcGroup>
 export type BrowsingDataRpcHandlers<R = never> = NativeRpcHandlers<typeof BrowsingDataRpcGroup, R>
@@ -159,7 +134,7 @@ export const BrowsingDataHandlersLive = BrowsingDataRpcGroup.toLayer({
 })
 
 export const BrowsingDataSurface = NativeSurface.make(Surface, BrowsingDataRpcGroup, {
-  service: BrowsingDataClient,
+  service: BrowsingData,
   capabilities: BrowsingDataMethodNames,
   handlers: BrowsingDataHandlersLive,
   capabilityFacts: BrowsingDataCapabilityFacts,
@@ -200,14 +175,6 @@ export const makeBrowsingDataUnsupportedClient = (): BrowsingDataClientApi =>
       ),
     events: () => Stream.fail(unsupportedError(EventMethod))
   } satisfies BrowsingDataClientApi)
-
-const makeBrowsingDataService = (client: BrowsingDataClientApi): BrowsingDataServiceApi =>
-  Object.freeze({
-    clear: (input) => client.clear(input),
-    listTypes: () => client.listTypes(),
-    isSupported: () => client.isSupported(),
-    events: (profile) => client.events(profile)
-  } satisfies BrowsingDataServiceApi)
 
 const browsingDataClientFromRpcClient = (
   client: DesktopRpcClient<BrowsingDataRpc>,

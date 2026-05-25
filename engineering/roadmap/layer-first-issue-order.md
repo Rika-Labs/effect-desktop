@@ -130,7 +130,7 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 |    #1828 Model ExecutionSandbox events as RPC streams | Closed | Removes `ExecutionSandboxRpcEvents` by moving sandbox lifecycle events into the canonical `ExecutionSandbox.events.Event` RPC stream.                             |
 |      #1829 Remove remaining native event side objects | Closed | Removes empty Dialog/Path/Shell side objects and moves WebRequest, RealtimeMediaSession, WebView, Screen, and SystemAppearance events into canonical RPC streams. |
 |             #1833 Remove renderer SQL wrapper aliases | Closed | Removes zero-policy SQLite WASM helper aliases and narrows PGlite to only the optional dependency boundary or upstream Effect SQL config pass-through.            |
-| #1838 Flatten BrowsingData pass-through service split | Open   | Removes the `BrowsingDataClient` -> `BrowsingData` forwarding layer unless it owns durable desktop policy beyond bridge/client boundary wiring.                   |
+| #1838 Flatten BrowsingData pass-through service split | Closed | Removes the `BrowsingDataClient` -> `BrowsingData` forwarding layer unless it owns durable desktop policy beyond bridge/client boundary wiring.                   |
 
 ## Execution Progress
 

@@ -195,9 +195,7 @@ export {
 export {
   BrowsingData,
   BrowsingDataCapabilityFacts,
-  BrowsingDataClient,
   BrowsingDataHandlersLive,
-  BrowsingDataLive,
   BrowsingDataMethodNames,
   BrowsingDataRpcEvents,
   BrowsingDataRpcs,
@@ -207,8 +205,7 @@ export {
   type BrowsingDataClientApi,
   type BrowsingDataError,
   type BrowsingDataRpc,
-  type BrowsingDataRpcHandlers,
-  type BrowsingDataServiceApi
+  type BrowsingDataRpcHandlers
 } from "./browsing-data.js"
 export {
   Clipboard,

@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
 import {
   type BridgeClientExchange,
   type HostProtocolEventEnvelope,
@@ -10,12 +11,11 @@ import { Effect, Exit, Layer, ManagedRuntime, Schema, Stream } from "effect"
 import {
   BrowsingData,
   BrowsingDataCapabilityFacts,
-  BrowsingDataClient,
+  type BrowsingDataClientApi,
   BrowsingDataRpcs,
   BrowsingDataSurface,
   makeBrowsingDataMemoryClient,
-  makeBrowsingDataUnsupportedClient,
-  BrowsingDataLive
+  makeBrowsingDataUnsupportedClient
 } from "./browsing-data.js"
 import { makeNativeCapabilityManifest } from "./capabilities.js"
 import { BrowsingDataEvent } from "./contracts/browsing-data.js"
@@ -37,6 +37,31 @@ const TestProfile = {
   ownerScope: "workspace:1",
   state: "open"
 } satisfies SessionProfileHandle
+
+test("BrowsingData public surface omits shallow service and layer helpers", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        readFile(new URL("browsing-data.ts", import.meta.url), "utf8")
+      )
+      const indexSource = yield* Effect.promise(() =>
+        readFile(new URL("index.ts", import.meta.url), "utf8")
+      )
+
+      for (const removedName of [
+        "BrowsingDataServiceApi",
+        "class BrowsingDataClient",
+        "BrowsingDataLive",
+        "makeBrowsingDataClientLayer",
+        "makeBrowsingDataServiceLayer",
+        "makeBrowsingDataBridgeClientLayer",
+        "makeBrowsingDataService"
+      ]) {
+        expect(source).not.toContain(removedName)
+        expect(indexSource).not.toContain(removedName)
+      }
+    })
+  ))
 
 test("BrowsingData exposes clear, listTypes, and isSupported as callable RPCs", () => {
   const callableTags = Array.from(BrowsingDataRpcs.requests.keys()).toSorted()
@@ -63,7 +88,7 @@ test("BrowsingData isSupported reports supported result through the service", ()
           const browsingData = yield* BrowsingData
           return yield* browsingData.isSupported()
         }),
-        Layer.provide(BrowsingDataLive, Layer.succeed(BrowsingDataClient)(client))
+        browsingDataLayer(client)
       )
       expect(result.supported).toBe(true)
     })
@@ -81,7 +106,7 @@ test("BrowsingData memory client clears requested portable data types", () =>
             types: ["cache", "cookies"]
           })
         }),
-        Layer.provide(BrowsingDataLive, Layer.succeed(BrowsingDataClient)(client))
+        browsingDataLayer(client)
       )
 
       expect(result).toEqual({ cleared: ["cache", "cookies"], unsupported: [] })
@@ -97,7 +122,7 @@ test("BrowsingData memory client lists portable data types", () =>
           const browsingData = yield* BrowsingData
           return yield* browsingData.listTypes()
         }),
-        Layer.provide(BrowsingDataLive, Layer.succeed(BrowsingDataClient)(client))
+        browsingDataLayer(client)
       )
 
       expect(result).toEqual({ types: Array.from(PortableBrowsingDataTypes) })
@@ -113,7 +138,7 @@ test("BrowsingData unsupported client reports the host-unavailable reason", () =
           const browsingData = yield* BrowsingData
           return yield* browsingData.isSupported()
         }),
-        Layer.provide(BrowsingDataLive, Layer.succeed(BrowsingDataClient)(client))
+        browsingDataLayer(client)
       )
       expect(result.supported).toBe(false)
       expect(result.reason).toBe("host-browsing-data-unavailable")
@@ -240,7 +265,7 @@ test("BrowsingData rejects inconsistent event phase payloads before exposing nat
       }
       const bridgeDecode = yield* runScoped(
         Effect.gen(function* () {
-          const client = yield* BrowsingDataClient
+          const client = yield* BrowsingData
           return yield* Effect.exit(client.events().pipe(Stream.runHead))
         }),
         BrowsingDataSurface.bridgeClientLayer(exchange)
@@ -260,3 +285,6 @@ const runScoped = <A, E, R>(
     yield* Effect.promise(() => runtime.dispose())
     return result
   })
+
+const browsingDataLayer = (client: BrowsingDataClientApi): Layer.Layer<BrowsingData> =>
+  Layer.succeed(BrowsingData)(client)
