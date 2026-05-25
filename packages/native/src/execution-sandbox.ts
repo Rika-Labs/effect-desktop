@@ -1,13 +1,8 @@
-import {
-  type BridgeClientExchange,
-  type HostProtocolError,
-  HostProtocolUnsupportedError,
-  RpcGroup
-} from "@orika/bridge"
+import { type HostProtocolError, HostProtocolUnsupportedError, RpcGroup } from "@orika/bridge"
 import { type DesktopRpcClient, P } from "@orika/core"
 import { Context, Effect, Layer, Schema, Stream } from "effect"
 
-import { runNativeRpc } from "./native-client.js"
+import { runNativeRpc, runNativeRpcStream } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
 import {
@@ -50,13 +45,15 @@ export const ExecutionSandboxCapabilityFacts = Object.freeze([
   executionSandboxCapabilityFact("destroy")
 ])
 
-export const ExecutionSandboxRpcEvents = Object.freeze({
-  Event: { payload: ExecutionSandboxEvent }
+const ExecutionSandboxEventStream = NativeSurface.event(Surface, "Event", {
+  payload: ExecutionSandboxEvent,
+  support: UnsupportedSupport
 })
 
-export type ExecutionSandboxRpcEvents = typeof ExecutionSandboxRpcEvents
-
-const ExecutionSandboxRpcGroup = RpcGroup.make(ExecutionSandboxIsSupported)
+const ExecutionSandboxRpcGroup = RpcGroup.make(
+  ExecutionSandboxIsSupported,
+  ExecutionSandboxEventStream
+)
 
 export const ExecutionSandboxRpcs: RpcGroup.RpcGroup<ExecutionSandboxRpc> = ExecutionSandboxRpcGroup
 
@@ -111,15 +108,22 @@ export const ExecutionSandboxHandlersLive = ExecutionSandboxRpcGroup.toLayer({
     Effect.gen(function* () {
       const sandbox = yield* ExecutionSandbox
       return yield* sandbox.isSupported()
-    })
+    }),
+  "ExecutionSandbox.events.Event": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const sandbox = yield* ExecutionSandbox
+        return sandbox.events()
+      })
+    )
 })
 
 export const ExecutionSandboxSurface = NativeSurface.make(Surface, ExecutionSandboxRpcGroup, {
   service: ExecutionSandboxClient,
   handlers: ExecutionSandboxHandlersLive,
   capabilityFacts: ExecutionSandboxCapabilityFacts,
-  client: (client) => executionSandboxClientFromRpcClient(client, undefined),
-  bridgeClient: (client, exchange) => executionSandboxClientFromRpcClient(client, exchange)
+  client: (client) => executionSandboxClientFromRpcClient(client),
+  bridgeClient: (client) => executionSandboxBridgeClientFromRpcClient(client)
 })
 
 export const makeExecutionSandboxMemoryClient = (): Effect.Effect<
@@ -155,8 +159,7 @@ const makeExecutionSandboxService = (
   } satisfies ExecutionSandboxServiceApi)
 
 const executionSandboxClientFromRpcClient = (
-  client: DesktopRpcClient<ExecutionSandboxRpc>,
-  _exchange: BridgeClientExchange | undefined
+  client: DesktopRpcClient<ExecutionSandboxRpc>
 ): ExecutionSandboxClientApi =>
   Object.freeze({
     isSupported: () =>
@@ -164,6 +167,18 @@ const executionSandboxClientFromRpcClient = (
         client["ExecutionSandbox.isSupported"](undefined),
         "ExecutionSandbox.isSupported"
       ),
+    events: () =>
+      runExecutionSandboxRpcStream(
+        client["ExecutionSandbox.events.Event"](undefined),
+        "ExecutionSandbox.events.Event"
+      )
+  } satisfies ExecutionSandboxClientApi)
+
+const executionSandboxBridgeClientFromRpcClient = (
+  client: DesktopRpcClient<ExecutionSandboxRpc>
+): ExecutionSandboxClientApi =>
+  Object.freeze({
+    ...executionSandboxClientFromRpcClient(client),
     events: () => Stream.fail(unsupportedError(ExecutionSandboxEventMethod))
   } satisfies ExecutionSandboxClientApi)
 
@@ -171,6 +186,11 @@ const runExecutionSandboxRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
   operation: string
 ): Effect.Effect<A, ExecutionSandboxError, never> => runNativeRpc(effect, operation, Surface)
+
+const runExecutionSandboxRpcStream = <A, E>(
+  stream: Stream.Stream<A, E, never>,
+  operation: string
+): Stream.Stream<A, ExecutionSandboxError, never> => runNativeRpcStream(stream, operation, Surface)
 
 const unsupportedError = (operation: string): HostProtocolError =>
   new HostProtocolUnsupportedError({

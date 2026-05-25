@@ -462,7 +462,6 @@ export {
   ExecutionSandboxHandlersLive,
   ExecutionSandboxLive,
   ExecutionSandboxMethodNames,
-  ExecutionSandboxRpcEvents,
   ExecutionSandboxRpcs,
   ExecutionSandboxSurface,
   makeExecutionSandboxMemoryClient,

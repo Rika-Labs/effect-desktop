@@ -1,10 +1,17 @@
 import { expect, test } from "bun:test"
 import type {
   BridgeClientExchange,
+  HostProtocolEnvelope,
   HostProtocolError,
   HostProtocolRequestEnvelope
 } from "@orika/bridge"
-import { Cause, Effect, Exit, Layer, ManagedRuntime, Schema, Stream } from "effect"
+import {
+  HostProtocolResponseEnvelope,
+  HostProtocolStreamByRequestEnvelope,
+  makeDesktopClientProtocol
+} from "@orika/bridge"
+import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Queue, Schema, Stream } from "effect"
+import { RpcClient, RpcSchema } from "effect/unstable/rpc"
 
 import {
   ExecutionSandbox,
@@ -23,11 +30,28 @@ import {
 
 const UnsupportedMethods = ["create", "run", "destroy"] as const
 
-test("ExecutionSandbox exposes only isSupported as a callable RPC", () => {
+test("ExecutionSandbox public surface omits the side event object", async () => {
+  const sandboxModule = await import("./execution-sandbox.js")
+  const rootModule = await import("./index.js")
+
+  expect("ExecutionSandboxRpcEvents" in sandboxModule).toBe(false)
+  expect("ExecutionSandboxRpcEvents" in rootModule).toBe(false)
+})
+
+test("ExecutionSandbox event schema is owned by the RPC stream contract", () => {
   const callableTags = Array.from(ExecutionSandboxRpcs.requests.keys()).toSorted()
-  expect(callableTags).toEqual(["ExecutionSandbox.isSupported"])
+  expect(callableTags).toEqual(["ExecutionSandbox.events.Event", "ExecutionSandbox.isSupported"])
   for (const method of UnsupportedMethods) {
     expect(callableTags).not.toContain(`ExecutionSandbox.${method}`)
+  }
+
+  const eventRpc = ExecutionSandboxRpcs.requests.get("ExecutionSandbox.events.Event")
+  expect(eventRpc).toBeDefined()
+  expect(eventRpc === undefined ? false : RpcSchema.isStreamSchema(eventRpc.successSchema)).toBe(
+    true
+  )
+  if (eventRpc !== undefined && RpcSchema.isStreamSchema(eventRpc.successSchema)) {
+    expect(eventRpc.successSchema.success).toBe(ExecutionSandboxEvent)
   }
 })
 
@@ -43,7 +67,14 @@ test("ExecutionSandbox declares create, run, destroy as non-callable capability 
   const callableTags = ExecutionSandboxSurface.schemaDocs
     .filter((doc) => doc.callable)
     .map((doc) => doc.tag)
-  expect(callableTags).toEqual(["ExecutionSandbox.isSupported"])
+    .toSorted()
+  expect(callableTags).toEqual(["ExecutionSandbox.events.Event", "ExecutionSandbox.isSupported"])
+
+  const eventDoc = ExecutionSandboxSurface.schemaDocs.find(
+    (doc) => doc.tag === "ExecutionSandbox.events.Event"
+  )
+  expect(eventDoc?.kind).toBe("stream")
+  expect(eventDoc?.callable).toBe(true)
 
   const nonCallableTags = ExecutionSandboxSurface.schemaDocs
     .filter((doc) => !doc.callable)
@@ -114,6 +145,16 @@ test("ExecutionSandbox unsupported client reports the host-unavailable reason", 
     })
   ))
 
+test("ExecutionSandbox direct client consumes the canonical RPC event stream", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const result = yield* directExecutionSandboxEvent(eventPayload())
+
+      expect(result.event).toMatchObject(eventPayload())
+      expect(result.methods).toEqual(["ExecutionSandbox.events.Event"])
+    })
+  ))
+
 test("ExecutionSandbox bridge client fails event stream as unsupported before subscribing", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -179,6 +220,77 @@ test("ExecutionSandbox bridge client sends a typed isSupported envelope", () =>
       expect(result.reason).toBe("host-adapter-unimplemented")
     })
   ))
+
+const directExecutionSandboxEvent = (payload: unknown) =>
+  Effect.gen(function* () {
+    const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
+    const requests: HostProtocolRequestEnvelope[] = []
+    const protocolLayer = Layer.effect(RpcClient.Protocol)(
+      makeDesktopClientProtocol(
+        {
+          send: (envelope) => {
+            if (envelope.kind !== "request") {
+              return Effect.void
+            }
+            requests.push(envelope)
+            return Effect.all(
+              [
+                Queue.offer(
+                  queue,
+                  new HostProtocolStreamByRequestEnvelope({
+                    kind: "stream",
+                    id: envelope.id,
+                    timestamp: 1_710_000_000_001,
+                    traceId: envelope.traceId,
+                    payload
+                  })
+                ),
+                Queue.offer(
+                  queue,
+                  new HostProtocolResponseEnvelope({
+                    kind: "response",
+                    id: envelope.id,
+                    timestamp: 1_710_000_000_002,
+                    traceId: envelope.traceId
+                  })
+                )
+              ],
+              { discard: true }
+            )
+          },
+          run: (onEnvelope) =>
+            Stream.fromQueue(queue).pipe(
+              Stream.runForEach(onEnvelope),
+              Effect.andThen(Effect.never)
+            )
+        },
+        {
+          nextRequestId: () => "execution-sandbox-event-request",
+          nextTraceId: () => "execution-sandbox-event-trace"
+        }
+      )
+    )
+
+    const event = yield* runScoped(
+      Effect.gen(function* () {
+        const client = yield* ExecutionSandboxClient
+        return yield* client.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+      }),
+      Layer.provide(ExecutionSandboxSurface.clientLayer, protocolLayer)
+    )
+
+    return {
+      event,
+      methods: requests.map((request) => request.method)
+    }
+  })
+
+const eventPayload = () => ({
+  type: "sandbox-event",
+  timestamp: 1_710_000_000_000,
+  sandboxId: "sandbox-1",
+  phase: "created"
+})
 
 const runScoped = <A, E, R>(
   effect: Effect.Effect<A, E, R>,

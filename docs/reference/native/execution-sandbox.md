@@ -8,16 +8,19 @@ effect_version: 4
 
 # `ExecutionSandbox`
 
-Product-neutral isolated execution sandbox service. The contract describes creating a sandbox with explicit cwd, environment, filesystem, network, budget, and cleanup policy, running a command inside that sandbox, and destroying the sandbox when the resource is no longer needed. The create, run, and destroy operations are declared as capability facts but are not callable in this build; `isSupported` and the `ExecutionSandbox.Event` stream are the genuinely callable surface.
+Product-neutral isolated execution sandbox service. The contract describes creating a sandbox with explicit cwd, environment, filesystem, network, budget, and cleanup policy, running a command inside that sandbox, and destroying the sandbox when the resource is no longer needed. The create, run, and destroy operations are declared as capability facts but are not callable in this build; `isSupported` and the `ExecutionSandbox.events.Event` stream are the genuinely callable Effect RPC surface.
 
 The public service is Layer-first and test-substitutable.
 
 ## Methods
 
-| Method        | Payload | Success                            |
-| ------------- | ------- | ---------------------------------- |
-| `isSupported` | `void`  | `{ supported, reason? }`           |
-| `events`      | `void`  | stream of sandbox lifecycle events |
+| Method        | Payload | Success                                |
+| ------------- | ------- | -------------------------------------- |
+| `isSupported` | `void`  | `{ supported, reason? }`               |
+| `events`      | `void`  | stream `ExecutionSandbox.events.Event` |
+
+The bridge host event method remains `ExecutionSandbox.Event`; that name is a
+native/web protocol boundary detail.
 
 ## Capability facts (non-callable)
 
@@ -65,7 +68,7 @@ Production OS isolation is tracked in [issue #1406](https://github.com/Rika-Labs
 | Windows  | `unsupported` | `host-adapter-unimplemented` |
 | Linux    | `unsupported` | `host-adapter-unimplemented` |
 
-`isSupported` returns `{ supported: false, reason: "host-adapter-unimplemented" }`. The bridge-backed `ExecutionSandbox.Event` stream fails as typed `Unsupported` before opening a host subscription until an OS-enforced native adapter can publish lifecycle events.
+`isSupported` returns `{ supported: false, reason: "host-adapter-unimplemented" }`. The bridge-backed `ExecutionSandbox.events.Event` stream fails as typed `Unsupported` before opening a host subscription until an OS-enforced native adapter can publish lifecycle events.
 
 ## Testing
 
