@@ -3179,11 +3179,6 @@
       "signature": "const SystemAppearanceHandlersLive: Layer.Layer<import(\"effect/unstable/rpc/Rpc\").Handler<\"SystemAppearance.getAppearance\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"SystemAppearance.getAccentColor\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"SystemAppearance.getReducedMotion\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"SystemAppearance.getReducedTransparency\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"SystemAppearance.isSupported\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"SystemAppearance.events.AppearanceChanged\">, never, SystemAppearance>"
     },
     {
-      "name": "SystemAppearanceLive",
-      "kind": "value",
-      "signature": "const SystemAppearanceLive: Layer.Layer<SystemAppearance, never, SystemAppearanceClient>"
-    },
-    {
       "name": "SystemAppearanceMethodNames",
       "kind": "value",
       "signature": "const SystemAppearanceMethodNames: readonly [\"getAppearance\", \"getAccentColor\", \"getReducedMotion\", \"getReducedTransparency\", \"isSupported\"]"

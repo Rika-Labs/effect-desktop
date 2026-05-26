@@ -111,6 +111,12 @@ event subscription.
 TypeScript appearance stream. Native appearance events are host-backed on macOS
 and Windows and fail as typed unsupported on Linux.
 
+## Migration
+
+Use `SystemAppearance.layer` directly when wiring the default service layer. `SystemAppearanceLive` was removed because it only renamed the canonical Effect service layer and did not add durable desktop-specific policy, lifecycle, security, event semantics, or protocol translation.
+
+Architecture-debt sweep outcome: removed the shallow `SystemAppearanceLive` alias; no additional wrapper debt was found in the SystemAppearance service, RPC contract, surface, handler, bridge mapper, or packaged Screen/Appearance demo paths.
+
 ## Related
 
 - Reference: [React native hooks](../react/native-hooks.md)

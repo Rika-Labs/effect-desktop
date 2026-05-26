@@ -755,7 +755,6 @@ export {
   SystemAppearance,
   SystemAppearanceClient,
   SystemAppearanceHandlersLive,
-  SystemAppearanceLive,
   SystemAppearanceMethodNames,
   SystemAppearanceRpcs,
   SystemAppearanceSurface,

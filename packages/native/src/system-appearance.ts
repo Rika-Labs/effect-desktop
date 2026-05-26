@@ -119,8 +119,6 @@ export class SystemAppearance extends Context.Service<
   )
 }
 
-export const SystemAppearanceLive = SystemAppearance.layer
-
 export type SystemAppearanceRpc = RpcGroup.Rpcs<typeof SystemAppearanceRpcGroup>
 
 export type SystemAppearanceRpcHandlers<R = never> = NativeRpcHandlers<

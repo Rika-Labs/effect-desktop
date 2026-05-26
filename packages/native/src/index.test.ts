@@ -220,7 +220,6 @@ import {
   SystemAppearance,
   SystemAppearanceHandlersLive,
   SystemAppearanceRpcs,
-  SystemAppearanceLive,
   SystemAppearanceMethodNames,
   SystemAppearanceSurface,
   Tray,
@@ -466,6 +465,7 @@ test("native package root keeps contracts and implementation helpers behind subp
       expect("AttachmentIntakeLive" in native).toBe(false)
       expect("ResidentLifecycleLive" in native).toBe(false)
       expect("PowerMonitorLive" in native).toBe(false)
+      expect("SystemAppearanceLive" in native).toBe(false)
       expect("makeUnsupportedClipboardClient" in native).toBe(false)
       expect("makeClipboardBridgeClientLayer" in native).toBe(false)
       expect("makeHostClipboardRpcRuntime" in native).toBe(false)
@@ -477,7 +477,6 @@ test("native services expose canonical static layers", () => {
   expect(ClipboardLive).toBe(Clipboard.layer)
   expect(DialogLive).toBe(Dialog.layer)
   expect(NotificationLive).toBe(Notification.layer)
-  expect(SystemAppearanceLive).toBe(SystemAppearance.layer)
   expect(UpdaterLive).toBe(Updater.layer)
   expect(WebViewLive).toBe(WebView.layer)
   expect(AppEventRouterLive).toBe(AppEventRouter.layer)
@@ -10335,7 +10334,7 @@ test("SystemAppearance service maps result wrappers to public values", () =>
           }
         }),
         Layer.provide(
-          SystemAppearanceLive,
+          SystemAppearance.layer,
           Layer.succeed(SystemAppearanceClient)(systemAppearanceClient(calls))
         )
       )
@@ -10395,7 +10394,7 @@ test("SystemAppearance bridge client decodes nullable accent color and events", 
             accentSupported: yield* appearance.isSupported("getAccentColor")
           }
         }),
-        Layer.provide(SystemAppearanceLive, SystemAppearanceSurface.bridgeClientLayer(exchange))
+        Layer.provide(SystemAppearance.layer, SystemAppearanceSurface.bridgeClientLayer(exchange))
       )
 
       expect(result.mode).toBe("dark")
@@ -10495,7 +10494,7 @@ test("SystemAppearance bridge client rejects invalid color channels as InvalidOu
             )
           }
         }),
-        Layer.provide(SystemAppearanceLive, SystemAppearanceSurface.bridgeClientLayer(exchange))
+        Layer.provide(SystemAppearance.layer, SystemAppearanceSurface.bridgeClientLayer(exchange))
       )
 
       expectExitFailure(result.accent, (error) => hasErrorTag(error, "InvalidOutput"))
@@ -10536,7 +10535,7 @@ test("SystemAppearance bridge client rejects partial appearance events as Invali
             )
           }),
           Layer.provide(
-            SystemAppearanceLive,
+            SystemAppearance.layer,
             SystemAppearanceSurface.bridgeClientLayer(systemAppearanceEventExchange(payload))
           )
         )
@@ -10571,7 +10570,7 @@ test("SystemAppearance bridge client fails unsupported appearance events before 
             appearance.onAppearanceChanged().pipe(Stream.take(1), Stream.runCollect)
           )
         }),
-        Layer.provide(SystemAppearanceLive, SystemAppearanceSurface.bridgeClientLayer(exchange))
+        Layer.provide(SystemAppearance.layer, SystemAppearanceSurface.bridgeClientLayer(exchange))
       )
 
       expectExitFailure(result, (error) => hasErrorTag(error, "Unsupported"))
