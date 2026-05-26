@@ -94,11 +94,6 @@
       "signature": "const AppHandlersLive: Layer.Layer<import(\"effect/unstable/rpc/Rpc\").Handler<\"App.quit\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"App.exit\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"App.restart\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"App.relaunch\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"App.focus\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"App.activate\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"App.requestSingleInstanceLock\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"App.releaseSingleInstanceLock\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"App.events.onSecondInstance\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"App.events.onOpenFile\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"App.events.onOpenUrl\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"App.events.onBeforeQuit\">, never, App>"
     },
     {
-      "name": "AppLive",
-      "kind": "value",
-      "signature": "const AppLive: Layer.Layer<App, never, AppClient>"
-    },
-    {
       "name": "AppMetadata",
       "kind": "class",
       "signature": "export class AppMetadata extends Context.Service<AppMetadata, AppMetadataClientApi>()( \"@orika/native/app-metadata/AppMetadata\" ) {}"

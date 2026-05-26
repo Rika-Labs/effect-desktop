@@ -111,7 +111,6 @@ import {
   App,
   AppHandlersLive,
   AppRpcs,
-  AppLive,
   AppMethodNames,
   AppSurface,
   AppMetadata,
@@ -466,6 +465,7 @@ test("native package root keeps contracts and implementation helpers behind subp
       expect("DialogLive" in native).toBe(false)
       expect("WebViewLive" in native).toBe(false)
       expect("UpdaterLive" in native).toBe(false)
+      expect("AppLive" in native).toBe(false)
       expect("makeUnsupportedClipboardClient" in native).toBe(false)
       expect("makeClipboardBridgeClientLayer" in native).toBe(false)
       expect("makeHostClipboardRpcRuntime" in native).toBe(false)
@@ -473,7 +473,6 @@ test("native package root keeps contracts and implementation helpers behind subp
   ))
 
 test("native services expose canonical static layers", () => {
-  expect(AppLive).toBe(App.layer)
   expect(AppEventRouterLive).toBe(AppEventRouter.layer)
 })
 
@@ -1568,7 +1567,7 @@ test("App direct client consumes the canonical open-file event stream", () =>
           const app = yield* App
           return yield* app.onOpenFile().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
         }),
-        Layer.provide(AppLive, Layer.provide(AppSurface.clientLayer, protocolLayer))
+        Layer.provide(App.layer, Layer.provide(AppSurface.clientLayer, protocolLayer))
       )
 
       expect(event).toEqual(new AppOpenFileEvent({ path: "/tmp/README.md" }))
@@ -1595,7 +1594,7 @@ test("App service delegates through a substitutable AppClient port", () =>
 
             return { protocolEvents }
           }),
-          Layer.provide(AppLive, Layer.succeed(AppClient)(appClient(calls)))
+          Layer.provide(App.layer, Layer.succeed(AppClient)(appClient(calls)))
         )
       )
 
@@ -1639,7 +1638,7 @@ test("App bridge client sends typed host envelopes and decodes event streams", (
 
             return { openFiles }
           }),
-          Layer.provide(AppLive, AppSurface.bridgeClientLayer(exchange))
+          Layer.provide(App.layer, AppSurface.bridgeClientLayer(exchange))
         )
       )
 
@@ -1751,14 +1750,14 @@ test("App single-instance service propagates unsupported platform and host failu
           const app = yield* App
           return yield* Effect.exit(app.requestSingleInstanceLock())
         }),
-        Layer.provide(AppLive, Layer.succeed(AppClient)(unsupportedClient))
+        Layer.provide(App.layer, Layer.succeed(AppClient)(unsupportedClient))
       )
       const hostFailureExit = yield* runScoped(
         Effect.gen(function* () {
           const app = yield* App
           return yield* Effect.exit(app.releaseSingleInstanceLock())
         }),
-        Layer.provide(AppLive, Layer.succeed(AppClient)(hostFailureClient))
+        Layer.provide(App.layer, Layer.succeed(AppClient)(hostFailureClient))
       )
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
@@ -1791,7 +1790,7 @@ test("App bridge client decodes event streams without host requests", () =>
 
       const app = yield* runScoped(
         App.asEffect(),
-        Layer.provide(AppLive, AppSurface.bridgeClientLayer(exchange))
+        Layer.provide(App.layer, AppSurface.bridgeClientLayer(exchange))
       )
 
       const eventResult = yield* app.onOpenFile().pipe(Stream.take(1), Stream.runCollect)
@@ -1862,7 +1861,7 @@ test("App bridge client rejects lifecycle events with excess fields as InvalidOu
               app.onSecondInstance().pipe(Stream.take(1), Stream.runCollect)
             )
           }),
-          Layer.provide(AppLive, AppSurface.bridgeClientLayer(exchange))
+          Layer.provide(App.layer, AppSurface.bridgeClientLayer(exchange))
         )
 
         expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
@@ -1893,7 +1892,7 @@ test("App bridge client rejects event envelopes for the wrong method", () =>
             const app = yield* App
             return yield* app.onOpenFile().pipe(Stream.take(1), Stream.runCollect)
           }),
-          Layer.provide(AppLive, AppSurface.bridgeClientLayer(exchange))
+          Layer.provide(App.layer, AppSurface.bridgeClientLayer(exchange))
         )
       )
 
@@ -1930,7 +1929,7 @@ test("App bridge client decodes second-instance activation reasons", () =>
           const app = yield* App
           return yield* app.onSecondInstance().pipe(Stream.take(1), Stream.runCollect)
         }),
-        Layer.provide(AppLive, AppSurface.bridgeClientLayer(exchange))
+        Layer.provide(App.layer, AppSurface.bridgeClientLayer(exchange))
       )
 
       expect(Array.from(events)).toEqual([
@@ -1960,7 +1959,7 @@ test("App single-instance lock rejects invalid primary pid results", () =>
             return yield* Effect.exit(client.requestSingleInstanceLock())
           }),
           Layer.provide(
-            AppLive,
+            App.layer,
             AppSurface.bridgeClientLayer(
               appExchange(requests, (request) =>
                 request.method === "App.requestSingleInstanceLock"
@@ -2041,7 +2040,7 @@ test("App bridge client rejects malformed App lifecycle event payloads as Invali
           return yield* Effect.exit(app.onOpenUrl().pipe(Stream.take(1), Stream.runCollect))
         }),
         Layer.provide(
-          AppLive,
+          App.layer,
           AppSurface.bridgeClientLayer(invalidUrlExchange, {
             nextRequestId: nextId(["unused"]),
             nextTraceId: nextId(["unused"]),
@@ -2056,7 +2055,7 @@ test("App bridge client rejects malformed App lifecycle event payloads as Invali
           return yield* Effect.exit(app.onSecondInstance().pipe(Stream.take(1), Stream.runCollect))
         }),
         Layer.provide(
-          AppLive,
+          App.layer,
           AppSurface.bridgeClientLayer(invalidSecondInstanceExchange, {
             nextRequestId: nextId(["unused"]),
             nextTraceId: nextId(["unused"]),
@@ -2071,7 +2070,7 @@ test("App bridge client rejects malformed App lifecycle event payloads as Invali
           return yield* Effect.exit(app.onBeforeQuit().pipe(Stream.take(1), Stream.runCollect))
         }),
         Layer.provide(
-          AppLive,
+          App.layer,
           AppSurface.bridgeClientLayer(invalidBeforeQuitExchange, {
             nextRequestId: nextId(["unused"]),
             nextTraceId: nextId(["unused"]),
@@ -2119,7 +2118,7 @@ test("App bridge client accepts safe absolute onOpenFile paths", () =>
             return yield* app.onOpenFile().pipe(Stream.take(1), Stream.runCollect)
           }),
           Layer.provide(
-            AppLive,
+            App.layer,
             AppSurface.bridgeClientLayer(exchange, {
               nextRequestId: nextId(["unused"]),
               nextTraceId: nextId(["unused"]),
@@ -2172,7 +2171,7 @@ test("App bridge client rejects unsafe onOpenFile paths as InvalidOutput", () =>
             return yield* Effect.exit(app.onOpenFile().pipe(Stream.take(1), Stream.runCollect))
           }),
           Layer.provide(
-            AppLive,
+            App.layer,
             AppSurface.bridgeClientLayer(exchange, {
               nextRequestId: nextId(["unused"]),
               nextTraceId: nextId(["unused"]),
@@ -2221,7 +2220,7 @@ test("App bridge client rejects dangerous onOpenUrl schemes as InvalidOutput", (
             const app = yield* App
             return yield* Effect.exit(app.onOpenUrl().pipe(Stream.take(1), Stream.runCollect))
           }),
-          Layer.provide(AppLive, AppSurface.bridgeClientLayer(exchange))
+          Layer.provide(App.layer, AppSurface.bridgeClientLayer(exchange))
         )
 
         expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
@@ -2236,7 +2235,7 @@ test("App bridge client rejects empty or NUL-bearing lifecycle args as InvalidAr
       const client = yield* runScoped(
         App.asEffect(),
         Layer.provide(
-          AppLive,
+          App.layer,
           AppSurface.bridgeClientLayer(
             appExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
@@ -2267,7 +2266,7 @@ test("App bridge client rejects non-portable quit exit codes as InvalidArgument"
       const client = yield* runScoped(
         App.asEffect(),
         Layer.provide(
-          AppLive,
+          App.layer,
           AppSurface.bridgeClientLayer(
             appExchange(requests, () => ({ kind: "success", payload: undefined }))
           )

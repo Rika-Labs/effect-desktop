@@ -196,8 +196,6 @@ export class App extends Context.Service<App, AppServiceApi>()("@orika/native/Ap
   )
 }
 
-export const AppLive = App.layer
-
 export type AppRpc = RpcGroup.Rpcs<typeof AppRpcGroup>
 
 export type AppRpcHandlers<R = never> = NativeRpcHandlers<typeof AppRpcGroup, R>

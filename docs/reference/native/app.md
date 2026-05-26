@@ -101,6 +101,17 @@ contracts. `Autostart` owns OS-level login-item and autostart contracts.
 `AppMetadata` owns app identity, paths, launch context, and environment-shape
 contracts. App no longer exposes a duplicate protocol registration method.
 
+## Migration
+
+Use `App.layer` directly when composing the App service. `AppLive` was removed
+because it was only a public alias for the canonical Effect service layer.
+
+Architecture-debt sweep outcome for #1918: removed the shallow `AppLive` alias;
+kept `App`, `AppClient`, `AppSurface`, `AppRpcs`, `AppHandlersLive`, strict
+bridge decoding, invalid argument guards, host error mapping, single-instance
+event streams, and `AppEventRouter` because they own durable service,
+native/web boundary, validation, lifecycle, or event-routing semantics.
+
 ## Related
 
 - Reference: [`AppMetadata`](app-metadata.md), [`Association`](association.md), [`Autostart`](autostart.md), [`Window`](window.md), [`PowerMonitor`](power-monitor.md)

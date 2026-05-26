@@ -18,7 +18,6 @@ export {
   App,
   AppClient,
   AppHandlersLive,
-  AppLive,
   AppMethodNames,
   AppRpcs,
   AppSurface,
