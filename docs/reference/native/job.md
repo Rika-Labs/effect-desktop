@@ -58,11 +58,13 @@ semantics.
 
 ## Persistence
 
-The Rust host stores job records in a JSON file. Set `EFFECT_DESKTOP_JOB_STORE` to choose the file path. Otherwise the host uses the platform application data directory:
+The Rust host stores job records in a JSON file. Set `EFFECT_DESKTOP_JOB_STORE` in the native host process environment to choose the file path. `desktop.config.ts` `env` values are written to `runtimeManifest.env` and are applied only to the Bun/Node runtime child, so they do not change the host-owned job store path for a packaged app.
 
-- macOS: `~/Library/Application Support/effect-desktop/jobs/jobs.json`
-- Windows: `%LOCALAPPDATA%/effect-desktop/jobs/jobs.json`
-- Linux: `$XDG_STATE_HOME/effect-desktop/jobs/jobs.json` or `~/.local/state/effect-desktop/jobs/jobs.json`
+Without an explicit host-process override, packaged apps use their manifest app id as the store namespace. Source/dev hosts without a packaged manifest use `effect-desktop`:
+
+- macOS: `~/Library/Application Support/<app-id>/jobs/jobs.json`
+- Windows: `%LOCALAPPDATA%/<app-id>/jobs/jobs.json`
+- Linux: `$XDG_STATE_HOME/<app-id>/jobs/jobs.json` or `~/.local/state/<app-id>/jobs/jobs.json`
 
 ## Permissions
 

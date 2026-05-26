@@ -34,6 +34,11 @@ struct JobStore {
     jobs: BTreeMap<String, JobRecord>,
 }
 
+#[derive(Debug, Deserialize)]
+struct AppManifestJobStoreIdentity {
+    id: String,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct JobRecord {
@@ -351,26 +356,64 @@ fn store_file(operation: &'static str) -> Result<PathBuf, HostProtocolError> {
         .ok_or_else(|| HostProtocolError::unsupported(STORE_UNAVAILABLE_REASON, operation))
 }
 
+fn default_store_namespace() -> String {
+    let manifest_path = std::env::current_exe()
+        .ok()
+        .and_then(|executable| crate::runtime::manifest_path_for_exe(&executable));
+    store_namespace_from_manifest_path(manifest_path.as_deref())
+        .unwrap_or_else(|| STORE_DIR.to_string())
+}
+
+fn store_namespace_from_manifest_path(manifest_path: Option<&Path>) -> Option<String> {
+    let source = fs::read_to_string(manifest_path?).ok()?;
+    let manifest = serde_json::from_str::<AppManifestJobStoreIdentity>(&source).ok()?;
+    is_store_namespace_app_id(&manifest.id).then_some(manifest.id)
+}
+
+fn is_store_namespace_app_id(value: &str) -> bool {
+    let mut segment_count = 0;
+    for segment in value.split('.') {
+        segment_count += 1;
+        let Some(first) = segment.bytes().next() else {
+            return false;
+        };
+        if !first.is_ascii_alphabetic() {
+            return false;
+        }
+        if !segment
+            .bytes()
+            .skip(1)
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+        {
+            return false;
+        }
+    }
+    segment_count >= 2
+}
+
 #[cfg(target_os = "macos")]
 fn default_store_root() -> Option<PathBuf> {
+    let namespace = default_store_namespace();
     std::env::var_os("HOME").map(PathBuf::from).map(|home| {
         home.join("Library")
             .join("Application Support")
-            .join(STORE_DIR)
+            .join(namespace)
             .join(STORE_ROOT)
     })
 }
 
 #[cfg(target_os = "windows")]
 fn default_store_root() -> Option<PathBuf> {
+    let namespace = default_store_namespace();
     std::env::var_os("LOCALAPPDATA")
         .or_else(|| std::env::var_os("APPDATA"))
         .map(PathBuf::from)
-        .map(|data| data.join(STORE_DIR).join(STORE_ROOT))
+        .map(|data| data.join(namespace).join(STORE_ROOT))
 }
 
 #[cfg(target_os = "linux")]
 fn default_store_root() -> Option<PathBuf> {
+    let namespace = default_store_namespace();
     std::env::var_os("XDG_STATE_HOME")
         .map(PathBuf::from)
         .or_else(|| {
@@ -378,7 +421,7 @@ fn default_store_root() -> Option<PathBuf> {
                 .map(PathBuf::from)
                 .map(|home| home.join(".local").join("state"))
         })
-        .map(|state| state.join(STORE_DIR).join(STORE_ROOT))
+        .map(|state| state.join(namespace).join(STORE_ROOT))
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
@@ -573,5 +616,50 @@ fn state_name(state: &JobState) -> &'static str {
         JobState::Interrupted => "interrupted",
         JobState::Succeeded => "succeeded",
         JobState::Failed => "failed",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::store_namespace_from_manifest_path;
+    use std::fs;
+    use uuid::Uuid;
+
+    #[test]
+    fn store_namespace_reads_packaged_manifest_app_id() {
+        let root = temp_root("job-store-manifest-app-id");
+        fs::create_dir_all(&root).expect("temp root should create");
+        let manifest_path = root.join("app-manifest.json");
+        fs::write(
+            &manifest_path,
+            r#"{"id":"dev.effect-desktop.qa.job-runtime"}"#,
+        )
+        .expect("manifest should write");
+
+        assert_eq!(
+            store_namespace_from_manifest_path(Some(&manifest_path)).as_deref(),
+            Some("dev.effect-desktop.qa.job-runtime")
+        );
+
+        fs::remove_dir_all(root).expect("temp root should remove");
+    }
+
+    #[test]
+    fn store_namespace_rejects_path_shaped_manifest_app_id() {
+        let root = temp_root("job-store-manifest-invalid-app-id");
+        fs::create_dir_all(&root).expect("temp root should create");
+        let manifest_path = root.join("app-manifest.json");
+        fs::write(&manifest_path, r#"{"id":"../escape"}"#).expect("manifest should write");
+
+        assert_eq!(
+            store_namespace_from_manifest_path(Some(&manifest_path)),
+            None
+        );
+
+        fs::remove_dir_all(root).expect("temp root should remove");
+    }
+
+    fn temp_root(name: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("{name}-{}", Uuid::now_v7()))
     }
 }
