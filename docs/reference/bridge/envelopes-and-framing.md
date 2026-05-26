@@ -51,6 +51,10 @@ The envelope JSON is wrapped in a frame. Two framings supported:
 
 See [`Transport`](../services/transport.md) for `frame`, `unframe`, `unframeStream`.
 
+## Runtime stdio
+
+After the runtime writes `runtime.ready`, stdout is reserved for big-endian length-prefixed host protocol frames. Logs, diagnostics, and framework output must use stderr. `layerStdioSocket` enforces this by routing Effect logging and console stdout helpers to stderr while leaving explicit protocol writes on stdout.
+
 ## Errors
 
 - `HostProtocolInvalidArgumentError` — payload didn't decode against the schema.

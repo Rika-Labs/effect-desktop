@@ -264,6 +264,73 @@ test("runtime entry runs from a Node-targeted build", () =>
     })
   ))
 
+test("stdio runtime layer routes Effect logs away from protocol stdout after ready", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* runWithBun(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem
+          return yield* fs.makeTempDirectory({
+            directory: PACKAGE_ROOT,
+            prefix: ".runtime-stdio-log-"
+          })
+        }).pipe(Effect.orDie)
+      )
+      const runtimePath = join(directory, "runtime.ts")
+      const stdioSocketSpecifier = pathToFileURL(
+        pathService.resolve(PACKAGE_ROOT, "src/runtime/stdio-socket.ts")
+      ).href
+
+      yield* runWithBun(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem
+          yield* fs.writeFileString(
+            runtimePath,
+            [
+              'import { Effect, ManagedRuntime } from "effect"',
+              `import { layerStdioSocket, writeStdout } from ${encodeUnknownJson(stdioSocketSpecifier)}`,
+              "const runtime = ManagedRuntime.make(layerStdioSocket)",
+              "await runtime.runPromise(Effect.gen(function* () {",
+              '  yield* writeStdout(`${JSON.stringify({ event: "runtime.ready", version: "test" })}\\n`)',
+              '  yield* Effect.logInfo("protocol-safe-runtime-log")',
+              '  console.log("protocol-safe-console-log")',
+              "}))",
+              "await runtime.dispose()"
+            ].join("\n")
+          )
+        }).pipe(Effect.orDie)
+      )
+
+      try {
+        const result = yield* Effect.promise(() =>
+          runRuntimeWithFakeHost({
+            runtimeArgs: [runtimePath],
+            windowSmokeTest: false
+          })
+        )
+
+        expect(result.exitCode).toBe(0)
+        expect(result.readyEvents).toEqual([
+          {
+            event: "runtime.ready",
+            version: "test"
+          }
+        ])
+        expect(result.methods).toEqual([])
+        expect(result.trailingStdoutBytes).toBe(0)
+        expect(result.stderr).toContain("protocol-safe-runtime-log")
+        expect(result.stderr).toContain("protocol-safe-console-log")
+      } finally {
+        yield* runWithBun(
+          Effect.gen(function* () {
+            const fs = yield* FileSystem.FileSystem
+            yield* fs.remove(directory, { recursive: true, force: true })
+          }).pipe(Effect.orDie)
+        )
+      }
+    })
+  ))
+
 interface RuntimeHostOptions {
   readonly appModule?: string
   readonly startupWindows?: unknown
