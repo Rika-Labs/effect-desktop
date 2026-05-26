@@ -2574,11 +2574,6 @@
       "signature": "const PowerMonitorHandlersLive: Layer.Layer<import(\"effect/unstable/rpc/Rpc\").Handler<\"PowerMonitor.isSupported\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"PowerMonitor.events.Suspend\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"PowerMonitor.events.Resume\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"PowerMonitor.events.Shutdown\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"PowerMonitor.events.LockScreen\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"PowerMonitor.events.UnlockScreen\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"PowerMonitor.events.PowerSourceChanged\">, never, PowerMonitor>"
     },
     {
-      "name": "PowerMonitorLive",
-      "kind": "value",
-      "signature": "const PowerMonitorLive: Layer.Layer<PowerMonitor, never, PowerMonitorClient>"
-    },
-    {
       "name": "PowerMonitorMethodNames",
       "kind": "value",
       "signature": "const PowerMonitorMethodNames: readonly [\"isSupported\"]"

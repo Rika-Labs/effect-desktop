@@ -683,7 +683,6 @@ export {
   PowerMonitor,
   PowerMonitorClient,
   PowerMonitorHandlersLive,
-  PowerMonitorLive,
   PowerMonitorMethodNames,
   PowerMonitorRpcs,
   PowerMonitorSurface,

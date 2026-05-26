@@ -69,6 +69,12 @@ runtime connection and are removed when the runtime disconnects.
 receives native OS events on macOS and typed unsupported failures on Windows and
 Linux.
 
+## Migration
+
+Use `PowerMonitor.layer` directly when wiring the default service layer. `PowerMonitorLive` was removed because it only renamed the canonical Effect service layer and did not add durable desktop-specific policy, lifecycle, security, event semantics, or protocol translation.
+
+Architecture-debt sweep outcome: removed the shallow `PowerMonitorLive` alias; no additional wrapper debt was found in the PowerMonitor service, surface, handler, or packaged Power Monitor demo paths.
+
 ## Related
 
 - Reference: [React native hooks](../react/native-hooks.md)

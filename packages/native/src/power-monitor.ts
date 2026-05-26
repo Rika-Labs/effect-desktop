@@ -137,8 +137,6 @@ export class PowerMonitor extends Context.Service<PowerMonitor, PowerMonitorServ
   )
 }
 
-export const PowerMonitorLive = PowerMonitor.layer
-
 export type PowerMonitorRpc = RpcGroup.Rpcs<typeof PowerMonitorRpcGroup>
 
 export type PowerMonitorRpcHandlers<R = never> = NativeRpcHandlers<typeof PowerMonitorRpcGroup, R>

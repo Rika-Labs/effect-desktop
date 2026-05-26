@@ -197,7 +197,6 @@ import {
   PowerMonitor,
   PowerMonitorHandlersLive,
   PowerMonitorRpcs,
-  PowerMonitorLive,
   PowerMonitorMethodNames,
   PowerMonitorSurface,
   RecentDocuments,
@@ -466,6 +465,7 @@ test("native package root keeps contracts and implementation helpers behind subp
       expect("DistributionParityLive" in native).toBe(false)
       expect("AttachmentIntakeLive" in native).toBe(false)
       expect("ResidentLifecycleLive" in native).toBe(false)
+      expect("PowerMonitorLive" in native).toBe(false)
       expect("makeUnsupportedClipboardClient" in native).toBe(false)
       expect("makeClipboardBridgeClientLayer" in native).toBe(false)
       expect("makeHostClipboardRpcRuntime" in native).toBe(false)
@@ -477,7 +477,6 @@ test("native services expose canonical static layers", () => {
   expect(ClipboardLive).toBe(Clipboard.layer)
   expect(DialogLive).toBe(Dialog.layer)
   expect(NotificationLive).toBe(Notification.layer)
-  expect(PowerMonitorLive).toBe(PowerMonitor.layer)
   expect(SystemAppearanceLive).toBe(SystemAppearance.layer)
   expect(UpdaterLive).toBe(Updater.layer)
   expect(WebViewLive).toBe(WebView.layer)
@@ -10789,7 +10788,7 @@ test("PowerMonitor bridge client decodes power event streams", () =>
           }
         }),
         Layer.provide(
-          PowerMonitorLive,
+          PowerMonitor.layer,
           PowerMonitorSurface.bridgeClientLayer(powerMonitorExchange())
         )
       )
@@ -10867,7 +10866,7 @@ test("PowerMonitor bridge client rejects blank event reasons as InvalidOutput", 
                       : power.onUnlockScreen().pipe(Stream.take(1), Stream.runCollect)
             )
           }),
-          Layer.provide(PowerMonitorLive, PowerMonitorSurface.bridgeClientLayer(exchange))
+          Layer.provide(PowerMonitor.layer, PowerMonitorSurface.bridgeClientLayer(exchange))
         )
 
         expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
@@ -10898,7 +10897,7 @@ test("PowerMonitor bridge client fails unsupported event streams before subscrip
           const power = yield* PowerMonitor
           return yield* Effect.exit(power.onSuspend().pipe(Stream.take(1), Stream.runCollect))
         }),
-        Layer.provide(PowerMonitorLive, PowerMonitorSurface.bridgeClientLayer(exchange))
+        Layer.provide(PowerMonitor.layer, PowerMonitorSurface.bridgeClientLayer(exchange))
       )
 
       expectExitFailure(exit, (error) => hasErrorTag(error, "Unsupported"))
