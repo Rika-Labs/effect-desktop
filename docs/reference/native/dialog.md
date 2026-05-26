@@ -49,6 +49,17 @@ arguments, invalid host output, and host failures are tagged errors.
 
 `DialogTest(options)` from `@orika/test`.
 
+## Migration
+
+Use `Dialog.layer` directly when wiring the default service layer.
+`DialogLive` was removed because it only renamed the canonical Effect service
+layer and did not add durable desktop-specific policy, lifecycle, security,
+validation, event semantics, or protocol translation.
+
+Architecture-debt sweep outcome: removed the shallow `DialogLive` alias; no
+additional wrapper debt was found in the Dialog service, RPC contract, surface,
+handler, bridge mapper, or packaged Dialog Actions demo path.
+
 ## Related
 
 - How-to: [Integrate native services](../../how-to/integrate-native-services.md)

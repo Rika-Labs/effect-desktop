@@ -151,7 +151,6 @@ import {
   DialogOpenDirectory,
   DialogOpenFile,
   DialogRpcs,
-  DialogLive,
   DialogMethodNames,
   DialogSurface,
   DisplayCaptureHandlersLive,
@@ -466,6 +465,7 @@ test("native package root keeps contracts and implementation helpers behind subp
       expect("SystemAppearanceLive" in native).toBe(false)
       expect("ClipboardLive" in native).toBe(false)
       expect("NotificationLive" in native).toBe(false)
+      expect("DialogLive" in native).toBe(false)
       expect("makeUnsupportedClipboardClient" in native).toBe(false)
       expect("makeClipboardBridgeClientLayer" in native).toBe(false)
       expect("makeHostClipboardRpcRuntime" in native).toBe(false)
@@ -474,7 +474,6 @@ test("native package root keeps contracts and implementation helpers behind subp
 
 test("native services expose canonical static layers", () => {
   expect(AppLive).toBe(App.layer)
-  expect(DialogLive).toBe(Dialog.layer)
   expect(UpdaterLive).toBe(Updater.layer)
   expect(WebViewLive).toBe(WebView.layer)
   expect(AppEventRouterLive).toBe(AppEventRouter.layer)
@@ -5111,7 +5110,7 @@ test("Dialog service delegates through a substitutable DialogClient port", () =>
 
           return { confirmed, directories, files, savePath }
         }),
-        Layer.provide(DialogLive, Layer.succeed(DialogClient)(dialogClient(calls)))
+        Layer.provide(Dialog.layer, Layer.succeed(DialogClient)(dialogClient(calls)))
       )
 
       expect(result.files).toEqual(["/canonical/file-a.txt", "/canonical/file-b.txt"])
@@ -5159,7 +5158,7 @@ test("Dialog bridge client sends typed host envelopes and decodes outputs", () =
 
           return { confirmed, directories, files, savePath }
         }),
-        Layer.provide(DialogLive, DialogSurface.bridgeClientLayer(exchange))
+        Layer.provide(Dialog.layer, DialogSurface.bridgeClientLayer(exchange))
       )
 
       expect(result.files).toEqual(["/canonical/file.txt"])
@@ -5187,7 +5186,7 @@ test("Dialog bridge client represents save cancellation as data", () =>
           const dialog = yield* Dialog
           return yield* dialog.saveFile({ defaultPath: "/tmp/cancel.txt" })
         }),
-        Layer.provide(DialogLive, DialogSurface.bridgeClientLayer(exchange))
+        Layer.provide(Dialog.layer, DialogSurface.bridgeClientLayer(exchange))
       )
 
       expect(result).toBeUndefined()
@@ -5212,7 +5211,7 @@ test("Dialog bridge client preserves host failure errors", () =>
             const dialog = yield* Dialog
             return yield* dialog.openFile({ defaultPath: "/tmp/input.txt" })
           }),
-          Layer.provide(DialogLive, DialogSurface.bridgeClientLayer(exchange))
+          Layer.provide(Dialog.layer, DialogSurface.bridgeClientLayer(exchange))
         )
       )
 
@@ -5228,7 +5227,7 @@ test("Dialog bridge client returns invalid input as typed Effect failures", () =
       const client = yield* runScoped(
         Dialog.asEffect(),
         Layer.provide(
-          DialogLive,
+          Dialog.layer,
           DialogSurface.bridgeClientLayer(
             dialogExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
@@ -9592,7 +9591,7 @@ test("DialogSurface test client layer runs Dialog RPCs through the generated ser
     Effect.gen(function* () {
       const calls: string[] = []
       const testLayer = DialogSurface.testClientLayer(
-        Layer.provide(DialogLive, Layer.succeed(DialogClient)(dialogClient(calls)))
+        Layer.provide(Dialog.layer, Layer.succeed(DialogClient)(dialogClient(calls)))
       )
       const result = yield* runScoped(
         Effect.gen(function* () {
@@ -15207,7 +15206,7 @@ test("Dialog bridge client rejects empty message strings as InvalidArgument", ()
       const client = yield* runScoped(
         Dialog.asEffect(),
         Layer.provide(
-          DialogLive,
+          Dialog.layer,
           DialogSurface.bridgeClientLayer(
             dialogExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
@@ -15230,7 +15229,7 @@ test("Dialog bridge client rejects NUL bytes in defaultPath as InvalidArgument",
       const client = yield* runScoped(
         Dialog.asEffect(),
         Layer.provide(
-          DialogLive,
+          Dialog.layer,
           DialogSurface.bridgeClientLayer(
             dialogExchange(requests, () => ({
               kind: "success",
@@ -15258,7 +15257,7 @@ test("Dialog bridge client rejects malformed file filters before transport", () 
       const client = yield* runScoped(
         Dialog.asEffect(),
         Layer.provide(
-          DialogLive,
+          Dialog.layer,
           DialogSurface.bridgeClientLayer(
             dialogExchange(requests, () => ({
               kind: "success",
@@ -15337,7 +15336,7 @@ test("Dialog bridge client rejects malformed host output paths as InvalidOutput"
               }
               return yield* Effect.exit(dialog.openDirectory({ defaultPath: "/tmp/seed.txt" }))
             }),
-            Layer.provide(DialogLive, DialogSurface.bridgeClientLayer(exchange))
+            Layer.provide(Dialog.layer, DialogSurface.bridgeClientLayer(exchange))
           )
 
           expectExitFailure(
@@ -15369,7 +15368,7 @@ test("Dialog bridge client runs generated methods inside the layer scope", () =>
           return yield* client.confirm({ message: "Continue?" })
         }),
         Layer.provide(
-          DialogLive,
+          Dialog.layer,
           DialogSurface.bridgeClientLayer(
             dialogExchange(requests, (request) => ({
               kind: "success",
@@ -15391,7 +15390,7 @@ test("Dialog bridge client rejects invalid native UI text before transport", () 
       const client = yield* runScoped(
         Dialog.asEffect(),
         Layer.provide(
-          DialogLive,
+          Dialog.layer,
           DialogSurface.bridgeClientLayer(
             dialogExchange(requests, () => ({
               kind: "success",

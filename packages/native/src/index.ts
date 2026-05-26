@@ -318,7 +318,6 @@ export {
   Dialog,
   DialogClient,
   DialogHandlersLive,
-  DialogLive,
   DialogMethodNames,
   DialogOpenDirectory,
   DialogOpenFile,

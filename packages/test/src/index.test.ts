@@ -88,7 +88,6 @@ import {
   ClipboardSurface,
   Dialog,
   DialogSurface,
-  DialogLive,
   Screen,
   ScreenSurface,
   Window,
@@ -1947,7 +1946,7 @@ test("DialogTest represents save cancellation as data", () => {
 
 test("Dialog unavailable platform layer returns typed Unsupported failures", () => {
   const runtime = ManagedRuntime.make(
-    Layer.provide(DialogLive, Layer.succeed(DialogClient)(makeUnavailableDialogClient()))
+    Layer.provide(Dialog.layer, Layer.succeed(DialogClient)(makeUnavailableDialogClient()))
   )
   return runtime.runPromise(
     Effect.gen(function* () {
@@ -1965,7 +1964,7 @@ test("Dialog unavailable platform layer returns typed Unsupported failures", () 
 test("Dialog bridge layer propagates host failures through the service", () => {
   const bridge = makeMockBridge()
   const runtime = ManagedRuntime.make(
-    Layer.provide(DialogLive, DialogSurface.bridgeClientLayer(bridge.exchange))
+    Layer.provide(Dialog.layer, DialogSurface.bridgeClientLayer(bridge.exchange))
   )
   return runtime.runPromise(
     Effect.gen(function* () {
@@ -2142,10 +2141,10 @@ test("native capability programs run unchanged through direct, bridge, and test 
   })
   const dialogBridge = makeMockBridge()
   const dialogLiveRuntime = ManagedRuntime.make(
-    Layer.provide(DialogLive, Layer.succeed(DialogClient)(dialogLiveClient))
+    Layer.provide(Dialog.layer, Layer.succeed(DialogClient)(dialogLiveClient))
   )
   const dialogClientRuntime = ManagedRuntime.make(
-    Layer.provide(DialogLive, DialogSurface.bridgeClientLayer(dialogBridge.exchange))
+    Layer.provide(Dialog.layer, DialogSurface.bridgeClientLayer(dialogBridge.exchange))
   )
   const dialogTestRuntime = ManagedRuntime.make(DialogTest(dialogOptions))
 

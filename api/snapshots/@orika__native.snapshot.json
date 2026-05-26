@@ -744,11 +744,6 @@
       "signature": "const DialogHandlersLive: Layer.Layer<import(\"effect/unstable/rpc/Rpc\").Handler<\"Dialog.openFile\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"Dialog.openDirectory\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"Dialog.saveFile\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"Dialog.message\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"Dialog.confirm\">, never, Dialog>"
     },
     {
-      "name": "DialogLive",
-      "kind": "value",
-      "signature": "const DialogLive: Layer.Layer<Dialog, never, DialogClient>"
-    },
-    {
       "name": "DialogMethodNames",
       "kind": "value",
       "signature": "const DialogMethodNames: readonly [\"openFile\", \"openDirectory\", \"saveFile\", \"message\", \"confirm\"]"

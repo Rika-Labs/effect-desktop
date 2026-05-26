@@ -80,8 +80,6 @@ export class Dialog extends Context.Service<Dialog, DialogServiceApi>()("@orika/
   )
 }
 
-export const DialogLive = Dialog.layer
-
 export type DialogRpcHandlers<R = never> = NativeRpcHandlers<typeof DialogRpcGroup, R>
 
 export const DialogHandlersLive = DialogRpcGroup.toLayer({
