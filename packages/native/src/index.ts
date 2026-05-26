@@ -360,7 +360,6 @@ export {
   EgressPolicyHandlersLive,
   EgressPolicyLive,
   EgressPolicyMethodNames,
-  EgressPolicyRpcEvents,
   EgressPolicyRpcs,
   EgressPolicySurface,
   makeEgressPolicyMemoryClient,

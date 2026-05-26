@@ -1,16 +1,25 @@
 import { expect, test } from "bun:test"
 import {
   type BridgeClientExchange,
+  type HostProtocolEnvelope,
+  HostProtocolEventEnvelope,
+  HostProtocolResponseEnvelope,
   type HostProtocolRequestEnvelope,
+  HostProtocolStreamByRequestEnvelope,
   type HostProtocolError,
-  makeHostProtocolInternalError
+  makeDesktopClientProtocol,
+  makeHostProtocolInternalError,
+  rpcSupport
 } from "@orika/bridge"
 import { type AuditEvent, type AuditEventsApi, makePermissionRegistry, P } from "@orika/core"
-import { Cause, Effect, Exit, ManagedRuntime, Option, Stream } from "effect"
+import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Queue, Stream } from "effect"
+import { RpcClient, RpcSchema } from "effect/unstable/rpc"
 
 import {
   EgressPolicy,
   EgressPolicyClient,
+  EgressPolicyMethodNames,
+  EgressPolicyRpcs,
   makeEgressPolicyMemoryClient,
   makeEgressPolicyServiceLayer,
   makeEgressPolicyUnsupportedClient,
@@ -19,12 +28,143 @@ import {
 import {
   EgressPolicyActor,
   EgressPolicyDecisionInput,
+  EgressPolicyDecisionRecordedEvent,
   EgressPolicyDecisionRequest,
   EgressPolicyDestination,
   EgressPolicyRecordInput,
   EgressPolicyRecordRequest,
   EgressPolicyRule
 } from "./contracts/egress-policy.js"
+
+const expectedEgressPolicyMethods: Array<(typeof EgressPolicyMethodNames)[number]> = [
+  "decide",
+  "record",
+  "isSupported"
+]
+
+const runScoped = <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  layer: Layer.Layer<R, never, never>
+): Effect.Effect<A, E, never> =>
+  Effect.gen(function* () {
+    const runtime = ManagedRuntime.make(layer)
+    const result = yield* Effect.promise(() => runtime.runPromise(effect))
+    yield* Effect.promise(() => runtime.dispose())
+    return result
+  })
+
+test("EgressPolicy event schema is owned by the RPC stream contract", async () => {
+  const egressPolicyModule = await import("./egress-policy.js")
+  const rootModule = await import("./index.js")
+  const eventRpc = EgressPolicyRpcs.requests.get("EgressPolicy.events.DecisionRecorded")
+
+  expect("EgressPolicyRpcEvents" in egressPolicyModule).toBe(false)
+  expect("EgressPolicyRpcEvents" in rootModule).toBe(false)
+  expect(Array.from(EgressPolicyRpcs.requests.keys())).toEqual([
+    ...expectedEgressPolicyMethods.map((method) => `EgressPolicy.${method}`),
+    "EgressPolicy.events.DecisionRecorded"
+  ])
+  expect(eventRpc).toBeDefined()
+  expect(eventRpc === undefined ? false : RpcSchema.isStreamSchema(eventRpc.successSchema)).toBe(
+    true
+  )
+  if (eventRpc !== undefined && RpcSchema.isStreamSchema(eventRpc.successSchema)) {
+    expect(Object.is(eventRpc.successSchema.success, EgressPolicyDecisionRecordedEvent)).toBe(true)
+    expect(eventRpc.pipe(rpcSupport)).toEqual({
+      platforms: [
+        {
+          platform: "macos",
+          reason: "host-decision-log-runtime-probed",
+          status: "partial"
+        },
+        {
+          platform: "windows",
+          reason: "host-decision-log-runtime-probed",
+          status: "partial"
+        },
+        {
+          platform: "linux",
+          reason: "host-decision-log-runtime-probed",
+          status: "partial"
+        }
+      ],
+      reason: "host-decision-log-runtime-probed",
+      status: "partial"
+    })
+  }
+})
+
+test("EgressPolicy direct client consumes the canonical RPC event stream", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
+      const requests: HostProtocolRequestEnvelope[] = []
+      const protocolLayer = Layer.effect(RpcClient.Protocol)(
+        makeDesktopClientProtocol(
+          {
+            send: (envelope) => {
+              if (envelope.kind !== "request") {
+                return Effect.void
+              }
+              requests.push(envelope)
+              return Effect.all(
+                [
+                  Queue.offer(
+                    queue,
+                    new HostProtocolStreamByRequestEnvelope({
+                      kind: "stream",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_100,
+                      traceId: envelope.traceId,
+                      payload: {
+                        type: "decision-recorded",
+                        timestamp: 1_710_000_000_100,
+                        decision: allowDecision()
+                      }
+                    })
+                  ),
+                  Queue.offer(
+                    queue,
+                    new HostProtocolResponseEnvelope({
+                      kind: "response",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_101,
+                      traceId: envelope.traceId
+                    })
+                  )
+                ],
+                { discard: true }
+              )
+            },
+            run: (onEnvelope) =>
+              Stream.fromQueue(queue).pipe(
+                Stream.runForEach(onEnvelope),
+                Effect.andThen(Effect.never)
+              )
+          },
+          {
+            nextRequestId: () => "egress-policy-event-rpc",
+            nextTraceId: () => "trace-egress-policy-event-rpc"
+          }
+        )
+      )
+
+      const event = yield* runScoped(
+        Effect.gen(function* () {
+          const policy = yield* EgressPolicyClient
+          return yield* policy.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+        }),
+        Layer.provide(EgressPolicySurface.clientLayer, protocolLayer)
+      )
+
+      expect(event.decision.decisionId).toBe("decision-allow")
+      expect(event.decision.actor.id).toBe("extension-1")
+      expect(event.decision.destination.host).toBe("api.example.test")
+      expect(requests.map((request) => request.method)).toEqual([
+        "EgressPolicy.events.DecisionRecorded"
+      ])
+    })
+  ))
 
 test("EgressPolicy service allows matching egress and records an auditable decision event", () =>
   Effect.runPromise(
@@ -292,6 +432,39 @@ test("EgressPolicy bridge client rejects malformed input before native transport
       expectExitFailure(exit, (error) => {
         expect(error).toMatchObject({ tag: "InvalidArgument", operation: "EgressPolicy.decide" })
       })
+    })
+  )
+})
+
+test("EgressPolicy bridge client subscribes to the host decision-recorded event channel", () => {
+  const methods: string[] = []
+  const exchange: BridgeClientExchange = {
+    request: () => Effect.fail(makeHostProtocolInternalError("unexpected request", "test")),
+    subscribe: (method) => {
+      methods.push(method)
+      return Stream.make(
+        new HostProtocolEventEnvelope({
+          kind: "event",
+          method,
+          timestamp: 1_710_000_000_100,
+          traceId: "trace-egress-policy-event",
+          payload: {
+            type: "decision-recorded",
+            timestamp: 1_710_000_000_100,
+            decision: allowDecision()
+          }
+        })
+      )
+    }
+  }
+  const runtime = ManagedRuntime.make(EgressPolicySurface.bridgeClientLayer(exchange))
+  return runtime.runPromise(
+    Effect.gen(function* () {
+      const policy = yield* EgressPolicyClient
+      const event = yield* policy.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+
+      expect(event.decision.decisionId).toBe("decision-allow")
+      expect(methods).toEqual(["EgressPolicy.DecisionRecorded"])
     })
   )
 })

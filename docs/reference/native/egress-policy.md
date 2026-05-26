@@ -8,7 +8,7 @@ effect_version: 4
 
 # `EgressPolicy`
 
-Product-neutral network egress decision service. Callers submit an actor and destination before performing host-side network, file, process, or secret work that would cause outbound access. Trusted service configuration supplies the ordered policy rules; callers do not choose their own policy.
+Product-neutral network egress decision service. Callers submit an actor and destination before performing host-side network, file, process, or secret work that would cause outbound access. Trusted service configuration supplies the ordered policy rules; callers do not choose their own policy. Decision-recorded events flow through the canonical `EgressPolicy.events.DecisionRecorded` RPC stream.
 
 The public service is Layer-first and test-substitutable. `decide` checks `network.connect` permission, asks the host to issue a decision receipt, then evaluates trusted service-layer rules in process using that host-issued `decisionId`. The Rust host adapter does not evaluate or accept caller-supplied policy rules on `decide`; lower native `record` accepts only `decisionId`, `actor`, and `destination`, verifies them against the host-issued receipt, appends the host receipt to the decision log under an OS file lock, and emits a native `decision-recorded` event after the append succeeds. Public service events observe that host or memory-client event source and map the host receipt back to the trusted service-layer decision.
 
@@ -57,6 +57,13 @@ Denied attempts are auditable. The emitted audit details include:
 Permission-registry denials before the bridge are audited with rule id `permission-registry`.
 Public `decision-recorded` events are observed only after the native record call succeeds. Native host event frames describe the host-issued receipt; the public service maps them to the trusted service-layer decision for application consumers.
 
+## Events
+
+`events()` consumes the canonical `EgressPolicy.events.DecisionRecorded` RPC
+stream. The native bridge lowers that stream to the existing host event method
+`EgressPolicy.DecisionRecorded` at the boundary, so host protocol compatibility
+is unchanged while Effect RPC owns the SDK event schema.
+
 ## Errors
 
 `EgressPolicyError` is the canonical host protocol error union. Permission denial, unsupported platforms, invalid input, and host failures are typed tagged failures.
@@ -77,7 +84,11 @@ Use `makeEgressPolicyMemoryClient()` for deterministic policy decisions, host-re
 
 ## Architecture Debt Sweep
 
-No wrapper was removed. `EgressPolicy` is durable policy, audit, and decision-receipt behavior, not a removable Effect wrapper over network transport. `NativeNetwork` is now the transport contract; the remaining debt is a real Rust host transport adapter behind that contract.
+`EgressPolicyRpcEvents` was removed; event schema ownership now lives in the
+canonical Effect RPC stream. `EgressPolicy` remains durable policy, audit, and
+decision-receipt behavior, not a removable Effect wrapper over network
+transport. `NativeNetwork` is now the transport contract; the remaining debt is
+a real Rust host transport adapter behind that contract.
 
 ## Related
 

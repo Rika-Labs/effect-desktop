@@ -23,8 +23,7 @@ import {
 } from "@orika/core"
 import { Clock, Context, Effect, Layer, PubSub, Ref, Schema, Stream } from "effect"
 
-import { subscribeNativeEvent } from "./event-stream.js"
-import { decodeNativeInput, runNativeRpc } from "./native-client.js"
+import { decodeNativeInput, runNativeRpc, runNativeRpcStream } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
 import {
@@ -58,7 +57,6 @@ const DefaultDenyRule = new EgressPolicyRule({
   hosts: ["*"],
   reason: "no matching egress allow rule"
 })
-const EgressPolicyEventMethod = "EgressPolicy.DecisionRecorded"
 const IssuedDecisionLimit = 4096
 const IssuedDecisionTtlMillis = 5 * 60 * 1000
 
@@ -89,16 +87,16 @@ export const EgressPolicyIsSupported = NativeSurface.rpc(Surface, "isSupported",
   support: RuntimeProbedSupport
 })
 
-export const EgressPolicyRpcEvents = Object.freeze({
-  DecisionRecorded: { payload: EgressPolicyDecisionRecordedEvent }
+const EgressPolicyDecisionRecorded = NativeSurface.event(Surface, "DecisionRecorded", {
+  payload: EgressPolicyDecisionRecordedEvent,
+  support: RuntimeProbedSupport
 })
-
-export type EgressPolicyRpcEvents = typeof EgressPolicyRpcEvents
 
 const EgressPolicyRpcGroup = RpcGroup.make(
   EgressPolicyDecide,
   EgressPolicyRecord,
-  EgressPolicyIsSupported
+  EgressPolicyIsSupported,
+  EgressPolicyDecisionRecorded
 )
 
 export const EgressPolicyRpcs: RpcGroup.RpcGroup<EgressPolicyRpc> = EgressPolicyRpcGroup
@@ -193,15 +191,22 @@ export const EgressPolicyHandlersLive = EgressPolicyRpcGroup.toLayer({
     Effect.gen(function* () {
       const policy = yield* EgressPolicy
       return yield* policy.isSupported()
-    })
+    }),
+  "EgressPolicy.events.DecisionRecorded": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const policy = yield* EgressPolicy
+        return policy.events()
+      })
+    )
 })
 
 export const EgressPolicySurface = NativeSurface.make(Surface, EgressPolicyRpcGroup, {
   service: EgressPolicyClient,
   capabilities: EgressPolicyCapabilityMethods,
   handlers: EgressPolicyHandlersLive,
-  client: (client) => egressPolicyClientFromRpcClient(client, undefined),
-  bridgeClient: (client, exchange) => egressPolicyClientFromRpcClient(client, exchange)
+  client: (client) => egressPolicyClientFromRpcClient(client),
+  bridgeClient: (client, exchange) => egressPolicyBridgeClientFromRpcClient(client, exchange)
 })
 
 export interface EgressPolicyMemoryClientOptions {
@@ -352,8 +357,7 @@ const makeEgressPolicyService = (
   })
 
 const egressPolicyClientFromRpcClient = (
-  client: DesktopRpcClient<EgressPolicyRpc>,
-  exchange: BridgeClientExchange | undefined
+  client: DesktopRpcClient<EgressPolicyRpc>
 ): EgressPolicyClientApi =>
   Object.freeze({
     decide: (input) =>
@@ -371,7 +375,19 @@ const egressPolicyClientFromRpcClient = (
     isSupported: () =>
       runEgressPolicyRpc(client["EgressPolicy.isSupported"](undefined), "EgressPolicy.isSupported"),
     events: () =>
-      subscribeNativeEvent(exchange, EgressPolicyEventMethod, EgressPolicyDecisionRecordedEvent)
+      runEgressPolicyRpcStream(
+        client["EgressPolicy.events.DecisionRecorded"](undefined),
+        "EgressPolicy.events.DecisionRecorded"
+      )
+  } satisfies EgressPolicyClientApi)
+
+const egressPolicyBridgeClientFromRpcClient = (
+  client: DesktopRpcClient<EgressPolicyRpc>,
+  exchange: BridgeClientExchange
+): EgressPolicyClientApi =>
+  Object.freeze({
+    ...egressPolicyClientFromRpcClient(client),
+    events: () => NativeSurface.subscribeEvent(exchange, EgressPolicyDecisionRecorded)
   } satisfies EgressPolicyClientApi)
 
 function egressPolicyRpc<
@@ -392,6 +408,11 @@ const runEgressPolicyRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
   operation: string
 ): Effect.Effect<A, EgressPolicyError, never> => runNativeRpc(effect, operation, Surface)
+
+const runEgressPolicyRpcStream = <A, E>(
+  stream: Stream.Stream<A, E, never>,
+  operation: string
+): Stream.Stream<A, EgressPolicyError, never> => runNativeRpcStream(stream, operation, Surface)
 
 const validateDecisionInput = (
   input: unknown,
