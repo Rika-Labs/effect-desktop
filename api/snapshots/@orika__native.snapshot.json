@@ -3509,11 +3509,6 @@
       "signature": "const WebViewHandlersLive: Layer.Layer<import(\"effect/unstable/rpc/Rpc\").Handler<\"WebView.create\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"WebView.loadRoute\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"WebView.loadUrl\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"WebView.reload\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"WebView.stop\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"WebView.goBack\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"WebView.goForward\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"WebView.getNavigationState\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"WebView.print\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"WebView.setZoom\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"WebView.openDevTools\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"WebView.closeDevTools\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"WebView.setNavigationPolicy\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"WebView.destroy\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"WebView.events.NavigationBlocked\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"WebView.events.ApiCall\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"WebView.events.RuntimeEvent\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"WebView.events.FrameEvent\">, never, WebView>"
     },
     {
-      "name": "WebViewLive",
-      "kind": "value",
-      "signature": "const WebViewLive: Layer.Layer<WebView, never, WebViewClient>"
-    },
-    {
       "name": "WebViewMethodNames",
       "kind": "value",
       "signature": "const WebViewMethodNames: readonly [\"create\", \"loadRoute\", \"loadUrl\", \"reload\", \"stop\", \"goBack\", \"goForward\", \"getNavigationState\", \"print\", \"setZoom\", \"openDevTools\", \"closeDevTools\", \"setNavigationPolicy\", \"destroy\"]"

@@ -483,8 +483,6 @@ export class WebView extends Context.Service<WebView, WebViewServiceApi>()(
   )
 }
 
-export const WebViewLive = WebView.layer
-
 export type WebViewRpc = RpcGroup.Rpcs<typeof WebViewRpcGroup>
 
 export type WebViewRpcHandlers<R = never> = NativeRpcHandlers<typeof WebViewRpcGroup, R>

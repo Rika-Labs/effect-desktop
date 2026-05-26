@@ -822,7 +822,6 @@ export {
   WebView,
   WebViewClient,
   WebViewHandlersLive,
-  WebViewLive,
   WebViewMethodNames,
   WebViewRpcs,
   WebViewSurface,

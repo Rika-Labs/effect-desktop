@@ -304,6 +304,18 @@ Architecture-debt sweep outcome for #1881: removed the public
 WebView support metadata now has one public source of record: the generated
 surface metadata consumed by `NativeCapabilities`.
 
+## Migration
+
+Use `WebView.layer` directly when wiring the default service layer.
+`WebViewLive` was removed because it only renamed the canonical Effect service
+layer and did not add durable desktop-specific policy, lifecycle, security,
+validation, event semantics, or protocol translation.
+
+Architecture-debt sweep outcome for #1916: removed the shallow `WebViewLive`
+alias; no additional wrapper debt was found in the WebView service, RPC
+contract, surface, handler, bridge mapper, or packaged WebView Controls demo
+path.
+
 ## Related
 
 - Reference: [`Window`](window.md)

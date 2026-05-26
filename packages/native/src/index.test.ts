@@ -233,7 +233,6 @@ import {
   WebView,
   WebViewHandlersLive,
   WebViewRpcs,
-  WebViewLive,
   WebViewMethodNames,
   WebViewSurface,
   makeNativeCapabilityManifest,
@@ -466,6 +465,7 @@ test("native package root keeps contracts and implementation helpers behind subp
       expect("ClipboardLive" in native).toBe(false)
       expect("NotificationLive" in native).toBe(false)
       expect("DialogLive" in native).toBe(false)
+      expect("WebViewLive" in native).toBe(false)
       expect("makeUnsupportedClipboardClient" in native).toBe(false)
       expect("makeClipboardBridgeClientLayer" in native).toBe(false)
       expect("makeHostClipboardRpcRuntime" in native).toBe(false)
@@ -475,7 +475,6 @@ test("native package root keeps contracts and implementation helpers behind subp
 test("native services expose canonical static layers", () => {
   expect(AppLive).toBe(App.layer)
   expect(UpdaterLive).toBe(Updater.layer)
-  expect(WebViewLive).toBe(WebView.layer)
   expect(AppEventRouterLive).toBe(AppEventRouter.layer)
 })
 
@@ -2786,7 +2785,7 @@ test("WebView service delegates through a substitutable WebViewClient port", () 
             runtimeEvents
           }
         }),
-        Layer.provide(WebViewLive, Layer.succeed(WebViewClient)(webViewClient(calls)))
+        Layer.provide(WebView.layer, Layer.succeed(WebViewClient)(webViewClient(calls)))
       )
 
       expect(result.created).toMatchObject(webviewHandle)
@@ -2869,14 +2868,14 @@ test("WebView service propagates unsupported platform and host failure", () =>
           const webview = yield* WebView
           return yield* Effect.exit(webview.create(windowHandle))
         }),
-        Layer.provide(WebViewLive, Layer.succeed(WebViewClient)(unsupportedClient))
+        Layer.provide(WebView.layer, Layer.succeed(WebViewClient)(unsupportedClient))
       )
       const hostFailureExit = yield* runScoped(
         Effect.gen(function* () {
           const webview = yield* WebView
           return yield* Effect.exit(webview.create(windowHandle))
         }),
-        Layer.provide(WebViewLive, Layer.succeed(WebViewClient)(hostFailureClient))
+        Layer.provide(WebView.layer, Layer.succeed(WebViewClient)(hostFailureClient))
       )
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
@@ -2894,7 +2893,7 @@ test("WebView document controls propagate success, unsupported, and host failure
           yield* webview.print(webviewHandle)
           yield* webview.setZoom(webviewHandle, 1.25)
         }),
-        Layer.provide(WebViewLive, Layer.succeed(WebViewClient)(webViewClient(calls)))
+        Layer.provide(WebView.layer, Layer.succeed(WebViewClient)(webViewClient(calls)))
       )
 
       expect(success).toBeUndefined()
@@ -2921,14 +2920,14 @@ test("WebView document controls propagate success, unsupported, and host failure
           const webview = yield* WebView
           return yield* Effect.exit(webview.print(webviewHandle))
         }),
-        Layer.provide(WebViewLive, Layer.succeed(WebViewClient)(unsupportedClient))
+        Layer.provide(WebView.layer, Layer.succeed(WebViewClient)(unsupportedClient))
       )
       const hostFailureExit = yield* runScoped(
         Effect.gen(function* () {
           const webview = yield* WebView
           return yield* Effect.exit(webview.print(webviewHandle))
         }),
-        Layer.provide(WebViewLive, Layer.succeed(WebViewClient)(hostFailureClient))
+        Layer.provide(WebView.layer, Layer.succeed(WebViewClient)(hostFailureClient))
       )
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
@@ -2946,7 +2945,7 @@ test("WebView devtools controls propagate success, unsupported, and host failure
           yield* webview.openDevTools(webviewHandle)
           yield* webview.closeDevTools(webviewHandle)
         }),
-        Layer.provide(WebViewLive, Layer.succeed(WebViewClient)(webViewClient(calls)))
+        Layer.provide(WebView.layer, Layer.succeed(WebViewClient)(webViewClient(calls)))
       )
       expect(successResult).toBeUndefined()
       expect(calls).toEqual(["openDevTools", "closeDevTools"])
@@ -2973,14 +2972,14 @@ test("WebView devtools controls propagate success, unsupported, and host failure
           const webview = yield* WebView
           return yield* Effect.exit(webview.openDevTools(webviewHandle))
         }),
-        Layer.provide(WebViewLive, Layer.succeed(WebViewClient)(unsupportedClient))
+        Layer.provide(WebView.layer, Layer.succeed(WebViewClient)(unsupportedClient))
       )
       const hostFailureExit = yield* runScoped(
         Effect.gen(function* () {
           const webview = yield* WebView
           return yield* Effect.exit(webview.closeDevTools(webviewHandle))
         }),
-        Layer.provide(WebViewLive, Layer.succeed(WebViewClient)(hostFailureClient))
+        Layer.provide(WebView.layer, Layer.succeed(WebViewClient)(hostFailureClient))
       )
 
       expectExitFailure(devtoolsExit, (error) => hasErrorTag(error, "Unsupported"))
@@ -2996,7 +2995,7 @@ test("native host RPC runtime denies protected WebView document and devtools cal
         originAuth: RendererOriginAuth.unsafeDisabledForTests
       })
       const webViewLayer = Layer.provide(
-        WebViewLive,
+        WebView.layer,
         Layer.succeed(WebViewClient)(webViewClient([]))
       )
       const calls = [
@@ -3113,7 +3112,7 @@ test("WebView bridge client sends typed host envelopes and decodes event streams
             runtimeEvents
           }
         }),
-        Layer.provide(WebViewLive, WebViewSurface.bridgeClientLayer(exchange))
+        Layer.provide(WebView.layer, WebViewSurface.bridgeClientLayer(exchange))
       )
 
       expect(result.created).toMatchObject(webviewHandle)
@@ -3195,7 +3194,7 @@ test("WebView getNavigationState rejects malformed host output", () =>
           return yield* Effect.exit(client.getNavigationState(created))
         }),
         Layer.provide(
-          WebViewLive,
+          WebView.layer,
           WebViewSurface.bridgeClientLayer(
             webViewExchange(requests, (request) => ({
               kind: "success",
@@ -3261,7 +3260,7 @@ test("WebView bridge client rejects control-byte navigation-blocked reasons", ()
               return yield* webview.onNavigationBlocked().pipe(Stream.take(1), Stream.runCollect)
             }),
             Layer.provide(
-              WebViewLive,
+              WebView.layer,
               WebViewSurface.bridgeClientLayer(exchange, { nextTraceId: () => "trace" })
             )
           )
@@ -3307,7 +3306,7 @@ test("WebView bridge client rejects invalid navigation-blocked event URLs", () =
             return yield* webview.onNavigationBlocked().pipe(Stream.take(1), Stream.runCollect)
           }),
           Layer.provide(
-            WebViewLive,
+            WebView.layer,
             WebViewSurface.bridgeClientLayer(exchange, { nextTraceId: () => "trace" })
           )
         )
@@ -3353,7 +3352,7 @@ test("WebView bridge client rejects undeclared API-call event names", () =>
             return yield* webview.onApiCall().pipe(Stream.take(1), Stream.runCollect)
           }),
           Layer.provide(
-            WebViewLive,
+            WebView.layer,
             WebViewSurface.bridgeClientLayer(exchange, { nextTraceId: () => "trace" })
           )
         )
@@ -3399,7 +3398,7 @@ test("WebView bridge client rejects control-byte runtime event paths", () =>
             .pipe(Stream.take(1), Stream.runCollect, Effect.exit)
         }),
         Layer.provide(
-          WebViewLive,
+          WebView.layer,
           WebViewSurface.bridgeClientLayer(unsafeExchange, { nextTraceId: () => "trace" })
         )
       )
@@ -3418,7 +3417,7 @@ test("WebView bridge client rejects unsafe navigation inputs before transport", 
       }))
       const client = yield* runScoped(
         WebView.asEffect(),
-        Layer.provide(WebViewLive, WebViewSurface.bridgeClientLayer(exchange))
+        Layer.provide(WebView.layer, WebViewSurface.bridgeClientLayer(exchange))
       )
 
       const javascriptCreateExit = yield* Effect.exit(
