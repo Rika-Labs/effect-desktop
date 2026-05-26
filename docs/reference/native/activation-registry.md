@@ -13,6 +13,8 @@ The public service is Layer-first and test-substitutable. It validates Schema co
 - `ActivationRegistry.events()` streams activation lifecycle events.
 - `ActivationRegistry.isSupported()` reports platform support.
 
+`events()` is exposed as the canonical `ActivationRegistry.events.Event` RPC stream. The bridge client keeps translating that contract to the existing host event channel `ActivationRegistry.Event`, so direct clients consume the Effect RPC stream while the native/web boundary preserves the current wire method.
+
 ## Platform Support
 
 | Platform | Status      | Reason                           |
@@ -33,6 +35,12 @@ actor, trace id, and permission context.
 ## Diagnostics
 
 Active activation resources are visible through `ResourceRegistry.list()` and `ResourceRegistry.observeLifecycle()`. Every activation event includes the source, payload, actor, trace id, and permission context so command routing can be audited without depending on UI-specific callbacks.
+
+## Architecture-debt sweep
+
+The legacy `ActivationRegistryRpcEvents` side object has been removed. Activation events now live in the same `RpcGroup` contract as request/response methods. The zero-policy `ActivationRegistryLive` alias was also removed; callers should use `ActivationRegistry.layer`.
+
+`ActivationRegistryServiceApi` remains public because it includes service-only `routeActivation` behavior and owns permission-context validation, resource cleanup, command routing, audit, and event publication semantics that are not present on the native client port.
 
 ## Files
 

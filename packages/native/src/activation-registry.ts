@@ -45,8 +45,7 @@ import {
   ActivationSurfaceRegistration,
   ActivationSurfaceRequest
 } from "./contracts/activation-registry.js"
-import { subscribeNativeEvent } from "./event-stream.js"
-import { decodeNativeInput, runNativeRpc } from "./native-client.js"
+import { decodeNativeInput, runNativeRpc, runNativeRpcStream } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
 
@@ -54,7 +53,6 @@ export * from "./contracts/activation-registry.js"
 
 const Surface = "ActivationRegistry"
 const UnsupportedReason = "host-adapter-unimplemented"
-const EventMethod = "ActivationRegistry.Event"
 
 export type ActivationRegistryError = HostProtocolError | CommandRegistryError
 
@@ -85,15 +83,17 @@ export const ActivationRegistryIsSupported = NativeSurface.rpc(Surface, "isSuppo
   support: NativeSurface.support.supported
 })
 
-export const ActivationRegistryRpcEvents = Object.freeze({
-  Event: { payload: ActivationEvent }
+const ActivationRegistryEventStream = NativeSurface.event(Surface, "Event", {
+  payload: ActivationEvent,
+  support: NativeSurface.support.supported
 })
 
 const ActivationRegistryRpcGroup = RpcGroup.make(
   ActivationRegistryRegisterSurface,
   ActivationRegistryUnregisterSurface,
   ActivationRegistryListSurfaces,
-  ActivationRegistryIsSupported
+  ActivationRegistryIsSupported,
+  ActivationRegistryEventStream
 )
 
 export type ActivationRegistryRpc = RpcGroup.Rpcs<typeof ActivationRegistryRpcGroup>
@@ -181,8 +181,6 @@ export class ActivationRegistry extends Context.Service<
   )
 }
 
-export const ActivationRegistryLive = ActivationRegistry.layer
-
 export const ActivationRegistryHandlersLive = ActivationRegistryRpcGroup.toLayer({
   "ActivationRegistry.registerSurface": (input) =>
     Effect.gen(function* () {
@@ -203,15 +201,22 @@ export const ActivationRegistryHandlersLive = ActivationRegistryRpcGroup.toLayer
     Effect.gen(function* () {
       const service = yield* ActivationRegistry
       return yield* service.isSupported()
-    })
+    }),
+  "ActivationRegistry.events.Event": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const service = yield* ActivationRegistry
+        return service.events()
+      })
+    )
 })
 
 export const ActivationRegistrySurface = NativeSurface.make(Surface, ActivationRegistryRpcGroup, {
   service: ActivationRegistryClient,
   capabilities: ActivationRegistryCapabilityMethods,
   handlers: ActivationRegistryHandlersLive,
-  client: (client) => activationRegistryClientFromRpcClient(client, undefined),
-  bridgeClient: (client, exchange) => activationRegistryClientFromRpcClient(client, exchange)
+  client: (client) => activationRegistryClientFromRpcClient(client),
+  bridgeClient: (client, exchange) => activationRegistryBridgeClientFromRpcClient(client, exchange)
 })
 
 export interface ActivationRegistryMemoryClientOptions {
@@ -282,7 +287,7 @@ export const makeActivationRegistryUnsupportedClient = (): ActivationRegistryCli
       Effect.succeed(
         new ActivationSupportedResult({ supported: false, reason: UnsupportedReason })
       ),
-    events: () => Stream.fail(unsupportedError("ActivationRegistry.events"))
+    events: () => Stream.fail(unsupportedError("ActivationRegistry.events.Event"))
   } satisfies ActivationRegistryClientApi)
 
 const makeActivationRegistryService = (
@@ -517,8 +522,7 @@ const routeActivation = (
   )
 
 const activationRegistryClientFromRpcClient = (
-  client: DesktopRpcClient<ActivationRegistryRpc>,
-  exchange: BridgeClientExchange | undefined
+  client: DesktopRpcClient<ActivationRegistryRpc>
 ): ActivationRegistryClientApi =>
   Object.freeze({
     registerSurface: (input) =>
@@ -550,7 +554,20 @@ const activationRegistryClientFromRpcClient = (
         "ActivationRegistry.isSupported"
       ),
     events: () =>
-      subscribeNativeEvent(exchange, EventMethod, ActivationEvent).pipe(
+      runActivationRpcStream(
+        client["ActivationRegistry.events.Event"](undefined),
+        "ActivationRegistry.events.Event"
+      )
+  } satisfies ActivationRegistryClientApi)
+
+const activationRegistryBridgeClientFromRpcClient = (
+  client: DesktopRpcClient<ActivationRegistryRpc>,
+  exchange: BridgeClientExchange
+): ActivationRegistryClientApi =>
+  Object.freeze({
+    ...activationRegistryClientFromRpcClient(client),
+    events: () =>
+      NativeSurface.subscribeEvent(exchange, ActivationRegistryEventStream).pipe(
         Stream.mapError(narrowActivationError)
       )
   } satisfies ActivationRegistryClientApi)
@@ -590,6 +607,12 @@ const runActivationRpc = <A, E>(
   operation: string
 ): Effect.Effect<A, HostProtocolError, never> =>
   runNativeRpc(effect, operation, Surface).pipe(Effect.mapError(narrowActivationError))
+
+const runActivationRpcStream = <A, E>(
+  stream: Stream.Stream<A, E, never>,
+  operation: string
+): Stream.Stream<A, HostProtocolError, never> =>
+  runNativeRpcStream(stream, operation, Surface).pipe(Stream.mapError(narrowActivationError))
 
 const authorize = (
   options: ActivationRegistryServiceOptions,

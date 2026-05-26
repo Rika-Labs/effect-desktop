@@ -1,6 +1,17 @@
 import { expect, test } from "bun:test"
 import { readFile } from "node:fs/promises"
-import { HostProtocolInternalError, RpcCapability } from "@orika/bridge"
+import {
+  type BridgeClientExchange,
+  type HostProtocolEnvelope,
+  HostProtocolEventEnvelope,
+  HostProtocolInternalError,
+  HostProtocolResponseEnvelope,
+  type HostProtocolRequestEnvelope,
+  HostProtocolStreamByRequestEnvelope,
+  makeDesktopClientProtocol,
+  RpcCapability,
+  rpcSupport
+} from "@orika/bridge"
 import {
   AuditEvents,
   type AuditEvent,
@@ -17,13 +28,27 @@ import {
   ResourceRegistry,
   type ResourceRegistryApi
 } from "@orika/core"
-import { Cause, Effect, Exit, Fiber, Layer, ManagedRuntime, Schema, Stream } from "effect"
-import { Rpc, RpcGroup } from "effect/unstable/rpc"
+import {
+  Cause,
+  Effect,
+  Exit,
+  Fiber,
+  Layer,
+  ManagedRuntime,
+  Option,
+  Queue,
+  Schema,
+  Stream
+} from "effect"
+import { Rpc, RpcClient, RpcGroup, RpcSchema } from "effect/unstable/rpc"
 
 import {
   ActivationRegistry,
   ActivationRegistryClient,
   type ActivationRegistryClientApi,
+  ActivationRegistryMethodNames,
+  ActivationRegistryRpcs,
+  ActivationRegistrySurface,
   makeActivationRegistryMemoryClient,
   makeActivationRegistryUnsupportedClient
 } from "./activation-registry.js"
@@ -72,9 +97,115 @@ test("ActivationRegistry public surface omits shallow client and bridge layer he
       expect(source).not.toContain("makeActivationRegistryClientLayer")
       expect(source).not.toContain("makeActivationRegistryBridgeClientLayer")
       expect(source).not.toContain("makeActivationRegistryServiceLayer")
+      expect(source).not.toContain("ActivationRegistryLive")
+      expect(source).not.toContain("ActivationRegistryRpcEvents")
       expect(indexSource).not.toContain("makeActivationRegistryClientLayer")
       expect(indexSource).not.toContain("makeActivationRegistryBridgeClientLayer")
       expect(indexSource).not.toContain("makeActivationRegistryServiceLayer")
+      expect(indexSource).not.toContain("ActivationRegistryLive")
+      expect(indexSource).not.toContain("ActivationRegistryRpcEvents")
+    })
+  ))
+
+test("ActivationRegistry event schema is owned by the RPC stream contract", async () => {
+  const activationRegistryModule = await import("./activation-registry.js")
+  const rootModule = await import("./index.js")
+  const callableTags = Array.from(ActivationRegistryRpcs.requests.keys()).toSorted()
+  const eventRpc = ActivationRegistryRpcs.requests.get("ActivationRegistry.events.Event")
+
+  expect("ActivationRegistryRpcEvents" in activationRegistryModule).toBe(false)
+  expect("ActivationRegistryRpcEvents" in rootModule).toBe(false)
+  expect([...ActivationRegistryMethodNames]).toEqual([
+    "registerSurface",
+    "unregisterSurface",
+    "listSurfaces",
+    "isSupported"
+  ])
+  expect(callableTags).toEqual([
+    "ActivationRegistry.events.Event",
+    "ActivationRegistry.isSupported",
+    "ActivationRegistry.listSurfaces",
+    "ActivationRegistry.registerSurface",
+    "ActivationRegistry.unregisterSurface"
+  ])
+  expect(eventRpc).toBeDefined()
+  expect(eventRpc === undefined ? false : RpcSchema.isStreamSchema(eventRpc.successSchema)).toBe(
+    true
+  )
+  if (eventRpc !== undefined && RpcSchema.isStreamSchema(eventRpc.successSchema)) {
+    expect(eventRpc.successSchema.success).toBe(ActivationEvent)
+    expect(eventRpc.pipe(rpcSupport)).toEqual({ status: "supported" })
+  }
+
+  const eventDoc = ActivationRegistrySurface.schemaDocs.find(
+    (doc) => doc.tag === "ActivationRegistry.events.Event"
+  )
+  expect(eventDoc?.kind).toBe("stream")
+  expect(eventDoc?.callable).toBe(true)
+  expect(eventDoc?.support).toEqual({ status: "supported" })
+})
+
+test("ActivationRegistry direct client consumes the canonical RPC event stream", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
+      const requests: HostProtocolRequestEnvelope[] = []
+      const protocolLayer = Layer.effect(RpcClient.Protocol)(
+        makeDesktopClientProtocol(
+          {
+            send: (envelope) => {
+              if (envelope.kind !== "request") {
+                return Effect.void
+              }
+              requests.push(envelope)
+              return Effect.all(
+                [
+                  Queue.offer(
+                    queue,
+                    new HostProtocolStreamByRequestEnvelope({
+                      kind: "stream",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_001,
+                      traceId: envelope.traceId,
+                      payload: activationEventPayload()
+                    })
+                  ),
+                  Queue.offer(
+                    queue,
+                    new HostProtocolResponseEnvelope({
+                      kind: "response",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_002,
+                      traceId: envelope.traceId
+                    })
+                  )
+                ],
+                { discard: true }
+              )
+            },
+            run: (onEnvelope) =>
+              Stream.fromQueue(queue).pipe(
+                Stream.runForEach(onEnvelope),
+                Effect.andThen(Effect.never)
+              )
+          },
+          {
+            nextRequestId: () => "activation-registry-event-rpc",
+            nextTraceId: () => "trace-activation-registry-event-rpc"
+          }
+        )
+      )
+
+      const event = yield* runScoped(
+        Effect.gen(function* () {
+          const activation = yield* ActivationRegistryClient
+          return yield* activation.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+        }),
+        Layer.provide(ActivationRegistrySurface.clientLayer, protocolLayer)
+      )
+
+      expect(event).toEqual(expectedActivationEvent())
+      expect(requests.map((request) => request.method)).toEqual(["ActivationRegistry.events.Event"])
     })
   ))
 
@@ -320,7 +451,8 @@ test("ActivationRegistry unsupported client returns typed unsupported failures",
               registry.unregisterSurface({ surfaceId: "palette", traceId: "trace-unregister" })
             )
             const list = yield* Effect.exit(registry.listSurfaces())
-            return { register, unregister, list }
+            const event = yield* Effect.exit(registry.events().pipe(Stream.runHead))
+            return { event, list, register, unregister }
           })
         )
       )
@@ -344,6 +476,44 @@ test("ActivationRegistry unsupported client returns typed unsupported failures",
           operation: "ActivationRegistry.listSurfaces"
         })
       })
+      expectExitFailure(result.event, (error) => {
+        expect(error).toMatchObject({
+          tag: "Unsupported",
+          operation: "ActivationRegistry.events.Event"
+        })
+      })
+    })
+  ))
+
+test("ActivationRegistry bridge client subscribes to the host event channel", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const methods: string[] = []
+      const exchange: BridgeClientExchange = {
+        request: () => Effect.die("ActivationRegistry event channel test does not issue requests"),
+        subscribe: (method) => {
+          methods.push(method)
+          return Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              timestamp: 1_710_000_000_003,
+              traceId: "activation-registry-host-event",
+              method,
+              payload: activationEventPayload()
+            })
+          )
+        }
+      }
+      const client = yield* runScoped(
+        Effect.gen(function* () {
+          return yield* ActivationRegistryClient
+        }),
+        ActivationRegistrySurface.bridgeClientLayer(exchange)
+      )
+      const event = yield* client.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+
+      expect(event).toEqual(expectedActivationEvent())
+      expect(methods).toEqual(["ActivationRegistry.Event"])
     })
   ))
 
@@ -650,6 +820,35 @@ const routeRequest = () =>
       actor: new ActivationActor({ kind: "window", id: "window-1" }),
       traceId: "route-1"
     })
+  })
+
+const activationEventPayload = () => Schema.encodeSync(ActivationEvent)(expectedActivationEvent())
+
+const expectedActivationEvent = () =>
+  new ActivationEvent({
+    type: "activation-registry-event",
+    timestamp: 1_710_000_000_000,
+    phase: "registered",
+    surfaceId: "palette",
+    source: "global-shortcut",
+    payload: { surfaceId: "palette" },
+    actor: new ActivationActor({ kind: "workspace", id: "workspace-1" }),
+    traceId: "trace-1",
+    permissionContext: new ActivationPermissionContext({
+      actor: new ActivationActor({ kind: "workspace", id: "workspace-1" }),
+      traceId: "trace-1"
+    })
+  })
+
+const runScoped = <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  layer: Layer.Layer<R, never, never>
+): Effect.Effect<A, E, never> =>
+  Effect.gen(function* () {
+    const runtime = ManagedRuntime.make(layer)
+    const result = yield* Effect.promise(() => runtime.runPromise(effect))
+    yield* Effect.promise(() => runtime.dispose())
+    return result
   })
 
 const expectExitFailure = <A>(exit: Exit.Exit<A, unknown>, assert: (error: unknown) => void) => {
