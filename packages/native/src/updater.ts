@@ -184,8 +184,6 @@ export class Updater extends Context.Service<Updater, UpdaterServiceApi>()(
   )
 }
 
-export const UpdaterLive = Updater.layer
-
 export type UpdaterRpc = RpcGroup.Rpcs<typeof UpdaterRpcGroup>
 
 export type UpdaterRpcHandlers<R = never> = NativeRpcHandlers<typeof UpdaterRpcGroup, R>

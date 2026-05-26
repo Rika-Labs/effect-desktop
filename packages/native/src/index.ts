@@ -779,7 +779,6 @@ export {
   Updater,
   UpdaterClient,
   UpdaterHandlersLive,
-  UpdaterLive,
   UpdaterMethodNames,
   UpdaterRpcs,
   UpdaterSurface,

@@ -3409,11 +3409,6 @@
       "signature": "export type UpdaterInstallOptions = Schema.Schema.Type<typeof UpdaterInstallInput>"
     },
     {
-      "name": "UpdaterLive",
-      "kind": "value",
-      "signature": "const UpdaterLive: Layer.Layer<Updater, never, UpdaterClient>"
-    },
-    {
       "name": "UpdaterMethodNames",
       "kind": "value",
       "signature": "const UpdaterMethodNames: readonly [\"check\", \"download\", \"install\", \"installAndRestart\", \"getStatus\", \"readyForRestart\"]"

@@ -65,6 +65,18 @@ The current workflow helper can rely on the host for signed manifest verificatio
 
 Do not reuse `Updater` as a general download API. General downloads need their own native service and host state machine so interrupted transfers emit terminal events and remain visible to leak/resource inspection.
 
+## Migration
+
+Use `Updater.layer` directly when wiring the default service layer.
+`UpdaterLive` was removed because it only renamed the canonical Effect service
+layer and did not add durable desktop-specific policy, lifecycle, security,
+validation, event semantics, or protocol translation.
+
+Architecture-debt sweep outcome for #1917: removed the shallow `UpdaterLive`
+alias; no additional wrapper debt was found in the Updater service, RPC
+contract, surface, handler, bridge mapper, restart event stream, support
+metadata, or packaged Updater Runtime demo path.
+
 ## Related
 
 - Tutorial: [Package, sign, and ship](../../tutorials/04-package-and-sign.md)

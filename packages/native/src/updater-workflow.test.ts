@@ -3,7 +3,7 @@ import { Effect, Exit, type Layer as LayerType, Layer, ManagedRuntime, Stream } 
 import { HttpClient, HttpClientResponse } from "effect/unstable/http"
 import { WorkflowEngine } from "effect/unstable/workflow"
 
-import { Updater, UpdaterClient, UpdaterLive } from "./updater.js"
+import { Updater, UpdaterClient } from "./updater.js"
 import {
   UpdateError,
   UpdatePayload,
@@ -61,7 +61,7 @@ test("UpdateWorkflow fails when host update availability is not confirmed", () =
 
       let installCalled = false
       const updaterLayer = Layer.provide(
-        UpdaterLive,
+        Updater.layer,
         Layer.succeed(UpdaterClient)({
           check: () => Effect.succeed({ available: false, version: "2.0.0" }),
           download: () => Effect.die("unexpected download"),
@@ -125,7 +125,7 @@ test("UpdateWorkflow rejects manifest versions that are not safe filename segmen
       })
 
       const updaterLayer = Layer.provide(
-        UpdaterLive,
+        Updater.layer,
         Layer.succeed(UpdaterClient)({
           check: () => Effect.succeed({ available: true, version: "../escape" }),
           download: () => Effect.die("unexpected download"),

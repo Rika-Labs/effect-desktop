@@ -227,7 +227,6 @@ import {
   Updater,
   UpdaterHandlersLive,
   UpdaterRpcs,
-  UpdaterLive,
   UpdaterMethodNames,
   UpdaterSurface,
   WebView,
@@ -466,6 +465,7 @@ test("native package root keeps contracts and implementation helpers behind subp
       expect("NotificationLive" in native).toBe(false)
       expect("DialogLive" in native).toBe(false)
       expect("WebViewLive" in native).toBe(false)
+      expect("UpdaterLive" in native).toBe(false)
       expect("makeUnsupportedClipboardClient" in native).toBe(false)
       expect("makeClipboardBridgeClientLayer" in native).toBe(false)
       expect("makeHostClipboardRpcRuntime" in native).toBe(false)
@@ -474,7 +474,6 @@ test("native package root keeps contracts and implementation helpers behind subp
 
 test("native services expose canonical static layers", () => {
   expect(AppLive).toBe(App.layer)
-  expect(UpdaterLive).toBe(Updater.layer)
   expect(AppEventRouterLive).toBe(AppEventRouter.layer)
 })
 
@@ -8519,7 +8518,7 @@ test("Updater service delegates through a substitutable UpdaterClient port", () 
           const status = yield* updater.getStatus()
           return { check, downloaded, installed, restarted, status }
         }),
-        Layer.provide(UpdaterLive, Layer.succeed(UpdaterClient)(updaterClient(calls)))
+        Layer.provide(Updater.layer, Layer.succeed(UpdaterClient)(updaterClient(calls)))
       )
 
       expect(result.check.available).toBe(true)
@@ -8559,7 +8558,7 @@ test("Updater bridge client sends typed host envelopes and decodes status values
           const status = yield* updater.getStatus()
           return { check, downloaded, status }
         }),
-        Layer.provide(UpdaterLive, UpdaterSurface.bridgeClientLayer(exchange))
+        Layer.provide(Updater.layer, UpdaterSurface.bridgeClientLayer(exchange))
       )
 
       expect(result.check.available).toBe(true)
@@ -8592,7 +8591,7 @@ test("Updater bridge client sends signed manifest check inputs", () =>
             trustAnchors: [{ keyVersion: 7, publicKey: "ed25519:public-key" }]
           })
         }),
-        Layer.provide(UpdaterLive, UpdaterSurface.bridgeClientLayer(exchange))
+        Layer.provide(Updater.layer, UpdaterSurface.bridgeClientLayer(exchange))
       )
 
       expect(requests).toEqual([
@@ -8615,7 +8614,7 @@ test("Updater bridge client rejects empty signed manifest trust anchors", () =>
       const client = yield* runScoped(
         Updater.asEffect(),
         Layer.provide(
-          UpdaterLive,
+          Updater.layer,
           UpdaterSurface.bridgeClientLayer(
             updaterExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
@@ -8643,7 +8642,7 @@ test("Updater service exposes the restart readiness handshake", () =>
           yield* updater.readyForRestart()
           return { events, restartStatus }
         }),
-        Layer.provide(UpdaterLive, Layer.succeed(UpdaterClient)(updaterClient(calls)))
+        Layer.provide(Updater.layer, Layer.succeed(UpdaterClient)(updaterClient(calls)))
       )
 
       expect(result.restartStatus.state).toBe("installing")
@@ -15030,7 +15029,7 @@ test("Updater bridge client rejects empty version strings as InvalidArgument", (
       const client = yield* runScoped(
         Updater.asEffect(),
         Layer.provide(
-          UpdaterLive,
+          Updater.layer,
           UpdaterSurface.bridgeClientLayer(
             updaterExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
@@ -15058,7 +15057,7 @@ test("Updater bridge client rejects check responses missing version when availab
           return yield* Effect.exit(client.check(updaterCheckInput("1.0.0")))
         }),
         Layer.provide(
-          UpdaterLive,
+          Updater.layer,
           UpdaterSurface.bridgeClientLayer(
             updaterExchange(requests, () => ({ kind: "success", payload: { available: true } }))
           )
@@ -15088,7 +15087,7 @@ test("Updater bridge client requires version for update-bearing status states", 
             return yield* Effect.exit(client.getStatus())
           }),
           Layer.provide(
-            UpdaterLive,
+            Updater.layer,
             UpdaterSurface.bridgeClientLayer(
               updaterExchange([], () => ({
                 kind: "success",
@@ -15112,7 +15111,7 @@ test("Updater bridge client rejects out-of-bounds progress values from host as I
           return yield* Effect.exit(client.getStatus())
         }),
         Layer.provide(
-          UpdaterLive,
+          Updater.layer,
           UpdaterSurface.bridgeClientLayer(
             updaterExchange([], () => ({
               kind: "success",
@@ -15133,7 +15132,7 @@ test("Updater bridge client rejects control-byte versions as InvalidArgument", (
       const client = yield* runScoped(
         Updater.asEffect(),
         Layer.provide(
-          UpdaterLive,
+          Updater.layer,
           UpdaterSurface.bridgeClientLayer(
             updaterExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
@@ -15165,7 +15164,7 @@ test("Updater bridge client rejects control-byte versions from host output", () 
           return yield* Effect.exit(client.check(updaterCheckInput("1.0.0")))
         }),
         Layer.provide(
-          UpdaterLive,
+          Updater.layer,
           UpdaterSurface.bridgeClientLayer(
             updaterExchange(checkRequests, () => ({
               kind: "success",
@@ -15181,7 +15180,7 @@ test("Updater bridge client rejects control-byte versions from host output", () 
           return yield* Effect.exit(client.getStatus())
         }),
         Layer.provide(
-          UpdaterLive,
+          Updater.layer,
           UpdaterSurface.bridgeClientLayer(
             updaterExchange(statusRequests, () => ({
               kind: "success",
