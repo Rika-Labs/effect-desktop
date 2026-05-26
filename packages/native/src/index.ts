@@ -235,7 +235,6 @@ export {
   CrashReporter,
   CrashReporterClient,
   CrashReporterHandlersLive,
-  CrashReporterLive,
   CrashReporterMethodNames,
   CrashReporterRpcs,
   CrashReporterSurface,

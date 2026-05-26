@@ -141,8 +141,6 @@ export class CrashReporter extends Context.Service<CrashReporter, CrashReporterS
   )
 }
 
-export const CrashReporterLive = CrashReporter.layer
-
 export const makeCrashReporterServiceLayer = (
   client: CrashReporterClientApi,
   options: CrashReporterServiceOptions

@@ -144,7 +144,6 @@ import {
   CrashReporter,
   CrashReporterHandlersLive,
   CrashReporterRpcs,
-  CrashReporterLive,
   CrashReporterMethodNames,
   CrashReporterSurface,
   Dialog,
@@ -460,6 +459,7 @@ test("native package root keeps contracts and implementation helpers behind subp
       expect("WindowLive" in native).toBe(false)
       expect("WindowRpcEvents" in native).toBe(false)
       expect("WindowSupportedRpcs" in native).toBe(false)
+      expect("CrashReporterLive" in native).toBe(false)
       expect("makeUnsupportedClipboardClient" in native).toBe(false)
       expect("makeClipboardBridgeClientLayer" in native).toBe(false)
       expect("makeHostClipboardRpcRuntime" in native).toBe(false)
@@ -469,7 +469,6 @@ test("native package root keeps contracts and implementation helpers behind subp
 test("native services expose canonical static layers", () => {
   expect(AppLive).toBe(App.layer)
   expect(ClipboardLive).toBe(Clipboard.layer)
-  expect(CrashReporterLive).toBe(CrashReporter.layer)
   expect(DialogLive).toBe(Dialog.layer)
   expect(NotificationLive).toBe(Notification.layer)
   expect(PowerMonitorLive).toBe(PowerMonitor.layer)
@@ -8702,7 +8701,7 @@ test("CrashReporter service denies native invoke before host transport", () =>
           return yield* Effect.exit(reporter.start())
         }),
         Layer.provide(
-          Layer.provide(CrashReporterLive, CrashReporterSurface.bridgeClientLayer(exchange)),
+          Layer.provide(CrashReporter.layer, CrashReporterSurface.bridgeClientLayer(exchange)),
           Layer.succeed(PermissionRegistry)(permissions)
         )
       )
@@ -8784,7 +8783,7 @@ test("CrashReporter rejects invalid breadcrumb timestamps before host transport"
             )
           }),
           Layer.provide(
-            Layer.provide(CrashReporterLive, CrashReporterSurface.bridgeClientLayer(exchange)),
+            Layer.provide(CrashReporter.layer, CrashReporterSurface.bridgeClientLayer(exchange)),
             Layer.succeed(PermissionRegistry)(permissions)
           )
         )
@@ -8852,7 +8851,7 @@ test("CrashReporter bridge client records breadcrumbs", () =>
           return { flush, reports }
         }).pipe(Effect.provideService(Clock.Clock, fixedClock(timestamp))),
         Layer.provide(
-          Layer.provide(CrashReporterLive, CrashReporterSurface.bridgeClientLayer(exchange)),
+          Layer.provide(CrashReporter.layer, CrashReporterSurface.bridgeClientLayer(exchange)),
           Layer.succeed(PermissionRegistry)(permissions)
         )
       )
@@ -8901,7 +8900,7 @@ test("CrashReporter bridge client rejects cyclic breadcrumb details before host 
           )
         }),
         Layer.provide(
-          Layer.provide(CrashReporterLive, CrashReporterSurface.bridgeClientLayer(exchange)),
+          Layer.provide(CrashReporter.layer, CrashReporterSurface.bridgeClientLayer(exchange)),
           Layer.succeed(PermissionRegistry)(permissions)
         )
       )
@@ -8929,7 +8928,7 @@ test("CrashReporter bridge client rejects invalid flush counts as InvalidOutput"
             return yield* Effect.exit(reporter.flush())
           }),
           Layer.provide(
-            Layer.provide(CrashReporterLive, CrashReporterSurface.bridgeClientLayer(exchange)),
+            Layer.provide(CrashReporter.layer, CrashReporterSurface.bridgeClientLayer(exchange)),
             Layer.succeed(PermissionRegistry)(permissions)
           )
         )
@@ -8968,7 +8967,7 @@ test("CrashReporter bridge client rejects invalid report timestamps as InvalidOu
           return yield* Effect.exit(reporter.getReports())
         }),
         Layer.provide(
-          Layer.provide(CrashReporterLive, CrashReporterSurface.bridgeClientLayer(exchange)),
+          Layer.provide(CrashReporter.layer, CrashReporterSurface.bridgeClientLayer(exchange)),
           Layer.succeed(PermissionRegistry)(permissions)
         )
       )
@@ -9011,7 +9010,7 @@ test("CrashReporter bridge client rejects control bytes in report metadata as In
             return yield* Effect.exit(reporter.getReports())
           }),
           Layer.provide(
-            Layer.provide(CrashReporterLive, CrashReporterSurface.bridgeClientLayer(exchange)),
+            Layer.provide(CrashReporter.layer, CrashReporterSurface.bridgeClientLayer(exchange)),
             Layer.succeed(PermissionRegistry)(permissions)
           )
         )

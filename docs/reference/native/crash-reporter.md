@@ -62,6 +62,11 @@ but it does not capture process crashes, upload reports, or prove symbol
 boundaries. The Rust host persists local breadcrumb artifacts; native crash
 artifacts remain future work.
 
+Architecture-debt sweep outcome for #1906: removed the `CrashReporterLive`
+alias. Use `CrashReporter.layer` directly. The `CrashReporter` service remains
+because it owns permission checks, breadcrumb redaction before host transport,
+and typed host error mapping.
+
 ## Related
 
 - Reference: [`Telemetry`](../services/telemetry.md)

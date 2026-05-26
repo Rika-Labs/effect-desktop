@@ -589,11 +589,6 @@
       "signature": "const CrashReporterHandlersLive: Layer.Layer<import(\"effect/unstable/rpc/Rpc\").Handler<\"CrashReporter.start\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"CrashReporter.recordBreadcrumb\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"CrashReporter.flush\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"CrashReporter.getReports\">, never, CrashReporter>"
     },
     {
-      "name": "CrashReporterLive",
-      "kind": "value",
-      "signature": "const CrashReporterLive: Layer.Layer<CrashReporter, never, PermissionRegistry | CrashReporterClient>"
-    },
-    {
       "name": "CrashReporterMethodNames",
       "kind": "value",
       "signature": "const CrashReporterMethodNames: readonly [\"start\", \"recordBreadcrumb\", \"flush\", \"getReports\"]"
