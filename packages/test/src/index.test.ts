@@ -85,7 +85,6 @@ import {
 import {
   Clipboard,
   ClipboardClient,
-  ClipboardLive,
   ClipboardSurface,
   Dialog,
   DialogSurface,
@@ -327,7 +326,7 @@ const makeClipboardBridgeLawLayer = (lawName: string): Layer.Layer<Clipboard> =>
       throw new Error(`unhandled Clipboard law fixture: ${lawName}`)
   }
 
-  return Layer.provide(ClipboardLive, ClipboardSurface.bridgeClientLayer(bridge.exchange))
+  return Layer.provide(Clipboard.layer, ClipboardSurface.bridgeClientLayer(bridge.exchange))
 }
 
 test("public bridge subpath exposes host and bridge fixtures", () => {
@@ -1874,7 +1873,7 @@ test("makeMemorySecretsSafeStorage models unavailable platform storage as typed 
 
 test("FailureAssertions matches tagged failures through Exit", () => {
   const runtime = ManagedRuntime.make(
-    Layer.provide(ClipboardLive, Layer.succeed(ClipboardClient)(makeUnavailableClipboardClient()))
+    Layer.provide(Clipboard.layer, Layer.succeed(ClipboardClient)(makeUnavailableClipboardClient()))
   )
   return runtime.runPromise(
     Effect.gen(function* () {
@@ -1911,7 +1910,7 @@ test("Clipboard unavailable platform layer reports unsupported selection capabil
 test("Clipboard bridge layer propagates host failures through the service", () => {
   const bridge = makeMockBridge()
   const runtime = ManagedRuntime.make(
-    Layer.provide(ClipboardLive, ClipboardSurface.bridgeClientLayer(bridge.exchange))
+    Layer.provide(Clipboard.layer, ClipboardSurface.bridgeClientLayer(bridge.exchange))
   )
   return runtime.runPromise(
     Effect.gen(function* () {

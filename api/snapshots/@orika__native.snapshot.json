@@ -414,11 +414,6 @@
       "signature": "const ClipboardHandlersLive: Layer.Layer<import(\"effect/unstable/rpc/Rpc\").Handler<\"Clipboard.readText\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"Clipboard.writeText\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"Clipboard.readHtml\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"Clipboard.writeHtml\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"Clipboard.readImage\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"Clipboard.writeImage\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"Clipboard.clear\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"Clipboard.isSupported\">, never, Clipboard>"
     },
     {
-      "name": "ClipboardLive",
-      "kind": "value",
-      "signature": "const ClipboardLive: Layer.Layer<Clipboard, never, ClipboardClient>"
-    },
-    {
       "name": "ClipboardMethodNames",
       "kind": "value",
       "signature": "const ClipboardMethodNames: readonly [\"readText\", \"writeText\", \"readHtml\", \"writeHtml\", \"readImage\", \"writeImage\", \"clear\", \"isSupported\"]"
@@ -2462,11 +2457,6 @@
       "name": "NotificationHandlersLive",
       "kind": "value",
       "signature": "const NotificationHandlersLive: Layer.Layer<import(\"effect/unstable/rpc/Rpc\").Handler<\"Notification.show\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"Notification.close\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"Notification.isSupported\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"Notification.requestPermission\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"Notification.getPermissionStatus\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"Notification.events.Click\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"Notification.events.Action\">, never, Notification>"
-    },
-    {
-      "name": "NotificationLive",
-      "kind": "value",
-      "signature": "const NotificationLive: Layer.Layer<Notification, never, NotificationClient>"
     },
     {
       "name": "NotificationMethodNames",

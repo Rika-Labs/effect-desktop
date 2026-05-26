@@ -62,6 +62,18 @@ names remain native/web protocol details for host event subscriptions.
 
 `close` is Linux-only today because the host stores a close-capable XDG notification handle from `notify-rust`. The macOS and Windows notification backends do not provide a close-capable handle in the current host contract, so `close` returns `Unsupported` with reason `host-notification-unavailable` on those platforms.
 
+## Migration
+
+Use `Notification.layer` directly when wiring the default service layer.
+`NotificationLive` was removed because it only renamed the canonical Effect
+service layer and did not add durable desktop-specific policy, lifecycle,
+security, event semantics, or protocol translation.
+
+Architecture-debt sweep outcome: removed the shallow `NotificationLive` alias;
+no additional wrapper debt was found in the Notification service, RPC contract,
+surface, handler, bridge mapper, resource lifecycle policy, or packaged
+Clipboard/Notification demo path.
+
 ## Errors
 
 Expected failures use host protocol tagged errors:

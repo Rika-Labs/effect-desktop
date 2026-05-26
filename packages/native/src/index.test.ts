@@ -133,7 +133,6 @@ import {
   ClipboardClient,
   ClipboardHandlersLive,
   ClipboardRpcs,
-  ClipboardLive,
   ClipboardMethodNames,
   ClipboardSurface,
   ContextMenu,
@@ -181,7 +180,6 @@ import {
   Notification,
   NotificationHandlersLive,
   NotificationRpcs,
-  NotificationLive,
   NotificationMethodNames,
   NotificationSurface,
   Path,
@@ -466,6 +464,8 @@ test("native package root keeps contracts and implementation helpers behind subp
       expect("ResidentLifecycleLive" in native).toBe(false)
       expect("PowerMonitorLive" in native).toBe(false)
       expect("SystemAppearanceLive" in native).toBe(false)
+      expect("ClipboardLive" in native).toBe(false)
+      expect("NotificationLive" in native).toBe(false)
       expect("makeUnsupportedClipboardClient" in native).toBe(false)
       expect("makeClipboardBridgeClientLayer" in native).toBe(false)
       expect("makeHostClipboardRpcRuntime" in native).toBe(false)
@@ -474,9 +474,7 @@ test("native package root keeps contracts and implementation helpers behind subp
 
 test("native services expose canonical static layers", () => {
   expect(AppLive).toBe(App.layer)
-  expect(ClipboardLive).toBe(Clipboard.layer)
   expect(DialogLive).toBe(Dialog.layer)
-  expect(NotificationLive).toBe(Notification.layer)
   expect(UpdaterLive).toBe(Updater.layer)
   expect(WebViewLive).toBe(WebView.layer)
   expect(AppEventRouterLive).toBe(AppEventRouter.layer)
@@ -5310,7 +5308,7 @@ test("Clipboard service delegates through a substitutable ClipboardClient port",
 
           return { html, image, supported, text }
         }),
-        Layer.provide(ClipboardLive, Layer.succeed(ClipboardClient)(clipboardClient(calls)))
+        Layer.provide(Clipboard.layer, Layer.succeed(ClipboardClient)(clipboardClient(calls)))
       )
 
       expect(result.text).toBe("hello")
@@ -5359,7 +5357,7 @@ test("Clipboard bridge client sends typed host envelopes and decodes outputs", (
 
           return { html, image, text }
         }),
-        Layer.provide(ClipboardLive, ClipboardSurface.bridgeClientLayer(exchange))
+        Layer.provide(Clipboard.layer, ClipboardSurface.bridgeClientLayer(exchange))
       )
 
       expect(result.text).toBe("from host")
@@ -5414,7 +5412,7 @@ test("Clipboard handlers preserve unsupported support reasons from the service b
       const testLayer = Layer.provide(
         ClipboardSurface.testClientLayer(),
         Layer.provide(
-          ClipboardLive,
+          Clipboard.layer,
           Layer.succeed(ClipboardClient)({
             ...clipboardClient(calls),
             isSupported: (capability) =>
@@ -5491,7 +5489,7 @@ test("Clipboard bridge client rejects mismatched image mime before transport", (
       const client = yield* runScoped(
         Clipboard.asEffect(),
         Layer.provide(
-          ClipboardLive,
+          Clipboard.layer,
           ClipboardSurface.bridgeClientLayer(
             clipboardExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
@@ -5521,7 +5519,7 @@ test("Clipboard bridge client rejects malformed image headers from host as Inval
             return yield* Effect.exit(clipboard.readImage())
           }),
           Layer.provide(
-            ClipboardLive,
+            Clipboard.layer,
             ClipboardSurface.bridgeClientLayer(
               clipboardExchange(requests, (request) => ({
                 kind: "success",
@@ -5547,7 +5545,7 @@ test("Clipboard bridge client rejects NUL bytes in writeText as InvalidArgument"
           return yield* Effect.exit(clipboard.writeText("hello\u0000world"))
         }),
         Layer.provide(
-          ClipboardLive,
+          Clipboard.layer,
           ClipboardSurface.bridgeClientLayer(
             clipboardExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
@@ -5562,7 +5560,7 @@ test("Clipboard bridge client rejects NUL bytes in writeText as InvalidArgument"
           yield* clipboard.writeText("valid text")
         }),
         Layer.provide(
-          ClipboardLive,
+          Clipboard.layer,
           ClipboardSurface.bridgeClientLayer(
             clipboardExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
@@ -5582,7 +5580,7 @@ test("Clipboard bridge client runs generated methods inside the layer scope", ()
           return yield* clipboard.readText()
         }),
         Layer.provide(
-          ClipboardLive,
+          Clipboard.layer,
           ClipboardSurface.bridgeClientLayer(
             clipboardExchange(requests, (request) => ({
               kind: "success",
@@ -5755,7 +5753,7 @@ test("Notification bridge client sends typed host envelopes and decodes events",
 
           return { action, requested, shown, status, supported }
         }),
-        Layer.provide(NotificationLive, NotificationSurface.bridgeClientLayer(exchange))
+        Layer.provide(Notification.layer, NotificationSurface.bridgeClientLayer(exchange))
       )
 
       expect(result.supported).toBe(true)
@@ -5813,7 +5811,7 @@ test("Notification bridge client returns invalid input as typed Effect failures"
         const client = yield* runScoped(
           Notification.asEffect(),
           Layer.provide(
-            NotificationLive,
+            Notification.layer,
             NotificationSurface.bridgeClientLayer(
               notificationExchange(requests, () => ({ kind: "success", payload: undefined }))
             )
@@ -5848,7 +5846,7 @@ test("Notification bridge client rejects invalid action ids and labels before tr
         const client = yield* runScoped(
           Notification.asEffect(),
           Layer.provide(
-            NotificationLive,
+            Notification.layer,
             NotificationSurface.bridgeClientLayer(
               notificationExchange(requests, () => ({ kind: "success", payload: undefined }))
             )
@@ -5902,7 +5900,7 @@ test("Notification action stream rejects malformed actionId payloads as InvalidO
               notification.onAction().pipe(Stream.take(1), Stream.runCollect)
             )
           }),
-          Layer.provide(NotificationLive, NotificationSurface.bridgeClientLayer(exchange))
+          Layer.provide(Notification.layer, NotificationSurface.bridgeClientLayer(exchange))
         )
 
         expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
@@ -9559,7 +9557,7 @@ test("ClipboardSurface test client layer runs Clipboard RPCs through the generat
     Effect.gen(function* () {
       const calls: string[] = []
       const testLayer = ClipboardSurface.testClientLayer(
-        Layer.provide(ClipboardLive, Layer.succeed(ClipboardClient)(clipboardClient(calls)))
+        Layer.provide(Clipboard.layer, Layer.succeed(ClipboardClient)(clipboardClient(calls)))
       )
       const result = yield* runScoped(
         Effect.gen(function* () {

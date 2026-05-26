@@ -114,14 +114,12 @@ export class Notification extends Context.Service<Notification, NotificationServ
   )
 }
 
-export const NotificationLive = Notification.layer
-
 export const makeNotificationServiceLayer = (
   client: NotificationClientApi,
   options?: NotificationServiceOptions
 ): Layer.Layer<Notification> =>
   options === undefined
-    ? Layer.provide(NotificationLive, Layer.succeed(NotificationClient)(client))
+    ? Layer.provide(Notification.layer, Layer.succeed(NotificationClient)(client))
     : Layer.succeed(Notification, makeNotificationService(client, options))
 
 export type NotificationRpcHandlers<R = never> = NativeRpcHandlers<typeof NotificationRpcGroup, R>

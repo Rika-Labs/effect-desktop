@@ -71,9 +71,19 @@ Desktop.make({
 ```
 
 `Native.Clipboard` registers the clipboard surface. `Native.Permissions.clipboard.readText` grants read-text authority.
-`ClipboardLive` and `ClipboardHandlersLive` are runtime layers behind the native surface.
+Use `Clipboard.layer` directly when wiring the default service layer. `ClipboardHandlersLive` remains the host RPC handler layer behind the native surface.
 
 Use `Native.Permissions.clipboard.all` only when the app grants every privileged clipboard method.
+
+## Migration
+
+`ClipboardLive` was removed because it only renamed `Clipboard.layer` and did
+not add durable desktop-specific policy, lifecycle, security, validation,
+event semantics, or protocol translation.
+
+Architecture-debt sweep outcome: removed the shallow `ClipboardLive` alias; no
+additional wrapper debt was found in the Clipboard service, RPC contract,
+surface, handler, bridge mapper, or packaged Clipboard/Notification demo path.
 
 ## Test layer
 

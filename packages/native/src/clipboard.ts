@@ -81,8 +81,6 @@ export class Clipboard extends Context.Service<Clipboard, ClipboardServiceApi>()
   )
 }
 
-export const ClipboardLive = Clipboard.layer
-
 export type ClipboardRpcHandlers<R = never> = NativeRpcHandlers<typeof ClipboardRpcGroup, R>
 
 export const ClipboardHandlersLive = ClipboardRpcGroup.toLayer({
