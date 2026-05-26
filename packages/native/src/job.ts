@@ -226,15 +226,11 @@ export class Job extends Context.Service<Job, JobServiceApi>()("@orika/native/jo
   )
 }
 
-export const JobLive = Job.layer
-
 export class JobRuntime extends Context.Service<JobRuntime, JobRuntimeApi>()(
   "@orika/native/job/JobRuntime"
 ) {
   static readonly layer = Layer.effect(JobRuntime)(makeJobRuntime())
 }
-
-export const JobRuntimeLive = JobRuntime.layer
 
 export const makeJobServiceLayer = (
   client: JobClientApi,

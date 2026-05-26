@@ -1409,11 +1409,6 @@
       "signature": "const JobHandlersLive: Layer.Layer<import(\"effect/unstable/rpc/Rpc\").Handler<\"Job.start\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"Job.pause\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"Job.resume\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"Job.retry\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"Job.interrupt\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"Job.succeed\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"Job.fail\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"Job.reportProgress\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"Job.get\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"Job.isSupported\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"Job.events.Event\">, never, Job>"
     },
     {
-      "name": "JobLive",
-      "kind": "value",
-      "signature": "const JobLive: Layer.Layer<Job, never, PermissionRegistry | ResourceRegistry | JobClient>"
-    },
-    {
       "name": "JobMemoryClientOptions",
       "kind": "interface",
       "signature": "export interface JobMemoryClientOptions { readonly failure?: Partial< Record< | \"start\" | \"pause\" | \"resume\" | \"retry\" | \"interrupt\" | \"succeed\" | \"fail\" | \"reportProgress\" | \"get\", JobError > > readonly nextJobId?: () => string }"
@@ -1447,11 +1442,6 @@
       "name": "JobRuntimeApi",
       "kind": "interface",
       "signature": "export interface JobRuntimeApi { readonly run: <A, E, R>( input: JobStartRequest, effect: Effect.Effect<A, E, R> ) => Effect.Effect<JobSnapshot, JobError, Job | R> readonly interrupt: (input: JobControlRequest) => Effect.Effect<JobSnapshot, JobError, Job> readonly activeCount: () => Effect.Effect<number, never, never> readonly awaitIdle: () => Effect.Effect<void, never, never> }"
-    },
-    {
-      "name": "JobRuntimeLive",
-      "kind": "value",
-      "signature": "const JobRuntimeLive: Layer.Layer<JobRuntime, never, Job>"
     },
     {
       "name": "JobServiceApi",

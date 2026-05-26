@@ -30,7 +30,6 @@ import {
   JobProgress,
   JobSnapshot,
   JobRuntime,
-  JobRuntimeLive,
   JobSupportedResult,
   type JobClientApi,
   JobRpcs,
@@ -308,7 +307,7 @@ test("JobRuntime tracks live job fibers and writes terminal state", async () => 
       const active = yield* runtime.activeCount()
       return { active, started, terminal }
     }).pipe(
-      Effect.provide(JobRuntimeLive),
+      Effect.provide(JobRuntime.layer),
       Effect.provide(makeJobServiceLayer(client, { permissions }))
     )
   )
@@ -337,7 +336,7 @@ test("JobRuntime interruption cancels the live fiber and cleans up resources", a
       const terminal = yield* jobs.get({ jobId: started.handle.id })
       return { activeAfterInterrupt, activeBeforeInterrupt, interrupted, started, terminal }
     }).pipe(
-      Effect.provide(JobRuntimeLive),
+      Effect.provide(JobRuntime.layer),
       Effect.provide(makeJobServiceLayer(client, { permissions }))
     )
   )

@@ -44,6 +44,18 @@ The public service registers running jobs with `ResourceRegistry` as `job:<jobId
 
 When an Effect `EventJournal` is supplied to the service layer, each successful lifecycle mutation appends a journal entry keyed by `jobId`. This is the Effect-native journal path for runtimes that back the journal with durable storage.
 
+Use `Job.layer` and `JobRuntime.layer` directly when composing the default
+service and live-fiber runtime. `JobLive` and `JobRuntimeLive` were removed
+because they were only public aliases for the canonical Effect service layers.
+
+Architecture-debt sweep outcome for #1920: removed the shallow `JobLive` and
+`JobRuntimeLive` aliases; kept `Job`, `JobRuntime`, `makeJobServiceLayer`,
+`JobClient`, `JobSurface`, RPC contracts, handlers, schema validation,
+permission/audit checks, resource cleanup, journal writes, bridge event
+subscription, memory/unsupported clients, and Rust host JSON store policy
+because they own durable boundary, policy, lifecycle, or test-substitution
+semantics.
+
 ## Persistence
 
 The Rust host stores job records in a JSON file. Set `EFFECT_DESKTOP_JOB_STORE` to choose the file path. Otherwise the host uses the platform application data directory:
