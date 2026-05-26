@@ -42,7 +42,7 @@ The callable RPCs on this surface are:
 
 Native command binding is currently supported by the macOS menu adapter. Windows and Linux report the capability as unsupported until their menu adapters emit equivalent activation events.
 
-Architecture-debt sweep outcome for #1861: removed `MenuRpcEvents`, the local `subscribeMenuEvent` helper, the empty `MenuCapabilityFacts` export, and the `MenuLive` alias. The `Menu` service remains because it owns durable command-binding policy over scoped activation listeners.
+Architecture-debt sweep outcome for #1861 and #1927: removed `MenuRpcEvents`, the local `subscribeMenuEvent` helper, the empty `MenuCapabilityFacts` export, the `MenuLive` alias, and the static `menuCapability(...)` helper. The `Menu` service remains because it owns durable command-binding policy over scoped activation listeners.
 
 ## Errors
 
@@ -61,7 +61,7 @@ Desktop.make({
 ```
 
 `Native.Menu` registers the menu surface. `Native.Permissions.menu.all` grants menu authority.
-`menuCapability(...)` is a platform support helper; it does not grant permission.
+Use `Menu.capability(...)` when runtime code needs host capability truth; it does not grant permission.
 
 ## Related
 

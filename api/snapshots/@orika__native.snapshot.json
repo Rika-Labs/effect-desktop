@@ -1979,11 +1979,6 @@
       "signature": "export class Menu extends Context.Service<Menu, MenuServiceApi>()(\"@orika/native/Menu\") { static readonly layer = Layer.effect(Menu)( Effect.gen(function* () { const client = yield* MenuClient return Menu.of(makeMenuService(client)) }) ) }"
     },
     {
-      "name": "menuCapability",
-      "kind": "value",
-      "signature": "const menuCapability: (name: MenuCapabilityName, platform?: MenuPlatform) => boolean"
-    },
-    {
       "name": "MenuCapabilityOptions",
       "kind": "type",
       "signature": "export type MenuCapabilityOptions = Schema.Schema.Type<typeof MenuCapabilityInput>"

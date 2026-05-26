@@ -204,11 +204,6 @@ export const MenuSurface = NativeSurface.make("Menu", MenuRpcGroup, {
   bridgeClient: (client, exchange) => menuBridgeClientFromRpcClient(client, exchange)
 })
 
-export const menuCapability = (
-  name: MenuCapabilityName,
-  platform: MenuPlatform = currentMenuPlatform()
-): boolean => MENU_CAPABILITY_MATRIX[platform][name]
-
 const makeMenuService = (client: MenuClientApi): MenuServiceApi => {
   const service: MenuServiceApi = {
     setApplicationMenu: (template) => client.setApplicationMenu(template),
@@ -459,36 +454,6 @@ const isMenuError = (error: unknown): error is MenuError =>
   "tag" in error &&
   "operation" in error &&
   "recoverable" in error
-
-const currentMenuPlatform = (): MenuPlatform => {
-  if (process.platform === "darwin") {
-    return "macos"
-  }
-  if (process.platform === "win32") {
-    return "windows"
-  }
-  return "linux"
-}
-
-const MENU_CAPABILITY_MATRIX: Readonly<
-  Record<MenuPlatform, Readonly<Record<MenuCapabilityName, boolean>>>
-> = Object.freeze({
-  macos: Object.freeze({
-    "application menu": true,
-    "window menu": true,
-    "command binding": true
-  }),
-  windows: Object.freeze({
-    "application menu": false,
-    "window menu": true,
-    "command binding": false
-  }),
-  linux: Object.freeze({
-    "application menu": false,
-    "window menu": true,
-    "command binding": false
-  })
-})
 
 const formatUnknownError = (error: unknown): string => {
   if (error instanceof Error) {

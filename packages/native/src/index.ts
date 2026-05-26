@@ -572,7 +572,6 @@ export {
   MenuMethodNames,
   MenuRpcs,
   MenuSurface,
-  menuCapability,
   type MenuCapabilityOptions,
   type MenuClientApi,
   type MenuCommandBindingError,

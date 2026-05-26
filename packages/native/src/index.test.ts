@@ -3500,7 +3500,12 @@ test("Menu event schema is owned by the RPC stream contract", async () => {
   const callableTags = Array.from(MenuRpcs.requests.keys()).toSorted()
   const eventRpc = MenuRpcs.requests.get("Menu.events.Activated")
 
-  for (const removedExport of ["MenuCapabilityFacts", "MenuLive", "MenuRpcEvents"]) {
+  for (const removedExport of [
+    "MenuCapabilityFacts",
+    "MenuLive",
+    "MenuRpcEvents",
+    "menuCapability"
+  ]) {
     expect(removedExport in menuModule).toBe(false)
     expect(removedExport in rootModule).toBe(false)
   }
