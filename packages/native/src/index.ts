@@ -530,7 +530,6 @@ export {
   WorkspaceIndex,
   WorkspaceIndexClient,
   WorkspaceIndexHandlersLive,
-  WorkspaceIndexLive,
   WorkspaceIndexMethodNames,
   WorkspaceIndexRpcs,
   WorkspaceIndexSurface,

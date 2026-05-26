@@ -76,6 +76,12 @@ The Rust host adapter keeps index sessions in host process memory. `open` canoni
 
 Use `makeWorkspaceIndexMemoryClient()` for deterministic open, refresh, close, and event tests without OS watchers. Use `makeWorkspaceIndexUnsupportedClient()` when a test needs the typed unsupported path.
 
+## Migration
+
+Use `WorkspaceIndex.layer` directly when wiring the default service layer. `WorkspaceIndexLive` was removed because it only renamed the canonical Effect service layer and did not add durable desktop-specific policy, lifecycle, security, or protocol translation.
+
+Architecture-debt sweep outcome: removed the shallow `WorkspaceIndexLive` alias; no additional wrapper debt was found in the workspace-index service, surface, handler, or packaged demo paths.
+
 ## Related
 
 - Source: [`packages/native/src/workspace-index.ts`](../../../packages/native/src/workspace-index.ts)

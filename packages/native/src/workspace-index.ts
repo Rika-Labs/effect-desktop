@@ -166,8 +166,6 @@ export class WorkspaceIndex extends Context.Service<WorkspaceIndex, WorkspaceInd
   )
 }
 
-export const WorkspaceIndexLive = WorkspaceIndex.layer
-
 export const makeWorkspaceIndexServiceLayer = (
   client: WorkspaceIndexClientApi,
   options: WorkspaceIndexServiceOptions

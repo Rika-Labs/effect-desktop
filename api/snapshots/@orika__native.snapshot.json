@@ -3714,11 +3714,6 @@
       "signature": "const WorkspaceIndexHandlersLive: Layer.Layer<import(\"effect/unstable/rpc/Rpc\").Handler<\"WorkspaceIndex.open\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"WorkspaceIndex.refresh\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"WorkspaceIndex.close\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"WorkspaceIndex.isSupported\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"WorkspaceIndex.events.Event\">, never, WorkspaceIndex>"
     },
     {
-      "name": "WorkspaceIndexLive",
-      "kind": "value",
-      "signature": "const WorkspaceIndexLive: Layer.Layer<WorkspaceIndex, never, PermissionRegistry | WorkspaceIndexClient>"
-    },
-    {
       "name": "WorkspaceIndexMemoryClientOptions",
       "kind": "interface",
       "signature": "export interface WorkspaceIndexMemoryClientOptions { readonly failure?: Partial<Record<\"open\" | \"refresh\" | \"close\", WorkspaceIndexError>> readonly nextIndexId?: () => string }"
