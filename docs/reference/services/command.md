@@ -27,6 +27,7 @@ import {
   DesktopCommands,
   PermissionActor,
   PermissionContext,
+  RpcCapability,
   type CommandGroupRegistration,
   type CommandRegistryApi,
   type CommandRegistryError
@@ -57,10 +58,9 @@ Each command is an Effect RPC endpoint with a `RpcCapability`. The capability is
 the permission contract checked before the handler runs.
 
 ```ts
-import { RpcCapability } from "@orika/bridge"
 import { Effect, Schema } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
-import { DesktopCommands } from "@orika/core"
+import { DesktopCommands, RpcCapability } from "@orika/core"
 
 class OpenInput extends Schema.Class<OpenInput>("OpenInput")({
   path: Schema.String

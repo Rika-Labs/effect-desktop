@@ -724,6 +724,20 @@ describe("Command docs", () => {
 
     expect(violations).toEqual([])
   })
+
+  test("use the public core RpcCapability export in app examples", () => {
+    const relativePath = "docs/reference/services/command.md"
+    const reference = readFileSync(join(REPO_ROOT, relativePath), "utf8")
+    const violations: string[] = []
+
+    if (reference.includes('import { RpcCapability } from "@orika/bridge"')) {
+      violations.push(`${relativePath}: import RpcCapability from @orika/core in app docs`)
+    }
+
+    expect(violations).toEqual([])
+    expect(reference).toContain("RpcCapability,")
+    expect(reference).toContain('} from "@orika/core"')
+  })
 })
 
 describe("Sidecar docs", () => {
