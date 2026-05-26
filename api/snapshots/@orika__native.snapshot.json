@@ -649,11 +649,6 @@
       "signature": "export class DesktopHttpApi extends HttpApi.make(\"DesktopHttpApi\") .add(DesktopWindowApiGroup) .annotateMerge( OpenApi.annotations({ title: \"ORIKA HTTP API\", description: \"Loopback-only schema-first desktop APIs backed by Effect services.\" }) ) {}"
     },
     {
-      "name": "DesktopHttpApiHttpServer",
-      "kind": "value",
-      "signature": "const DesktopHttpApiHttpServer: Layer.Layer<never, never, PermissionRegistry | import(\"effect/FileSystem\").FileSystem | import(\"effect/Path\").Path | Window | import(\"effect/unstable/http/Etag\").Generator | import(\"effect/unstable/http/HttpPlatform\").HttpPlatform | import(\"effect/unstable/http/HttpServer\").HttpServer>"
-    },
-    {
       "name": "DesktopHttpApiRoutes",
       "kind": "value",
       "signature": "const DesktopHttpApiRoutes: Layer.Layer<never, never, PermissionRegistry | import(\"effect/FileSystem\").FileSystem | import(\"effect/Path\").Path | Window | import(\"effect/unstable/http/Etag\").Generator | HttpRouter.HttpRouter | import(\"effect/unstable/http/HttpPlatform\").HttpPlatform>"

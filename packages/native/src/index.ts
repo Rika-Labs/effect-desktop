@@ -311,7 +311,6 @@ export {
 } from "./job.js"
 export {
   DesktopHttpApi,
-  DesktopHttpApiHttpServer,
   DesktopHttpApiRoutes,
   DesktopHttpPermission,
   DesktopHttpPermissionLive,

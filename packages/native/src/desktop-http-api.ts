@@ -11,7 +11,6 @@ import {
   type PermissionRegistryError
 } from "@orika/core"
 import { Effect, Layer } from "effect"
-import { HttpRouter } from "effect/unstable/http"
 import {
   HttpApi,
   HttpApiBuilder,
@@ -111,8 +110,6 @@ export const DesktopWindowApiHandlers = HttpApiBuilder.group(
 export const DesktopHttpApiRoutes = HttpApiBuilder.layer(DesktopHttpApi, {
   openapiPath: "/openapi.json"
 }).pipe(Layer.provide(DesktopWindowApiHandlers))
-
-export const DesktopHttpApiHttpServer = HttpRouter.serve(DesktopHttpApiRoutes)
 
 const capabilityForEndpoint = (endpointName: string): NormalizedCapabilityType => {
   switch (endpointName) {

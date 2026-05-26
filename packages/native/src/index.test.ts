@@ -883,9 +883,11 @@ test("native package exports reject implementation-only subpaths", () =>
     Effect.gen(function* () {
       const appHttpServerSpecifier = "@orika/native/" + "app-http-server"
       const updaterWorkflowSpecifier = "@orika/native/" + "updater-workflow"
+      const rootModule = yield* Effect.promise(() => import("./index.js"))
 
       yield* expectImportRejected(appHttpServerSpecifier)
       yield* expectImportRejected(updaterWorkflowSpecifier)
+      expect("DesktopHttpApiHttpServer" in rootModule).toBe(false)
     })
   ))
 
