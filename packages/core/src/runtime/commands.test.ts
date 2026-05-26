@@ -28,6 +28,7 @@ import {
   CommandSnapshot,
   DesktopCommands,
   makeCommandRegistry,
+  type CommandGroupRegistration,
   type CommandRegistryApi,
   type CommandRegistryError
 } from "./commands.js"
@@ -75,6 +76,21 @@ test("CommandRegistry middleware handler wiring does not depend on double assert
       )
 
       expect(source).not.toContain("as unknown as Layer.Layer")
+    })
+  ))
+
+test("CommandRegistry dynamic RPC dispatch does not depend on erased client assertions", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        Bun.file(new URL("./commands.ts", import.meta.url)).text()
+      )
+
+      expect(source).not.toContain("raw as Readonly<Record<string, unknown>>")
+      expect(source).not.toContain("(fn as (input: unknown")
+      expect(source).not.toContain("raw as Effect.Effect<unknown, never, never>")
+      expect(source).not.toContain("CommandRpcInvoker")
+      expect(source).not.toContain("as unknown as CommandRpcInvoker")
     })
   ))
 
@@ -223,6 +239,30 @@ test("CommandRegistry reports missing unregisters as typed values", () =>
       const exit = yield* Effect.exit(registry.unregister("missing"))
 
       expectFailure(exit, CommandRegistryCommandNotFoundError)
+    })
+  ))
+
+test("CommandRegistry rejects command groups with missing generated handlers", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const { registry } = yield* makeTestRegistry()
+      const command = commandRpc("openProject")
+      const group = RpcGroup.make(command)
+
+      const exit = yield* Effect.exit(
+        registry.registerGroup({
+          group,
+          ownerScope: "window-1",
+          handlers: Layer.empty as CommandGroupRegistration<
+            typeof command,
+            never,
+            never
+          >["handlers"]
+        })
+      )
+
+      expectFailure(exit, CommandRegistryInvalidInputError)
+      expect(yield* registry.list()).toEqual([])
     })
   ))
 
@@ -698,12 +738,8 @@ const registration = (
   handler: OpenHandler = () => Effect.succeed(new OpenOutput({ opened: true }))
 ) => {
   const tag = id
-  const Command = Rpc.make(tag, {
-    payload: OpenInput,
-    success: OpenOutput,
-    error: Schema.Unknown
-  }).pipe(RpcCapability(commandCapability))
-  const group = RpcGroup.make(Command)
+  const command = commandRpc(tag)
+  const group = RpcGroup.make(command)
 
   return {
     group,
@@ -711,6 +747,13 @@ const registration = (
     handlers: group.toLayer(Effect.succeed({ [tag]: handler }))
   }
 }
+
+const commandRpc = (tag: string) =>
+  Rpc.make(tag, {
+    payload: OpenInput,
+    success: OpenOutput,
+    error: Schema.Unknown
+  }).pipe(RpcCapability(commandCapability))
 
 const makeTestRegistry = (
   rows: AuditEvent[] = []

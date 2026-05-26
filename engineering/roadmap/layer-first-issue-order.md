@@ -183,7 +183,7 @@ This batch creates the invariant. The rest of the roadmap should be implemented 
 |                 #1879 Model GlobalShortcut events and private facts | Closed | Moves pressed events into the canonical `GlobalShortcut.events.Pressed` RPC stream and keeps unsupported registration facts private to surface metadata.                                    |
 |                #1880 Keep WebView capability facts private metadata | Closed | Removes the public WebView capability-fact side object while preserving unsupported document, runtime, frame, permission, and debugger manifest facts.                                      |
 |        #1881 Derive WebView capability helper from surface metadata | Closed | Removes the hard-coded `webViewCapability` matrix so WebView support truth comes from canonical surface/provider metadata.                                                                  |
-|         #1930 Replace CommandRegistry dynamic RPC client assertions | Open   | Replaces the remaining asserted `RpcTest.makeClient` dynamic dispatch boundary with a typed Effect RPC client path while preserving permission, audit, rollback, and invocation semantics.  |
+|         #1930 Replace CommandRegistry dynamic RPC client assertions | Closed | Replaces the remaining asserted `RpcTest.makeClient` dynamic dispatch boundary with a typed Effect RPC client path while preserving permission, audit, rollback, and invocation semantics.  |
 
 ## Execution Progress
 
