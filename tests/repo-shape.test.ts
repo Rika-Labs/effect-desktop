@@ -50,6 +50,7 @@ const STALE_PTY_PRODUCTION_ADAPTER_DOC_PATTERN =
   /\bProduction uses\b[^\n]*(?:native PTY backend|`crates\/native-pty`)/
 const STALE_PTY_UNSUPPORTED_NATIVE_LAYER_DOC_PATTERN =
   /\bfail-closed\b|HostProtocolUnsupportedError|does not expose PTY methods/
+const PTY_REFERENCE_CORE_IMPORT_PATTERN = /import\s*\{[\s\S]*?\}\s*from\s+"@orika\/core"/m
 const STALE_COMMAND_REFERENCE_TOKENS = [
   "Command,",
   "type CommandApi",
@@ -770,6 +771,10 @@ describe("PTY docs", () => {
       !reference.includes("outputMetrics")
     ) {
       violations.push("docs/reference/services/pty.md: document the current PtyHandle shape")
+    }
+    const referenceImport = reference.match(PTY_REFERENCE_CORE_IMPORT_PATTERN)?.[0] ?? ""
+    if (!referenceImport.includes("PtyLayer") || !referenceImport.includes("type PtyError")) {
+      violations.push("docs/reference/services/pty.md: import public PTY symbols used by the page")
     }
     if (errors.includes("`signal`, `close`")) {
       violations.push("docs/reference/errors.md: name current PTY operations")

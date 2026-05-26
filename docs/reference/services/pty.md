@@ -15,7 +15,9 @@ Owns pseudo-terminal sessions, resize and kill operations, output streams, permi
 ```ts
 import {
   PTY,
+  PtyLayer,
   type PtyApi,
+  type PtyError,
   type PtyHandle,
   type PtyOpenOptions,
   type PtyOpenInput,
