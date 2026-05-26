@@ -76,31 +76,12 @@ export class ExtensionPackageManifest extends Schema.Class<ExtensionPackageManif
   capabilities: Schema.Array(ExtensionPackageCapabilityDeclaration)
 }) {}
 
-export class ExtensionPackageInstallRequest extends Schema.Class<ExtensionPackageInstallRequest>(
-  "ExtensionPackageInstallRequest"
-)({
-  actor: ExtensionPackageActor,
-  source: ExtensionPackageSource,
-  manifest: ExtensionPackageManifest,
-  traceId: Schema.optionalKey(BridgeSafeNonEmptyString)
-}) {}
-
 export class ExtensionPackageInstallInput extends Schema.Class<ExtensionPackageInstallInput>(
   "ExtensionPackageInstallInput"
 )({
   actor: ExtensionPackageActor,
   source: ExtensionPackageSource,
   manifest: ExtensionPackageManifest,
-  traceId: Schema.optionalKey(BridgeSafeNonEmptyString)
-}) {}
-
-export class ExtensionPackageUpdateRequest extends Schema.Class<ExtensionPackageUpdateRequest>(
-  "ExtensionPackageUpdateRequest"
-)({
-  actor: ExtensionPackageActor,
-  source: ExtensionPackageSource,
-  manifest: ExtensionPackageManifest,
-  expectedVersion: Schema.optionalKey(BridgeSafeNonEmptyString),
   traceId: Schema.optionalKey(BridgeSafeNonEmptyString)
 }) {}
 
@@ -111,14 +92,6 @@ export class ExtensionPackageUpdateInput extends Schema.Class<ExtensionPackageUp
   source: ExtensionPackageSource,
   manifest: ExtensionPackageManifest,
   expectedVersion: Schema.optionalKey(BridgeSafeNonEmptyString),
-  traceId: Schema.optionalKey(BridgeSafeNonEmptyString)
-}) {}
-
-export class ExtensionPackageRemoveRequest extends Schema.Class<ExtensionPackageRemoveRequest>(
-  "ExtensionPackageRemoveRequest"
-)({
-  actor: ExtensionPackageActor,
-  packageId: PrintableNonEmptyString,
   traceId: Schema.optionalKey(BridgeSafeNonEmptyString)
 }) {}
 

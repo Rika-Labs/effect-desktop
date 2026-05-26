@@ -28,6 +28,10 @@ clients translate that stream to the existing host event method
 `ExtensionPackage.Event`, so host adapters keep the current wire channel while
 direct clients use the Effect RPC stream.
 
+The mutating methods use the same Schema input classes at the service, RPC, and
+bridge boundary: `ExtensionPackageInstallInput`, `ExtensionPackageUpdateInput`,
+and `ExtensionPackageRemoveInput`.
+
 ## Manifest
 
 Each package manifest declares:

@@ -34,18 +34,15 @@ import {
   ExtensionPackageEvent,
   type ExtensionPackageEventPhase,
   ExtensionPackageInstallInput,
-  ExtensionPackageInstallRequest,
   ExtensionPackageInstallResult,
   ExtensionPackageListResult,
   ExtensionPackageManifest,
   ExtensionPackageRemoveInput,
-  ExtensionPackageRemoveRequest,
   ExtensionPackageRemoveResult,
   ExtensionPackageSource,
   ExtensionPackageState,
   ExtensionPackageSupportedResult,
   ExtensionPackageUpdateInput,
-  ExtensionPackageUpdateRequest,
   ExtensionPackageUpdateResult
 } from "./contracts/extension-package.js"
 
@@ -156,13 +153,13 @@ export class ExtensionPackageClient extends Context.Service<
 
 export interface ExtensionPackageServiceApi {
   readonly install: (
-    input: ExtensionPackageInstallRequest
+    input: ExtensionPackageInstallInput
   ) => Effect.Effect<ExtensionPackageInstallResult, ExtensionPackageError, never>
   readonly update: (
-    input: ExtensionPackageUpdateRequest
+    input: ExtensionPackageUpdateInput
   ) => Effect.Effect<ExtensionPackageUpdateResult, ExtensionPackageError, never>
   readonly remove: (
-    input: ExtensionPackageRemoveRequest
+    input: ExtensionPackageRemoveInput
   ) => Effect.Effect<ExtensionPackageRemoveResult, ExtensionPackageError, never>
   readonly list: () => Effect.Effect<ExtensionPackageListResult, ExtensionPackageError, never>
   readonly isSupported: () => Effect.Effect<
@@ -450,7 +447,7 @@ const makeExtensionPackageService = (
     Object.freeze({
       install: (input) =>
         Effect.gen(function* () {
-          const request = yield* validateInstallRequest(input)
+          const request = yield* validateInstallInput(input)
           yield* validateCompatibility(request.manifest, options, "ExtensionPackage.install")
           yield* checkPackagePermission(
             options,
@@ -466,7 +463,7 @@ const makeExtensionPackageService = (
             request.manifest,
             request.traceId
           )
-          const result = yield* client.install(toInstallInput(request))
+          const result = yield* client.install(request)
           yield* registerManifestCapabilities(options, request.manifest, request.traceId)
           yield* emitPackageAudit(
             options,
@@ -485,7 +482,7 @@ const makeExtensionPackageService = (
         }),
       update: (input) =>
         Effect.gen(function* () {
-          const request = yield* validateUpdateRequest(input)
+          const request = yield* validateUpdateInput(input)
           yield* validateCompatibility(request.manifest, options, "ExtensionPackage.update")
           yield* checkPackagePermission(
             options,
@@ -501,7 +498,7 @@ const makeExtensionPackageService = (
             request.manifest,
             request.traceId
           )
-          const result = yield* client.update(toUpdateInput(request))
+          const result = yield* client.update(request)
           yield* registerManifestCapabilities(options, request.manifest, request.traceId)
           yield* emitPackageAudit(
             options,
@@ -520,7 +517,7 @@ const makeExtensionPackageService = (
         }),
       remove: (input) =>
         Effect.gen(function* () {
-          const request = yield* validateRemoveRequest(input)
+          const request = yield* validateRemoveInput(input)
           yield* checkPackagePermission(
             options,
             "remove",
@@ -528,7 +525,7 @@ const makeExtensionPackageService = (
             request.packageId,
             request.traceId
           )
-          const result = yield* client.remove(toRemoveInput(request))
+          const result = yield* client.remove(request)
           yield* emitPackageAudit(
             options,
             "permission-used",
@@ -612,13 +609,6 @@ const runExtensionPackageRpcStream = <A, E>(
   operation: string
 ): Stream.Stream<A, ExtensionPackageError, never> => runNativeRpcStream(stream, operation, Surface)
 
-const validateInstallRequest = (
-  input: unknown
-): Effect.Effect<ExtensionPackageInstallRequest, ExtensionPackageError, never> =>
-  decodeNativeInput(ExtensionPackageInstallRequest, input, "ExtensionPackage.install").pipe(
-    Effect.tap(validateInstallPayload("ExtensionPackage.install"))
-  )
-
 const validateInstallInput = (
   input: unknown
 ): Effect.Effect<ExtensionPackageInstallInput, ExtensionPackageError, never> =>
@@ -626,25 +616,11 @@ const validateInstallInput = (
     Effect.tap(validateInstallPayload("ExtensionPackage.install"))
   )
 
-const validateUpdateRequest = (
-  input: unknown
-): Effect.Effect<ExtensionPackageUpdateRequest, ExtensionPackageError, never> =>
-  decodeNativeInput(ExtensionPackageUpdateRequest, input, "ExtensionPackage.update").pipe(
-    Effect.tap(validateUpdatePayload("ExtensionPackage.update"))
-  )
-
 const validateUpdateInput = (
   input: unknown
 ): Effect.Effect<ExtensionPackageUpdateInput, ExtensionPackageError, never> =>
   decodeNativeInput(ExtensionPackageUpdateInput, input, "ExtensionPackage.update").pipe(
     Effect.tap(validateUpdatePayload("ExtensionPackage.update"))
-  )
-
-const validateRemoveRequest = (
-  input: unknown
-): Effect.Effect<ExtensionPackageRemoveRequest, ExtensionPackageError, never> =>
-  decodeNativeInput(ExtensionPackageRemoveRequest, input, "ExtensionPackage.remove").pipe(
-    Effect.tap(validateRemovePayload("ExtensionPackage.remove"))
   )
 
 const validateRemoveInput = (
@@ -656,9 +632,7 @@ const validateRemoveInput = (
 
 const validateInstallPayload =
   (operation: string) =>
-  (
-    input: ExtensionPackageInstallRequest | ExtensionPackageInstallInput
-  ): Effect.Effect<void, ExtensionPackageError, never> =>
+  (input: ExtensionPackageInstallInput): Effect.Effect<void, ExtensionPackageError, never> =>
     Effect.gen(function* () {
       yield* validateActor(input.actor, operation)
       yield* validateSource(input.source, operation)
@@ -667,9 +641,7 @@ const validateInstallPayload =
 
 const validateUpdatePayload =
   (operation: string) =>
-  (
-    input: ExtensionPackageUpdateRequest | ExtensionPackageUpdateInput
-  ): Effect.Effect<void, ExtensionPackageError, never> =>
+  (input: ExtensionPackageUpdateInput): Effect.Effect<void, ExtensionPackageError, never> =>
     Effect.gen(function* () {
       yield* validateActor(input.actor, operation)
       yield* validateSource(input.source, operation)
@@ -681,9 +653,7 @@ const validateUpdatePayload =
 
 const validateRemovePayload =
   (operation: string) =>
-  (
-    input: ExtensionPackageRemoveRequest | ExtensionPackageRemoveInput
-  ): Effect.Effect<void, ExtensionPackageError, never> =>
+  (input: ExtensionPackageRemoveInput): Effect.Effect<void, ExtensionPackageError, never> =>
     Effect.gen(function* () {
       yield* validateActor(input.actor, operation)
       yield* validateName("packageId", input.packageId, operation)
@@ -868,30 +838,6 @@ const failOr = <A>(
   effect: Effect.Effect<A, ExtensionPackageError, never>
 ): Effect.Effect<A, ExtensionPackageError, never> =>
   error === undefined ? effect : Effect.fail(error)
-
-const toInstallInput = (request: ExtensionPackageInstallRequest): ExtensionPackageInstallInput =>
-  new ExtensionPackageInstallInput({
-    actor: request.actor,
-    source: request.source,
-    manifest: request.manifest,
-    ...(request.traceId === undefined ? {} : { traceId: request.traceId })
-  })
-
-const toUpdateInput = (request: ExtensionPackageUpdateRequest): ExtensionPackageUpdateInput =>
-  new ExtensionPackageUpdateInput({
-    actor: request.actor,
-    source: request.source,
-    manifest: request.manifest,
-    ...(request.expectedVersion === undefined ? {} : { expectedVersion: request.expectedVersion }),
-    ...(request.traceId === undefined ? {} : { traceId: request.traceId })
-  })
-
-const toRemoveInput = (request: ExtensionPackageRemoveRequest): ExtensionPackageRemoveInput =>
-  new ExtensionPackageRemoveInput({
-    actor: request.actor,
-    packageId: request.packageId,
-    ...(request.traceId === undefined ? {} : { traceId: request.traceId })
-  })
 
 const declaredCapabilities = (
   manifest: ExtensionPackageManifest

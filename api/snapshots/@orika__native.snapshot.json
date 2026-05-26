@@ -1286,7 +1286,7 @@
     {
       "name": "ExtensionPackageServiceApi",
       "kind": "interface",
-      "signature": "export interface ExtensionPackageServiceApi { readonly install: ( input: ExtensionPackageInstallRequest ) => Effect.Effect<ExtensionPackageInstallResult, ExtensionPackageError, never> readonly update: ( input: ExtensionPackageUpdateRequest ) => Effect.Effect<ExtensionPackageUpdateResult, ExtensionPackageError, never> readonly remove: ( input: ExtensionPackageRemoveRequest ) => Effect.Effect<ExtensionPackageRemoveResult, ExtensionPackageError, never> readonly list: () => Effect.Effect<ExtensionPackageListResult, ExtensionPackageError, never> readonly isSupported: () => Effect.Effect< ExtensionPackageSupportedResult, ExtensionPackageError, never > readonly events: () => Stream.Stream<ExtensionPackageEvent, ExtensionPackageError, never> }"
+      "signature": "export interface ExtensionPackageServiceApi { readonly install: ( input: ExtensionPackageInstallInput ) => Effect.Effect<ExtensionPackageInstallResult, ExtensionPackageError, never> readonly update: ( input: ExtensionPackageUpdateInput ) => Effect.Effect<ExtensionPackageUpdateResult, ExtensionPackageError, never> readonly remove: ( input: ExtensionPackageRemoveInput ) => Effect.Effect<ExtensionPackageRemoveResult, ExtensionPackageError, never> readonly list: () => Effect.Effect<ExtensionPackageListResult, ExtensionPackageError, never> readonly isSupported: () => Effect.Effect< ExtensionPackageSupportedResult, ExtensionPackageError, never > readonly events: () => Stream.Stream<ExtensionPackageEvent, ExtensionPackageError, never> }"
     },
     {
       "name": "ExtensionPackageServiceOptions",

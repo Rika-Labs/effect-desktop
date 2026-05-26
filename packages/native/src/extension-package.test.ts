@@ -40,12 +40,10 @@ import {
   ExtensionPackageCompatibility,
   ExtensionPackageEvent,
   ExtensionPackageInstallInput,
-  ExtensionPackageInstallRequest,
   ExtensionPackageManifest,
-  ExtensionPackageRemoveRequest,
+  ExtensionPackageRemoveInput,
   ExtensionPackageSource,
-  ExtensionPackageUpdateInput,
-  ExtensionPackageUpdateRequest
+  ExtensionPackageUpdateInput
 } from "./contracts/extension-package.js"
 
 test("ExtensionPackage public surface omits shallow event and layer helpers", () =>
@@ -64,6 +62,38 @@ test("ExtensionPackage public surface omits shallow event and layer helpers", ()
       }
     })
   ))
+
+test("ExtensionPackage mutating operations use one canonical input schema", async () => {
+  const contractModule = await import("./contracts/extension-package.js")
+  const contractSource = await readFile(
+    new URL("contracts/extension-package.ts", import.meta.url),
+    "utf8"
+  )
+  const source = await readFile(new URL("extension-package.ts", import.meta.url), "utf8")
+  const installRpc = ExtensionPackageRpcs.requests.get("ExtensionPackage.install")
+  const updateRpc = ExtensionPackageRpcs.requests.get("ExtensionPackage.update")
+  const removeRpc = ExtensionPackageRpcs.requests.get("ExtensionPackage.remove")
+
+  for (const removedName of [
+    "ExtensionPackageInstallRequest",
+    "ExtensionPackageUpdateRequest",
+    "ExtensionPackageRemoveRequest"
+  ]) {
+    expect(removedName in contractModule).toBe(false)
+    expect(contractSource).not.toContain(removedName)
+    expect(source).not.toContain(removedName)
+  }
+
+  expect(source).not.toContain("validateInstallRequest")
+  expect(source).not.toContain("validateUpdateRequest")
+  expect(source).not.toContain("validateRemoveRequest")
+  expect(source).not.toContain("toInstallInput")
+  expect(source).not.toContain("toUpdateInput")
+  expect(source).not.toContain("toRemoveInput")
+  expect(installRpc?.payloadSchema).toBe(ExtensionPackageInstallInput)
+  expect(updateRpc?.payloadSchema).toBe(ExtensionPackageUpdateInput)
+  expect(removeRpc?.payloadSchema).toBe(ExtensionPackageRemoveInput)
+})
 
 test("ExtensionPackage event schema is owned by the RPC stream contract", async () => {
   const extensionPackageModule = await import("./extension-package.js")
@@ -221,7 +251,7 @@ test("ExtensionPackage service installs validated manifests, registers capabilit
       const result = yield* runScoped(
         Effect.gen(function* () {
           const packages = yield* ExtensionPackage
-          const installed = yield* packages.install(installRequest())
+          const installed = yield* packages.install(installInput())
           const listed = yield* packages.list()
           const event = yield* packages.events().pipe(Stream.runHead)
           return { event, installed, listed }
@@ -271,7 +301,7 @@ test("ExtensionPackage denies before host side effects or capability registratio
       const exit = yield* runScoped(
         Effect.gen(function* () {
           const packages = yield* ExtensionPackage
-          return yield* Effect.exit(packages.install(installRequest()))
+          return yield* Effect.exit(packages.install(installInput()))
         }),
         makeExtensionPackageServiceLayer(client, { permissions })
       )
@@ -308,7 +338,7 @@ test("ExtensionPackage denies undeclared manifest capabilities before host side 
       const exit = yield* runScoped(
         Effect.gen(function* () {
           const packages = yield* ExtensionPackage
-          return yield* Effect.exit(packages.install(installRequest()))
+          return yield* Effect.exit(packages.install(installInput()))
         }),
         makeExtensionPackageServiceLayer(client, { permissions })
       )
@@ -393,7 +423,7 @@ test("ExtensionPackage checks compatibility before host side effects", () =>
           const packages = yield* ExtensionPackage
           return yield* Effect.exit(
             packages.install(
-              installRequest({
+              installInput({
                 manifest: manifest({
                   compatibility: new ExtensionPackageCompatibility({ minHostVersion: "9.0.0" })
                 })
@@ -598,9 +628,9 @@ test("ExtensionPackage update and remove publish lifecycle state", () =>
       const result = yield* runScoped(
         Effect.gen(function* () {
           const packages = yield* ExtensionPackage
-          yield* packages.install(installRequest())
+          yield* packages.install(installInput())
           const updated = yield* packages.update(
-            new ExtensionPackageUpdateRequest({
+            new ExtensionPackageUpdateInput({
               actor: actor(),
               source: source(),
               manifest: manifest({ version: "1.1.0" }),
@@ -608,7 +638,7 @@ test("ExtensionPackage update and remove publish lifecycle state", () =>
               traceId: "trace-update"
             })
           )
-          const removed = yield* packages.remove(removeRequest())
+          const removed = yield* packages.remove(removeInput())
           const listed = yield* packages.list()
           return { listed, removed, updated }
         }),
@@ -817,28 +847,20 @@ const manifest = (
     ]
   })
 
-const installRequest = (
+const installInput = (
   overrides: Partial<{
     readonly manifest: ExtensionPackageManifest
   }> = {}
-): ExtensionPackageInstallRequest =>
-  new ExtensionPackageInstallRequest({
+): ExtensionPackageInstallInput =>
+  new ExtensionPackageInstallInput({
     actor: actor(),
     source: source(),
     manifest: overrides.manifest ?? manifest(),
     traceId: "trace-install"
   })
 
-const installInput = (): ExtensionPackageInstallInput =>
-  new ExtensionPackageInstallInput({
-    actor: actor(),
-    source: source(),
-    manifest: manifest(),
-    traceId: "trace-install"
-  })
-
-const removeRequest = (): ExtensionPackageRemoveRequest =>
-  new ExtensionPackageRemoveRequest({
+const removeInput = (): ExtensionPackageRemoveInput =>
+  new ExtensionPackageRemoveInput({
     actor: actor(),
     packageId: "extension-1",
     traceId: "trace-remove"

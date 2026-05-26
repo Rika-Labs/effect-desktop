@@ -28,7 +28,7 @@ The invariant is that package install authority is not capability minting author
 const install = Effect.gen(function* () {
   yield* checkPackagePermission(options, "install", actor, manifest.id, traceId)
   yield* checkManifestCapabilityPermissions(options, "install", actor, manifest, traceId)
-  const result = yield* client.install(toInstallInput(request))
+  const result = yield* client.install(input)
   yield* registerManifestCapabilities(options, manifest, traceId)
   return result
 })
