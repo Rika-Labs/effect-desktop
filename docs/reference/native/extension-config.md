@@ -23,6 +23,11 @@ The public service is Layer-first and test-substitutable. The TypeScript service
 | `isSupported` | `void`                                              | `{ supported, reason? }`                     |
 | `events`      | `void`                                              | stream of extension config events            |
 
+The canonical renderer event stream is `ExtensionConfig.events.Event`. Bridge
+clients translate that stream to the existing host event method
+`ExtensionConfig.Event`, so host adapters keep the current wire channel while
+direct clients use the Effect RPC stream.
+
 ## Fields
 
 Each field declares:
@@ -71,7 +76,11 @@ The Rust host adapter stores non-secret values and secret-key presence in a dura
 
 ## Testing
 
-Use `makeExtensionConfigMemoryClient()` for deterministic reads, writes, resets, redaction, and events without a native host. Use `makeExtensionConfigUnsupportedClient()` when a test needs the typed unsupported path.
+Use `makeExtensionConfigMemoryClient()` for deterministic reads, writes, resets,
+redaction, and events without a native host. Use
+`makeExtensionConfigUnsupportedClient()` when a test needs the typed unsupported
+path. Unsupported event streams fail with operation
+`ExtensionConfig.events.Event`.
 
 ## Related
 

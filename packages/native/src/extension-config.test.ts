@@ -2,13 +2,18 @@ import { expect, test } from "bun:test"
 import { readFile } from "node:fs/promises"
 import {
   type BridgeClientExchange,
+  type HostProtocolEnvelope,
   type HostProtocolError,
   type HostProtocolEventEnvelope,
   HostProtocolInvalidOutputError,
+  HostProtocolResponseEnvelope,
   type HostProtocolRequestEnvelope,
+  HostProtocolStreamByRequestEnvelope,
   type SecretBytes,
+  makeDesktopClientProtocol,
   makeHostProtocolInternalError,
   makeSecretBytes,
+  rpcSupport,
   unsafeSecretBytes
 } from "@orika/bridge"
 import {
@@ -19,11 +24,14 @@ import {
   P,
   PermissionRegistry
 } from "@orika/core"
-import { Cause, Effect, Exit, Layer, ManagedRuntime, Schema, Stream } from "effect"
+import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Queue, Schema, Stream } from "effect"
+import { RpcClient, RpcSchema } from "effect/unstable/rpc"
 
 import {
   ExtensionConfig,
   ExtensionConfigClient,
+  ExtensionConfigMethodNames,
+  ExtensionConfigRpcs,
   type ExtensionConfigClientApi,
   ExtensionConfigSurface,
   type ExtensionConfigSecretStoreApi,
@@ -56,12 +64,157 @@ test("ExtensionConfig public surface omits shallow client and bridge layer helpe
       )
 
       for (const removedName of [
+        "ExtensionConfigLive",
         "makeExtensionConfigClientLayer",
         "makeExtensionConfigBridgeClientLayer"
       ]) {
         expect(source).not.toContain(removedName)
         expect(indexSource).not.toContain(removedName)
       }
+    })
+  ))
+
+test("ExtensionConfig event schema is owned by the RPC stream contract", async () => {
+  const extensionConfigModule = await import("./extension-config.js")
+  const rootModule = await import("./index.js")
+  const callableTags = Array.from(ExtensionConfigRpcs.requests.keys()).toSorted()
+  const eventRpc = ExtensionConfigRpcs.requests.get("ExtensionConfig.events.Event")
+
+  expect("ExtensionConfigRpcEvents" in extensionConfigModule).toBe(false)
+  expect("ExtensionConfigRpcEvents" in rootModule).toBe(false)
+  expect([...ExtensionConfigMethodNames]).toEqual([
+    "read",
+    "write",
+    "reset",
+    "redact",
+    "isSupported"
+  ])
+  expect(callableTags).toEqual([
+    "ExtensionConfig.events.Event",
+    "ExtensionConfig.isSupported",
+    "ExtensionConfig.read",
+    "ExtensionConfig.redact",
+    "ExtensionConfig.reset",
+    "ExtensionConfig.write"
+  ])
+  expect(eventRpc).toBeDefined()
+  expect(eventRpc === undefined ? false : RpcSchema.isStreamSchema(eventRpc.successSchema)).toBe(
+    true
+  )
+  if (eventRpc !== undefined && RpcSchema.isStreamSchema(eventRpc.successSchema)) {
+    expect(eventRpc.successSchema.success).toBe(ExtensionConfigEvent)
+    expect(eventRpc.pipe(rpcSupport)).toEqual({ status: "supported" })
+  }
+
+  const eventDoc = ExtensionConfigSurface.schemaDocs.find(
+    (doc) => doc.tag === "ExtensionConfig.events.Event"
+  )
+  expect(eventDoc?.kind).toBe("stream")
+  expect(eventDoc?.callable).toBe(true)
+  expect(eventDoc?.support).toEqual({ status: "supported" })
+})
+
+test("ExtensionConfig direct client consumes the canonical RPC event stream", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
+      const requests: HostProtocolRequestEnvelope[] = []
+      const protocolLayer = Layer.effect(RpcClient.Protocol)(
+        makeDesktopClientProtocol(
+          {
+            send: (envelope) => {
+              if (envelope.kind !== "request") {
+                return Effect.void
+              }
+              requests.push(envelope)
+              return Effect.all(
+                [
+                  Queue.offer(
+                    queue,
+                    new HostProtocolStreamByRequestEnvelope({
+                      kind: "stream",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_001,
+                      traceId: envelope.traceId,
+                      payload: eventPayload("written")
+                    })
+                  ),
+                  Queue.offer(
+                    queue,
+                    new HostProtocolResponseEnvelope({
+                      kind: "response",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_002,
+                      traceId: envelope.traceId
+                    })
+                  )
+                ],
+                { discard: true }
+              )
+            },
+            run: (onEnvelope) =>
+              Stream.fromQueue(queue).pipe(
+                Stream.runForEach(onEnvelope),
+                Effect.andThen(Effect.never)
+              )
+          },
+          {
+            nextRequestId: () => "extension-config-event-rpc",
+            nextTraceId: () => "trace-extension-config-event-rpc"
+          }
+        )
+      )
+
+      const event = yield* runScoped(
+        Effect.gen(function* () {
+          const client = yield* ExtensionConfigClient
+          return yield* client.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+        }),
+        Layer.provide(ExtensionConfigSurface.clientLayer, protocolLayer)
+      )
+
+      expect(event).toMatchObject({
+        extensionId: "extension-1",
+        phase: "written",
+        keys: ["theme"],
+        revision: 1
+      })
+      expect(requests.map((request) => request.method)).toEqual(["ExtensionConfig.events.Event"])
+    })
+  ))
+
+test("ExtensionConfig bridge client subscribes to the host event channel", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const methods: string[] = []
+      const exchange: BridgeClientExchange = {
+        request: () => Effect.fail(makeHostProtocolInternalError("unexpected request", "test")),
+        subscribe: (method) => {
+          methods.push(method)
+          return Stream.make({
+            kind: "event",
+            method,
+            timestamp: 1_710_000_000_000,
+            traceId: "trace-extension-config-host-event",
+            payload: eventPayload("written")
+          })
+        }
+      }
+      const client = yield* runScoped(
+        Effect.gen(function* () {
+          return yield* ExtensionConfigClient
+        }),
+        ExtensionConfigSurface.bridgeClientLayer(exchange)
+      )
+      const event = yield* client.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+
+      expect(event).toMatchObject({
+        extensionId: "extension-1",
+        phase: "written",
+        keys: ["theme"],
+        revision: 1
+      })
+      expect(methods).toEqual(["ExtensionConfig.Event"])
     })
   ))
 
@@ -554,10 +707,17 @@ test("ExtensionConfig unsupported client exposes typed unsupported failures", ()
       const client = makeExtensionConfigUnsupportedClient()
       const supported = yield* client.isSupported()
       const exit = yield* Effect.exit(client.read(readInput()))
+      const eventExit = yield* Effect.exit(client.events().pipe(Stream.runHead))
 
       expect(supported).toEqual({ supported: false, reason: "host-adapter-unimplemented" })
       expectExitFailure(exit, (error) => {
         expect(error).toMatchObject({ tag: "Unsupported", operation: "ExtensionConfig.read" })
+      })
+      expectExitFailure(eventExit, (error) => {
+        expect(error).toMatchObject({
+          tag: "Unsupported",
+          operation: "ExtensionConfig.events.Event"
+        })
       })
     })
   ))
@@ -573,7 +733,8 @@ test("ExtensionConfig RPC metadata reports host methods as supported", () => {
     { tag: "ExtensionConfig.write", support: { status: "supported" } },
     { tag: "ExtensionConfig.reset", support: { status: "supported" } },
     { tag: "ExtensionConfig.redact", support: { status: "supported" } },
-    { tag: "ExtensionConfig.isSupported", support: { status: "supported" } }
+    { tag: "ExtensionConfig.isSupported", support: { status: "supported" } },
+    { tag: "ExtensionConfig.events.Event", support: { status: "supported" } }
   ])
 })
 
@@ -716,6 +877,13 @@ const eventBase = () => ({
   type: "extension-config-event",
   timestamp: 1_710_000_000_000,
   extensionId: "extension-1"
+})
+
+const eventPayload = (phase: "written") => ({
+  ...eventBase(),
+  phase,
+  keys: ["theme"],
+  revision: 1
 })
 
 const configuredPermissions = (rows: AuditEvent[]) =>

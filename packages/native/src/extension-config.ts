@@ -37,8 +37,7 @@ import {
   Stream
 } from "effect"
 
-import { subscribeNativeEvent } from "./event-stream.js"
-import { decodeNativeInput, runNativeRpc } from "./native-client.js"
+import { decodeNativeInput, runNativeRpc, runNativeRpcStream } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
 import {
@@ -67,7 +66,6 @@ import { SafeStorage } from "./safe-storage.js"
 
 const Surface = "ExtensionConfig"
 const UnsupportedReason = "host-adapter-unimplemented"
-const ExtensionConfigEventMethod = "ExtensionConfig.Event"
 
 const ConfigNamePattern = /^[A-Za-z0-9._-]+$/
 const RedactedSecretValue = "<redacted:ExtensionConfigSecret>"
@@ -106,18 +104,18 @@ export const ExtensionConfigIsSupported = NativeSurface.rpc(Surface, "isSupporte
   support: NativeSurface.support.supported
 })
 
-export const ExtensionConfigRpcEvents = Object.freeze({
-  Event: { payload: ExtensionConfigEvent }
+const ExtensionConfigEventStream = NativeSurface.event(Surface, "Event", {
+  payload: ExtensionConfigEvent,
+  support: NativeSurface.support.supported
 })
-
-export type ExtensionConfigRpcEvents = typeof ExtensionConfigRpcEvents
 
 const ExtensionConfigRpcGroup = RpcGroup.make(
   ExtensionConfigRead,
   ExtensionConfigWrite,
   ExtensionConfigReset,
   ExtensionConfigRedact,
-  ExtensionConfigIsSupported
+  ExtensionConfigIsSupported,
+  ExtensionConfigEventStream
 )
 
 export const ExtensionConfigRpcs: RpcGroup.RpcGroup<ExtensionConfigRpc> = ExtensionConfigRpcGroup
@@ -231,8 +229,6 @@ export class ExtensionConfig extends Context.Service<ExtensionConfig, ExtensionC
   )
 }
 
-export const ExtensionConfigLive = ExtensionConfig.layer
-
 export const makeExtensionConfigServiceLayer = (
   client: ExtensionConfigClientApi,
   options: ExtensionConfigServiceOptions
@@ -284,15 +280,22 @@ export const ExtensionConfigHandlersLive = ExtensionConfigRpcGroup.toLayer({
     Effect.gen(function* () {
       const config = yield* ExtensionConfig
       return yield* config.isSupported()
-    })
+    }),
+  "ExtensionConfig.events.Event": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const config = yield* ExtensionConfig
+        return config.events()
+      })
+    )
 })
 
 export const ExtensionConfigSurface = NativeSurface.make(Surface, ExtensionConfigRpcGroup, {
   service: ExtensionConfigClient,
   capabilities: ExtensionConfigCapabilityMethods,
   handlers: ExtensionConfigHandlersLive,
-  client: (client) => extensionConfigClientFromRpcClient(client, undefined),
-  bridgeClient: (client, exchange) => extensionConfigClientFromRpcClient(client, exchange)
+  client: (client) => extensionConfigClientFromRpcClient(client),
+  bridgeClient: (client, exchange) => extensionConfigBridgeClientFromRpcClient(client, exchange)
 })
 
 export interface ExtensionConfigMemoryClientOptions {
@@ -437,7 +440,7 @@ export const makeExtensionConfigUnsupportedClient = (): ExtensionConfigClientApi
       Effect.succeed(
         new ExtensionConfigSupportedResult({ supported: false, reason: UnsupportedReason })
       ),
-    events: () => Stream.fail(unsupportedError("ExtensionConfig.events"))
+    events: () => Stream.fail(unsupportedError("ExtensionConfig.events.Event"))
   } satisfies ExtensionConfigClientApi)
 
 const makeExtensionConfigService = (
@@ -627,8 +630,7 @@ const makeExtensionConfigService = (
   )
 
 const extensionConfigClientFromRpcClient = (
-  client: DesktopRpcClient<ExtensionConfigRpc>,
-  exchange: BridgeClientExchange | undefined
+  client: DesktopRpcClient<ExtensionConfigRpc>
 ): ExtensionConfigClientApi =>
   Object.freeze({
     read: (input) =>
@@ -660,7 +662,20 @@ const extensionConfigClientFromRpcClient = (
         client["ExtensionConfig.isSupported"](undefined),
         "ExtensionConfig.isSupported"
       ),
-    events: () => subscribeNativeEvent(exchange, ExtensionConfigEventMethod, ExtensionConfigEvent)
+    events: () =>
+      runExtensionConfigRpcStream(
+        client["ExtensionConfig.events.Event"](undefined),
+        "ExtensionConfig.events.Event"
+      )
+  } satisfies ExtensionConfigClientApi)
+
+const extensionConfigBridgeClientFromRpcClient = (
+  client: DesktopRpcClient<ExtensionConfigRpc>,
+  exchange: BridgeClientExchange
+): ExtensionConfigClientApi =>
+  Object.freeze({
+    ...extensionConfigClientFromRpcClient(client),
+    events: () => NativeSurface.subscribeEvent(exchange, ExtensionConfigEventStream)
   } satisfies ExtensionConfigClientApi)
 
 function extensionConfigRpc<
@@ -681,6 +696,11 @@ const runExtensionConfigRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
   operation: string
 ): Effect.Effect<A, ExtensionConfigError, never> => runNativeRpc(effect, operation, Surface)
+
+const runExtensionConfigRpcStream = <A, E>(
+  stream: Stream.Stream<A, E, never>,
+  operation: string
+): Stream.Stream<A, ExtensionConfigError, never> => runNativeRpcStream(stream, operation, Surface)
 
 const validateReadRequest = (
   input: unknown
