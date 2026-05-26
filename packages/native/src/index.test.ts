@@ -466,6 +466,7 @@ test("native package root keeps contracts and implementation helpers behind subp
       expect("WebViewLive" in native).toBe(false)
       expect("UpdaterLive" in native).toBe(false)
       expect("AppLive" in native).toBe(false)
+      expect("LocalToolRuntimeLive" in native).toBe(false)
       expect("makeUnsupportedClipboardClient" in native).toBe(false)
       expect("makeClipboardBridgeClientLayer" in native).toBe(false)
       expect("makeHostClipboardRpcRuntime" in native).toBe(false)

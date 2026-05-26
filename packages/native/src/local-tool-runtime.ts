@@ -205,8 +205,6 @@ export class LocalToolRuntime extends Context.Service<
   )
 }
 
-export const LocalToolRuntimeLive = LocalToolRuntime.layer
-
 export const makeLocalToolRuntimeServiceLayer = (
   client: LocalToolRuntimeClientApi,
   options: LocalToolRuntimeServiceOptions

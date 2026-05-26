@@ -1494,11 +1494,6 @@
       "signature": "const LocalToolRuntimeHandlersLive: Layer.Layer<import(\"effect/unstable/rpc/Rpc\").Handler<\"LocalToolRuntime.register\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"LocalToolRuntime.run\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"LocalToolRuntime.stop\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"LocalToolRuntime.health\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"LocalToolRuntime.isSupported\">, never, LocalToolRuntime>"
     },
     {
-      "name": "LocalToolRuntimeLive",
-      "kind": "value",
-      "signature": "const LocalToolRuntimeLive: Layer.Layer<LocalToolRuntime, never, PermissionRegistry | LocalToolRuntimeClient>"
-    },
-    {
       "name": "LocalToolRuntimeMemoryClientOptions",
       "kind": "interface",
       "signature": "export interface LocalToolRuntimeMemoryClientOptions { readonly failure?: Partial<Record<\"register\" | \"run\" | \"stop\" | \"health\", LocalToolRuntimeError>> readonly nextRuntimeId?: () => string readonly nextRunId?: () => string readonly stdout?: string readonly stderr?: string readonly status?: LocalToolRuntimeRunStatus readonly health?: LocalToolRuntimeHealthStatus }"

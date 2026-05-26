@@ -426,7 +426,6 @@ export {
   LocalToolRuntime,
   LocalToolRuntimeClient,
   LocalToolRuntimeHandlersLive,
-  LocalToolRuntimeLive,
   LocalToolRuntimeMethodNames,
   LocalToolRuntimeRpcEvents,
   LocalToolRuntimeRpcs,

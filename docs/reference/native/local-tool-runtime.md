@@ -81,6 +81,18 @@ The Rust host adapter registers manifests in host state and runs only declared c
 
 Issue [#1394](https://github.com/Rika-Labs/effect-desktop/issues/1394) removed service-local event mirroring so `LocalToolRuntime.events()` delegates to the bridge event stream. Issue [#1405](https://github.com/Rika-Labs/effect-desktop/issues/1405) added Windows host-binary coverage without adding a new wrapper layer. Issue [#1404](https://github.com/Rika-Labs/effect-desktop/issues/1404) replaced the blanket working-directory cleanup rejection with host-owned directory cleanup and kept CPU and memory budgets fail-closed instead of pretending to enforce unsupported OS policy. The remaining host protocol helpers carry native/web routing, Schema-coded payloads, and OS process lifecycle policy; no additional zero-policy Effect wrapper debt was found in the touched path.
 
+Use `LocalToolRuntime.layer` directly when composing the default service.
+`LocalToolRuntimeLive` was removed because it was only a public alias for the
+canonical Effect service layer.
+
+Architecture-debt sweep outcome for #1919: removed the shallow
+`LocalToolRuntimeLive` alias; kept `LocalToolRuntime`,
+`makeLocalToolRuntimeServiceLayer`, `LocalToolRuntimeClient`,
+`LocalToolRuntimeSurface`, RPC contracts, handlers, permission/audit checks,
+strict validation, bridge event subscription, memory/unsupported clients, and
+host process lifecycle policy because they own durable boundary, policy, or
+test-substitution semantics.
+
 ## Testing
 
 Use `makeLocalToolRuntimeMemoryClient()` for deterministic register/run/stop/health and event tests without OS prompts. Use `makeLocalToolRuntimeUnsupportedClient()` when a test needs the typed unsupported path.
