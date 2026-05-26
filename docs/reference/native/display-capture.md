@@ -25,7 +25,7 @@ On macOS, `displayId` is a `screencapture` display selector: `"main"`, a positiv
 
 ## Layers
 
-- `DisplayCaptureLive`
+- `DisplayCapture.layer`
 - `DisplayCaptureGrantAuthority`
 - `makeDisplayCaptureGrantAuthority(grants)`
 - `makeDisplayCaptureGrantAuthorityLayer(grants)`
@@ -53,6 +53,13 @@ deterministic event tests until the native capture adapter publishes lifecycle e
 ## Testing
 
 Use `makeDisplayCaptureMemoryClient()` for deterministic capture, event, permission, and audit tests without native OS prompts. Use `makeDisplayCaptureUnsupportedClient()` to exercise the typed unsupported path.
+
+## Architecture Debt Sweep
+
+Architecture-debt sweep outcome for #1908: removed the `DisplayCaptureLive`
+alias. Use `DisplayCapture.layer` directly. The `DisplayCapture` service remains
+because it owns permission checks, grant verification, audit metadata redaction,
+image validation, and typed host error mapping.
 
 ## Related
 

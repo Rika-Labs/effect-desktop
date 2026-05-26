@@ -187,8 +187,6 @@ export class DisplayCapture extends Context.Service<DisplayCapture, DisplayCaptu
   )
 }
 
-export const DisplayCaptureLive = DisplayCapture.layer
-
 export const makeDisplayCaptureServiceLayer = (
   client: DisplayCaptureClientApi,
   options: DisplayCaptureServiceOptions

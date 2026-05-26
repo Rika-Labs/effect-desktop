@@ -510,7 +510,6 @@ export {
   DisplayCaptureClient,
   DisplayCaptureGrantAuthority,
   DisplayCaptureHandlersLive,
-  DisplayCaptureLive,
   DisplayCaptureMethodNames,
   DisplayCaptureRpcs,
   DisplayCaptureSurface,

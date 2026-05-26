@@ -834,11 +834,6 @@
       "signature": "const DisplayCaptureHandlersLive: Layer.Layer<import(\"effect/unstable/rpc/Rpc\").Handler<\"DisplayCapture.captureDisplay\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"DisplayCapture.captureWindow\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"DisplayCapture.captureRegion\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"DisplayCapture.isSupported\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"DisplayCapture.events.Event\">, never, DisplayCapture>"
     },
     {
-      "name": "DisplayCaptureLive",
-      "kind": "value",
-      "signature": "const DisplayCaptureLive: Layer.Layer<DisplayCapture, never, PermissionRegistry | DisplayCaptureClient | DisplayCaptureGrantAuthority>"
-    },
-    {
       "name": "DisplayCaptureMemoryClientOptions",
       "kind": "interface",
       "signature": "export interface DisplayCaptureMemoryClientOptions { readonly failure?: Partial< Record<\"captureDisplay\" | \"captureWindow\" | \"captureRegion\", DisplayCaptureError> > readonly nextCaptureId?: () => string }"
