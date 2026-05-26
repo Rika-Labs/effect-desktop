@@ -117,8 +117,6 @@ export class DistributionParity extends Context.Service<
   )
 }
 
-export const DistributionParityLive = DistributionParity.layer
-
 export const makeDistributionParityServiceLayer = (
   client: DistributionParityClientApi,
   options: DistributionParityServiceOptions

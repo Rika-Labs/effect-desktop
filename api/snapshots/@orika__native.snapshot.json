@@ -894,11 +894,6 @@
       "signature": "const DistributionParityHandlersLive: Layer.Layer<import(\"effect/unstable/rpc/Rpc\").Handler<\"DistributionParity.verify\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"DistributionParity.isSupported\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"DistributionParity.events.Event\">, never, DistributionParity>"
     },
     {
-      "name": "DistributionParityLive",
-      "kind": "value",
-      "signature": "const DistributionParityLive: Layer.Layer<DistributionParity, never, PermissionRegistry | DistributionParityClient>"
-    },
-    {
       "name": "DistributionParityMemoryClientOptions",
       "kind": "interface",
       "signature": "export interface DistributionParityMemoryClientOptions { readonly failure?: Partial<Record<\"verify\", DistributionParityError>> }"

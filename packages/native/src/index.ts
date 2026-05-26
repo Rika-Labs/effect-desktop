@@ -271,7 +271,6 @@ export {
   DistributionParity,
   DistributionParityClient,
   DistributionParityHandlersLive,
-  DistributionParityLive,
   DistributionParityMethodNames,
   DistributionParityRpcs,
   DistributionParitySurface,

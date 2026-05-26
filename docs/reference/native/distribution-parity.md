@@ -55,6 +55,10 @@ Denied requests do not cross the host boundary. Successful verification emits `p
 
 The legacy `DistributionParityRpcEvents` side object has been removed. Distribution parity events now live in the same `RpcGroup` contract as request/response methods, while bridge-specific host event naming stays local to the bridge client adapter.
 
+Use `DistributionParity.layer` directly when wiring the default service layer. `DistributionParityLive` was removed because it only renamed the canonical Effect service layer and did not add durable desktop-specific policy, lifecycle, security, or protocol translation.
+
+Architecture-debt sweep outcome: removed the shallow `DistributionParityLive` alias; no additional wrapper debt was found in the distribution-parity service, surface, handler, or packaged policy-network demo paths.
+
 ## Related
 
 - Service: [`packages/native/src/distribution-parity.ts`](../../../packages/native/src/distribution-parity.ts)
