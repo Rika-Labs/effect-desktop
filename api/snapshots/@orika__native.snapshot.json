@@ -631,7 +631,7 @@
     {
       "name": "DesktopHttpApiRoutes",
       "kind": "value",
-      "signature": "const DesktopHttpApiRoutes: Layer.Layer<never, never, PermissionRegistry | import(\"effect/FileSystem\").FileSystem | import(\"effect/Path\").Path | Window | import(\"effect/unstable/http/Etag\").Generator | HttpRouter.HttpRouter | import(\"effect/unstable/http/HttpPlatform\").HttpPlatform>"
+      "signature": "const DesktopHttpApiRoutes: Layer.Layer<never, never, PermissionRegistry | import(\"effect/FileSystem\").FileSystem | import(\"effect/Path\").Path | Window | import(\"effect/unstable/http/Etag\").Generator | import(\"effect/unstable/http/HttpRouter\").HttpRouter | import(\"effect/unstable/http/HttpPlatform\").HttpPlatform>"
     },
     {
       "name": "DesktopHttpPermission",

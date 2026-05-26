@@ -27,6 +27,7 @@ const PHASE_0_RUST_STUB_INDEX = /^\/\/! Phase 0 stub\.$/m
 const PHASE_0_RUST_TEST_MARKER = "fn it_compiles"
 const NATIVE_LAYER_HELPER_NAME_PATTERN =
   /\b(make[A-Za-z0-9]+(?:ClientLayer|ServiceLayer|BridgeClientLayer))\b/g
+const SECRETS_SAFE_STORAGE_LAYER_WRAPPER_NAME = "makeSecrets" + "SafeStorageLayer"
 const NATIVE_PACKAGE_EXPORT_BLOCK_PATTERN = /export\s*\{([\s\S]*?)\}\s*from\s+"\.[^"]+\.js"/g
 const CURRENT_WINDOW_VOID_MUTATION_PAYLOAD_PATTERN =
   /use(?:Close|Destroy)CurrentWindowMutation[\s\S]{0,500}\.run\(\s*\{\s*\}\s*\)/m
@@ -372,6 +373,28 @@ describe("architecture debt guardrails", () => {
     expect(source).toContain("DesktopEventLog")
     expect(source).toContain("DesktopEventSchema")
     expect(source).not.toMatch(/export\s+\{[^}]+}\s+from\s+"effect\/unstable\/eventlog"/)
+  })
+
+  test("Secrets safe-storage port does not expose a zero-policy Layer wrapper", () => {
+    const relativePaths = [
+      "packages/core/src/runtime/secrets.ts",
+      "api/snapshots/@orika__core.snapshot.json",
+      "docs/reference/services/secrets.md",
+      "docs/how-to/store-secrets.md",
+      "engineering/milestones/phase-15-secrets.md",
+      "engineering/architecture/feature-before-after-ledger.md",
+      "engineering/roadmap/layer-first-issue-order.md"
+    ] as const
+    const violations: string[] = []
+
+    for (const relativePath of relativePaths) {
+      const source = readFileSync(join(REPO_ROOT, relativePath), "utf8")
+      if (source.includes(SECRETS_SAFE_STORAGE_LAYER_WRAPPER_NAME)) {
+        violations.push(`${relativePath}: use Layer.succeed(SecretsSafeStorage)(safeStorage)`)
+      }
+    }
+
+    expect(violations).toEqual([])
   })
 })
 

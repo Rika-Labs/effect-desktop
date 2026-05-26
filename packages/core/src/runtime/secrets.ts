@@ -286,10 +286,6 @@ export const SecretsLayer = (
     })
   )
 
-export const makeSecretsSafeStorageLayer = (
-  safeStorage: SecretsSafeStorageApi
-): Layer.Layer<SecretsSafeStorage> => Layer.succeed(SecretsSafeStorage)(safeStorage)
-
 const deriveStorageKey = (appId: string, namespace: string, key: string): string =>
   `${appId}/${namespace}/${key}`
 

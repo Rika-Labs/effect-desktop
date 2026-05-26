@@ -42,9 +42,9 @@ hardware-backed attestation, and platform-specific libsecret/keychain polish.
   `set/get/delete/list`.
 - `SecretBytes` as Effect `Redacted.Redacted<Uint8Array>` values with explicit
   `unsafeSecretBytes` access and `wipeSecretBytes` cleanup.
-- `SecretsSafeStorage` / `makeSecretsSafeStorageLayer` as the core-owned port
-  that native SafeStorage or tests can implement without creating a package
-  cycle.
+- `SecretsSafeStorage` as the core-owned port that native SafeStorage or tests
+  can implement without creating a package cycle. Compose concrete ports with
+  `Layer.succeed(SecretsSafeStorage)(safeStorage)`.
 - `runSecretsMigration` for first-launch plaintext Settings migration.
 - `RedactionFilter` and `redact` re-exported from the bridge.
 
@@ -124,8 +124,8 @@ Files changed: core Secrets service and migration; bridge redaction primitive;
 CrashReporter/bridge emission redaction wiring; test package memory secrets
 adapter; Phase 15 learning records.
 Public APIs added: @orika/core Secrets, SecretBytes helpers,
-SecretsSafeStorage port/layer helpers, runSecretsMigration, RedactionFilter
-re-export; @orika/test makeMemorySecretsSafeStorage.
+SecretsSafeStorage port, runSecretsMigration, RedactionFilter re-export;
+@orika/test makeMemorySecretsSafeStorage.
 Tests added: Secrets runtime tests; redaction filter and emission-boundary tests;
 legacy secrets migration tests; memory secrets mock tests.
 Validation commands run: bun install --frozen-lockfile; bun run check; bun run

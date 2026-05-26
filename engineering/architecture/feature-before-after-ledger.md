@@ -598,10 +598,11 @@ windows: Desktop.window("main", { title: "App" }, services)
 
 ```ts
 // Before
-const layer = Layer.provide(SecretsLive, makeSecretsSafeStorageLayer(options))
+const storageLayer = customSecretsSafeStorageLayer(safeStorage)
 
 // After
-const layer = SecretsLive.pipe(Layer.provide(SecretsSafeStorageLive(options)))
+const storageLayer = Layer.succeed(SecretsSafeStorage)(safeStorage)
+const layer = SecretsLayer(options).pipe(Layer.provide(storageLayer))
 const test = SecretsTest.memory()
 ```
 

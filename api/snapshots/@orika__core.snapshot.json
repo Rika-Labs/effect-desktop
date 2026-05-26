@@ -1359,11 +1359,6 @@
       "signature": "const makeSecrets: (safeStorage: SecretsSafeStorageApi, options: SecretsOptions) => Effect.Effect<SecretsApi, SecretsInvalidArgumentError, never>"
     },
     {
-      "name": "makeSecretsSafeStorageLayer",
-      "kind": "value",
-      "signature": "const makeSecretsSafeStorageLayer: (safeStorage: SecretsSafeStorageApi) => Layer.Layer<SecretsSafeStorage>"
-    },
-    {
       "name": "makeSettingKey",
       "kind": "value",
       "signature": "const makeSettingKey: <A>(options: { readonly name: string; readonly schema: SettingSchema<A>; readonly defaultValue?: A; }) => SettingKey<A>"
