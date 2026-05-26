@@ -39,7 +39,7 @@
   "devDependencies": {
     "@orika/core": "workspace:*",
     "@orika/react": "workspace:*",
-    "@effect/tsgo": "0.7.2",
+    "@effect/tsgo": "0.11.0",
     "@types/bun": "latest",
     "@typescript/native-preview": "7.0.0-dev.20260515.1",
     "effect": "4.0.0-beta.60",
