@@ -98,6 +98,28 @@ const STALE_SAFE_STORAGE_HOST_STATUS_DOC_TOKENS = [
   "Effect<{ namespace, key }[]>",
   'Array of { namespace: "tokens", key: "github" } shapes'
 ] as const
+const REMOVED_NATIVE_LIVE_ALIASES = [
+  "WindowLive",
+  "ClipboardLive",
+  "NotificationLive",
+  "DialogLive",
+  "WebViewLive",
+  "UpdaterLive",
+  "AppLive",
+  "LocalToolRuntimeLive",
+  "JobLive",
+  "JobRuntimeLive",
+  "RealtimeMediaSessionLive",
+  "CrashReporterLive",
+  "EgressPolicyLive",
+  "DisplayCaptureLive",
+  "WorkspaceIndexLive",
+  "DistributionParityLive",
+  "AttachmentIntakeLive",
+  "ResidentLifecycleLive",
+  "PowerMonitorLive",
+  "SystemAppearanceLive"
+] as const
 const STALE_PACKAGE_README_PHRASES = [
   "public API remains reserved for Phase 4+",
   "Public renderer-facing APIs",
@@ -391,6 +413,23 @@ describe("architecture debt guardrails", () => {
       const source = readFileSync(join(REPO_ROOT, relativePath), "utf8")
       if (source.includes(SECRETS_SAFE_STORAGE_LAYER_WRAPPER_NAME)) {
         violations.push(`${relativePath}: use Layer.succeed(SecretsSafeStorage)(safeStorage)`)
+      }
+    }
+
+    expect(violations).toEqual([])
+  })
+
+  test("layer-first docs do not compose removed native live aliases", () => {
+    const relativePath = "docs/explanation/layer-first-design.md"
+    const markdown = readFileSync(join(REPO_ROOT, relativePath), "utf8")
+    const violations: string[] = []
+
+    for (const match of markdown.matchAll(MARKDOWN_CODE_BLOCK_PATTERN)) {
+      const code = match[1] ?? ""
+      for (const alias of REMOVED_NATIVE_LIVE_ALIASES) {
+        if (new RegExp(`\\b${alias}\\b`).test(code)) {
+          violations.push(`${relativePath}: code block uses removed @orika/native alias ${alias}`)
+        }
       }
     }
 

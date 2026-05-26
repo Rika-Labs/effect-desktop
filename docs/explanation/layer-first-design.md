@@ -16,7 +16,7 @@ A public capability ships **five things in one module**:
 
 1. **A contract** — an `RpcGroup` describing methods, schemas, errors, and capability metadata.
 2. **A service tag** — `Context.Service<T, Api>(tag)` — the value handlers depend on.
-3. **A live layer** — produces the service against a real backend (Rust host, OS adapter, etc.).
+3. **A service layer** — produces the service against an explicit client or backend.
 4. **A client layer** — produces a client wrapper that goes through the bridge.
 5. **A test layer** — produces a deterministic in-memory implementation.
 
@@ -29,7 +29,7 @@ Look at `packages/native/src/window.ts` and you see all of them. Look at any oth
 Three properties fall out of this shape:
 
 - **Substitutability.** Anywhere that depends on the service tag will accept any layer that provides it. Real, faked, mock, custom — all interchangeable. Tests don't need new APIs; they need a different `Layer.provide`.
-- **Testability without ceremony.** The deterministic in-memory layer is a peer of the live one, not a hidden helper. You don't reach into private internals to fake a dialog; you provide `DialogTest` instead of `DialogLive`.
+- **Testability without ceremony.** The deterministic in-memory layer is a peer of the production service layer, not a hidden helper. You don't reach into private internals to fake a dialog; you provide `DialogTest` at the service boundary.
 - **Boundary discipline.** A client layer goes through the bridge; a service layer runs in the runtime. The two never collapse into "just call this function" because they are typed differently. The compiler enforces which side of the boundary you are on.
 
 This is the **layer-first contract** that governs new public capabilities (see `engineering/architecture/layer-first-contract.md`). Every new public surface should follow it. Every shallow wrapper that doesn't is architecture debt.
@@ -82,10 +82,18 @@ import {
   SettingsLive,
   TelemetryLive
 } from "@orika/core"
-import { Window, WindowHandlersLive, ClipboardLive, ClipboardHandlersLive } from "@orika/native"
+import {
+  Window,
+  WindowHandlersLive,
+  Clipboard,
+  ClipboardClient,
+  ClipboardHandlersLive
+} from "@orika/native"
 
 const PermissionRegistryLive = Layer.effect(PermissionRegistry, PermissionRegistry.make)
 const WindowTest = Layer.succeed(Window)(testWindow)
+const ClipboardClientLayer = Layer.succeed(ClipboardClient)(testClipboardClient)
+const ClipboardLayer = Layer.provide(Clipboard.layer, ClipboardClientLayer)
 
 const RuntimeLive = Layer.mergeAll(
   PermissionRegistryLive,
@@ -95,7 +103,7 @@ const RuntimeLive = Layer.mergeAll(
   TelemetryLive,
   WindowTest,
   WindowHandlersLive,
-  ClipboardLive,
+  ClipboardLayer,
   ClipboardHandlersLive
 )
 ```
