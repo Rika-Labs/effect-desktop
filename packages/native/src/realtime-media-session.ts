@@ -205,8 +205,6 @@ export class RealtimeMediaSession extends Context.Service<
   )
 }
 
-export const RealtimeMediaSessionLive = RealtimeMediaSession.layer
-
 export type RealtimeMediaSessionRpc = RpcGroup.Rpcs<typeof RealtimeMediaSessionRpcGroup>
 
 export type RealtimeMediaSessionRpcHandlers<R = never> = NativeRpcHandlers<

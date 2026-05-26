@@ -75,6 +75,11 @@ Device state is a host snapshot at `open` and `selectDevice`; this adapter does 
 
 ## Testing
 
+Use `RealtimeMediaSession.layer` directly with a test
+`RealtimeMediaSessionClient` layer. `RealtimeMediaSessionLive` was removed
+because it only renamed the canonical static layer without owning desktop
+lifecycle, security, protocol, validation, or event policy.
+
 Use `makeRealtimeMediaSessionMemoryClient()` for deterministic success and failure tests without OS prompts. Use `makeRealtimeMediaSessionUnsupportedClient()` when a test needs the real host-adapter maturity shape.
 
 ## Architecture-debt sweep
@@ -83,6 +88,13 @@ Issue #1829 removed the public `RealtimeMediaSessionRpcEvents` side object by
 moving event payload ownership into canonical Effect RPC streams. The bridge
 client remains the native/web boundary adapter because it preserves host event
 method names and keeps the `isSupported` preflight before subscription.
+
+Issue #1921 removed the public `RealtimeMediaSessionLive` alias. Keep the
+`RealtimeMediaSession` service, `RealtimeMediaSessionClient` port, surface/RPC
+contracts, handlers, schema validation, event-stream filters, bridge event
+method translation, `isSupported` preflight, memory and unsupported clients, and
+host resource lifecycle because those pieces own durable native/web boundary or
+desktop media-session semantics. Compose `RealtimeMediaSession.layer` directly.
 
 ## Related
 

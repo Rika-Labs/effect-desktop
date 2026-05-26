@@ -647,7 +647,6 @@ export {
   RealtimeMediaSession,
   RealtimeMediaSessionClient,
   RealtimeMediaSessionHandlersLive,
-  RealtimeMediaSessionLive,
   RealtimeMediaSessionMethodNames,
   RealtimeMediaSessionRpcs,
   RealtimeMediaSessionSurface,

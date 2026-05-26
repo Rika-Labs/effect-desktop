@@ -2639,11 +2639,6 @@
       "signature": "const RealtimeMediaSessionHandlersLive: Layer.Layer<import(\"effect/unstable/rpc/Rpc\").Handler<\"RealtimeMediaSession.open\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"RealtimeMediaSession.close\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"RealtimeMediaSession.selectDevice\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"RealtimeMediaSession.interrupt\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"RealtimeMediaSession.isSupported\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"RealtimeMediaSession.events.DeviceState\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"RealtimeMediaSession.events.PermissionState\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"RealtimeMediaSession.events.Interruption\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"RealtimeMediaSession.events.SessionState\">, never, RealtimeMediaSession>"
     },
     {
-      "name": "RealtimeMediaSessionLive",
-      "kind": "value",
-      "signature": "const RealtimeMediaSessionLive: Layer.Layer<RealtimeMediaSession, never, RealtimeMediaSessionClient>"
-    },
-    {
       "name": "RealtimeMediaSessionMemoryClientOptions",
       "kind": "interface",
       "signature": "export interface RealtimeMediaSessionMemoryClientOptions { readonly failure?: Partial< Record<\"open\" | \"close\" | \"selectDevice\" | \"interrupt\", RealtimeMediaSessionError> > }"
