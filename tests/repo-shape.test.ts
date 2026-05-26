@@ -87,6 +87,16 @@ const STALE_RENDERER_SQLITE_WRAPPER_TOKENS = [
   "RendererSqliteMemoryOptions",
   "RendererSqliteWorkerOptions"
 ] as const
+const STALE_SAFE_STORAGE_HOST_STATUS_DOC_TOKENS = [
+  "native `SafeStorage` only routes availability probing",
+  "Secret read/write/list/delete calls require a provided test or platform storage layer until",
+  "Secret read/write/list/delete calls fail until platform credential-store adapters exist",
+  "current native host routes availability probing only",
+  "secret read/write/list/delete calls fail until real platform adapters exist",
+  "`makeSecrets(safeStorageApi, options)` returns the layer",
+  "Effect<{ namespace, key }[]>",
+  'Array of { namespace: "tokens", key: "github" } shapes'
+] as const
 const STALE_PACKAGE_README_PHRASES = [
   "public API remains reserved for Phase 4+",
   "Public renderer-facing APIs",
@@ -564,6 +574,27 @@ describe("SQLite docs", () => {
     expect(markdown).toContain("PermissionRegistry")
     expect(markdown).toContain("ResourceRegistryLive")
     expect(markdown).toContain("PermissionRegistry.make")
+  })
+})
+
+describe("Secrets docs", () => {
+  test("describe current SafeStorage host routing", () => {
+    const relativePaths = [
+      "docs/reference/services/secrets.md",
+      "docs/how-to/store-secrets.md"
+    ] as const
+    const violations: string[] = []
+
+    for (const relativePath of relativePaths) {
+      const markdown = readFileSync(join(REPO_ROOT, relativePath), "utf8")
+      for (const token of STALE_SAFE_STORAGE_HOST_STATUS_DOC_TOKENS) {
+        if (markdown.includes(token)) {
+          violations.push(`${relativePath}: remove stale SafeStorage host status wording`)
+        }
+      }
+    }
+
+    expect(violations).toEqual([])
   })
 })
 

@@ -10,7 +10,7 @@ effect_version: 4
 
 `Secrets` is the app-level facade over native `SafeStorage`. Secret bytes never enter logs because they ride as `Redacted<Uint8Array>`, every operation is permission-checked, and successful accesses write audit events without the value.
 
-Current host status: native `SafeStorage` only routes availability probing. Secret read/write/list/delete calls fail until platform credential-store adapters exist, and there is no silent plaintext fallback. The examples below show the application API shape and are safe to use with an explicit test or platform storage layer.
+Current host status: native `SafeStorage` routes `set`, `get`, `list`, `delete`, and `isAvailable` through the platform credential store on supported hosts. If the credential store is unavailable, locked, denied, or unsupported on the current platform, `Secrets` fails loudly with `StorageUnavailable`; there is no silent plaintext fallback.
 
 ## 1. Declare the namespace permission
 
@@ -73,7 +73,7 @@ const program = Effect.gen(function* () {
 
 ```ts
 const keys = yield * secrets.list("tokens")
-// Array of { namespace: "tokens", key: "github" } shapes
+// string[] of keys inside the "tokens" namespace
 
 yield * secrets.delete("tokens", "github")
 ```
@@ -95,7 +95,7 @@ Successful operations write a `secret/accessed` audit event with namespace, key,
 - You are implementing a framework service that already owns namespace permissions and audit events.
 - You need direct access to credential-store keys instead of the app-facing `Secrets` facade.
 
-Do not use it as an encryption helper. The current native host routes availability probing only; secret read/write/list/delete calls fail until real platform adapters exist, and there is no silent plaintext fallback.
+Do not use it as an encryption helper. SafeStorage is the lower-level credential-store key/value primitive; on supported hosts it routes `set`, `get`, `list`, `delete`, and `isAvailable` through the platform store, and unavailable storage fails loudly instead of falling back to plaintext.
 
 Most apps want `Secrets` instead.
 

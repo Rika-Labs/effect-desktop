@@ -10,13 +10,14 @@ effect_version: 4
 
 App-level facade over `SafeStorage`. Bytes ride as `Redacted<Uint8Array>` so they can't accidentally hit logs.
 
-Current host status: native `SafeStorage` only routes availability probing. Secret read/write/list/delete calls require a provided test or platform storage layer until the macOS, Windows, and Linux host adapters exist. Missing storage fails as `StorageUnavailable`; there is no plaintext fallback.
+Current host status: native `SafeStorage` routes `set`, `get`, `list`, `delete`, and `isAvailable` through the platform credential store on supported hosts. `Secrets` probes availability before each storage operation; unavailable or unsupported storage fails loudly as `StorageUnavailable`, and there is no plaintext fallback.
 
 ## Import
 
 ```ts
 import {
   Secrets,
+  SecretsLayer,
   type SecretsApi,
   SecretsError,
   type SecretBytes,
@@ -35,7 +36,7 @@ import {
 | `set`    | `(namespace, key, value: SecretBytes) => Effect<void>` |
 | `get`    | `(namespace, key) => Effect<SecretBytes>`              |
 | `delete` | `(namespace, key) => Effect<void>`                     |
-| `list`   | `(namespace) => Effect<{ namespace, key }[]>`          |
+| `list`   | `(namespace) => Effect<readonly string[]>`             |
 
 Storage keys are derived as `appId/namespace/key`.
 
@@ -60,7 +61,7 @@ Every successful operation writes a `secret/accessed` audit event with namespace
 
 ## Layer
 
-`makeSecrets(safeStorageApi, options)` returns the layer. Depends on `PermissionRegistry` and `AuditEvents`.
+`makeSecrets(safeStorageApi, options)` returns an Effect that builds the service value. `SecretsLayer(options)` provides `Secrets` from a `SecretsSafeStorage` service.
 
 ## Example
 
