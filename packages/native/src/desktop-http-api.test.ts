@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import { type BridgeClientExchange, type HostProtocolRequestEnvelope } from "@orika/bridge"
 import { PermissionRegistry, makePermissionRegistry } from "@orika/core"
 import { Effect, Layer, Schema, Stream } from "effect"
 import { HttpRouter, HttpServer } from "effect/unstable/http"
@@ -10,7 +11,7 @@ import {
   DesktopHttpApiRoutes,
   DesktopHttpWindowCreateCapability
 } from "./desktop-http-api.js"
-import { type WindowApi, Window } from "./window.js"
+import { type WindowApi, Window, WindowSurface } from "./window.js"
 
 const windowHandle = Schema.decodeUnknownSync(WindowResource)({
   id: "window-1",
@@ -76,14 +77,31 @@ const windowCreateRequest = (): Request =>
     headers: { "content-type": "application/json" }
   })
 
-const makeHandler = (permissions: Layer.Layer<PermissionRegistry>) =>
+const makeHandlerWithWindowLayer = (
+  windowLayer: Layer.Layer<Window>,
+  permissions: Layer.Layer<PermissionRegistry>
+) =>
   HttpRouter.toWebHandler(
     DesktopHttpApiRoutes.pipe(
-      Layer.provide(Layer.succeed(Window)(windowClient)),
+      Layer.provide(windowLayer),
       Layer.provide(permissions),
       Layer.provide(HttpServer.layerServices)
     )
   )
+
+const makeHandler = (permissions: Layer.Layer<PermissionRegistry>) =>
+  makeHandlerWithWindowLayer(Layer.succeed(Window)(windowClient), permissions)
+
+const makeHostBackedWindowExchange = (
+  requests: HostProtocolRequestEnvelope[]
+): BridgeClientExchange => ({
+  request: (request) => {
+    requests.push(request)
+    return request.method === "Window.create"
+      ? Effect.succeed({ kind: "success" as const, payload: { windowId: "window-http-bridge-1" } })
+      : Effect.die(`unexpected Window bridge request: ${request.method}`)
+  }
+})
 
 test("DesktopHttpApi generated client builds the window create endpoint", () => {
   const urls = HttpApiClient.urlBuilder(DesktopHttpApi, { baseUrl: "http://localhost" })
@@ -116,6 +134,44 @@ test("DesktopHttpApi creates windows through schema-backed HTTP", () =>
           ownerScope: "desktop-http-test",
           generation: 0
         })
+      } finally {
+        yield* Effect.promise(() => dispose())
+      }
+    })
+  ))
+
+test("DesktopHttpApi creates windows through host-backed Window bridge", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const requests: HostProtocolRequestEnvelope[] = []
+      const permissions = Layer.effect(
+        PermissionRegistry,
+        Effect.gen(function* () {
+          const registry = yield* makePermissionRegistry({ traceId: () => "trace-http" })
+          yield* registry.declare(DesktopHttpWindowCreateCapability).pipe(Effect.orDie)
+          return registry
+        })
+      )
+      const { dispose, handler } = makeHandlerWithWindowLayer(
+        WindowSurface.bridgeClientLayer(makeHostBackedWindowExchange(requests)),
+        permissions
+      )
+
+      try {
+        const response = yield* Effect.promise(() => handler(windowCreateRequest()))
+        const body = yield* Effect.promise(() => response.json())
+
+        expect(response.status).toBe(200)
+        expect(body).toEqual({
+          id: "window-http-bridge-1",
+          kind: "window",
+          state: "open",
+          ownerScope: "window:window-http-bridge-1",
+          generation: 0
+        })
+        expect(requests.map((request) => [request.method, request.payload])).toEqual([
+          ["Window.create", { title: "Main" }]
+        ])
       } finally {
         yield* Effect.promise(() => dispose())
       }
