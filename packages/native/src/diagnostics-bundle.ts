@@ -20,14 +20,14 @@ import {
 import { Clock, Context, Effect, Layer, PubSub, Ref, Schema, Stream } from "effect"
 
 import { subscribeNativeEvent } from "./event-stream.js"
-import { decodeNativeInput, runNativeRpc } from "./native-client.js"
+import { decodeNativeInput, runNativeRpc, runNativeRpcStream } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
 import {
   DiagnosticsBundleCollectInput,
   DiagnosticsBundleCollectResult,
   DiagnosticsBundleCollectStartedEvent,
-  type DiagnosticsBundleEvent,
+  DiagnosticsBundleEvent,
   DiagnosticsBundleFailedEvent,
   type DiagnosticsBundleFailureReason,
   DiagnosticsBundleIdentity,
@@ -85,20 +85,18 @@ export const DiagnosticsBundleIsSupported = NativeSurface.rpc(Surface, "isSuppor
   support: NativeSurface.support.supported
 })
 
-export const DiagnosticsBundleRpcEvents = Object.freeze({
-  CollectStarted: { payload: DiagnosticsBundleCollectStartedEvent },
-  SourceRedacted: { payload: DiagnosticsBundleSourceRedactedEvent },
-  WriteCompleted: { payload: DiagnosticsBundleWriteCompletedEvent },
-  Failed: { payload: DiagnosticsBundleFailedEvent }
+const DiagnosticsBundleEventStream = NativeSurface.eventStream(Surface, "Event", {
+  input: DiagnosticsBundleIdentity,
+  payload: DiagnosticsBundleEvent,
+  support: NativeSurface.support.supported
 })
-
-export type DiagnosticsBundleRpcEvents = typeof DiagnosticsBundleRpcEvents
 
 const DiagnosticsBundleRpcGroup = RpcGroup.make(
   DiagnosticsBundleCollect,
   DiagnosticsBundleRedact,
   DiagnosticsBundleWrite,
-  DiagnosticsBundleIsSupported
+  DiagnosticsBundleIsSupported,
+  DiagnosticsBundleEventStream
 )
 
 export const DiagnosticsBundleRpcs: RpcGroup.RpcGroup<DiagnosticsBundleRpc> =
@@ -142,8 +140,6 @@ export class DiagnosticsBundleClient extends Context.Service<
   DiagnosticsBundleClientApi
 >()("@orika/native/DiagnosticsBundleClient") {}
 
-export type DiagnosticsBundleServiceApi = DiagnosticsBundleClientApi
-
 export interface DiagnosticsBundleServiceOptions {
   readonly audit?: AuditEventsApi
   readonly nextTraceId?: () => string
@@ -151,7 +147,7 @@ export interface DiagnosticsBundleServiceOptions {
 
 export class DiagnosticsBundle extends Context.Service<
   DiagnosticsBundle,
-  DiagnosticsBundleServiceApi
+  DiagnosticsBundleClientApi
 >()("@orika/native/DiagnosticsBundle") {
   static readonly layer = Layer.effect(DiagnosticsBundle)(
     Effect.gen(function* () {
@@ -160,8 +156,6 @@ export class DiagnosticsBundle extends Context.Service<
     })
   )
 }
-
-export const DiagnosticsBundleLive = DiagnosticsBundle.layer
 
 export const makeDiagnosticsBundleServiceLayer = (
   client: DiagnosticsBundleClientApi,
@@ -196,15 +190,22 @@ export const DiagnosticsBundleHandlersLive = DiagnosticsBundleRpcGroup.toLayer({
     Effect.gen(function* () {
       const diagnostics = yield* DiagnosticsBundle
       return yield* diagnostics.isSupported()
-    })
+    }),
+  "DiagnosticsBundle.events.Event": (input) =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const diagnostics = yield* DiagnosticsBundle
+        return diagnostics.events(input)
+      })
+    )
 })
 
 export const DiagnosticsBundleSurface = NativeSurface.make(Surface, DiagnosticsBundleRpcGroup, {
   service: DiagnosticsBundleClient,
   capabilities: DiagnosticsBundleCapabilityMethods,
   handlers: DiagnosticsBundleHandlersLive,
-  client: (client) => diagnosticsBundleClientFromRpcClient(client, undefined),
-  bridgeClient: (client, exchange) => diagnosticsBundleClientFromRpcClient(client, exchange)
+  client: (client) => diagnosticsBundleClientFromRpcClient(client),
+  bridgeClient: (client, exchange) => diagnosticsBundleBridgeClientFromRpcClient(client, exchange)
 })
 
 export interface DiagnosticsBundleMemoryClientOptions {
@@ -377,7 +378,7 @@ export const makeDiagnosticsBundleUnsupportedClient = (): DiagnosticsBundleClien
     events: (input) =>
       Stream.unwrap(
         validateDiagnosticsBundleIdentity(input, "DiagnosticsBundle.events").pipe(
-          Effect.map(() => Stream.fail(unsupportedError("DiagnosticsBundle.events")))
+          Effect.map(() => Stream.fail(unsupportedError("DiagnosticsBundle.events.Event")))
         )
       )
   } satisfies DiagnosticsBundleClientApi)
@@ -396,7 +397,7 @@ export const makeDiagnosticsBundlePermissionDeniedError = (
 const makeDiagnosticsBundleService = (
   client: DiagnosticsBundleClientApi,
   options: DiagnosticsBundleServiceOptions = {}
-): DiagnosticsBundleServiceApi =>
+): DiagnosticsBundleClientApi =>
   Object.freeze({
     collect: (input) =>
       withDiagnosticsAudit(
@@ -429,11 +430,10 @@ const makeDiagnosticsBundleService = (
       ),
     isSupported: () => client.isSupported(),
     events: (input) => client.events(input)
-  } satisfies DiagnosticsBundleServiceApi)
+  } satisfies DiagnosticsBundleClientApi)
 
 const diagnosticsBundleClientFromRpcClient = (
-  client: DesktopRpcClient<DiagnosticsBundleRpc>,
-  exchange: BridgeClientExchange | undefined
+  client: DesktopRpcClient<DiagnosticsBundleRpc>
 ): DiagnosticsBundleClientApi =>
   Object.freeze({
     collect: (input = new DiagnosticsBundleCollectInput({})) =>
@@ -468,6 +468,25 @@ const diagnosticsBundleClientFromRpcClient = (
         client["DiagnosticsBundle.isSupported"](undefined),
         "DiagnosticsBundle.isSupported"
       ),
+    events: (input) =>
+      Stream.unwrap(
+        validateDiagnosticsBundleIdentity(input, "DiagnosticsBundle.events").pipe(
+          Effect.map((valid) =>
+            runDiagnosticsBundleRpcStream(
+              client["DiagnosticsBundle.events.Event"](valid),
+              "DiagnosticsBundle.events.Event"
+            )
+          )
+        )
+      )
+  } satisfies DiagnosticsBundleClientApi)
+
+const diagnosticsBundleBridgeClientFromRpcClient = (
+  client: DesktopRpcClient<DiagnosticsBundleRpc>,
+  exchange: BridgeClientExchange
+): DiagnosticsBundleClientApi =>
+  Object.freeze({
+    ...diagnosticsBundleClientFromRpcClient(client),
     events: (input) =>
       Stream.unwrap(
         validateDiagnosticsBundleIdentity(input, "DiagnosticsBundle.events").pipe(
@@ -536,6 +555,11 @@ const runDiagnosticsBundleRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
   operation: string
 ): Effect.Effect<A, DiagnosticsBundleError, never> => runNativeRpc(effect, operation, Surface)
+
+const runDiagnosticsBundleRpcStream = <A, E>(
+  stream: Stream.Stream<A, E, never>,
+  operation: string
+): Stream.Stream<A, DiagnosticsBundleError, never> => runNativeRpcStream(stream, operation, Surface)
 
 const validateCollectInput = (
   input: unknown

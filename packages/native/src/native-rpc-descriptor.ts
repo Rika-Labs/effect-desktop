@@ -11,6 +11,11 @@ import {
 import { Schema } from "effect"
 import { Rpc, RpcSchema } from "effect/unstable/rpc"
 
+type NativeRpcPayloadInput = Schema.Codec<unknown, unknown, never, never> | Schema.Struct.Fields
+
+type NativeRpcPayloadSchema<Input extends NativeRpcPayloadInput> =
+  Input extends Schema.Struct.Fields ? Schema.Struct<Input> : Input
+
 export type NativeRpcAuthority =
   | {
       readonly kind: "native"
@@ -41,6 +46,16 @@ export interface NativeEventOptions<Payload extends Schema.Codec<unknown, unknow
   readonly authority?: NativeRpcAuthority
 }
 
+export interface NativeEventStreamOptions<
+  Input extends NativeRpcPayloadInput,
+  Payload extends Schema.Codec<unknown, unknown, never, never>
+> {
+  readonly input: Input
+  readonly payload: Payload
+  readonly support: RpcSupportMetadata
+  readonly authority?: NativeRpcAuthority
+}
+
 export type NativeEventRpc<
   Surface extends string = string,
   EventName extends string = string,
@@ -53,6 +68,23 @@ export type NativeEventRpc<
 > = Rpc.Rpc<
   `${Surface}.events.${EventName}`,
   typeof Schema.Void,
+  RpcSchema.Stream<Payload, typeof HostProtocolErrorSchema>,
+  typeof Schema.Never
+>
+
+export type NativeEventStreamRpc<
+  Surface extends string = string,
+  EventName extends string = string,
+  Input extends NativeRpcPayloadInput = Schema.Codec<unknown, unknown, never, never>,
+  Payload extends Schema.Codec<unknown, unknown, never, never> = Schema.Codec<
+    unknown,
+    unknown,
+    never,
+    never
+  >
+> = Rpc.Rpc<
+  `${Surface}.events.${EventName}`,
+  NativeRpcPayloadSchema<Input>,
   RpcSchema.Stream<Payload, typeof HostProtocolErrorSchema>,
   typeof Schema.Never
 >
@@ -122,6 +154,34 @@ export const nativeEvent = <
   options: NativeEventOptions<Payload>
 ): NativeEventRpc<Surface, EventName, Payload> => {
   const base = Rpc.make(`${surface}.events.${eventName}` as const, {
+    success: options.payload,
+    error: HostProtocolErrorSchema,
+    stream: true
+  })
+
+  return applySupport(
+    applyCapability(
+      base,
+      surface,
+      `events.${eventName}`,
+      options.authority ?? nativeAuthority.none
+    ),
+    options.support
+  )
+}
+
+export const nativeEventStream = <
+  const Surface extends string,
+  const EventName extends string,
+  Input extends NativeRpcPayloadInput,
+  Payload extends Schema.Codec<unknown, unknown, never, never>
+>(
+  surface: Surface,
+  eventName: EventName,
+  options: NativeEventStreamOptions<Input, Payload>
+): NativeEventStreamRpc<Surface, EventName, Input, Payload> => {
+  const base = Rpc.make(`${surface}.events.${eventName}` as const, {
+    payload: options.input,
     success: options.payload,
     error: HostProtocolErrorSchema,
     stream: true

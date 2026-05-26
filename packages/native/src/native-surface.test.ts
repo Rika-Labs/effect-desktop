@@ -69,6 +69,24 @@ test("NativeSurface.event records stream payload and public authority", () => {
   expect(event.pipe(rpcSupport)).toEqual({ status: "supported" })
 })
 
+test("NativeSurface.eventStream records stream input payload and public authority", () => {
+  const input = Schema.Struct({ id: Schema.String })
+  const event = NativeSurface.eventStream("Example", "Filtered", {
+    input,
+    payload: Schema.String,
+    support: NativeSurface.support.supported
+  })
+
+  expect(event._tag).toBe("Example.events.Filtered")
+  expect(event.payloadSchema).toBe(input)
+  expect(RpcSchema.isStreamSchema(event.successSchema)).toBe(true)
+  if (RpcSchema.isStreamSchema(event.successSchema)) {
+    expect(event.successSchema.success).toBe(Schema.String)
+  }
+  expect(Option.getOrUndefined(rpcCapability(event))).toEqual({ kind: "none" })
+  expect(event.pipe(rpcSupport)).toEqual({ status: "supported" })
+})
+
 test("native service files construct RPCs through shared descriptor helpers", () =>
   Effect.runPromise(
     Effect.gen(function* () {

@@ -257,9 +257,7 @@ export {
   DiagnosticsBundle,
   DiagnosticsBundleClient,
   DiagnosticsBundleHandlersLive,
-  DiagnosticsBundleLive,
   DiagnosticsBundleMethodNames,
-  DiagnosticsBundleRpcEvents,
   DiagnosticsBundleRpcs,
   DiagnosticsBundleSurface,
   makeDiagnosticsBundleMemoryClient,
@@ -270,7 +268,6 @@ export {
   type DiagnosticsBundleError,
   type DiagnosticsBundleRpc,
   type DiagnosticsBundleRpcHandlers,
-  type DiagnosticsBundleServiceApi,
   type DiagnosticsBundleServiceOptions
 } from "./diagnostics-bundle.js"
 export {

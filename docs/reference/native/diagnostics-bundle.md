@@ -77,6 +77,8 @@ or:
 
 Events carry the bundle id, timestamp, and source/write/error details needed to debug export progress. Callers subscribe with a bundle id so one export cannot observe another export's event stream.
 
+`events(identity)` is exposed as the canonical `DiagnosticsBundle.events.Event` RPC stream. The stream payload is the typed `DiagnosticsBundleEvent` union and the input is `DiagnosticsBundleIdentity`, so bundle scoping is part of the RPC contract. Bridge clients keep translating that contract to the existing host event channels `DiagnosticsBundle.CollectStarted`, `DiagnosticsBundle.SourceRedacted`, `DiagnosticsBundle.WriteCompleted`, and `DiagnosticsBundle.Failed`.
+
 ## Redaction
 
 `redact` applies the shared bridge redaction filter. The result includes the redacted payload plus a `redactionPolicy` record:
@@ -106,7 +108,9 @@ Evidence records which source policy was used and where redaction happened witho
 
 ## Architecture-debt sweep
 
-The diagnostics host path keeps the source registry inside the Rust adapter because it owns desktop-specific source availability and artifact layout. No additional Effect wrapper debt was found in the touched area.
+The legacy `DiagnosticsBundleRpcEvents` side object has been removed. Diagnostics events now live in the same `RpcGroup` contract as request/response methods. The zero-policy `DiagnosticsBundleLive` and `DiagnosticsBundleServiceApi` aliases were also removed; callers should use `DiagnosticsBundle.layer` and `DiagnosticsBundleClientApi`.
+
+The diagnostics host path keeps the source registry inside the Rust adapter because it owns desktop-specific source availability and artifact layout. The bridge event merge helper stays private because it owns native/web protocol translation from one bundle-scoped RPC stream to the host's four legacy event channels.
 
 ## Testing
 

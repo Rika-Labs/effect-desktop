@@ -1,18 +1,23 @@
 import {
   type BridgeClientExchange,
   type BridgeClientResponse,
+  type HostProtocolEnvelope,
   HostProtocolEventEnvelope,
-  type HostProtocolRequestEnvelope
+  HostProtocolResponseEnvelope,
+  type HostProtocolRequestEnvelope,
+  HostProtocolStreamByRequestEnvelope,
+  makeDesktopClientProtocol,
+  rpcSupport
 } from "@orika/bridge"
 import { AuditEvent, type AuditEventsApi } from "@orika/core"
-import { Cause, Effect, Exit, Layer, ManagedRuntime, Stream } from "effect"
+import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Queue, Stream } from "effect"
+import { RpcClient, RpcSchema } from "effect/unstable/rpc"
 import { expect, test } from "bun:test"
 
 import {
   DiagnosticsBundle,
-  DiagnosticsBundleLive,
+  DiagnosticsBundleClient,
   DiagnosticsBundleMethodNames,
-  DiagnosticsBundleRpcEvents,
   DiagnosticsBundleRpcs,
   Native,
   NativeCapabilities,
@@ -26,6 +31,7 @@ import {
 import {
   DiagnosticsBundleCollectInput,
   DiagnosticsBundleCollectStartedEvent,
+  DiagnosticsBundleEvent,
   DiagnosticsBundleIdentity,
   DiagnosticsBundleRedactInput,
   DiagnosticsBundleSourceRedactedEvent,
@@ -33,21 +39,111 @@ import {
   DiagnosticsBundleWriteInput
 } from "./contracts/index.js"
 
-test("DiagnosticsBundle declares a narrow RPC and event surface", () => {
-  expect([...DiagnosticsBundleMethodNames]).toEqual(["collect", "redact", "write", "isSupported"])
+const expectedDiagnosticsBundleMethods: Array<(typeof DiagnosticsBundleMethodNames)[number]> = [
+  "collect",
+  "redact",
+  "write",
+  "isSupported"
+]
+
+const expectedDiagnosticsBundleEventTags = ["DiagnosticsBundle.events.Event"] as const
+
+test("DiagnosticsBundle event schemas are owned by RPC stream contracts", async () => {
+  const diagnosticsBundleModule = await import("./diagnostics-bundle.js")
+  const rootModule = await import("./index.js")
+
+  expect("DiagnosticsBundleRpcEvents" in diagnosticsBundleModule).toBe(false)
+  expect("DiagnosticsBundleRpcEvents" in rootModule).toBe(false)
+  expect([...DiagnosticsBundleMethodNames]).toEqual(expectedDiagnosticsBundleMethods)
   expect([...DiagnosticsBundleRpcs.requests.keys()]).toEqual([
-    "DiagnosticsBundle.collect",
-    "DiagnosticsBundle.redact",
-    "DiagnosticsBundle.write",
-    "DiagnosticsBundle.isSupported"
+    ...expectedDiagnosticsBundleMethods.map((method) => `DiagnosticsBundle.${method}`),
+    ...expectedDiagnosticsBundleEventTags
   ])
-  expect(Object.keys(DiagnosticsBundleRpcEvents)).toEqual([
-    "CollectStarted",
-    "SourceRedacted",
-    "WriteCompleted",
-    "Failed"
-  ])
+
+  const eventRpc = DiagnosticsBundleRpcs.requests.get("DiagnosticsBundle.events.Event")
+  expect(eventRpc).toBeDefined()
+  expect(eventRpc?.payloadSchema).toBe(DiagnosticsBundleIdentity)
+  expect(eventRpc === undefined ? false : RpcSchema.isStreamSchema(eventRpc.successSchema)).toBe(
+    true
+  )
+  if (eventRpc !== undefined && RpcSchema.isStreamSchema(eventRpc.successSchema)) {
+    expect(Object.is(eventRpc.successSchema.success, DiagnosticsBundleEvent)).toBe(true)
+    expect(eventRpc.pipe(rpcSupport)).toEqual({ status: "supported" })
+  }
 })
+
+test("DiagnosticsBundle direct client consumes canonical RPC event streams", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
+      const requests: HostProtocolRequestEnvelope[] = []
+      const protocolLayer = Layer.effect(RpcClient.Protocol)(
+        makeDesktopClientProtocol(
+          {
+            send: (envelope) => {
+              if (envelope.kind !== "request") {
+                return Effect.void
+              }
+              requests.push(envelope)
+              const payload = diagnosticsEventPayloadForMethod(envelope.method)
+              return Effect.all(
+                [
+                  ...(payload === undefined
+                    ? []
+                    : [
+                        Queue.offer(
+                          queue,
+                          new HostProtocolStreamByRequestEnvelope({
+                            kind: "stream",
+                            id: envelope.id,
+                            timestamp: 1_710_000_000_100,
+                            traceId: envelope.traceId,
+                            payload
+                          })
+                        )
+                      ]),
+                  Queue.offer(
+                    queue,
+                    new HostProtocolResponseEnvelope({
+                      kind: "response",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_101,
+                      traceId: envelope.traceId
+                    })
+                  )
+                ],
+                { discard: true }
+              )
+            },
+            run: (onEnvelope) =>
+              Stream.fromQueue(queue).pipe(
+                Stream.runForEach(onEnvelope),
+                Effect.andThen(Effect.never)
+              )
+          },
+          {
+            nextRequestId: () => "diagnostics-bundle-event-rpc",
+            nextTraceId: () => "trace-diagnostics-bundle-event-rpc"
+          }
+        )
+      )
+
+      const event = yield* runScoped(
+        Effect.gen(function* () {
+          const diagnostics = yield* DiagnosticsBundleClient
+          return yield* diagnostics
+            .events(new DiagnosticsBundleIdentity({ bundleId: "bundle-1" }))
+            .pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+        }),
+        Layer.provide(DiagnosticsBundleSurface.clientLayer, protocolLayer)
+      )
+
+      expect(event.type).toBe("collect-started")
+      expect(event.bundleId).toBe("bundle-1")
+      expect(requests.map((request) => request.method)).toEqual(["DiagnosticsBundle.events.Event"])
+      expect(requests.map((request) => request.payload)).toEqual([{ bundleId: "bundle-1" }])
+    })
+  ))
 
 test("DiagnosticsBundle memory client collects, redacts, writes, streams, and audits", () =>
   Effect.runPromise(
@@ -202,6 +298,11 @@ test("DiagnosticsBundle unsupported client validates malformed input before unsu
     Effect.gen(function* () {
       const diagnostics = yield* DiagnosticsBundle
       const exit = yield* Effect.exit(diagnostics.write(invalidWriteInput()))
+      const eventExit = yield* Effect.exit(
+        diagnostics
+          .events(new DiagnosticsBundleIdentity({ bundleId: "bundle-1" }))
+          .pipe(Stream.runHead)
+      )
 
       expect(Exit.isFailure(exit)).toBe(true)
       if (Exit.isFailure(exit)) {
@@ -209,6 +310,14 @@ test("DiagnosticsBundle unsupported client validates malformed input before unsu
         expect(failure?.error).toMatchObject({
           tag: "InvalidArgument",
           operation: "DiagnosticsBundle.write"
+        })
+      }
+      expect(Exit.isFailure(eventExit)).toBe(true)
+      if (Exit.isFailure(eventExit)) {
+        const failure = eventExit.cause.reasons.find(Cause.isFailReason)
+        expect(failure?.error).toMatchObject({
+          tag: "Unsupported",
+          operation: "DiagnosticsBundle.events.Event"
         })
       }
     })
@@ -249,7 +358,7 @@ test("DiagnosticsBundle bridge client sends typed envelopes and decodes events",
               }
   }))
   const runtime = ManagedRuntime.make(
-    Layer.provide(DiagnosticsBundleLive, DiagnosticsBundleSurface.bridgeClientLayer(exchange))
+    Layer.provide(DiagnosticsBundle.layer, DiagnosticsBundleSurface.bridgeClientLayer(exchange))
   )
   return runtime.runPromise(
     Effect.gen(function* () {
@@ -307,11 +416,54 @@ test("DiagnosticsBundle bridge client sends typed envelopes and decodes events",
   )
 })
 
+test("DiagnosticsBundle bridge client subscribes to host event channels", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const methods: string[] = []
+      const exchange: BridgeClientExchange = {
+        request: () => Effect.die("DiagnosticsBundle event channel test does not issue requests"),
+        subscribe: (method) => {
+          methods.push(method)
+          return method === "DiagnosticsBundle.CollectStarted"
+            ? Stream.make(
+                new HostProtocolEventEnvelope({
+                  kind: "event",
+                  timestamp: 1_710_000_000_800,
+                  traceId: "diagnostics-bundle-event-trace",
+                  method,
+                  payload: diagnosticsEventPayloadForMethod("DiagnosticsBundle.events.Event")
+                })
+              )
+            : Stream.empty
+        }
+      }
+      const client = yield* runScoped(
+        Effect.gen(function* () {
+          return yield* DiagnosticsBundleClient
+        }),
+        DiagnosticsBundleSurface.bridgeClientLayer(exchange)
+      )
+      const event = yield* client
+        .events(new DiagnosticsBundleIdentity({ bundleId: "bundle-1" }))
+        .pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+
+      expect(event.type).toBe("collect-started")
+      expect(methods.toSorted()).toEqual(
+        [
+          "DiagnosticsBundle.CollectStarted",
+          "DiagnosticsBundle.SourceRedacted",
+          "DiagnosticsBundle.WriteCompleted",
+          "DiagnosticsBundle.Failed"
+        ].toSorted()
+      )
+    })
+  ))
+
 test("DiagnosticsBundle bridge client rejects malformed input before native transport", () => {
   const requests: HostProtocolRequestEnvelope[] = []
   const runtime = ManagedRuntime.make(
     Layer.provide(
-      DiagnosticsBundleLive,
+      DiagnosticsBundle.layer,
       DiagnosticsBundleSurface.bridgeClientLayer(
         diagnosticsBundleExchange(requests, () => ({ kind: "success", payload: undefined }))
       )
@@ -339,7 +491,7 @@ test("DiagnosticsBundle bridge client rejects non-JSON redact payloads before na
   const requests: HostProtocolRequestEnvelope[] = []
   const runtime = ManagedRuntime.make(
     Layer.provide(
-      DiagnosticsBundleLive,
+      DiagnosticsBundle.layer,
       DiagnosticsBundleSurface.bridgeClientLayer(
         diagnosticsBundleExchange(requests, () => ({ kind: "success", payload: undefined }))
       )
@@ -405,6 +557,20 @@ const diagnosticsBundleExchange = (
       : Stream.empty
 })
 
+const diagnosticsEventPayloadForMethod = (method: string): unknown => {
+  switch (method) {
+    case "DiagnosticsBundle.events.Event":
+      return {
+        type: "collect-started",
+        bundleId: "bundle-1",
+        timestamp: 1_710_000_000_800,
+        sources: ["logs"]
+      }
+    default:
+      return undefined
+  }
+}
+
 const invalidWriteInput = (): DiagnosticsBundleWriteInput => {
   const input = new DiagnosticsBundleWriteInput({
     bundleId: "bundle-1",
@@ -431,3 +597,8 @@ const memoryAudit = (rows: AuditEvent[]): AuditEventsApi => ({
     }),
   observe: () => Stream.fromIterable(rows)
 })
+
+const runScoped = <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  layer: Layer.Layer<R, never, never>
+): Effect.Effect<A, E, never> => Effect.scoped(effect.pipe(Effect.provide(layer)))

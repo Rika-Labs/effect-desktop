@@ -31,9 +31,12 @@ import {
   nativeAuthority,
   nativeCapabilityFact,
   nativeEvent,
+  nativeEventStream,
   type NativeCapabilityFactOptions,
   type NativeEventOptions,
   type NativeEventRpc as NativeDescriptorEventRpc,
+  type NativeEventStreamOptions,
+  type NativeEventStreamRpc as NativeDescriptorEventStreamRpc,
   nativeRpc as rpc,
   NativeRpcSupport
 } from "./native-rpc-descriptor.js"
@@ -131,6 +134,23 @@ export type NativeEventRpc<
   >
 > = NativeDescriptorEventRpc<Surface, EventName, Payload>
 
+export type NativeEventStreamRpc<
+  Surface extends string = string,
+  EventName extends string = string,
+  Input extends Schema.Codec<unknown, unknown, never, never> | Schema.Struct.Fields = Schema.Codec<
+    unknown,
+    unknown,
+    never,
+    never
+  >,
+  Payload extends Schema.Codec<unknown, unknown, never, never> = Schema.Codec<
+    unknown,
+    unknown,
+    never,
+    never
+  >
+> = NativeDescriptorEventStreamRpc<Surface, EventName, Input, Payload>
+
 const capabilityFact = <const Surface extends string, const Method extends string>(
   surface: Surface,
   method: Method,
@@ -146,6 +166,18 @@ const event = <
   eventName: EventName,
   options: NativeEventOptions<Payload>
 ): NativeEventRpc<Surface, EventName, Payload> => nativeEvent(surface, eventName, options)
+
+const eventStream = <
+  const Surface extends string,
+  const EventName extends string,
+  Input extends Schema.Codec<unknown, unknown, never, never> | Schema.Struct.Fields,
+  Payload extends Schema.Codec<unknown, unknown, never, never>
+>(
+  surface: Surface,
+  eventName: EventName,
+  options: NativeEventStreamOptions<Input, Payload>
+): NativeEventStreamRpc<Surface, EventName, Input, Payload> =>
+  nativeEventStream(surface, eventName, options)
 
 function make<
   const Tag extends string,
@@ -417,6 +449,7 @@ export const NativeSurface = Object.freeze({
   authority: nativeAuthority,
   capabilityFact,
   event,
+  eventStream,
   make,
   rpc,
   subscribeEvent,
