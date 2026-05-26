@@ -1,11 +1,16 @@
 import { expect, test } from "bun:test"
 import {
   type BridgeClientExchange,
+  type HostProtocolEnvelope,
   HostProtocolEventEnvelope,
   type HostProtocolError,
   HostProtocolInvalidOutputError,
+  HostProtocolResponseEnvelope,
   type HostProtocolRequestEnvelope,
-  makeHostProtocolInvalidArgumentError
+  HostProtocolStreamByRequestEnvelope,
+  makeDesktopClientProtocol,
+  makeHostProtocolInvalidArgumentError,
+  rpcSupport
 } from "@orika/bridge"
 import {
   type AuditEvent,
@@ -21,12 +26,15 @@ import {
   Effect,
   Exit,
   Fiber,
-  type Layer,
+  Layer,
   ManagedRuntime,
+  Option,
+  Queue,
   Schema,
   Stream
 } from "effect"
 import { EventJournal } from "effect/unstable/eventlog"
+import { RpcClient, RpcSchema } from "effect/unstable/rpc"
 
 import {
   makeTransactionalFileMutationMemoryClient,
@@ -35,6 +43,8 @@ import {
   TransactionalFileMutation,
   TransactionalFileMutationClient,
   type TransactionalFileMutationClientApi,
+  TransactionalFileMutationMethodNames,
+  TransactionalFileMutationRpcs,
   TransactionalFileMutationSurface
 } from "./transactional-file-mutation.js"
 import {
@@ -59,6 +69,143 @@ const testPath = (...segments: string[]): string => {
 const WORKSPACE_ROOT = testPath("workspace", "app")
 const WORKSPACE_FILE = testPath("workspace", "app", "src", "main.ts")
 const initialFiles = (): Record<string, string> => ({ [WORKSPACE_FILE]: "old\n" })
+
+test("TransactionalFileMutation event schema is owned by the RPC stream contract", async () => {
+  const transactionalFileMutationModule = await import("./transactional-file-mutation.js")
+  const rootModule = await import("./index.js")
+  const callableTags = Array.from(TransactionalFileMutationRpcs.requests.keys()).toSorted()
+  const eventRpc = TransactionalFileMutationRpcs.requests.get(
+    "TransactionalFileMutation.events.Event"
+  )
+
+  expect("TransactionalFileMutationRpcEvents" in transactionalFileMutationModule).toBe(false)
+  expect("TransactionalFileMutationRpcEvents" in rootModule).toBe(false)
+  expect([...TransactionalFileMutationMethodNames]).toEqual([
+    "prepare",
+    "commit",
+    "rollback",
+    "isSupported"
+  ])
+  expect(callableTags).toEqual([
+    "TransactionalFileMutation.commit",
+    "TransactionalFileMutation.events.Event",
+    "TransactionalFileMutation.isSupported",
+    "TransactionalFileMutation.prepare",
+    "TransactionalFileMutation.rollback"
+  ])
+  expect(eventRpc).toBeDefined()
+  expect(eventRpc === undefined ? false : RpcSchema.isStreamSchema(eventRpc.successSchema)).toBe(
+    true
+  )
+  if (eventRpc !== undefined && RpcSchema.isStreamSchema(eventRpc.successSchema)) {
+    expect(eventRpc.successSchema.success).toBe(TransactionalFileMutationEvent)
+    expect(eventRpc.pipe(rpcSupport)).toEqual({ status: "supported" })
+  }
+
+  const eventDoc = TransactionalFileMutationSurface.schemaDocs.find(
+    (doc) => doc.tag === "TransactionalFileMutation.events.Event"
+  )
+  expect(eventDoc?.kind).toBe("stream")
+  expect(eventDoc?.callable).toBe(true)
+  expect(eventDoc?.support).toEqual({ status: "supported" })
+})
+
+test("TransactionalFileMutation direct client consumes the canonical RPC event stream", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
+      const requests: HostProtocolRequestEnvelope[] = []
+      const protocolLayer = Layer.effect(RpcClient.Protocol)(
+        makeDesktopClientProtocol(
+          {
+            send: (envelope) => {
+              if (envelope.kind !== "request") {
+                return Effect.void
+              }
+              requests.push(envelope)
+              return Effect.all(
+                [
+                  Queue.offer(
+                    queue,
+                    new HostProtocolStreamByRequestEnvelope({
+                      kind: "stream",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_001,
+                      traceId: envelope.traceId,
+                      payload: mutationEventPayload("prepared", "prepared")
+                    })
+                  ),
+                  Queue.offer(
+                    queue,
+                    new HostProtocolResponseEnvelope({
+                      kind: "response",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_002,
+                      traceId: envelope.traceId
+                    })
+                  )
+                ],
+                { discard: true }
+              )
+            },
+            run: (onEnvelope) =>
+              Stream.fromQueue(queue).pipe(
+                Stream.runForEach(onEnvelope),
+                Effect.andThen(Effect.never)
+              )
+          },
+          {
+            nextRequestId: () => "transactional-file-mutation-event-rpc",
+            nextTraceId: () => "trace-transactional-file-mutation-event-rpc"
+          }
+        )
+      )
+
+      const event = yield* Effect.gen(function* () {
+        const client = yield* TransactionalFileMutationClient
+        return yield* client.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+      }).pipe(
+        provideScopedLayer(
+          Layer.provide(TransactionalFileMutationSurface.clientLayer, protocolLayer)
+        )
+      )
+
+      expect(event).toEqual(expectedMutationEvent())
+      expect(requests.map((request) => request.method)).toEqual([
+        "TransactionalFileMutation.events.Event"
+      ])
+    })
+  ))
+
+test("TransactionalFileMutation bridge client subscribes to the host event channel", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const methods: string[] = []
+      const exchange: BridgeClientExchange = {
+        request: () =>
+          Effect.die("TransactionalFileMutation event channel test does not issue requests"),
+        subscribe: (method) => {
+          methods.push(method)
+          return Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              method,
+              timestamp: 1_710_000_000_000,
+              traceId: "trace-transactional-file-mutation-host-event",
+              payload: mutationEventPayload("prepared", "prepared")
+            })
+          )
+        }
+      }
+      const client = yield* Effect.gen(function* () {
+        return yield* TransactionalFileMutationClient
+      }).pipe(provideScopedLayer(TransactionalFileMutationSurface.bridgeClientLayer(exchange)))
+      const event = yield* client.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+
+      expect(event).toEqual(expectedMutationEvent())
+      expect(methods).toEqual(["TransactionalFileMutation.Event"])
+    })
+  ))
 
 test("TransactionalFileMutation events reject phases that contradict state", () =>
   Effect.runPromise(
@@ -1088,12 +1235,19 @@ test("TransactionalFileMutation unsupported client exposes typed unsupported fai
           })
         )
       )
+      const eventExit = yield* Effect.exit(client.events().pipe(Stream.runHead))
 
       for (const exit of [prepareExit, commitExit, rollbackExit]) {
         expectExitFailure(exit, (error) => {
           expect(error).toMatchObject({ tag: "Unsupported" })
         })
       }
+      expectExitFailure(eventExit, (error) => {
+        expect(error).toMatchObject({
+          tag: "Unsupported",
+          operation: "TransactionalFileMutation.events.Event"
+        })
+      })
       const supported = yield* client.isSupported()
       expect(supported.supported).toBe(false)
     })
@@ -1172,6 +1326,16 @@ const mutationEventPayload = (
     phase,
     ...(state === undefined ? {} : { state })
   }) as const
+
+const expectedMutationEvent = (): TransactionalFileMutationEvent =>
+  new TransactionalFileMutationEvent({
+    type: "transactional-file-mutation-event",
+    timestamp: 1_710_000_000_000,
+    mutationId: "file-mutation-1",
+    path: WORKSPACE_FILE,
+    phase: "prepared",
+    state: "prepared"
+  })
 
 const memoryAudit = (rows: AuditEvent[]): AuditEventsApi => ({
   emit: (event: AuditEvent) =>

@@ -46,14 +46,12 @@ import {
   TransactionalFileMutationRollbackResult,
   TransactionalFileMutationSupportedResult
 } from "./contracts/transactional-file-mutation.js"
-import { subscribeNativeEvent } from "./event-stream.js"
-import { decodeNativeInput, runNativeRpc } from "./native-client.js"
+import { decodeNativeInput, runNativeRpc, runNativeRpcStream } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
 
 const Surface = "TransactionalFileMutation"
 const UnsupportedReason = "host-adapter-unimplemented"
-const TransactionalFileMutationEventMethod = "TransactionalFileMutation.Event"
 
 const IdentifierPattern = /^[A-Za-z0-9._-]+$/
 const WindowsAbsolutePath = /^[A-Za-z]:[\\/]/u
@@ -87,17 +85,17 @@ export const TransactionalFileMutationIsSupported = NativeSurface.rpc(Surface, "
   support: NativeSurface.support.supported
 })
 
-export const TransactionalFileMutationRpcEvents = Object.freeze({
-  Event: { payload: TransactionalFileMutationEvent }
+const TransactionalFileMutationEventStream = NativeSurface.event(Surface, "Event", {
+  payload: TransactionalFileMutationEvent,
+  support: NativeSurface.support.supported
 })
-
-export type TransactionalFileMutationRpcEvents = typeof TransactionalFileMutationRpcEvents
 
 const TransactionalFileMutationRpcGroup = RpcGroup.make(
   TransactionalFileMutationPrepare,
   TransactionalFileMutationCommit,
   TransactionalFileMutationRollback,
-  TransactionalFileMutationIsSupported
+  TransactionalFileMutationIsSupported,
+  TransactionalFileMutationEventStream
 )
 
 export const TransactionalFileMutationRpcs: RpcGroup.RpcGroup<TransactionalFileMutationRpc> =
@@ -187,8 +185,6 @@ export class TransactionalFileMutation extends Context.Service<
   )
 }
 
-export const TransactionalFileMutationLive = TransactionalFileMutation.layer
-
 export const makeTransactionalFileMutationServiceLayer = (
   client: TransactionalFileMutationClientApi,
   options: TransactionalFileMutationServiceOptions
@@ -222,7 +218,14 @@ export const TransactionalFileMutationHandlersLive = TransactionalFileMutationRp
     Effect.gen(function* () {
       const service = yield* TransactionalFileMutation
       return yield* service.isSupported()
-    })
+    }),
+  "TransactionalFileMutation.events.Event": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const service = yield* TransactionalFileMutation
+        return service.events()
+      })
+    )
 })
 
 export const TransactionalFileMutationSurface = NativeSurface.make(
@@ -232,9 +235,9 @@ export const TransactionalFileMutationSurface = NativeSurface.make(
     service: TransactionalFileMutationClient,
     capabilities: TransactionalFileMutationCapabilityMethods,
     handlers: TransactionalFileMutationHandlersLive,
-    client: (client) => transactionalFileMutationClientFromRpcClient(client, undefined),
+    client: (client) => transactionalFileMutationClientFromRpcClient(client),
     bridgeClient: (client, exchange) =>
-      transactionalFileMutationClientFromRpcClient(client, exchange)
+      transactionalFileMutationBridgeClientFromRpcClient(client, exchange)
   }
 )
 
@@ -594,7 +597,7 @@ export const makeTransactionalFileMutationUnsupportedClient =
             reason: UnsupportedReason
           })
         ),
-      events: () => Stream.fail(unsupportedError("TransactionalFileMutation.events"))
+      events: () => Stream.fail(unsupportedError("TransactionalFileMutation.events.Event"))
     } satisfies TransactionalFileMutationClientApi)
 
 const makeTransactionalFileMutationService = (
@@ -924,8 +927,7 @@ const makeTransactionalFileMutationService = (
   })
 
 const transactionalFileMutationClientFromRpcClient = (
-  client: DesktopRpcClient<TransactionalFileMutationRpc>,
-  exchange: BridgeClientExchange | undefined
+  client: DesktopRpcClient<TransactionalFileMutationRpc>
 ): TransactionalFileMutationClientApi =>
   Object.freeze({
     prepare: (input) =>
@@ -961,11 +963,19 @@ const transactionalFileMutationClientFromRpcClient = (
         "TransactionalFileMutation.isSupported"
       ),
     events: () =>
-      subscribeNativeEvent(
-        exchange,
-        TransactionalFileMutationEventMethod,
-        TransactionalFileMutationEvent
+      runTransactionalFileMutationRpcStream(
+        client["TransactionalFileMutation.events.Event"](undefined),
+        "TransactionalFileMutation.events.Event"
       )
+  } satisfies TransactionalFileMutationClientApi)
+
+const transactionalFileMutationBridgeClientFromRpcClient = (
+  client: DesktopRpcClient<TransactionalFileMutationRpc>,
+  exchange: BridgeClientExchange
+): TransactionalFileMutationClientApi =>
+  Object.freeze({
+    ...transactionalFileMutationClientFromRpcClient(client),
+    events: () => NativeSurface.subscribeEvent(exchange, TransactionalFileMutationEventStream)
   } satisfies TransactionalFileMutationClientApi)
 
 function transactionalFileMutationRpc<
@@ -987,6 +997,12 @@ const runTransactionalFileMutationRpc = <A, E>(
   operation: string
 ): Effect.Effect<A, TransactionalFileMutationError, never> =>
   runNativeRpc(effect, operation, Surface)
+
+const runTransactionalFileMutationRpcStream = <A, E>(
+  stream: Stream.Stream<A, E, never>,
+  operation: string
+): Stream.Stream<A, TransactionalFileMutationError, never> =>
+  runNativeRpcStream(stream, operation, Surface)
 
 const validatePrepareRequest = (
   input: unknown

@@ -12,6 +12,8 @@ Product-neutral transactional file mutation service. Callers prepare a replaceme
 
 The public service is Layer-first and test-substitutable. It validates Schema contracts before transport, checks native invoke and filesystem read/write permissions before privileged work, emits audit rows before host work, exposes typed lifecycle events, and maps stale-source commits to typed `InvalidState` failures.
 
+`events()` is exposed as the canonical `TransactionalFileMutation.events.Event` RPC stream. The bridge client keeps translating that contract to the existing host event channel `TransactionalFileMutation.Event`, so direct clients consume the Effect RPC stream while the native/web boundary preserves the current wire method.
+
 ## Methods
 
 | Method        | Payload                                                                                      | Success                                                                                  |
@@ -65,6 +67,12 @@ The Rust host adapter supports local filesystem prepare, commit, rollback, and s
 ## Testing
 
 Use `makeTransactionalFileMutationMemoryClient()` for deterministic prepare, commit, rollback, conflict, and event tests without native filesystem writes. Use `makeTransactionalFileMutationUnsupportedClient()` when a test needs the typed unsupported path.
+
+## Architecture-debt sweep
+
+The legacy `TransactionalFileMutationRpcEvents` side object has been removed. Mutation lifecycle events now live in the same `RpcGroup` contract as request/response methods. Direct clients use the canonical RPC stream; bridge-specific host event naming stays local to the bridge client adapter.
+
+`TransactionalFileMutationServiceApi` and `makeTransactionalFileMutationServiceLayer` remain public because they own service-only prepare/commit/rollback policy, permission and audit ordering, resource cleanup, stale-source conflict handling, and deterministic test composition.
 
 ## Related
 
