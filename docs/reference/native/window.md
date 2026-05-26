@@ -198,6 +198,15 @@ Desktop.make({
 
 `Window` is a **mapped surface**: the public `WindowApi` hides generated RPC calls behind durable desktop behavior. `Window.create` accepts an optional `WindowCreateOptions`, and the bridge event adapter authorizes raw host subscriptions before exposing the canonical `Window.events.Event` stream.
 
+## Architecture-debt sweep
+
+Architecture-debt sweep outcome for #1922: removed the internal
+`AppEventRouterLive` alias. `AppEventRouter.layer` is the canonical static
+layer. `AppEventRouter` and `makeAppEventRouter` remain because they own
+window registry state, focused-window tracking, first-responder routing,
+broadcast/targeted dispatch, event buffering, scoped subscription shutdown,
+audit replay, and state observation.
+
 ## Related
 
 - How-to: [Add a window](../../how-to/add-a-window.md)

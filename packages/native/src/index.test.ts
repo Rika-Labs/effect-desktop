@@ -374,12 +374,11 @@ import {
   type WindowHandle
 } from "./contracts/index.js"
 import {
-  AppEventRouter,
-  AppEventRouterLive,
   broadcastRoute,
   firstResponderRoute,
   makeAppEventRouter,
   targetedRoute,
+  type AppEventRouter,
   windowScope
 } from "./app-events.js"
 import { commandBindingWarningError } from "./command-binding-log.js"
@@ -476,8 +475,10 @@ test("native package root keeps contracts and implementation helpers behind subp
     })
   ))
 
-test("native services expose canonical static layers", () => {
-  expect(AppEventRouterLive).toBe(AppEventRouter.layer)
+test("app event router module omits shallow layer aliases", async () => {
+  const appEvents = await import("./app-events.js")
+
+  expect("AppEventRouterLive" in appEvents).toBe(false)
 })
 
 test("native host RPC runtime does not assert permission-only runtime environment", () =>

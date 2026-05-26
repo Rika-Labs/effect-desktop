@@ -128,8 +128,6 @@ export class AppEventRouter extends Context.Service<AppEventRouter, AppEventRout
   )
 }
 
-export const AppEventRouterLive = AppEventRouter.layer
-
 export const firstResponderRoute: AppEventRoute = Object.freeze({ _tag: "firstResponder" })
 export const broadcastRoute: AppEventRoute = Object.freeze({ _tag: "broadcast" })
 const NulByte = String.fromCharCode(0)
