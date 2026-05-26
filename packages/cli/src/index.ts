@@ -1541,6 +1541,23 @@ const makeRendererBuildNode = (
     ["renderer.styling", plan.rendererStyling],
     ["renderer.entry", plan.rendererEntry],
     ["renderer.entry.sha256", yieldableFileDigest(plan.rendererEntryPath)],
+    [
+      "renderer.app.files.sha256",
+      hashExistingFiles(plan.appRoot, [
+        "index.html",
+        "package.json",
+        "vite.config.ts",
+        "vite.config.mts",
+        "vite.config.cts",
+        "vite.config.js",
+        "vite.config.mjs",
+        "vite.config.cjs"
+      ])
+    ],
+    [
+      "renderer.app.trees.sha256",
+      hashExistingTrees([join(plan.appRoot, "src"), join(plan.appRoot, "public")])
+    ],
     ["workspace.packages.sha256", hashExistingTrees([join(repoRoot, "packages")])]
   ]).pipe(
     Effect.map((cacheKey) => ({
@@ -1699,6 +1716,27 @@ const yieldableFileDigest = (path: string): Effect.Effect<string, BuildFileError
         message: `failed to hash ${path}`,
         cause
       })
+  })
+
+const hashExistingFiles = (
+  root: string,
+  paths: readonly string[]
+): Effect.Effect<string, BuildFileError, never> =>
+  Effect.gen(function* () {
+    const entries: Array<readonly [string, string]> = []
+    for (const path of paths) {
+      const absolutePath = join(root, path)
+      const exists = yield* pathExists(absolutePath)
+      if (!exists) {
+        continue
+      }
+      const pathStat = yield* lstatPath(absolutePath)
+      if (pathStat.isFile()) {
+        const digest = yield* yieldableFileDigest(absolutePath)
+        entries.push([path, digest])
+      }
+    }
+    return stableHash(entries)
   })
 
 const hashExistingTrees = (

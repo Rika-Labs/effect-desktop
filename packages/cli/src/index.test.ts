@@ -8487,6 +8487,73 @@ test("desktop build reuses native host when only renderer source changes", () =>
     })
   ))
 
+test("desktop build invalidates renderer cache when renderer HTML changes", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-build-renderer-html-cache-"))
+      )
+      try {
+        yield* writePlaygroundFixture(directory)
+        const appRoot = join(directory, "apps", "inspector")
+        const layout = join(appRoot, "build", "effect-desktop", "linux-x64")
+        const calls: string[] = []
+        const rendererHtmlPath = join(appRoot, "index.html")
+        const runner: CommandRunner = (invocation) =>
+          Effect.gen(function* () {
+            calls.push(`${invocation.step}:${invocation.command} ${invocation.args.join(" ")}`)
+            if (invocation.step === "renderer") {
+              const rendererHtml = yield* Effect.promise(() => readFile(rendererHtmlPath, "utf8"))
+              yield* writeBuildFixtureOutput(invocation, {
+                rendererHtml,
+                runtimeJs: "console.log('runtime')\n"
+              })
+              return
+            }
+            yield* writeBuildFixtureOutput(invocation, {
+              runtimeJs: "console.log('runtime')\n"
+            })
+          })
+
+        const runBuild = () =>
+          runCli({
+            argv: ["build", "--config", "apps/inspector/desktop.config.ts", "--json"],
+            cwd: directory,
+            hostTarget: "linux-x64",
+            commandRunner: runner,
+            writeStdout: () => {},
+            writeStderr: () => {}
+          })
+
+        yield* Effect.promise(() => writeFile(rendererHtmlPath, "<h1>old renderer shell</h1>\n"))
+        expect(yield* runBuild()).toBe(0)
+        calls.length = 0
+        yield* Effect.promise(() => writeFile(rendererHtmlPath, "<h1>new renderer shell</h1>\n"))
+
+        expect(yield* runBuild()).toBe(0)
+
+        const report = decodeBuildStepsReportJson(
+          yield* Effect.promise(() => readFile(join(layout, "build-report.json"), "utf8"))
+        )
+        const stagedHtml = yield* Effect.promise(() =>
+          readFile(join(layout, "renderer", "index.html"), "utf8")
+        )
+        expect(calls).toEqual(["renderer:bun run build"])
+        expect(stagedHtml).toContain("new renderer shell")
+        expect(report.steps.map((step) => [step.name, step.status, step.provider])).toEqual([
+          ["renderer", "rebuilt", "renderer:react"],
+          ["runtime", "reused", "runtime:bun"],
+          ["native-host", "reused", "webview:system"],
+          ["bridge", "reused", undefined],
+          ["manifest", "rebuilt", undefined]
+        ])
+        expect(report.steps.find((step) => step.name === "renderer")?.reason).toContain("cache key")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
 test("desktop build ignores malformed build cache and rebuilds nodes", () =>
   Effect.runPromise(
     Effect.gen(function* () {
