@@ -28,6 +28,12 @@ The host owns a process-local resident policy state. When enabled with `process:
 
 Enabled resident lifecycle policy is visible through `ResourceRegistry.list()` and `ResourceRegistry.observeLifecycle()`. Policy changes and terminal failures are observable through typed service failures and event streams.
 
+## Migration
+
+Use `ResidentLifecycle.layer` directly when wiring the default service layer. `ResidentLifecycleLive` was removed because it only renamed the canonical Effect service layer and did not add durable desktop-specific policy, lifecycle, security, or protocol translation.
+
+Architecture-debt sweep outcome: removed the shallow `ResidentLifecycleLive` alias; no additional wrapper debt was found in the resident-lifecycle service, surface, handler, or packaged lifecycle-intake demo paths.
+
 ## Files
 
 - Service: [`packages/native/src/resident-lifecycle.ts`](../../../packages/native/src/resident-lifecycle.ts)

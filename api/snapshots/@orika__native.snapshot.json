@@ -244,11 +244,6 @@
       "signature": "const AttachmentIntakeHandlersLive: Layer.Layer<import(\"effect/unstable/rpc/Rpc\").Handler<\"AttachmentIntake.ingest\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"AttachmentIntake.inspect\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"AttachmentIntake.dispose\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"AttachmentIntake.isSupported\">, never, AttachmentIntake>"
     },
     {
-      "name": "AttachmentIntakeLive",
-      "kind": "value",
-      "signature": "const AttachmentIntakeLive: Layer.Layer<AttachmentIntake, never, PermissionRegistry | AttachmentIntakeClient>"
-    },
-    {
       "name": "AttachmentIntakeMemoryClientOptions",
       "kind": "interface",
       "signature": "export interface AttachmentIntakeMemoryClientOptions { readonly failure?: Partial<Record<\"ingest\" | \"inspect\" | \"dispose\", AttachmentIntakeError>> readonly nextIntakeId?: () => string readonly nextItemId?: () => string }"
@@ -2792,11 +2787,6 @@
       "name": "ResidentLifecycleHandlersLive",
       "kind": "value",
       "signature": "const ResidentLifecycleHandlersLive: Layer.Layer<import(\"effect/unstable/rpc/Rpc\").Handler<\"ResidentLifecycle.enable\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"ResidentLifecycle.disable\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"ResidentLifecycle.getState\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"ResidentLifecycle.isSupported\">, never, ResidentLifecycle>"
-    },
-    {
-      "name": "ResidentLifecycleLive",
-      "kind": "value",
-      "signature": "const ResidentLifecycleLive: Layer.Layer<ResidentLifecycle, never, PermissionRegistry | ResourceRegistry | ResidentLifecycleClient>"
     },
     {
       "name": "ResidentLifecycleMemoryClientOptions",

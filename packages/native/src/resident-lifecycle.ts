@@ -156,8 +156,6 @@ export class ResidentLifecycle extends Context.Service<
   )
 }
 
-export const ResidentLifecycleLive = ResidentLifecycle.layer
-
 export const makeResidentLifecycleServiceLayer = (
   client: ResidentLifecycleClientApi,
   options: ResidentLifecycleServiceOptions

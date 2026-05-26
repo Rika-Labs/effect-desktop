@@ -175,8 +175,6 @@ export class AttachmentIntake extends Context.Service<
   )
 }
 
-export const AttachmentIntakeLive = AttachmentIntake.layer
-
 export const makeAttachmentIntakeServiceLayer = (
   client: AttachmentIntakeClientApi,
   options: AttachmentIntakeServiceOptions

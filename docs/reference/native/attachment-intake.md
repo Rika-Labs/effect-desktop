@@ -57,6 +57,12 @@ typed `NotFound`; expired handles are removed and rejected with typed
 
 Use `makeAttachmentIntakeMemoryClient()` for deterministic ingest, inspect, dispose, and event tests without native prompts. Use `makeAttachmentIntakeUnsupportedClient()` when a test needs the typed unsupported path.
 
+## Migration
+
+Use `AttachmentIntake.layer` directly when wiring the default service layer. `AttachmentIntakeLive` was removed because it only renamed the canonical Effect service layer and did not add durable desktop-specific policy, lifecycle, security, or protocol translation.
+
+Architecture-debt sweep outcome: removed the shallow `AttachmentIntakeLive` alias; no additional wrapper debt was found in the attachment-intake service, surface, handler, or packaged lifecycle-intake demo paths.
+
 ## Related
 
 - Source: [`packages/native/src/attachment-intake.ts`](../../../packages/native/src/attachment-intake.ts)
