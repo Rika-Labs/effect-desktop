@@ -42,10 +42,10 @@ connection wrapper. Use `sql.withTransaction(effect)` for transactions and
 `Settings` is a typed preference/configuration store built on Effect
 `KeyValueStore`. Use `SqlClient` for app records and query-shaped data.
 `Settings.layer(...)` validates the database path, namespace, and schema version
-before opening the store. `Settings.window(...)` binds the same store to the
-current `Desktop.window(...)` context. `get`, `set`, `delete`, `keys`, and
-`update` validate values through Effect Schema and return typed `SettingsError`
-values instead of throwing.
+before opening the store. Pass `Settings.layer(...)` directly as a
+`Desktop.window(...)` service layer when the store should be owned by one
+window. `get`, `set`, `delete`, `keys`, and `update` validate values through
+Effect Schema and return typed `SettingsError` values instead of throwing.
 
 `set` is last-writer-wins. `update` runs inside a SQLite transaction, so
 read-modify-write calls for the same database connection serialize. Versioned

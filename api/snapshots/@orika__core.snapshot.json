@@ -2266,7 +2266,7 @@
     {
       "name": "Settings",
       "kind": "class",
-      "signature": "export class Settings extends Context.Service<Settings, SettingsApi>()( \"@orika/core/runtime/settings\" ) { static layer( options: SettingsOptions ): Layer.Layer< Settings, SettingsError | SqlitePolicyError, ResourceOwner | PermissionRegistry | ResourceRegistry | FileSystem | Path > { return Layer.unwrap( Effect.gen(function* () { const owner = yield* ResourceOwner return settingsLayer(options, owner.scopeId) }) ) } static window( options: SettingsOptions ): Layer.Layer< Settings, SettingsError | SqlitePolicyError, ResourceOwner | PermissionRegistry | ResourceRegistry | FileSystem | Path > { return Settings.layer(options) } static memory(options: SettingsMemoryOptions = {}): Layer.Layer<Settings, SettingsError, never> { return settingsMemoryLayer(options) } }"
+      "signature": "export class Settings extends Context.Service<Settings, SettingsApi>()( \"@orika/core/runtime/settings\" ) { static layer( options: SettingsOptions ): Layer.Layer< Settings, SettingsError | SqlitePolicyError, ResourceOwner | PermissionRegistry | ResourceRegistry | FileSystem | Path > { return Layer.unwrap( Effect.gen(function* () { const owner = yield* ResourceOwner return settingsLayer(options, owner.scopeId) }) ) } static memory(options: SettingsMemoryOptions = {}): Layer.Layer<Settings, SettingsError, never> { return settingsMemoryLayer(options) } }"
     },
     {
       "name": "SettingsApi",

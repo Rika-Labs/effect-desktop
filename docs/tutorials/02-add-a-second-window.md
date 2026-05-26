@@ -87,14 +87,14 @@ runtime module that calls `Desktop.make(...)` into renderer code.
 Desktop.window(
   "compose",
   { title: "Compose Note" },
-  Settings.window({
+  Settings.layer({
     path: "compose-drafts.sqlite",
     schemaVersion: 1
   })
 )
 ```
 
-Inside that window's scoped services, `yield* Settings` gives the compose window's store. The framework provides the current `WindowContext` and window `ResourceOwner` before building the layer, so `Settings.window(...)` can bind ownership to the actual host window scope.
+Inside that window's scoped services, `yield* Settings` gives the compose window's store. The framework provides the current `WindowContext` and window `ResourceOwner` before building the layer, so `Settings.layer(...)` binds ownership to the actual host window scope when you pass it as the window services layer.
 
 ```ts
 const ComposeDraftsLive = Layer.effectDiscard(
@@ -104,7 +104,7 @@ const ComposeDraftsLive = Layer.effectDiscard(
   })
 ).pipe(
   Layer.provide(
-    Settings.window({
+    Settings.layer({
       path: "compose-drafts.sqlite",
       schemaVersion: 1
     })

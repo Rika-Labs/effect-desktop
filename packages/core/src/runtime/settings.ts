@@ -391,16 +391,6 @@ export class Settings extends Context.Service<Settings, SettingsApi>()(
     )
   }
 
-  static window(
-    options: SettingsOptions
-  ): Layer.Layer<
-    Settings,
-    SettingsError | SqlitePolicyError,
-    ResourceOwner | PermissionRegistry | ResourceRegistry | FileSystem | Path
-  > {
-    return Settings.layer(options)
-  }
-
   static memory(options: SettingsMemoryOptions = {}): Layer.Layer<Settings, SettingsError, never> {
     return settingsMemoryLayer(options)
   }

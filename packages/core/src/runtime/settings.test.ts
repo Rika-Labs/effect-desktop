@@ -93,6 +93,18 @@ test("Settings mutation option decoding does not assert absent options", () =>
     })
   ))
 
+test("Settings does not expose shallow window aliases", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        Bun.file(new URL("./settings.ts", import.meta.url)).text()
+      )
+
+      expect(source).not.toContain("static window(")
+      expect(source).not.toContain("Settings.window")
+    })
+  ))
+
 describe("Settings", () => {
   test("set then get returns a schema-validated value", () =>
     Effect.runPromise(

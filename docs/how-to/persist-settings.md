@@ -30,7 +30,7 @@ const program = Effect.gen(function* () {
 )
 ```
 
-`Settings.layer` validates the path, opens (or creates) the SQLite file, and registers a scoped resource. When the layer scope closes, the store closes. Use `Settings.window(...)` inside `Desktop.window(..., services)` when the store should be owned by one window.
+`Settings.layer` validates the path, opens (or creates) the SQLite file, and registers a scoped resource. When the layer scope closes, the store closes. Pass `Settings.layer(...)` directly to `Desktop.window(..., services)` when the store should be owned by one window.
 
 ## 2. Read and write typed values
 
