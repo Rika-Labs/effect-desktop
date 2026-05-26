@@ -84,6 +84,11 @@ Use `makeEgressPolicyMemoryClient()` for deterministic policy decisions, host-re
 
 ## Architecture Debt Sweep
 
+Architecture-debt sweep outcome for #1907: removed the `EgressPolicyLive`
+alias. Use `EgressPolicy.layer` directly. The `EgressPolicy` service remains
+because it owns permission checks, trusted rule evaluation, decision receipt
+lifecycle, audit events, and typed host error mapping.
+
 `EgressPolicyRpcEvents` was removed; event schema ownership now lives in the
 canonical Effect RPC stream. `EgressPolicy` remains durable policy, audit, and
 decision-receipt behavior, not a removable Effect wrapper over network

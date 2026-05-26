@@ -154,8 +154,6 @@ export class EgressPolicy extends Context.Service<EgressPolicy, EgressPolicyServ
   )
 }
 
-export const EgressPolicyLive = EgressPolicy.layer
-
 export const makeEgressPolicyServiceLayer = (
   client: EgressPolicyClientApi,
   options: EgressPolicyServiceOptions

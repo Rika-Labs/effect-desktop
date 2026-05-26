@@ -1059,11 +1059,6 @@
       "signature": "const EgressPolicyHandlersLive: Layer.Layer<import(\"effect/unstable/rpc/Rpc\").Handler<\"EgressPolicy.decide\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"EgressPolicy.record\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"EgressPolicy.isSupported\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"EgressPolicy.events.DecisionRecorded\">, never, EgressPolicy>"
     },
     {
-      "name": "EgressPolicyLive",
-      "kind": "value",
-      "signature": "const EgressPolicyLive: Layer.Layer<EgressPolicy, never, PermissionRegistry | EgressPolicyClient>"
-    },
-    {
       "name": "EgressPolicyMemoryClientOptions",
       "kind": "interface",
       "signature": "export interface EgressPolicyMemoryClientOptions { readonly failure?: Partial<Record<\"decide\" | \"record\", EgressPolicyError>> readonly nextDecisionId?: () => string }"

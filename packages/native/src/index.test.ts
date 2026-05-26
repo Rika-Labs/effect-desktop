@@ -460,6 +460,7 @@ test("native package root keeps contracts and implementation helpers behind subp
       expect("WindowRpcEvents" in native).toBe(false)
       expect("WindowSupportedRpcs" in native).toBe(false)
       expect("CrashReporterLive" in native).toBe(false)
+      expect("EgressPolicyLive" in native).toBe(false)
       expect("makeUnsupportedClipboardClient" in native).toBe(false)
       expect("makeClipboardBridgeClientLayer" in native).toBe(false)
       expect("makeHostClipboardRpcRuntime" in native).toBe(false)

@@ -350,7 +350,6 @@ export {
   EgressPolicy,
   EgressPolicyClient,
   EgressPolicyHandlersLive,
-  EgressPolicyLive,
   EgressPolicyMethodNames,
   EgressPolicyRpcs,
   EgressPolicySurface,
