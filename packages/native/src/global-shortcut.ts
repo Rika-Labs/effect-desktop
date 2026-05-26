@@ -178,8 +178,6 @@ export class GlobalShortcut extends Context.Service<GlobalShortcut, GlobalShortc
   )
 }
 
-export const GlobalShortcutLive = GlobalShortcut.layer
-
 const bindGlobalShortcutCommand = (
   client: GlobalShortcutClientApi,
   accelerator: string,

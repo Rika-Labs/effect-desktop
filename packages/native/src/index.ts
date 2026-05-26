@@ -565,7 +565,6 @@ export {
   GlobalShortcut,
   GlobalShortcutClient,
   GlobalShortcutHandlersLive,
-  GlobalShortcutLive,
   GlobalShortcutMethodNames,
   GlobalShortcutRpcs,
   GlobalShortcutSurface,

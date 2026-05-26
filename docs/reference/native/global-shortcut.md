@@ -39,6 +39,8 @@ Global shortcut command-binding contract. The TypeScript service defines support
 
 `bindCommand` remains useful for deterministic tests and future native events: it registers a scoped command binding, listens for `GlobalShortcut.events.Pressed`, invokes `CommandRegistry`, and unregisters on scope disposal. The bridge adapter still translates that canonical RPC stream to the host event method `GlobalShortcut.Pressed`.
 
+Architecture-debt sweep outcome for #1904: removed the `GlobalShortcutLive` alias. Use `GlobalShortcut.layer` directly. The `GlobalShortcut` service remains because it owns durable command-binding policy over scoped pressed-event listeners and command invocation.
+
 ## Errors
 
 - `GlobalShortcutError`

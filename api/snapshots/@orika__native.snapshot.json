@@ -1379,11 +1379,6 @@
       "signature": "const GlobalShortcutHandlersLive: Layer.Layer<import(\"effect/unstable/rpc/Rpc\").Handler<\"GlobalShortcut.isRegistered\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"GlobalShortcut.isSupported\"> | import(\"effect/unstable/rpc/Rpc\").Handler<\"GlobalShortcut.events.Pressed\">, never, GlobalShortcut>"
     },
     {
-      "name": "GlobalShortcutLive",
-      "kind": "value",
-      "signature": "const GlobalShortcutLive: Layer.Layer<GlobalShortcut, never, GlobalShortcutClient>"
-    },
-    {
       "name": "GlobalShortcutMethodNames",
       "kind": "value",
       "signature": "const GlobalShortcutMethodNames: readonly [\"isRegistered\", \"isSupported\"]"

@@ -168,7 +168,6 @@ import {
   GlobalShortcut,
   GlobalShortcutHandlersLive,
   GlobalShortcutRpcs,
-  GlobalShortcutLive,
   GlobalShortcutMethodNames,
   GlobalShortcutSurface,
   Menu,
@@ -472,7 +471,6 @@ test("native services expose canonical static layers", () => {
   expect(ClipboardLive).toBe(Clipboard.layer)
   expect(CrashReporterLive).toBe(CrashReporter.layer)
   expect(DialogLive).toBe(Dialog.layer)
-  expect(GlobalShortcutLive).toBe(GlobalShortcut.layer)
   expect(NotificationLive).toBe(Notification.layer)
   expect(PowerMonitorLive).toBe(PowerMonitor.layer)
   expect(SystemAppearanceLive).toBe(SystemAppearance.layer)
@@ -11274,7 +11272,11 @@ test("GlobalShortcut event schema is owned by the RPC stream contract", async ()
   const rootModule = await import("./index.js")
   const eventRpc = GlobalShortcutRpcs.requests.get("GlobalShortcut.events.Pressed")
 
-  for (const removedExport of ["GlobalShortcutCapabilityFacts", "GlobalShortcutRpcEvents"]) {
+  for (const removedExport of [
+    "GlobalShortcutCapabilityFacts",
+    "GlobalShortcutLive",
+    "GlobalShortcutRpcEvents"
+  ]) {
     expect(removedExport in globalShortcutModule).toBe(false)
     expect(removedExport in rootModule).toBe(false)
   }
@@ -11340,7 +11342,7 @@ test("GlobalShortcut service delegates through a substitutable GlobalShortcutCli
           return { pressed, registered, supported }
         }),
         Layer.provide(
-          GlobalShortcutLive,
+          GlobalShortcut.layer,
           Layer.succeed(GlobalShortcutClient)(globalShortcutClient(calls))
         )
       )
@@ -11423,7 +11425,7 @@ test("GlobalShortcut direct client consumes the canonical RPC pressed stream", (
           return yield* shortcuts.onPressed().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
         }),
         Layer.provide(
-          GlobalShortcutLive,
+          GlobalShortcut.layer,
           Layer.provide(GlobalShortcutSurface.clientLayer, protocolLayer)
         )
       )
@@ -11471,7 +11473,7 @@ test("GlobalShortcut bridge client sends typed host envelopes and decodes presse
             unregisterExit
           }
         }),
-        Layer.provide(GlobalShortcutLive, GlobalShortcutSurface.bridgeClientLayer(exchange))
+        Layer.provide(GlobalShortcut.layer, GlobalShortcutSurface.bridgeClientLayer(exchange))
       )
 
       expect(result.supported).toEqual(new GlobalShortcutSupportedResult({ supported: true }))
@@ -11510,7 +11512,7 @@ test("GlobalShortcut bridge client rejects inconsistent isSupported output as In
             const client = yield* GlobalShortcut
             return yield* Effect.exit(client.isSupported())
           }),
-          Layer.provide(GlobalShortcutLive, GlobalShortcutSurface.bridgeClientLayer(exchange))
+          Layer.provide(GlobalShortcut.layer, GlobalShortcutSurface.bridgeClientLayer(exchange))
         )
 
         expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
@@ -11546,7 +11548,7 @@ test("GlobalShortcut bridge client decodes valid isSupported outputs", () =>
             const shortcuts = yield* GlobalShortcut
             return yield* shortcuts.isSupported()
           }),
-          Layer.provide(GlobalShortcutLive, GlobalShortcutSurface.bridgeClientLayer(exchange))
+          Layer.provide(GlobalShortcut.layer, GlobalShortcutSurface.bridgeClientLayer(exchange))
         )
 
         expect(result).toEqual(expected)
@@ -11587,7 +11589,7 @@ test("GlobalShortcut bridge client rejects invalid pressed event identifiers as 
             const shortcuts = yield* GlobalShortcut
             return yield* Effect.exit(shortcuts.onPressed().pipe(Stream.take(1), Stream.runCollect))
           }),
-          Layer.provide(GlobalShortcutLive, GlobalShortcutSurface.bridgeClientLayer(exchange))
+          Layer.provide(GlobalShortcut.layer, GlobalShortcutSurface.bridgeClientLayer(exchange))
         )
 
         expectExitFailure(exit, (error) => hasErrorTag(error, "InvalidOutput"))
@@ -11603,7 +11605,7 @@ test("GlobalShortcut bridge client rejects empty and NUL-bearing accelerators as
       const client = yield* runScoped(
         GlobalShortcut.asEffect(),
         Layer.provide(
-          GlobalShortcutLive,
+          GlobalShortcut.layer,
           GlobalShortcutSurface.bridgeClientLayer(
             globalShortcutExchange(requests, () => ({ kind: "success", payload: undefined }))
           )
@@ -11676,7 +11678,7 @@ test("GlobalShortcut bindCommand invokes CommandRegistry for matching registrar 
         }),
         Layer.mergeAll(
           Layer.provide(
-            GlobalShortcutLive,
+            GlobalShortcut.layer,
             Layer.succeed(GlobalShortcutClient)({
               ...globalShortcutClient(calls),
               onPressed: () => Stream.fromQueue(pressed)
@@ -11804,7 +11806,7 @@ test("GlobalShortcut bindCommand invokes CommandRegistry for matching registrar 
         }),
         Layer.mergeAll(
           Layer.provide(
-            GlobalShortcutLive,
+            GlobalShortcut.layer,
             Layer.succeed(GlobalShortcutClient)({
               ...globalShortcutClient(calls),
               onPressed: () => Stream.fromQueue(pressed)
@@ -11877,7 +11879,7 @@ test("GlobalShortcut conflicts are typed Effect values", () =>
           return yield* Effect.exit(shortcuts.register("CmdOrCtrl+K", windowHandle))
         }),
         Layer.provide(
-          GlobalShortcutLive,
+          GlobalShortcut.layer,
           Layer.succeed(GlobalShortcutClient)({
             ...globalShortcutClient([]),
             register: (accelerator) =>
@@ -11894,7 +11896,7 @@ test("GlobalShortcut conflicts are typed Effect values", () =>
         }),
         Layer.mergeAll(
           Layer.provide(
-            GlobalShortcutLive,
+            GlobalShortcut.layer,
             Layer.succeed(GlobalShortcutClient)({
               ...globalShortcutClient([]),
               register: (accelerator) =>
@@ -11933,14 +11935,14 @@ test("GlobalShortcut service propagates unsupported platform and host failure", 
           const shortcuts = yield* GlobalShortcut
           return yield* Effect.exit(shortcuts.register("CmdOrCtrl+K", windowHandle))
         }),
-        Layer.provide(GlobalShortcutLive, Layer.succeed(GlobalShortcutClient)(unsupportedClient))
+        Layer.provide(GlobalShortcut.layer, Layer.succeed(GlobalShortcutClient)(unsupportedClient))
       )
       const hostFailureExit = yield* runScoped(
         Effect.gen(function* () {
           const shortcuts = yield* GlobalShortcut
           return yield* Effect.exit(shortcuts.register("CmdOrCtrl+K", windowHandle))
         }),
-        Layer.provide(GlobalShortcutLive, Layer.succeed(GlobalShortcutClient)(hostFailureClient))
+        Layer.provide(GlobalShortcut.layer, Layer.succeed(GlobalShortcutClient)(hostFailureClient))
       )
 
       expectExitFailure(unsupportedExit, (error) => hasErrorTag(error, "Unsupported"))
@@ -11960,7 +11962,7 @@ test("Linux GlobalShortcut client reports missing host adapters as typed unsuppo
           return { registerExit, supported, x11Supported }
         }),
         Layer.provide(
-          GlobalShortcutLive,
+          GlobalShortcut.layer,
           Layer.succeed(GlobalShortcutClient)(makeLinuxGlobalShortcutClient("wayland"))
         )
       )
