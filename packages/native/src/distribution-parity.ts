@@ -28,15 +28,13 @@ import {
   DistributionParityVerifyRequest,
   DistributionParityVerifyResult
 } from "./contracts/distribution-parity.js"
-import { subscribeNativeEvent } from "./event-stream.js"
-import { decodeNativeInput, runNativeRpc } from "./native-client.js"
+import { decodeNativeInput, runNativeRpc, runNativeRpcStream } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
 
 export * from "./contracts/distribution-parity.js"
 
 const Surface = "DistributionParity"
-const EventMethod = "DistributionParity.Event"
 const UnsupportedReason = "host-adapter-unimplemented"
 
 export type DistributionParityError = HostProtocolError
@@ -58,13 +56,15 @@ export const DistributionParityIsSupported = NativeSurface.rpc(Surface, "isSuppo
   support: NativeSurface.support.supported
 })
 
-export const DistributionParityRpcEvents = Object.freeze({
-  Event: { payload: DistributionParityEvent }
+const DistributionParityEventStream = NativeSurface.event(Surface, "Event", {
+  payload: DistributionParityEvent,
+  support: NativeSurface.support.supported
 })
 
 const DistributionParityRpcGroup = RpcGroup.make(
   DistributionParityVerify,
-  DistributionParityIsSupported
+  DistributionParityIsSupported,
+  DistributionParityEventStream
 )
 
 export type DistributionParityRpc = RpcGroup.Rpcs<typeof DistributionParityRpcGroup>
@@ -135,15 +135,22 @@ export const DistributionParityHandlersLive = DistributionParityRpcGroup.toLayer
     Effect.gen(function* () {
       const parity = yield* DistributionParity
       return yield* parity.isSupported()
-    })
+    }),
+  "DistributionParity.events.Event": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const parity = yield* DistributionParity
+        return parity.events()
+      })
+    )
 })
 
 export const DistributionParitySurface = NativeSurface.make(Surface, DistributionParityRpcGroup, {
   service: DistributionParityClient,
   capabilities: DistributionParityCapabilityMethods,
   handlers: DistributionParityHandlersLive,
-  client: (client) => distributionParityClientFromRpcClient(client, undefined),
-  bridgeClient: (client, exchange) => distributionParityClientFromRpcClient(client, exchange)
+  client: (client) => distributionParityClientFromRpcClient(client),
+  bridgeClient: (client, exchange) => distributionParityBridgeClientFromRpcClient(client, exchange)
 })
 
 export interface DistributionParityMemoryClientOptions {
@@ -186,7 +193,7 @@ export const makeDistributionParityUnsupportedClient = (): DistributionParityCli
       Effect.succeed(
         new DistributionParitySupportedResult({ supported: false, reason: UnsupportedReason })
       ),
-    events: () => Stream.fail(unsupportedError("DistributionParity.events"))
+    events: () => Stream.fail(unsupportedError("DistributionParity.events.Event"))
   } satisfies DistributionParityClientApi)
 
 const makeDistributionParityService = (
@@ -214,8 +221,7 @@ const makeDistributionParityService = (
   )
 
 const distributionParityClientFromRpcClient = (
-  client: DesktopRpcClient<DistributionParityRpc>,
-  exchange: BridgeClientExchange | undefined
+  client: DesktopRpcClient<DistributionParityRpc>
 ): DistributionParityClientApi =>
   Object.freeze({
     verify: (input) =>
@@ -232,7 +238,20 @@ const distributionParityClientFromRpcClient = (
         client["DistributionParity.isSupported"](undefined),
         "DistributionParity.isSupported"
       ),
-    events: () => subscribeNativeEvent(exchange, EventMethod, DistributionParityEvent)
+    events: () =>
+      runDistributionParityRpcStream(
+        client["DistributionParity.events.Event"](undefined),
+        "DistributionParity.events.Event"
+      )
+  } satisfies DistributionParityClientApi)
+
+const distributionParityBridgeClientFromRpcClient = (
+  client: DesktopRpcClient<DistributionParityRpc>,
+  exchange: BridgeClientExchange
+): DistributionParityClientApi =>
+  Object.freeze({
+    ...distributionParityClientFromRpcClient(client),
+    events: () => NativeSurface.subscribeEvent(exchange, DistributionParityEventStream)
   } satisfies DistributionParityClientApi)
 
 const validateVerify = (
@@ -244,6 +263,12 @@ const runDistributionParityRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
   operation: string
 ): Effect.Effect<A, DistributionParityError, never> => runNativeRpc(effect, operation, Surface)
+
+const runDistributionParityRpcStream = <A, E>(
+  stream: Stream.Stream<A, E, never>,
+  operation: string
+): Stream.Stream<A, DistributionParityError, never> =>
+  runNativeRpcStream(stream, operation, Surface)
 
 const validateParityEvidence = (
   request: DistributionParityVerifyRequest

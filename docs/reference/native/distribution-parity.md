@@ -20,6 +20,8 @@ The public service is Layer-first and test-substitutable. It validates Schema co
 | `isSupported` | `void`                                           | `{ supported, reason? }`                                 |
 | `events`      | `void`                                           | stream of distribution parity events                     |
 
+`events()` is exposed as the canonical `DistributionParity.events.Event` RPC stream. Renderer direct clients consume that stream through the RPC protocol; bridge clients translate it to the host event channel `DistributionParity.Event` at the native/web boundary.
+
 ## Evidence
 
 Every `verify` request includes a non-empty package capability list and at least one evidence row for each required kind:
@@ -48,6 +50,10 @@ Denied requests do not cross the host boundary. Successful verification emits `p
 | macOS    | `supported` |        |
 | Windows  | `supported` |        |
 | Linux    | `supported` |        |
+
+## Architecture Debt Sweep
+
+The legacy `DistributionParityRpcEvents` side object has been removed. Distribution parity events now live in the same `RpcGroup` contract as request/response methods, while bridge-specific host event naming stays local to the bridge client adapter.
 
 ## Related
 

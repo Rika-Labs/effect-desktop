@@ -1,10 +1,15 @@
 import { expect, test } from "bun:test"
 import {
   type BridgeClientExchange,
+  type HostProtocolEnvelope,
   HostProtocolEventEnvelope,
   HostProtocolInternalError,
   HostProtocolInvalidOutputError,
-  type HostProtocolRequestEnvelope
+  HostProtocolResponseEnvelope,
+  type HostProtocolRequestEnvelope,
+  HostProtocolStreamByRequestEnvelope,
+  makeDesktopClientProtocol,
+  rpcSupport
 } from "@orika/bridge"
 import {
   type AuditEvent,
@@ -13,12 +18,15 @@ import {
   type NormalizedCapability,
   P
 } from "@orika/core"
-import { Cause, Effect, Exit, type Layer, ManagedRuntime, Option, Schema, Stream } from "effect"
+import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Queue, Schema, Stream } from "effect"
+import { RpcClient, RpcSchema } from "effect/unstable/rpc"
 
 import {
   DistributionParity,
   DistributionParityClient,
   type DistributionParityClientApi,
+  DistributionParityMethodNames,
+  DistributionParityRpcs,
   makeDistributionParityMemoryClient,
   makeDistributionParityServiceLayer,
   makeDistributionParityUnsupportedClient,
@@ -29,6 +37,98 @@ import {
   DistributionParityEvent,
   DistributionParityVerifyRequest
 } from "./contracts/distribution-parity.js"
+
+const expectedDistributionParityMethods: Array<(typeof DistributionParityMethodNames)[number]> = [
+  "verify",
+  "isSupported"
+]
+
+test("DistributionParity event schema is owned by the RPC stream contract", async () => {
+  const distributionParityModule = await import("./distribution-parity.js")
+  const rootModule = await import("./index.js")
+  const eventRpc = DistributionParityRpcs.requests.get("DistributionParity.events.Event")
+
+  expect("DistributionParityRpcEvents" in distributionParityModule).toBe(false)
+  expect("DistributionParityRpcEvents" in rootModule).toBe(false)
+  expect(Array.from(DistributionParityRpcs.requests.keys())).toEqual([
+    ...expectedDistributionParityMethods.map((method) => `DistributionParity.${method}`),
+    "DistributionParity.events.Event"
+  ])
+  expect(eventRpc).toBeDefined()
+  expect(eventRpc === undefined ? false : RpcSchema.isStreamSchema(eventRpc.successSchema)).toBe(
+    true
+  )
+  if (eventRpc !== undefined && RpcSchema.isStreamSchema(eventRpc.successSchema)) {
+    expect(Object.is(eventRpc.successSchema.success, DistributionParityEvent)).toBe(true)
+    expect(eventRpc.pipe(rpcSupport)).toEqual({ status: "supported" })
+  }
+})
+
+test("DistributionParity direct client consumes the canonical RPC event stream", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
+      const requests: HostProtocolRequestEnvelope[] = []
+      const protocolLayer = Layer.effect(RpcClient.Protocol)(
+        makeDesktopClientProtocol(
+          {
+            send: (envelope) => {
+              if (envelope.kind !== "request") {
+                return Effect.void
+              }
+              requests.push(envelope)
+              return Effect.all(
+                [
+                  Queue.offer(
+                    queue,
+                    new HostProtocolStreamByRequestEnvelope({
+                      kind: "stream",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_100,
+                      traceId: envelope.traceId,
+                      payload: distributionEventPayload()
+                    })
+                  ),
+                  Queue.offer(
+                    queue,
+                    new HostProtocolResponseEnvelope({
+                      kind: "response",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_101,
+                      traceId: envelope.traceId
+                    })
+                  )
+                ],
+                { discard: true }
+              )
+            },
+            run: (onEnvelope) =>
+              Stream.fromQueue(queue).pipe(
+                Stream.runForEach(onEnvelope),
+                Effect.andThen(Effect.never)
+              )
+          },
+          {
+            nextRequestId: () => "distribution-parity-event-rpc",
+            nextTraceId: () => "trace-distribution-parity-event-rpc"
+          }
+        )
+      )
+
+      const event = yield* runScoped(
+        Effect.gen(function* () {
+          const parity = yield* DistributionParityClient
+          return yield* parity.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+        }),
+        Layer.provide(DistributionParitySurface.clientLayer, protocolLayer)
+      )
+
+      expect(event.packageId).toBe("extension-1")
+      expect(event.version).toBe("1.0.0")
+      expect(event.phase).toBe("verified")
+      expect(requests.map((request) => request.method)).toEqual(["DistributionParity.events.Event"])
+    })
+  ))
 
 test("DistributionParity verifies package, plugin, template, and docs evidence", () =>
   Effect.runPromise(
@@ -155,6 +255,39 @@ test("DistributionParity bridge client rejects inconsistent event phase payloads
     })
   ))
 
+test("DistributionParity bridge client subscribes to the host event channel", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const methods: string[] = []
+      const exchange: BridgeClientExchange = {
+        request: () =>
+          Effect.die("DistributionParity bridge event channel test does not issue requests"),
+        subscribe: (method) => {
+          methods.push(method)
+          return Stream.make(
+            new HostProtocolEventEnvelope({
+              kind: "event",
+              method,
+              timestamp: 1_710_000_000_000,
+              traceId: "distribution-parity-event-trace",
+              payload: distributionEventPayload()
+            })
+          )
+        }
+      }
+      const client = yield* runScoped(
+        Effect.gen(function* () {
+          return yield* DistributionParityClient
+        }),
+        DistributionParitySurface.bridgeClientLayer(exchange)
+      )
+      const event = yield* client.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+
+      expect(event.phase).toBe("verified")
+      expect(methods).toEqual(["DistributionParity.Event"])
+    })
+  ))
+
 test("DistributionParity denies before host verification", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -267,6 +400,21 @@ test("DistributionParity returns typed unsupported and host failures", () =>
       expectExitFailure(unsupported, (error) => {
         expect(error).toMatchObject({ tag: "Unsupported", operation: "DistributionParity.verify" })
       })
+      const unsupportedEvent = yield* runScoped(
+        Effect.gen(function* () {
+          const parity = yield* DistributionParity
+          return yield* Effect.exit(parity.events().pipe(Stream.runHead))
+        }),
+        makeDistributionParityServiceLayer(makeDistributionParityUnsupportedClient(), {
+          permissions
+        })
+      )
+      expectExitFailure(unsupportedEvent, (error) => {
+        expect(error).toMatchObject({
+          tag: "Unsupported",
+          operation: "DistributionParity.events.Event"
+        })
+      })
 
       const rows: AuditEvent[] = []
       const failure = new HostProtocolInternalError({
@@ -334,6 +482,14 @@ const verifyRequest = (input: Partial<DistributionParityVerifyRequest> = {}) =>
     traceId: "trace-distribution",
     ...input
   })
+
+const distributionEventPayload = () => ({
+  type: "distribution-parity-event" as const,
+  timestamp: 1_710_000_000_000,
+  phase: "verified" as const,
+  packageId: "extension-1",
+  version: "1.0.0"
+})
 
 const runScoped = <A, E, R>(
   effect: Effect.Effect<A, E, R>,

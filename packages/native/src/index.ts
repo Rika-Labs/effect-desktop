@@ -279,7 +279,6 @@ export {
   DistributionParityHandlersLive,
   DistributionParityLive,
   DistributionParityMethodNames,
-  DistributionParityRpcEvents,
   DistributionParityRpcs,
   DistributionParitySurface,
   makeDistributionParityMemoryClient,
