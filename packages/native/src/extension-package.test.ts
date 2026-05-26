@@ -1,11 +1,17 @@
 import { expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
 import {
   type BridgeClientExchange,
+  type HostProtocolEnvelope,
   type HostProtocolError,
   type HostProtocolEventEnvelope,
   HostProtocolInvalidOutputError,
+  HostProtocolResponseEnvelope,
   type HostProtocolRequestEnvelope,
-  makeHostProtocolInternalError
+  HostProtocolStreamByRequestEnvelope,
+  makeDesktopClientProtocol,
+  makeHostProtocolInternalError,
+  rpcSupport
 } from "@orika/bridge"
 import {
   type AuditEvent,
@@ -14,11 +20,14 @@ import {
   P,
   PermissionActor
 } from "@orika/core"
-import { Cause, Effect, Exit, type Layer, ManagedRuntime, Schema, Stream } from "effect"
+import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Queue, Schema, Stream } from "effect"
+import { RpcClient, RpcSchema } from "effect/unstable/rpc"
 
 import {
   ExtensionPackage,
   ExtensionPackageClient,
+  ExtensionPackageMethodNames,
+  ExtensionPackageRpcs,
   ExtensionPackageSurface,
   makeExtensionPackageMemoryClient,
   makeExtensionPackageServiceLayer,
@@ -38,6 +47,169 @@ import {
   ExtensionPackageUpdateInput,
   ExtensionPackageUpdateRequest
 } from "./contracts/extension-package.js"
+
+test("ExtensionPackage public surface omits shallow event and layer helpers", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const source = yield* Effect.promise(() =>
+        readFile(new URL("extension-package.ts", import.meta.url), "utf8")
+      )
+      const indexSource = yield* Effect.promise(() =>
+        readFile(new URL("index.ts", import.meta.url), "utf8")
+      )
+
+      for (const removedName of ["ExtensionPackageRpcEvents", "ExtensionPackageLive"]) {
+        expect(source).not.toContain(removedName)
+        expect(indexSource).not.toContain(removedName)
+      }
+    })
+  ))
+
+test("ExtensionPackage event schema is owned by the RPC stream contract", async () => {
+  const extensionPackageModule = await import("./extension-package.js")
+  const rootModule = await import("./index.js")
+  const callableTags = Array.from(ExtensionPackageRpcs.requests.keys()).toSorted()
+  const eventRpc = ExtensionPackageRpcs.requests.get("ExtensionPackage.events.Event")
+
+  expect("ExtensionPackageRpcEvents" in extensionPackageModule).toBe(false)
+  expect("ExtensionPackageRpcEvents" in rootModule).toBe(false)
+  expect("ExtensionPackageLive" in extensionPackageModule).toBe(false)
+  expect("ExtensionPackageLive" in rootModule).toBe(false)
+  expect([...ExtensionPackageMethodNames]).toEqual([
+    "install",
+    "update",
+    "remove",
+    "list",
+    "isSupported"
+  ])
+  expect(callableTags).toEqual([
+    "ExtensionPackage.events.Event",
+    "ExtensionPackage.install",
+    "ExtensionPackage.isSupported",
+    "ExtensionPackage.list",
+    "ExtensionPackage.remove",
+    "ExtensionPackage.update"
+  ])
+  expect(eventRpc).toBeDefined()
+  expect(eventRpc === undefined ? false : RpcSchema.isStreamSchema(eventRpc.successSchema)).toBe(
+    true
+  )
+  if (eventRpc !== undefined && RpcSchema.isStreamSchema(eventRpc.successSchema)) {
+    expect(eventRpc.successSchema.success).toBe(ExtensionPackageEvent)
+    expect(eventRpc.pipe(rpcSupport)).toEqual({ status: "supported" })
+  }
+
+  const eventDoc = ExtensionPackageSurface.schemaDocs.find(
+    (doc) => doc.tag === "ExtensionPackage.events.Event"
+  )
+  expect(eventDoc?.kind).toBe("stream")
+  expect(eventDoc?.callable).toBe(true)
+  expect(eventDoc?.support).toEqual({ status: "supported" })
+})
+
+test("ExtensionPackage direct client consumes the canonical RPC event stream", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const queue = yield* Queue.unbounded<HostProtocolEnvelope>()
+      const requests: HostProtocolRequestEnvelope[] = []
+      const protocolLayer = Layer.effect(RpcClient.Protocol)(
+        makeDesktopClientProtocol(
+          {
+            send: (envelope) => {
+              if (envelope.kind !== "request") {
+                return Effect.void
+              }
+              requests.push(envelope)
+              return Effect.all(
+                [
+                  Queue.offer(
+                    queue,
+                    new HostProtocolStreamByRequestEnvelope({
+                      kind: "stream",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_001,
+                      traceId: envelope.traceId,
+                      payload: eventPayload("installed")
+                    })
+                  ),
+                  Queue.offer(
+                    queue,
+                    new HostProtocolResponseEnvelope({
+                      kind: "response",
+                      id: envelope.id,
+                      timestamp: 1_710_000_000_002,
+                      traceId: envelope.traceId
+                    })
+                  )
+                ],
+                { discard: true }
+              )
+            },
+            run: (onEnvelope) =>
+              Stream.fromQueue(queue).pipe(
+                Stream.runForEach(onEnvelope),
+                Effect.andThen(Effect.never)
+              )
+          },
+          {
+            nextRequestId: () => "extension-package-event-rpc",
+            nextTraceId: () => "trace-extension-package-event-rpc"
+          }
+        )
+      )
+
+      const event = yield* runScoped(
+        Effect.gen(function* () {
+          const client = yield* ExtensionPackageClient
+          return yield* client.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+        }),
+        Layer.provide(ExtensionPackageSurface.clientLayer, protocolLayer)
+      )
+
+      expect(event).toMatchObject({
+        packageId: "extension-1",
+        phase: "installed",
+        version: "1.0.0",
+        revision: 1
+      })
+      expect(requests.map((request) => request.method)).toEqual(["ExtensionPackage.events.Event"])
+    })
+  ))
+
+test("ExtensionPackage bridge client subscribes to the host event channel", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const methods: string[] = []
+      const exchange: BridgeClientExchange = {
+        request: () => Effect.fail(makeHostProtocolInternalError("unexpected request", "test")),
+        subscribe: (method) => {
+          methods.push(method)
+          return Stream.make({
+            kind: "event",
+            method,
+            timestamp: 1_710_000_000_000,
+            traceId: "trace-extension-package-host-event",
+            payload: eventPayload("installed")
+          })
+        }
+      }
+      const client = yield* runScoped(
+        Effect.gen(function* () {
+          return yield* ExtensionPackageClient
+        }),
+        ExtensionPackageSurface.bridgeClientLayer(exchange)
+      )
+      const event = yield* client.events().pipe(Stream.runHead, Effect.map(Option.getOrThrow))
+
+      expect(event).toMatchObject({
+        packageId: "extension-1",
+        phase: "installed",
+        version: "1.0.0",
+        revision: 1
+      })
+      expect(methods).toEqual(["ExtensionPackage.Event"])
+    })
+  ))
 
 test("ExtensionPackage service installs validated manifests, registers capabilities, emits events, and audits use", () =>
   Effect.runPromise(
@@ -340,10 +512,17 @@ test("ExtensionPackage unsupported client exposes typed unsupported failures", (
       const client = makeExtensionPackageUnsupportedClient()
       const supported = yield* client.isSupported()
       const exit = yield* Effect.exit(client.install(installInput()))
+      const eventExit = yield* Effect.exit(client.events().pipe(Stream.runHead))
 
       expect(supported).toEqual({ supported: false, reason: "host-adapter-unimplemented" })
       expectExitFailure(exit, (error) => {
         expect(error).toMatchObject({ tag: "Unsupported", operation: "ExtensionPackage.install" })
+      })
+      expectExitFailure(eventExit, (error) => {
+        expect(error).toMatchObject({
+          tag: "Unsupported",
+          operation: "ExtensionPackage.events.Event"
+        })
       })
     })
   ))
@@ -584,7 +763,8 @@ test("ExtensionPackage RPC metadata reports host methods as supported", () => {
     { tag: "ExtensionPackage.update", support: { status: "supported" } },
     { tag: "ExtensionPackage.remove", support: { status: "supported" } },
     { tag: "ExtensionPackage.list", support: { status: "supported" } },
-    { tag: "ExtensionPackage.isSupported", support: { status: "supported" } }
+    { tag: "ExtensionPackage.isSupported", support: { status: "supported" } },
+    { tag: "ExtensionPackage.events.Event", support: { status: "supported" } }
   ])
 })
 
@@ -604,6 +784,13 @@ const eventBase = () => ({
   type: "extension-package-event",
   timestamp: 1_710_000_000_000,
   packageId: "extension-1"
+})
+
+const eventPayload = (phase: "installed") => ({
+  ...eventBase(),
+  phase,
+  version: "1.0.0",
+  revision: 1
 })
 
 const manifest = (

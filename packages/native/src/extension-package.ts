@@ -8,7 +8,6 @@ import {
   makeHostProtocolInvalidStateError,
   makeHostProtocolNotFoundError,
   type HostProtocolError,
-  type RpcCapabilityMetadata,
   RpcGroup
 } from "@orika/bridge"
 import {
@@ -27,8 +26,7 @@ import {
 } from "@orika/core"
 import { Clock, Context, Effect, Layer, PubSub, Ref, Schema, Stream } from "effect"
 
-import { subscribeNativeEvent } from "./event-stream.js"
-import { decodeNativeInput, runNativeRpc } from "./native-client.js"
+import { decodeNativeInput, runNativeRpc, runNativeRpcStream } from "./native-client.js"
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
 import {
@@ -53,7 +51,6 @@ import {
 
 const Surface = "ExtensionPackage"
 const UnsupportedReason = "host-adapter-unimplemented"
-const ExtensionPackageEventMethod = "ExtensionPackage.Event"
 const PackageNamePattern = /^[A-Za-z0-9._-]+$/
 const SemverPattern =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/
@@ -61,24 +58,33 @@ const Sha256DigestPattern = /^sha256:[a-fA-F0-9]{64}$/
 
 export type ExtensionPackageError = HostProtocolError
 
-export const ExtensionPackageInstall = extensionPackageRpc(
-  "install",
-  ExtensionPackageInstallInput,
-  ExtensionPackageInstallResult,
-  P.nativeInvoke({ primitive: Surface, methods: ["install"] })
-)
-export const ExtensionPackageUpdate = extensionPackageRpc(
-  "update",
-  ExtensionPackageUpdateInput,
-  ExtensionPackageUpdateResult,
-  P.nativeInvoke({ primitive: Surface, methods: ["update"] })
-)
-export const ExtensionPackageRemove = extensionPackageRpc(
-  "remove",
-  ExtensionPackageRemoveInput,
-  ExtensionPackageRemoveResult,
-  P.nativeInvoke({ primitive: Surface, methods: ["remove"] })
-)
+export const ExtensionPackageInstall = NativeSurface.rpc(Surface, "install", {
+  payload: ExtensionPackageInstallInput,
+  success: ExtensionPackageInstallResult,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: Surface, methods: ["install"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const ExtensionPackageUpdate = NativeSurface.rpc(Surface, "update", {
+  payload: ExtensionPackageUpdateInput,
+  success: ExtensionPackageUpdateResult,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: Surface, methods: ["update"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
+export const ExtensionPackageRemove = NativeSurface.rpc(Surface, "remove", {
+  payload: ExtensionPackageRemoveInput,
+  success: ExtensionPackageRemoveResult,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: Surface, methods: ["remove"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
 export const ExtensionPackageList = NativeSurface.rpc(Surface, "list", {
   payload: Schema.Void,
   success: ExtensionPackageListResult,
@@ -94,18 +100,18 @@ export const ExtensionPackageIsSupported = NativeSurface.rpc(Surface, "isSupport
   support: NativeSurface.support.supported
 })
 
-export const ExtensionPackageRpcEvents = Object.freeze({
-  Event: { payload: ExtensionPackageEvent }
+const ExtensionPackageEventStream = NativeSurface.event(Surface, "Event", {
+  payload: ExtensionPackageEvent,
+  support: NativeSurface.support.supported
 })
-
-export type ExtensionPackageRpcEvents = typeof ExtensionPackageRpcEvents
 
 const ExtensionPackageRpcGroup = RpcGroup.make(
   ExtensionPackageInstall,
   ExtensionPackageUpdate,
   ExtensionPackageRemove,
   ExtensionPackageList,
-  ExtensionPackageIsSupported
+  ExtensionPackageIsSupported,
+  ExtensionPackageEventStream
 )
 
 export const ExtensionPackageRpcs: RpcGroup.RpcGroup<ExtensionPackageRpc> = ExtensionPackageRpcGroup
@@ -187,8 +193,6 @@ export class ExtensionPackage extends Context.Service<
   )
 }
 
-export const ExtensionPackageLive = ExtensionPackage.layer
-
 export const makeExtensionPackageServiceLayer = (
   client: ExtensionPackageClientApi,
   options: ExtensionPackageServiceOptions
@@ -227,15 +231,22 @@ export const ExtensionPackageHandlersLive = ExtensionPackageRpcGroup.toLayer({
     Effect.gen(function* () {
       const packages = yield* ExtensionPackage
       return yield* packages.isSupported()
-    })
+    }),
+  "ExtensionPackage.events.Event": () =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const packages = yield* ExtensionPackage
+        return packages.events()
+      })
+    )
 })
 
 export const ExtensionPackageSurface = NativeSurface.make(Surface, ExtensionPackageRpcGroup, {
   service: ExtensionPackageClient,
   capabilities: ExtensionPackageCapabilityMethods,
   handlers: ExtensionPackageHandlersLive,
-  client: (client) => extensionPackageClientFromRpcClient(client, undefined),
-  bridgeClient: (client, exchange) => extensionPackageClientFromRpcClient(client, exchange)
+  client: (client) => extensionPackageClientFromRpcClient(client),
+  bridgeClient: (client, exchange) => extensionPackageBridgeClientFromRpcClient(client, exchange)
 })
 
 export interface ExtensionPackageMemoryClientOptions {
@@ -428,7 +439,7 @@ export const makeExtensionPackageUnsupportedClient = (): ExtensionPackageClientA
       Effect.succeed(
         new ExtensionPackageSupportedResult({ supported: false, reason: UnsupportedReason })
       ),
-    events: () => Stream.fail(unsupportedError("ExtensionPackage.events"))
+    events: () => Stream.fail(unsupportedError("ExtensionPackage.events.Event"))
   } satisfies ExtensionPackageClientApi)
 
 const makeExtensionPackageService = (
@@ -538,8 +549,7 @@ const makeExtensionPackageService = (
   )
 
 const extensionPackageClientFromRpcClient = (
-  client: DesktopRpcClient<ExtensionPackageRpc>,
-  exchange: BridgeClientExchange | undefined
+  client: DesktopRpcClient<ExtensionPackageRpc>
 ): ExtensionPackageClientApi =>
   Object.freeze({
     install: (input) =>
@@ -576,27 +586,31 @@ const extensionPackageClientFromRpcClient = (
         client["ExtensionPackage.isSupported"](undefined),
         "ExtensionPackage.isSupported"
       ),
-    events: () => subscribeNativeEvent(exchange, ExtensionPackageEventMethod, ExtensionPackageEvent)
+    events: () =>
+      runExtensionPackageRpcStream(
+        client["ExtensionPackage.events.Event"](undefined),
+        "ExtensionPackage.events.Event"
+      )
   } satisfies ExtensionPackageClientApi)
 
-function extensionPackageRpc<
-  const Method extends string,
-  Payload extends Schema.Codec<unknown, unknown, never, never>,
-  Success extends Schema.Codec<unknown, unknown, never, never>
->(method: Method, payload: Payload, success: Success, capability: RpcCapabilityMetadata) {
-  return NativeSurface.rpc(Surface, method, {
-    payload,
-    success,
-    authority: NativeSurface.authority.custom(capability),
-    endpoint: "mutation",
-    support: NativeSurface.support.supported
-  })
-}
+const extensionPackageBridgeClientFromRpcClient = (
+  client: DesktopRpcClient<ExtensionPackageRpc>,
+  exchange: BridgeClientExchange
+): ExtensionPackageClientApi =>
+  Object.freeze({
+    ...extensionPackageClientFromRpcClient(client),
+    events: () => NativeSurface.subscribeEvent(exchange, ExtensionPackageEventStream)
+  } satisfies ExtensionPackageClientApi)
 
 const runExtensionPackageRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
   operation: string
 ): Effect.Effect<A, ExtensionPackageError, never> => runNativeRpc(effect, operation, Surface)
+
+const runExtensionPackageRpcStream = <A, E>(
+  stream: Stream.Stream<A, E, never>,
+  operation: string
+): Stream.Stream<A, ExtensionPackageError, never> => runNativeRpcStream(stream, operation, Surface)
 
 const validateInstallRequest = (
   input: unknown

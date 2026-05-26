@@ -23,6 +23,11 @@ The public service is Layer-first and test-substitutable. It validates the manif
 | `isSupported` | `void`                                                    | `{ supported, reason? }`                                                     |
 | `events`      | `void`                                                    | stream of extension package events                                           |
 
+The canonical renderer event stream is `ExtensionPackage.events.Event`. Bridge
+clients translate that stream to the existing host event method
+`ExtensionPackage.Event`, so host adapters keep the current wire channel while
+direct clients use the Effect RPC stream.
+
 ## Manifest
 
 Each package manifest declares:
@@ -86,7 +91,11 @@ Install fails if the package already exists. Update requires an installed packag
 
 ## Testing
 
-Use `makeExtensionPackageMemoryClient()` for deterministic install, update, remove, list, and event tests without a native host. Use `makeExtensionPackageUnsupportedClient()` when a test needs the typed unsupported path.
+Use `makeExtensionPackageMemoryClient()` for deterministic install, update,
+remove, list, and event tests without a native host. Use
+`makeExtensionPackageUnsupportedClient()` when a test needs the typed unsupported
+path. Unsupported event streams fail with operation
+`ExtensionPackage.events.Event`.
 
 ## Related
 
