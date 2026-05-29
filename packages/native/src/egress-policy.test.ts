@@ -436,6 +436,29 @@ test("EgressPolicy bridge client rejects malformed input before native transport
   )
 })
 
+test("EgressPolicy bridge client rejects a control-character destination path before native transport", () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  const exchange: BridgeClientExchange = {
+    request: (request) => {
+      requests.push(request)
+      return Effect.succeed({ kind: "success", payload: allowDecision() })
+    },
+    subscribe: () => Stream.empty
+  }
+  const runtime = ManagedRuntime.make(EgressPolicySurface.bridgeClientLayer(exchange))
+  return runtime.runPromise(
+    Effect.gen(function* () {
+      const policy = yield* EgressPolicyClient
+      const exit = yield* Effect.exit(policy.decide(controlCharPathInput()))
+
+      expect(requests).toEqual([])
+      expectExitFailure(exit, (error) => {
+        expect(error).toMatchObject({ tag: "InvalidArgument", operation: "EgressPolicy.decide" })
+      })
+    })
+  )
+})
+
 test("EgressPolicy bridge client subscribes to the host decision-recorded event channel", () => {
   const methods: string[] = []
   const exchange: BridgeClientExchange = {
@@ -649,6 +672,14 @@ const allowDecision = () => ({
 const invalidDecisionInput = (): EgressPolicyDecisionInput => {
   const input = allowInput()
   Object.defineProperty(input.destination, "host", { value: "api.example.test\nforged" })
+  return input
+}
+
+const controlCharPathInput = (): EgressPolicyDecisionInput => {
+  const input = allowInput()
+  Object.defineProperty(input.destination, "path", {
+    value: `/a${String.fromCharCode(31)}b`
+  })
   return input
 }
 

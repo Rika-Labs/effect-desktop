@@ -1,6 +1,11 @@
 import { Schema } from "effect"
 
-import { BridgeSafeNonEmptyString, BridgeSafeString, PrintableNonEmptyString } from "./strings.js"
+import {
+  BridgeSafeNonEmptyString,
+  BridgeSafeString,
+  PrintableNonEmptyString,
+  PrintableString
+} from "./strings.js"
 
 export const EgressPolicyActorKind = Schema.Literals([
   "workspace",
@@ -43,7 +48,7 @@ export class EgressPolicyDestination extends Schema.Class<EgressPolicyDestinatio
   protocol: EgressPolicyProtocol,
   host: PrintableNonEmptyString,
   port: Schema.optionalKey(EgressPolicyPort),
-  path: Schema.optionalKey(BridgeSafeString)
+  path: Schema.optionalKey(PrintableString)
 }) {}
 
 export class EgressPolicyRule extends Schema.Class<EgressPolicyRule>("EgressPolicyRule")({

@@ -346,7 +346,11 @@ export const makeDiagnosticsBundleMemoryClient = (
           validateDiagnosticsBundleIdentity(input, "DiagnosticsBundle.events").pipe(
             Effect.map((valid) =>
               Stream.fromPubSub(pubsub).pipe(
-                Stream.filter((event) => event.bundleId === valid.bundleId)
+                Stream.filter((event) =>
+                  event.bundleId === undefined
+                    ? event.type === "failed"
+                    : event.bundleId === valid.bundleId
+                )
               )
             )
           )
@@ -492,7 +496,11 @@ const diagnosticsBundleBridgeClientFromRpcClient = (
         validateDiagnosticsBundleIdentity(input, "DiagnosticsBundle.events").pipe(
           Effect.map((valid) =>
             subscribeDiagnosticsBundleEvent(exchange).pipe(
-              Stream.filter((event) => event.bundleId === valid.bundleId)
+              Stream.filter((event) =>
+                event.bundleId === undefined
+                  ? event.type === "failed"
+                  : event.bundleId === valid.bundleId
+              )
             )
           )
         )

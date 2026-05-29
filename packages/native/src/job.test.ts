@@ -348,6 +348,30 @@ test("JobRuntime interruption cancels the live fiber and cleans up resources", a
   expect(result.terminal.reason).toBe("user cancelled")
 })
 
+test("JobRuntime records a bounded, de-stacked failure reason without leaking the cause stack", async () => {
+  const permissions = await configuredPermissions()
+  const client = await Effect.runPromise(
+    makeJobMemoryClient({ nextJobId: () => "job-runtime-fail" })
+  )
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const runtime = yield* JobRuntime
+      const jobs = yield* Job
+      const started = yield* runtime.run({ name: "Failing job" }, Effect.fail(new Error("boom")))
+      yield* runtime.awaitIdle()
+      const terminal = yield* jobs.get({ jobId: started.handle.id })
+      return { started, terminal }
+    }).pipe(
+      Effect.provide(JobRuntime.layer),
+      Effect.provide(makeJobServiceLayer(client, { permissions }))
+    )
+  )
+
+  expect(result.terminal.handle).toMatchObject({ id: "job-runtime-fail", state: "failed" })
+  expect(result.terminal.reason).toBe("boom")
+})
+
 test("Job terminal transitions remove resources without cleanup interrupts", async () => {
   const permissions = await configuredPermissions()
   const resources = await Effect.runPromise(makeResourceRegistry())

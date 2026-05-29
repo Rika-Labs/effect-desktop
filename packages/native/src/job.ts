@@ -603,6 +603,17 @@ const jobClientFromRpcClient = (
     events: () => NativeSurface.subscribeEvent(exchange, JobEventStream)
   } satisfies JobClientApi)
 
+const MAX_JOB_FAILURE_REASON_LENGTH = 512
+
+const summarizeJobFailureReason = (cause: Cause.Cause<unknown>): string => {
+  const squashed = Cause.squash(cause)
+  const message = squashed instanceof Error ? squashed.message : String(squashed)
+  const collapsed = message.replace(/\s+/g, " ").trim()
+  return collapsed.length > MAX_JOB_FAILURE_REASON_LENGTH
+    ? `${collapsed.slice(0, MAX_JOB_FAILURE_REASON_LENGTH)}...`
+    : collapsed
+}
+
 function makeJobRuntime() {
   return Effect.gen(function* () {
     const jobs = yield* Job
@@ -621,7 +632,7 @@ function makeJobRuntime() {
                     jobs
                       .fail({
                         jobId: snapshot.handle.id,
-                        reason: Cause.pretty(cause)
+                        reason: summarizeJobFailureReason(cause)
                       })
                       .pipe(Effect.asVoid),
                   onSuccess: () => jobs.succeed({ jobId: snapshot.handle.id }).pipe(Effect.asVoid)

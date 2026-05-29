@@ -184,9 +184,9 @@ const makeNotificationService = (
   const explicitlyClosed = new Set<string>()
   const service: NotificationServiceApi = {
     show: (input) =>
-      Effect.uninterruptible(
+      Effect.uninterruptibleMask((restore) =>
         Effect.gen(function* () {
-          const shown = yield* client.show(input)
+          const shown = yield* restore(client.show(input))
           const handle = yield* options.resources
             .register({
               kind: "notification",
@@ -215,22 +215,24 @@ const makeNotificationService = (
         })
       ),
     close: (notification) =>
-      Effect.gen(function* () {
-        if (notification.kind !== "notification" || notification.state !== "open") {
-          return yield* Effect.fail(
-            makeHostProtocolInvalidArgumentError(
-              "notification",
-              "must be an open notification handle",
-              "Notification.close"
+      Effect.uninterruptible(
+        Effect.gen(function* () {
+          if (notification.kind !== "notification" || notification.state !== "open") {
+            return yield* Effect.fail(
+              makeHostProtocolInvalidArgumentError(
+                "notification",
+                "must be an open notification handle",
+                "Notification.close"
+              )
             )
-          )
-        }
-        yield* client.close(notification)
-        explicitlyClosed.add(notification.id)
-        yield* options.resources
-          .dispose(notification.id)
-          .pipe(Effect.ensuring(Effect.sync(() => explicitlyClosed.delete(notification.id))))
-      }),
+          }
+          yield* client.close(notification)
+          explicitlyClosed.add(notification.id)
+          yield* options.resources
+            .dispose(notification.id)
+            .pipe(Effect.ensuring(Effect.sync(() => explicitlyClosed.delete(notification.id))))
+        })
+      ),
     isSupported: () => client.isSupported().pipe(Effect.map((result) => result.supported)),
     requestPermission: () => client.requestPermission().pipe(Effect.map((result) => result.state)),
     getPermissionStatus: () =>
