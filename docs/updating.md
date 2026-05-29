@@ -22,7 +22,7 @@ The publish command owns canonical update-manifest JSON and Ed25519 signing.
 
 ## Runtime surface
 
-`@orika/native` exports `Updater`, `UpdaterRpcs`, updater clients, service layers, and update workflow helpers.
+`@orika/native` exports `Updater`, `UpdaterRpcs`, updater clients (`UpdaterClient`, `UpdaterMethodNames`), and service layers (`UpdaterHandlersLive`, `UpdaterSurface`).
 
 ## Verify Update Exports
 

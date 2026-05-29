@@ -86,7 +86,7 @@ The gate returns one of:
 - `DocsGateFileError` — manifest or page file unreadable.
 - `DocsGateManifestError` — `docs/docs-manifest.json` is invalid.
 - `DocsGateMissingPageError` — a release-blocking page is missing or empty.
-- `DocsGateExampleFailedError` — a ` ```ts run ` block failed or timed out (default 60s).
+- `DocsGateExampleFailedError` — a ` ```ts run ` block failed or timed out (default 10s).
 - `DocsGateCoverageError` — a required token is missing from a page's runnable block; see `REQUIRED_PAGE_COVERAGE_TOKENS` in `packages/cli/src/docs-release-gate.ts`.
 
 ## Symptom: a test reported `ResourceLeakError`

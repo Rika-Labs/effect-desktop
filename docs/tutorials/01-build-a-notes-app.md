@@ -43,6 +43,7 @@ Create `apps/inspector/src/notes/contracts.ts`:
 ```ts
 import { Schema } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
+import { RpcEndpoint } from "@orika/core"
 
 export class Note extends Schema.Class<Note>("Note")({
   id: Schema.String,
@@ -50,13 +51,13 @@ export class Note extends Schema.Class<Note>("Note")({
   updatedAt: Schema.Number
 }) {}
 
-export class NoteNotFound extends Schema.TaggedError<NoteNotFound>()("NoteNotFound", {
+export class NoteNotFound extends Schema.TaggedErrorClass<NoteNotFound>()("NoteNotFound", {
   id: Schema.String
 }) {}
 
 export const NotesList = Rpc.make("Notes.list", {
   success: Schema.Array(Note)
-})
+}).pipe(RpcEndpoint.query)
 
 export const NotesSave = Rpc.make("Notes.save", {
   payload: { id: Schema.String, body: Schema.String },
@@ -75,7 +76,7 @@ export const NotesRpcs = RpcGroup.make(NotesList, NotesSave, NotesDelete)
 What you just did:
 
 - `Schema.Class` makes `Note` both a runtime type and a schema. The bridge will decode it on the wire.
-- `Schema.TaggedError` makes `NoteNotFound` a closed failure shape. The renderer can match on the `_tag` exhaustively.
+- `Schema.TaggedErrorClass` makes `NoteNotFound` a closed failure shape. The renderer can match on the `_tag` exhaustively.
 - `Rpc.make` declares each endpoint with payload, success, and (for delete) error.
 - `RpcGroup.make` bundles them into a single value — the contract.
 

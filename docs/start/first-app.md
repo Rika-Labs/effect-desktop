@@ -35,7 +35,7 @@ Create `app/contracts.ts`:
 import { Schema } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 
-export class GreetingError extends Schema.TaggedError<GreetingError>()("GreetingError", {
+export class GreetingError extends Schema.TaggedErrorClass<GreetingError>()("GreetingError", {
   reason: Schema.String
 }) {}
 

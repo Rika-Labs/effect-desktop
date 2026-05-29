@@ -1,6 +1,6 @@
 ---
 title: How to schedule background work
-description: Patterns for long-lived cancelable Effect work — workers, sidecars, and Effect.fork.
+description: Patterns for long-lived cancelable Effect work — workers, sidecars, and Effect.forkScoped.
 kind: how-to
 audience: app-developers
 effect_version: 4

@@ -16,7 +16,7 @@ Every renderer-callable API in ORIKA is an Effect `RpcGroup`. This recipe shows 
 import { Schema } from "effect"
 import { Rpc, RpcGroup } from "effect/unstable/rpc"
 
-export class TodoError extends Schema.TaggedError<TodoError>()("TodoError", {
+export class TodoError extends Schema.TaggedErrorClass<TodoError>()("TodoError", {
   reason: Schema.String
 }) {}
 

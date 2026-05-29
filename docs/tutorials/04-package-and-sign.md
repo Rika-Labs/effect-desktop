@@ -11,7 +11,7 @@ effect_version: 4
 Your app runs in development. Now you'll take it through the release pipeline:
 
 1. **Build** — produce the renderer bundle and the runtime entry.
-2. **Package** — stage the platform-specific artifact (`.app`, `.exe`, `.AppImage`).
+2. **Package** — stage the platform-specific artifact (`.app`, `.msi`, `.AppImage`).
 3. **Sign** — apply the platform signature with `codesign`, `signtool`, or `gpg`.
 4. **Notarize** — submit to Apple's notary service (macOS only).
 5. **Publish** — write the canonical signed update manifest.
@@ -62,13 +62,15 @@ export default defineDesktopConfig({
       identity: "Developer ID Application: Your Name (TEAMID)"
     },
     windows: {
-      certificateThumbprint: process.env.WINDOWS_CERT_THUMBPRINT
+      thumbprint: process.env.WINDOWS_CERT_THUMBPRINT
     }
   },
-  publishing: {
+  update: {
+    channel: "stable",
     keyVersion: 1,
-    privateKeyPath: process.env.UPDATER_KEY_PATH,
-    publicKeys: [process.env.UPDATER_PUBLIC_KEY ?? ""]
+    publicKey: "ed25519:<base64-public-key>",
+    privateKeyEnv: "UPDATER_KEY_ENV_VAR",
+    feedUrl: "https://updates.example.dev/{{channel}}/update-manifest.json"
   }
 })
 ```
@@ -85,10 +87,10 @@ What happens:
 
 - The renderer entry is bundled through the app's build script. `renderer.framework` accepts React, Solid, or Vue and is recorded in the build report; Next apps use the `@orika/next` client adapter over React.
 - The runtime entry is bundled with Bun.
-- Output lands in `dist/` per your `renderer.dist` and `build.outputDir` settings.
-- `runDesktopBuild` returns a `DesktopBuildReport` with `{ layout, elapsed, artifacts }`.
+- Build output is staged under `build/effect-desktop/<target>`.
+- `runDesktopBuild` returns a `DesktopBuildReport` with `{ appId, appName, appVersion, target, layoutPath, steps, ... }`.
 
-If the build fails, the CLI prints a typed `BuildError` — invalid config, missing entry, framework mismatch. Fix and re-run.
+If the build fails, the CLI prints a typed `BuildPipelineError` — invalid config, missing entry, framework mismatch. Fix and re-run.
 
 ## Step 3 — Package
 
@@ -99,16 +101,16 @@ bun run desktop package --config desktop.config.ts
 What happens, per declared target:
 
 - macOS: stage a `.app` bundle, embed `Info.plist` and entitlements, copy the runtime and renderer.
-- Windows: stage an `.exe` with embedded resources.
-- Linux: stage an `.AppImage` (default) or per the configured packager.
+- Windows: stage an `.msi` with embedded resources.
+- Linux: produce AppImage, deb, and rpm artifacts (a fixed set).
 
 Output is a list of artifacts in a typed `DesktopPackageReport`:
 
 ```
 {
   artifacts: [
-    { path: "dist/macos-arm64/Notes.app", kind: "app-bundle", size: 12345678, hash: "sha256:..." },
-    { path: "dist/macos-x64/Notes.app", kind: "app-bundle", size: 12345678, hash: "sha256:..." },
+    { kind: "app", target: ..., artifactPath: "dist/desktop/macos-arm64/Notes.app", sizeBytes: 12345678, sha256: "..." },
+    { kind: "app", target: ..., artifactPath: "dist/desktop/macos-x64/Notes.app", sizeBytes: 12345678, sha256: "..." },
     ...
   ]
 }
@@ -124,11 +126,11 @@ bun run desktop sign --config desktop.config.ts
 
 Per platform:
 
-- macOS: `codesign --deep --options=runtime --identity "Developer ID Application: …" Notes.app`.
-- Windows: `signtool sign /sha1 <thumbprint> /tr <timestamp-server> /fd SHA256 Notes.exe`.
+- macOS: `codesign --force --sign "Developer ID Application: …" --options runtime --entitlements <plist> Notes.app`.
+- Windows: `signtool sign /sha1 <thumbprint> /tr <timestamp-server> /fd SHA256 Notes.msi`.
 - Linux: optional GPG signature on the AppImage.
 
-The CLI handles the platform tool invocations and PowerShell unblock for Windows. If signing fails (missing identity, expired cert, no keychain), the typed `SignError` tells you which artifact and which step.
+The CLI handles the platform tool invocations and PowerShell unblock for Windows. If signing fails (missing identity, expired cert, no keychain), the typed `SignPipelineError` tells you which artifact and which step.
 
 You can also `bun run desktop sign --platform macos-arm64` to sign one target at a time, useful when iterating on a single platform.
 
@@ -145,9 +147,9 @@ What happens:
 - Each macOS artifact is uploaded to Apple via `xcrun notarytool submit`.
 - The CLI waits for the result (typically 5-15 minutes).
 - On success, `xcrun stapler staple` attaches the ticket so offline machines can verify it.
-- The typed `DesktopNotarizeReport` records `{ stapled: boolean, error?: string }` per artifact.
+- The typed `DesktopNotarizeReport` records `{ kind, artifactPath, alreadyStapled, submissionId?, status?, assessed }` per artifact.
 
-You'll need an Apple ID with notarization credentials. Set `APPLE_ID`, `APPLE_TEAM_ID`, and `APPLE_APP_PASSWORD` (an app-specific password) in the environment.
+You'll need an Apple ID with notarization credentials. Set `APPLE_ID`, `APPLE_TEAM_ID`, and `APPLE_APP_SPECIFIC_PASSWORD` (an app-specific password) in the environment.
 
 If notarization is rejected, the report names the artifact and the rejection reason. The most common cause is a missing entitlement; the CLI's hardened-runtime defaults are a good starting set.
 
@@ -159,7 +161,7 @@ The update manifest is the canonical signed JSON document that update clients ch
 bun run desktop publish --config desktop.config.ts --channel stable
 ```
 
-Output: a signed `update-manifest.json` (or per-channel file) in your `publishing.outputDir`. Runtime manifest verification is executable through `Updater.check` when the app supplies the manifest JSON and Ed25519 trust anchors.
+Output: a signed `update-manifest.json` written to `dist/desktop/update-manifest.json`. Runtime manifest verification is executable through `Updater.check` when the app supplies the manifest JSON and Ed25519 trust anchors.
 
 You upload the manifest and artifacts to your distribution host (S3, Cloudflare R2, GitHub Releases — the framework doesn't care). The update channel URL goes into your `Updater` configuration.
 
@@ -183,7 +185,7 @@ If something in the pipeline fails strangely, run:
 bun run desktop doctor
 ```
 
-The doctor checks every prerequisite for every release step on the current platform — Bun version, Rust toolchain, codesign availability, notarytool credentials, signing identity, key paths. Each check returns a typed `{ name, status, message? }` row. Green across the board means the pipeline _can_ run; red rows tell you exactly what to fix.
+The doctor checks every prerequisite for every release step on the current platform — Bun version, Rust toolchain, codesign availability, notarytool credentials, signing identity, key paths. Each check returns a typed `{ name, status, component, message, evidence, remediation? }` row. Green across the board means the pipeline _can_ run; red rows tell you exactly what to fix.
 
 ## What the framework didn't ask you to do
 

@@ -73,7 +73,7 @@ export const Manifest = {
 } as const
 ```
 
-Each `Desktop.window(id, spec)` returns a `Layer` that self-registers the window with the framework. Compose multiple windows with `Desktop.windows(...)`. The window ids (`"main"`, `"compose"`) are what runtime services use to scope declarations; renderer view selection uses the renderer route. The `compose` window is declared so the runtime knows about it; we'll open it on demand from the renderer rather than at launch.
+Each `Desktop.window(id, spec)` returns a `DesktopWindowsLayer` (an array of window registrations) that self-registers the window with the framework. Compose multiple windows with `Desktop.windows(...)`. The window ids (`"main"`, `"compose"`) are what runtime services use to scope declarations; renderer view selection uses the renderer route. The `compose` window is declared so the runtime knows about it; we'll open it on demand from the renderer rather than at launch.
 
 Keep `WindowRendererRpcs` from `@orika/native/renderer` in the renderer
 manifest and `WindowRpcs`/`Native.Window` on the runtime side. Do not import the
@@ -193,7 +193,7 @@ export function ComposePanel() {
 1. Tells the host to destroy the native window.
 2. Closes the window's runtime scope, releasing anything it owned.
 3. Persists the window's geometry through `WindowState` if the app declared one.
-4. Emits the `permission/use` audit event for the close call.
+4. Emits the `permission-used` audit event for the close call.
 
 You did not write any of that.
 

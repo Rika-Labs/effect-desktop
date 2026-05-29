@@ -47,7 +47,7 @@ export class ImportProgress extends Schema.Class<ImportProgress>("ImportProgress
 }) {}
 
 export const NotesImport = Rpc.make("Notes.import", {
-  payload: { directory: Schema.String },
+  payload: { files: Schema.Array(Schema.String) },
   success: ImportProgress,
   stream: true
 })
@@ -65,20 +65,20 @@ import { Filesystem, SqlClient } from "@orika/core"
 import { ImportProgress } from "./contracts.js"
 
 // Inside the handlers map returned by NotesRpcs.toLayer:
-"Notes.import": ({ directory }) =>
+"Notes.import": ({ files }) =>
   Effect.gen(function* () {
     const fs = yield* Filesystem
     const sql = yield* SqlClient
 
-    const entries = yield* fs.readDirectory(directory)
-    const files = entries.filter((e) => e.kind === "file" && e.name.endsWith(".md"))
-    const total = files.length
+    const targets = files.filter((path) => path.endsWith(".md"))
+    const total = targets.length
+    const basename = (path: string) => path.slice(path.lastIndexOf("/") + 1)
 
-    return Stream.fromIterable(files).pipe(
-      Stream.mapEffect((entry, index) =>
+    return Stream.fromIterable(targets).pipe(
+      Stream.mapEffect((path, index) =>
         Effect.gen(function* () {
-          const body = new TextDecoder().decode(yield* fs.read(entry.path))
-          const note = new Note({ id: entry.name, body, updatedAt: Date.now() })
+          const body = new TextDecoder().decode(yield* fs.read(path))
+          const note = new Note({ id: basename(path), body, updatedAt: Date.now() })
           yield* sql`
             INSERT INTO notes (id, body, updated_at)
             VALUES (${note.id}, ${note.body}, ${note.updatedAt})
@@ -88,7 +88,7 @@ import { ImportProgress } from "./contracts.js"
           `
           return new ImportProgress({
             kind: "imported",
-            file: entry.name,
+            file: basename(path),
             imported: index + 1,
             skipped: 0,
             total
@@ -97,7 +97,7 @@ import { ImportProgress } from "./contracts.js"
           Effect.catchAll((error) =>
             Effect.succeed(new ImportProgress({
               kind: "skipped",
-              file: entry.name,
+              file: basename(path),
               imported: 0,
               skipped: 1,
               total,
@@ -139,10 +139,15 @@ const DesktopApp = ReactDesktop.from(Manifest)
 
 export function ImportPanel() {
   const notes = DesktopApp.useDesktop(NotesRpcs)
-  const [directory, setDirectory] = useState("")
+  const [paths, setPaths] = useState("")
   const [enabled, setEnabled] = useState(false)
 
-  const stream = notes.import.useStream(enabled ? { directory } : ({ directory: "" } as never), {
+  const files = paths
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+
+  const stream = notes.import.useStream(enabled ? { files } : ({ files: [] } as never), {
     capacity: 64
   })
 
@@ -153,14 +158,14 @@ export function ImportPanel() {
   return (
     <section>
       <h2>Import</h2>
-      <input
-        value={directory}
-        onChange={(event) => setDirectory(event.target.value)}
-        placeholder="/path/to/notes"
+      <textarea
+        value={paths}
+        onChange={(event) => setPaths(event.target.value)}
+        placeholder="/path/to/note-1.md&#10;/path/to/note-2.md"
       />
 
       {!enabled && (
-        <button onClick={() => setEnabled(true)} disabled={!directory}>
+        <button onClick={() => setEnabled(true)} disabled={files.length === 0}>
           Start import
         </button>
       )}
@@ -199,7 +204,7 @@ Three things to notice:
 
 ## Step 4 — Declare the filesystem permission
 
-`Filesystem.readDirectory` requires a declared root permission. At app startup (or in your manifest), declare which directory the import is allowed to read:
+`Filesystem.read` requires a declared root permission. At app startup (or in your manifest), declare which directory the import is allowed to read:
 
 ```ts
 import { PermissionRegistry } from "@orika/core"
@@ -224,7 +229,7 @@ cd apps/inspector
 bun run dev
 ```
 
-Type a directory path, click Start. The progress bar updates as files import. Click Cancel mid-import — the stream stops cleanly and you see the file count where it stopped.
+Paste one file path per line, click Start. The progress bar updates as files import. Click Cancel mid-import — the stream stops cleanly and you see the file count where it stopped.
 
 ## What you got for the price of one streaming RPC
 
