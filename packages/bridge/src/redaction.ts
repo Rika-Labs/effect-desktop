@@ -136,11 +136,13 @@ const materializeRedacted = (
   evidence?: RedactionEvidence[]
 ): unknown => {
   if (Redacted.isRedacted(value)) {
-    evidence?.push({
-      path: formatEvidencePath(path),
-      action: "redacted",
-      reason: "redacted-value"
-    })
+    if (value !== RedactedValue) {
+      evidence?.push({
+        path: formatEvidencePath(path),
+        action: "redacted",
+        reason: "redacted-value"
+      })
+    }
     return redactedJsonString(value)
   }
   if (value === null || typeof value !== "object") {

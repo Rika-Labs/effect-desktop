@@ -266,6 +266,49 @@ test("CommandRegistry rejects command groups with missing generated handlers", (
     })
   ))
 
+test("CommandRegistry closes the command scope when registration fails after the build", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const { registry } = yield* makeTestRegistry()
+      let finalizerRan = false
+
+      // The handler-layer build allocates a real finalizer into the command scope.
+      // A second command declares no capability, so prepareCommandGroup fails after
+      // the build completes but before any command id is reserved. The rollback must
+      // still close the command scope so the built layer's finalizer runs.
+      const valid = commandRpc("alpha")
+      const uncapped = Rpc.make("beta", {
+        payload: OpenInput,
+        success: OpenOutput,
+        error: Schema.Unknown
+      })
+      const group = RpcGroup.make(valid, uncapped)
+      const handlers = group.toLayer(
+        Effect.gen(function* () {
+          yield* Effect.acquireRelease(Effect.void, () =>
+            Effect.sync(() => {
+              finalizerRan = true
+            })
+          )
+          const handler = () => Effect.succeed(new OpenOutput({ opened: true }))
+          return { alpha: handler, beta: handler }
+        })
+      )
+
+      const exit = yield* Effect.exit(
+        registry.registerGroup({
+          group,
+          ownerScope: "window-1",
+          handlers
+        } as CommandGroupRegistration<typeof valid | typeof uncapped, never, never>)
+      )
+
+      expectFailure(exit, CommandRegistryInvalidInputError)
+      expect(finalizerRan).toBe(true)
+      expect(yield* registry.list()).toEqual([])
+    })
+  ))
+
 test("CommandRegistry validates input before permission and handler side effects", () =>
   Effect.runPromise(
     Effect.gen(function* () {

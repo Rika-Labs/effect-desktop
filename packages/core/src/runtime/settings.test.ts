@@ -41,6 +41,18 @@ const makeKvMemory = (): Effect.Effect<KeyValueStore.KeyValueStore> =>
     return yield* Effect.promise(() => runtime.runPromise(KeyValueStore.KeyValueStore.asEffect()))
   })
 
+const makeKvYielding = (): KeyValueStore.KeyValueStore => {
+  const map = new Map<string, string>()
+  return KeyValueStore.makeStringOnly({
+    get: (key) => Effect.yieldNow.pipe(Effect.as(map.get(key))),
+    set: (key, value) =>
+      Effect.yieldNow.pipe(Effect.flatMap(() => Effect.sync(() => void map.set(key, value)))),
+    remove: (key) => Effect.sync(() => void map.delete(key)),
+    clear: Effect.sync(() => map.clear()),
+    size: Effect.sync(() => map.size)
+  })
+}
+
 const makePersistentSettingsLayer = (
   path: string,
   options: Omit<Parameters<typeof Settings.layer>[0], "path"> = { schemaVersion: 1 }
@@ -267,6 +279,27 @@ describe("Settings", () => {
     Effect.runPromise(
       Effect.gen(function* () {
         const { store } = yield* makeFixture()
+
+        yield* store.set("counter", Counter, 0)
+        yield* Effect.all(
+          Array.from({ length: 20 }, () =>
+            store.update("counter", Counter, (current) =>
+              Effect.succeed((Option.getOrUndefined(current) ?? 0) + 1)
+            )
+          ),
+          { concurrency: "unbounded" }
+        )
+
+        const value = yield* store.get("counter", Counter)
+        expect(Option.getOrUndefined(value)).toBe(20)
+      })
+    ))
+
+  test("update serializes concurrent read-modify-write against an async KV", () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const kv = makeKvYielding()
+        const store = yield* makeSettings(kv, { schemaVersion: 1 })
 
         yield* store.set("counter", Counter, 0)
         yield* Effect.all(

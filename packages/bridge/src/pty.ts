@@ -63,7 +63,7 @@ export interface HostPtyReadResult {
 
 export class HostPtyWritePayload extends Schema.Class<HostPtyWritePayload>("HostPtyWritePayload")({
   ptyId: Schema.NonEmptyString,
-  bytesBase64: Schema.NonEmptyString
+  bytesBase64: Schema.String
 }) {}
 
 export class HostPtyResizePayload extends Schema.Class<HostPtyResizePayload>(

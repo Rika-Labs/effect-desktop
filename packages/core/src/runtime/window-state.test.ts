@@ -330,6 +330,53 @@ test("WindowState concurrent services sharing one path serialize read-modify-wri
     })
   ))
 
+test("WindowState restore corrupt recovery does not wipe a concurrent persist", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const path = yield* tempWindowStatePath()
+      const context = yield* Effect.scoped(Layer.build(KeyValueStore.layerMemory))
+      const kv = Context.get(context, KeyValueStore.KeyValueStore)
+      let getCount = 0
+      const slowKv: KeyValueStore.KeyValueStore = {
+        ...kv,
+        get: (key) => {
+          getCount += 1
+          const slow = getCount === 1
+          return kv
+            .get(key)
+            .pipe(
+              Effect.flatMap((value) =>
+                slow
+                  ? Effect.yieldNow.pipe(Effect.andThen(Effect.yieldNow), Effect.as(value))
+                  : Effect.succeed(value)
+              )
+            )
+        },
+        remove: (key) =>
+          Effect.yieldNow.pipe(Effect.andThen(Effect.yieldNow), Effect.andThen(kv.remove(key)))
+      }
+      const slowLayer = Layer.succeed(KeyValueStore.KeyValueStore, slowKv)
+      yield* runScoped(
+        Effect.gen(function* () {
+          const main = yield* makeWindowState("main", { path, now: () => 1710000000000 })
+          const palette = yield* makeWindowState("palette", { path, now: () => 1710000000000 })
+
+          yield* kv.set(path, "{")
+          getCount = 0
+
+          yield* Effect.all([main.restore(), palette.persist(makeWindowStateRecord({ x: 900 }))], {
+            concurrency: "unbounded"
+          })
+
+          const restoredPalette = yield* palette.restore()
+          expect(Option.isSome(restoredPalette)).toBe(true)
+          expect(Option.getOrThrow(restoredPalette).x).toBe(900)
+        }),
+        slowLayer
+      )
+    })
+  ))
+
 test("WindowState snaps off-screen windows to the primary display", () =>
   Effect.runPromise(
     runScoped(

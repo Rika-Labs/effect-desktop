@@ -199,8 +199,7 @@ test("DiagnosticsBundle memory client collects, redacts, writes, streams, and au
       })
       expect(result.redact.redactionPolicy.id).toBe("default-secret-patterns")
       expect(result.redact.redactionPolicy.evidence.map((entry) => entry.reason)).toEqual([
-        "secret-pattern",
-        "redacted-value"
+        "secret-pattern"
       ])
       const events = Array.from(result.events)
       expect(events).toEqual([

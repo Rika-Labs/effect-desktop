@@ -328,53 +328,56 @@ const runPromptLoop = (
       const exit = yield* prompt
         .prompt(active.request)
         .pipe(Effect.flatMap(decodeOutcome), Effect.exit)
-      const completed = yield* currentActiveEntry(state, active)
       if (exit._tag === "Success") {
         const auditExit = yield* auditApproval(
           audit,
           approvalAuditType(exit.value),
-          completed.request,
+          active.request,
           Option.some(exit.value)
         ).pipe(Effect.exit)
+        const finished = yield* finishPrompt(state, active, Option.some(exit.value))
         if (auditExit._tag === "Success") {
-          yield* completeSuccess(completed, exit.value)
+          yield* completeSuccess(finished.removed, exit.value)
         } else {
-          yield* completeFailure(completed, causeToAuditFailure(auditExit.cause, completed.request))
+          yield* completeFailure(
+            finished.removed,
+            causeToAuditFailure(auditExit.cause, active.request)
+          )
         }
-        current = yield* finishPrompt(state, completed, Option.some(exit.value))
+        current = finished.next
       } else {
-        const error = causeToPromptFailure(exit.cause, completed.request)
-        yield* completeFailure(completed, error)
-        current = yield* finishPrompt(state, completed, Option.none())
+        const error = causeToPromptFailure(exit.cause, active.request)
+        const finished = yield* finishPrompt(state, active, Option.none())
+        yield* completeFailure(finished.removed, error)
+        current = finished.next
       }
     }
   })
 
-const currentActiveEntry = (
-  state: Ref.Ref<BrokerState>,
-  entry: PromptEntry
-): Effect.Effect<PromptEntry, never, never> =>
-  Ref.get(state).pipe(
-    Effect.map((current) => {
-      const active = Option.getOrUndefined(actorQueue(current, entry.request.actor).active)
-      return active?.key === entry.key ? active : entry
-    })
-  )
+interface FinishedPrompt {
+  readonly removed: PromptEntry
+  readonly next: Option.Option<PromptEntry>
+}
 
 const finishPrompt = (
   state: Ref.Ref<BrokerState>,
   entry: PromptEntry,
   outcome: Option.Option<ApprovalOutcome>
-): Effect.Effect<Option.Option<PromptEntry>, never, never> =>
+): Effect.Effect<FinishedPrompt, never, never> =>
   Ref.modify(state, (current) => {
     const actor = actorQueue(current, entry.request.actor)
+    const active = Option.getOrUndefined(actor.active)
+    const removed = active?.key === entry.key ? active : entry
     const [next, ...rest] = actor.queued
     const deniedScopes =
       Option.isSome(outcome) && outcome.value.outcome === "denied-for-scope"
         ? new Set([...actor.deniedScopes, entry.key])
         : actor.deniedScopes
     return [
-      next === undefined ? Option.none<PromptEntry>() : Option.some(next),
+      {
+        removed,
+        next: next === undefined ? Option.none<PromptEntry>() : Option.some(next)
+      },
       setActorQueue(current, entry.request.actor, {
         active: next === undefined ? Option.none() : Option.some(next),
         queued: rest,

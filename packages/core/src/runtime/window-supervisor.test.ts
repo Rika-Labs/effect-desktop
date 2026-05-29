@@ -3,7 +3,19 @@ import { tmpdir } from "node:os"
 import { pathToFileURL } from "node:url"
 import { BunServices } from "@effect/platform-bun"
 import { WindowBoundsPayload, type HostWindowClient, type WindowCreateInput } from "@orika/bridge"
-import { Cause, ConfigProvider, Effect, Exit, Layer, ManagedRuntime, Schema, Stream } from "effect"
+import {
+  Cause,
+  ConfigProvider,
+  Deferred,
+  Effect,
+  Exit,
+  Fiber,
+  Layer,
+  ManagedRuntime,
+  Schema,
+  Scope,
+  Stream
+} from "effect"
 import * as FileSystem from "effect/FileSystem"
 import * as Path from "effect/Path"
 
@@ -126,6 +138,50 @@ test("openDeclaredWindows opens declared windows and smoke-test destroys them", 
         ["prefs", "window-2"]
       ])
       expect(destroyed).toEqual(["window-1", "window-2"])
+    })
+  ))
+
+test("openDeclaredWindows destroys a window created when interruption arrives before the destroy finalizer is registered", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const created: string[] = []
+      const destroyed: string[] = []
+      const createStarted = yield* Deferred.make<void>()
+      const releaseCreate = yield* Deferred.make<void>()
+      const client = makeHostWindowClient({
+        create: () =>
+          Effect.gen(function* () {
+            created.push(`window-${created.length + 1}`)
+            yield* Deferred.succeed(createStarted, undefined)
+            yield* Deferred.await(releaseCreate)
+            return { windowId: `window-${created.length}` }
+          }),
+        destroy: (windowId) =>
+          Effect.sync(() => {
+            destroyed.push(windowId)
+          })
+      })
+
+      const outerScope = yield* Scope.make()
+      const supervisor = yield* Effect.forkChild(
+        openDeclaredWindows(client, [
+          {
+            _tag: "DesktopWindowRegistration",
+            id: "main",
+            spec: { title: "Main" },
+            services: undefined
+          }
+        ]).pipe(Scope.provide(outerScope))
+      )
+
+      yield* Deferred.await(createStarted)
+      supervisor.interruptUnsafe()
+      yield* Deferred.succeed(releaseCreate, undefined)
+      yield* Fiber.await(supervisor)
+      yield* Scope.close(outerScope, Exit.interrupt())
+
+      expect(created).toEqual(["window-1"])
+      expect(destroyed).toEqual(["window-1"])
     })
   ))
 

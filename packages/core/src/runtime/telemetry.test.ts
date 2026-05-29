@@ -302,6 +302,21 @@ test("EffectTelemetryCollector captures Effect logs, spans, metrics, and causes 
     })
   ))
 
+test("EffectTelemetryCollector preserves warning severity from Effect.logWarning", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const telemetry = yield* makeTelemetry({ now: () => 2_000 })
+      const collector = yield* makeEffectTelemetryCollector(telemetry)
+
+      yield* collector.instrument(Effect.logWarning("high memory"))
+      yield* Effect.yieldNow
+
+      const snapshot = yield* telemetry.snapshot()
+      const record = snapshot.logs.find((log) => log.message === "high memory")
+      expect(record?.level).toBe("warn")
+    })
+  ))
+
 test("withDesktopSpan attaches Effect span and log annotations to telemetry snapshots", () =>
   Effect.runPromise(
     Effect.gen(function* () {

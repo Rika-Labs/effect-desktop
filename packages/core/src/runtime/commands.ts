@@ -486,19 +486,21 @@ const registerCommandGroup = <Rpcs extends Rpc.Any, E, R>(
   let completed = false
 
   const rollback = Effect.suspend(() => {
-    if (completed || reservedIds.length === 0) {
+    if (completed) {
       return Effect.void
     }
 
     const closeCommandScope =
       commandScope === undefined ? Effect.void : Scope.close(commandScope, Exit.void)
-    return (
-      handle === undefined
-        ? Effect.forEach(reservedIds, (id) =>
-            remove(id, undefined, undefined, reservedToken).pipe(Effect.asVoid)
-          ).pipe(Effect.asVoid)
-        : resources.dispose(handle.id)
-    ).pipe(Effect.andThen(closeCommandScope))
+    const removeReserved =
+      reservedIds.length === 0
+        ? Effect.void
+        : handle === undefined
+          ? Effect.forEach(reservedIds, (id) =>
+              remove(id, undefined, undefined, reservedToken).pipe(Effect.asVoid)
+            ).pipe(Effect.asVoid)
+          : resources.dispose(handle.id)
+    return removeReserved.pipe(Effect.andThen(closeCommandScope))
   })
 
   return Effect.gen(function* () {

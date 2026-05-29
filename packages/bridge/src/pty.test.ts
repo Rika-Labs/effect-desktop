@@ -79,6 +79,19 @@ test("host PTY client rejects malformed read base64 as invalid host output", () 
     })
   ))
 
+test("host PTY client accepts an empty write as a zero-byte no-op", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const requests: HostProtocolRequestEnvelope[] = []
+      const client = makeHostPtyClient(ptyExchange(requests), sequencedOptions())
+
+      yield* client.write("pty-1", new Uint8Array(0))
+
+      expect(requests.map((request) => request.method)).toEqual([PTY_WRITE_METHOD])
+      expect(requests[0]?.payload).toEqual({ ptyId: "pty-1", bytesBase64: "" })
+    })
+  ))
+
 const ptyExchange = (requests: HostProtocolRequestEnvelope[]): HostPtyExchange => ({
   request: (request) => {
     requests.push(request)

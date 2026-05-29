@@ -144,7 +144,19 @@ const closeHostProtocolReader = (
   reader: HostProtocolReader,
   transport: TransportConnection
 ): Effect.Effect<void, never, never> =>
-  reader.closeScope.pipe(Effect.andThen(transport.close().pipe(Effect.ignore)), Effect.asVoid)
+  Effect.gen(function* () {
+    if (reader.fatal === undefined) {
+      yield* failHostProtocolReader(
+        reader,
+        makeHostProtocolHostUnavailableError("TransportConnection.close")
+      )
+    }
+    const started = reader.started
+    yield* reader.closeScope
+    if (!started) {
+      yield* transport.close().pipe(Effect.ignore)
+    }
+  })
 
 const runHostProtocolReader = (
   transport: TransportConnection,

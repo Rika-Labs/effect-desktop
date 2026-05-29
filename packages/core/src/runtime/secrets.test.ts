@@ -1,6 +1,6 @@
 import { HostProtocolNotFoundError, hostProtocolErrorRecoverableDefault } from "@orika/bridge"
 import { expect, test } from "bun:test"
-import { Cause, Effect, Exit, Schema, Stream } from "effect"
+import { Cause, Effect, Exit, Logger, Schema, Stream } from "effect"
 import { EventJournal } from "effect/unstable/eventlog"
 
 import { AuditEvent, type AuditEventsApi } from "./audit-events.js"
@@ -267,6 +267,48 @@ test("Secrets preserves storage errors when error-audit write fails", () =>
     })
   ))
 
+test("Secrets surfaces the underlying reason when a deny pre-check audit fails", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const warnings: ReadonlyArray<unknown>[] = []
+      const secrets = yield* makeSecrets(memorySafeStorage(), {
+        appId: "com.rika.test",
+        permissions: { read: ["auth"] },
+        audit: failingAudit()
+      })
+
+      const exit = yield* Effect.exit(
+        secrets.set("auth", "token", makeSecretBytesFromUtf8("refresh-token"))
+      ).pipe(Effect.provideService(Logger.CurrentLoggers, new Set([captureLogger(warnings)])))
+
+      expectFailure(exit, SecretsPermissionDeniedError)
+      const reason = warningReason(warnings, "Secrets audit failed")
+      expect(reason).toBeDefined()
+      expect(reason).toContain("journal full")
+    })
+  ))
+
+test("Secrets attributes a non-string namespace to the namespace field", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const secrets = yield* makeSecretsService()
+
+      const exit = yield* Effect.exit(
+        // @ts-expect-error namespace is typed as string; runtime guard must label the field.
+        secrets.set(["key"], "token", makeSecretBytesFromUtf8("refresh-token"))
+      )
+
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        const failure = exit.cause.reasons.find(Cause.isFailReason)
+        expect(failure?.error).toBeInstanceOf(SecretsInvalidArgumentError)
+        if (failure?.error instanceof SecretsInvalidArgumentError) {
+          expect(failure.error.field).toBe("namespace")
+        }
+      }
+    })
+  ))
+
 const makeSecretsService = (
   calls: string[] = [],
   auditRows?: AuditEvent[]
@@ -355,6 +397,31 @@ const failingAudit = (): AuditEventsApi => ({
     ),
   observe: () => Stream.empty
 })
+
+const captureLogger = (sink: ReadonlyArray<unknown>[]) =>
+  Logger.make<unknown, void>((options) => {
+    if (Array.isArray(options.message)) {
+      sink.push(options.message)
+    }
+  })
+
+const warningReason = (warnings: ReadonlyArray<unknown>[], label: string): string | undefined => {
+  for (const message of warnings) {
+    if (message[0] !== label) {
+      continue
+    }
+    const fields = message[1]
+    if (
+      typeof fields === "object" &&
+      fields !== null &&
+      "reason" in fields &&
+      typeof (fields as { readonly reason: unknown }).reason === "string"
+    ) {
+      return (fields as { readonly reason: string }).reason
+    }
+  }
+  return undefined
+}
 
 const notFound = (key: string): HostProtocolNotFoundError =>
   new HostProtocolNotFoundError({

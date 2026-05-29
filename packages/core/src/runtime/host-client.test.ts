@@ -403,6 +403,86 @@ test("host protocol exchange close interrupts active event reads and closes tran
     })
   ))
 
+test("host protocol exchange close fails in-flight requests with HostUnavailable", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const sent = yield* Queue.unbounded<void>()
+      const exchange = createHostProtocolExchange(
+        transport({
+          send: () => Queue.offer(sent, undefined),
+          receive: Stream.never
+        })
+      )
+
+      const fiber = yield* Effect.forkChild(Effect.exit(exchange.request(request())), {
+        startImmediately: true
+      })
+      yield* Queue.take(sent)
+
+      yield* exchange.close?.() ?? Effect.void
+
+      const exit = yield* Fiber.join(fiber).pipe(
+        Effect.timeoutOption("1 second"),
+        Effect.map(Option.getOrThrow)
+      )
+
+      expectFailure(exit, HostProtocolHostUnavailableError)
+      expect(exit.pipe(getFailure)).toMatchObject({
+        tag: "HostUnavailable"
+      })
+    })
+  ))
+
+test("host protocol exchange close terminates active event streams", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const exchange = createHostProtocolExchange(
+        transport({
+          receive: Stream.never
+        })
+      )
+      const eventStream = exchange.subscribe?.("EgressPolicy.DecisionRecorded")
+      expect(eventStream).toBeDefined()
+
+      const fiber = yield* Effect.forkChild(
+        Effect.exit(
+          (eventStream ?? Stream.die("subscription should be supported")).pipe(Stream.runDrain)
+        ),
+        { startImmediately: true }
+      )
+      yield* Effect.yieldNow
+
+      yield* exchange.close?.() ?? Effect.void
+
+      const exit = yield* Fiber.join(fiber).pipe(
+        Effect.timeoutOption("1 second"),
+        Effect.map(Option.getOrThrow)
+      )
+
+      expectFailure(exit, HostProtocolHostUnavailableError)
+    })
+  ))
+
+test("host protocol exchange fails requests issued after close", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const exchange = createHostProtocolExchange(
+        transport({
+          receive: Stream.never
+        })
+      )
+
+      yield* exchange.close?.() ?? Effect.void
+
+      const exit = yield* Effect.exit(exchange.request(request())).pipe(
+        Effect.timeoutOption("1 second"),
+        Effect.map(Option.getOrThrow)
+      )
+
+      expectFailure(exit, HostProtocolHostUnavailableError)
+    })
+  ))
+
 test("host protocol exchange routes native events after a completed request", () =>
   Effect.runPromise(
     Effect.gen(function* () {

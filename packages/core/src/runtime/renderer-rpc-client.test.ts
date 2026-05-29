@@ -220,6 +220,74 @@ test("global renderer RPC transport wraps the host-installed WebView transport",
     })
   ))
 
+test("global renderer RPC transport drops malformed host frames without crashing the host pump", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const key = "__ORIKA_HOST_RPC_TRANSPORT__"
+      type HostInstalledTransport = {
+        readonly send: (envelope: HostProtocolEnvelope) => void
+        readonly subscribe: (listener: (envelope: unknown) => void) => () => void
+      }
+      const target = globalThis as typeof globalThis & {
+        [key]?: HostInstalledTransport | undefined
+      }
+      let listener: ((envelope: unknown) => void) | undefined
+
+      target[key] = Object.freeze({
+        send: () => {},
+        subscribe: (next: (envelope: unknown) => void) => {
+          listener = next
+          return () => {
+            listener = undefined
+          }
+        }
+      })
+
+      try {
+        const transport = getGlobalDesktopRendererRpcTransport()
+        if (transport === undefined) {
+          throw new Error("expected host-installed renderer RPC transport")
+        }
+
+        const received = yield* Deferred.make<HostProtocolEnvelope>()
+        const fiber = yield* Effect.forkChild(
+          transport.run((envelope) => Deferred.succeed(received, envelope).pipe(Effect.asVoid)),
+          { startImmediately: true }
+        )
+        while (listener === undefined) {
+          yield* Effect.yieldNow
+        }
+
+        // A malformed frame must not throw out of the synchronous host callback,
+        // otherwise it crashes the host message pump and silently kills inbound
+        // delivery for every in-flight RPC on this renderer.
+        expect(() => listener?.({ kind: "garbage", not: "an envelope" })).not.toThrow()
+
+        // The transport must remain alive: a valid frame delivered after a bad
+        // one is still routed into the Effect channel.
+        listener?.(
+          new HostProtocolResponseEnvelope({
+            kind: "response",
+            id: "request-1",
+            timestamp: 1,
+            traceId: "trace-response",
+            payload: "pong"
+          })
+        )
+
+        expect(yield* Deferred.await(received)).toMatchObject({
+          kind: "response",
+          id: "request-1",
+          payload: "pong"
+        })
+
+        yield* Fiber.interrupt(fiber)
+      } finally {
+        delete target[key]
+      }
+    })
+  ))
+
 test("RendererRpcClients layer does not require transport for manifests with no RPC groups", () =>
   Effect.runPromise(
     Effect.gen(function* () {

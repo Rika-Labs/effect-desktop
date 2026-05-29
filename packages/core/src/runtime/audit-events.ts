@@ -277,9 +277,6 @@ const makeEmit =
           traceId: event.traceId,
           outcome: event.outcome,
           ...(event.timestamp === undefined ? {} : { timestamp: event.timestamp }),
-          ...(event.normalizedCapability === undefined
-            ? {}
-            : { normalizedCapability: event.normalizedCapability }),
           ...(event.actor === undefined ? {} : { actor: event.actor }),
           ...(event.resource === undefined ? {} : { resource: event.resource }),
           ...(event.details === undefined ? {} : { details: event.details })
@@ -288,12 +285,24 @@ const makeEmit =
       if (Option.isNone(decision.value)) {
         return
       }
-      const sanitized = yield* Schema.decodeUnknownEffect(AuditEvent)(decision.value.value).pipe(
-        Effect.orDie
+      const safePayload =
+        event.normalizedCapability === undefined
+          ? decision.value.value
+          : {
+              ...(decision.value.value as object),
+              normalizedCapability: event.normalizedCapability
+            }
+      const sanitized = yield* Schema.decodeUnknownEffect(AuditEvent)(safePayload).pipe(
+        Effect.mapError(decodeFailure("audit.events.decode"))
       )
       yield* writeAuditPayload(log, sanitized.kind, sanitized)
       yield* PubSub.publish(events, sanitized).pipe(Effect.asVoid)
     })
+
+const decodeFailure =
+  (method: string) =>
+  (cause: unknown): EventJournal.EventJournalError =>
+    new EventJournal.EventJournalError({ method, cause })
 
 const writeAuditPayload = (
   log: EventLog.EventLog["Service"],
@@ -308,36 +317,36 @@ const writeAuditPayload = (
     case "permission-consumed":
     case "permission-used":
       return Schema.decodeUnknownEffect(PermissionAuditPayload)(payload).pipe(
-        Effect.orDie,
+        Effect.mapError(decodeFailure(`audit.events.write.${kind}`)),
         Effect.flatMap((decoded) => writePermissionPayload(log, kind, decoded))
       )
     case "approval-requested":
     case "approval-granted":
     case "approval-denied":
       return Schema.decodeUnknownEffect(ApprovalAuditPayload)(payload).pipe(
-        Effect.orDie,
+        Effect.mapError(decodeFailure(`audit.events.write.${kind}`)),
         Effect.flatMap((decoded) => writeApprovalPayload(log, kind, decoded))
       )
     case "command-registered":
     case "command-unregistered":
     case "command-invoked":
       return Schema.decodeUnknownEffect(CommandAuditPayload)(payload).pipe(
-        Effect.orDie,
+        Effect.mapError(decodeFailure(`audit.events.write.${kind}`)),
         Effect.flatMap((decoded) => writeCommandPayload(log, kind, decoded))
       )
     case "job-retrying":
       return Schema.decodeUnknownEffect(JobRetryingAuditPayload)(payload).pipe(
-        Effect.orDie,
+        Effect.mapError(decodeFailure("audit.events.write.job-retrying")),
         Effect.flatMap((decoded) => writeJobRetryingPayload(log, decoded))
       )
     case "secrets-accessed":
       return Schema.decodeUnknownEffect(SecretsAuditPayload)(payload).pipe(
-        Effect.orDie,
+        Effect.mapError(decodeFailure("audit.events.write.secrets-accessed")),
         Effect.flatMap((decoded) => writeSecretsPayload(log, decoded))
       )
     case "trace-id-missing":
       return Schema.decodeUnknownEffect(TraceIdMissingAuditPayload)(payload).pipe(
-        Effect.orDie,
+        Effect.mapError(decodeFailure("audit.events.write.trace-id-missing")),
         Effect.flatMap((decoded) => writeTraceIdMissingPayload(log, decoded))
       )
   }

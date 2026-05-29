@@ -6,7 +6,18 @@ import {
   type DesktopTransportRun,
   type DesktopTransportSend
 } from "@orika/bridge"
-import { Clock, Context, Effect, Exit, Layer, Queue, Scope, Stream, type Schema } from "effect"
+import {
+  Clock,
+  Context,
+  Effect,
+  Exit,
+  Layer,
+  Queue,
+  Result,
+  Scope,
+  Stream,
+  type Schema
+} from "effect"
 import {
   Rpc,
   RpcClient,
@@ -208,13 +219,21 @@ const makeHostInstalledRendererRpcTransport = (
         Effect.acquireRelease(
           Effect.sync(() =>
             transport.subscribe((input) => {
-              Queue.offerUnsafe(queue, decodeHostProtocolEnvelope(input))
+              const decoded = decodeInboundHostProtocolEnvelope(input)
+              if (decoded !== undefined) {
+                Queue.offerUnsafe(queue, decoded)
+              }
             })
           ),
           (unsubscribe) => Effect.sync(unsubscribe)
         )
       ).pipe(Stream.runForEach(onEnvelope), Effect.andThen(Effect.never))
   } satisfies DesktopRendererRpcTransport)
+}
+
+const decodeInboundHostProtocolEnvelope = (input: unknown): HostProtocolEnvelope | undefined => {
+  const result = Result.try(() => decodeHostProtocolEnvelope(input))
+  return Result.isSuccess(result) ? result.success : undefined
 }
 
 const isHostInstalledRendererRpcTransport = (

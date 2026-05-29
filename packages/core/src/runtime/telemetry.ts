@@ -8,6 +8,7 @@ import {
   Exit,
   Layer,
   Logger,
+  LogLevel,
   Metric,
   Option,
   PubSub,
@@ -730,18 +731,19 @@ const formatLogMessage = (message: unknown): string => {
   return String(message)
 }
 
-const logLevelToTelemetry = (level: string): TelemetryLogLevel => {
+const logLevelToTelemetry = (level: LogLevel.LogLevel): TelemetryLogLevel => {
   switch (level) {
     case "Debug":
     case "Trace":
     case "All":
       return "debug"
-    case "Warning":
+    case "Warn":
       return "warn"
     case "Error":
     case "Fatal":
       return "error"
-    default:
+    case "Info":
+    case "None":
       return "info"
   }
 }

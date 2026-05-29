@@ -1,4 +1,15 @@
-import { Clock, Context, Data, Effect, Layer, Option, PubSub, Schema, Stream } from "effect"
+import {
+  Clock,
+  Context,
+  Data,
+  Effect,
+  Layer,
+  Option,
+  PubSub,
+  Schema,
+  Semaphore,
+  Stream
+} from "effect"
 import type { FileSystem } from "effect/FileSystem"
 import type { Path } from "effect/Path"
 import { KeyValueStore } from "effect/unstable/persistence"
@@ -360,7 +371,8 @@ export const makeSettings = (
 
     yield* initialize(kv, input, options.migrations ?? [], now, migratedPub)
 
-    return makeStore(kv, input.namespace, changes, migratedPub)
+    const lock = yield* Semaphore.make(1)
+    return makeStore(kv, input.namespace, changes, migratedPub, lock)
   }).pipe(
     Effect.withSpan("Settings.layer", {
       attributes: {
@@ -432,7 +444,8 @@ const makeStore = (
   kv: KeyValueStore.KeyValueStore,
   namespace: string,
   changes: PubSub.PubSub<SettingsChange>,
-  migrations: PubSub.PubSub<SettingsMigrated>
+  migrations: PubSub.PubSub<SettingsMigrated>,
+  lock: Semaphore.Semaphore
 ): SettingsStore => {
   const get = <A>(
     key: string | SettingKey<A>,
@@ -495,31 +508,39 @@ const makeStore = (
           validatedKey,
           "Settings.set"
         )
-        const oldRaw = yield* kvGet(kv, valueKey(namespace, validatedKey), "Settings.set")
-        yield* kvSet(kv, valueKey(namespace, validatedKey), encoded, "Settings.set")
-        yield* addToIndex(kv, namespace, validatedKey, "Settings.set")
-        yield* publishChange(changes, {
-          key: validatedKey,
-          oldValue: optionToOptional(oldRaw),
-          newValue: encoded,
-          source: resolved.options?.source ?? "set"
-        })
+        yield* lock.withPermits(1)(
+          Effect.gen(function* () {
+            const oldRaw = yield* kvGet(kv, valueKey(namespace, validatedKey), "Settings.set")
+            yield* kvSet(kv, valueKey(namespace, validatedKey), encoded, "Settings.set")
+            yield* addToIndex(kv, namespace, validatedKey, "Settings.set")
+            yield* publishChange(changes, {
+              key: validatedKey,
+              oldValue: optionToOptional(oldRaw),
+              newValue: encoded,
+              source: resolved.options?.source ?? "set"
+            })
+          })
+        )
       }).pipe(Effect.withSpan("Settings.set", { attributes: { namespace, key } })),
     delete: (key: string, options?: SettingsMutationOptions) =>
       Effect.gen(function* () {
         const resolvedOptions = yield* decodeMutationOptions(options, "Settings.delete")
         const validatedKey = yield* decodeKey(key, "Settings.delete")
-        const oldRaw = yield* kvGet(kv, valueKey(namespace, validatedKey), "Settings.delete")
-        yield* kvRemove(kv, valueKey(namespace, validatedKey), "Settings.delete")
-        yield* removeFromIndex(kv, namespace, validatedKey, "Settings.delete")
-        if (Option.isSome(oldRaw)) {
-          yield* publishChange(changes, {
-            key: validatedKey,
-            oldValue: oldRaw.value,
-            newValue: undefined,
-            source: resolvedOptions?.source ?? "delete"
+        yield* lock.withPermits(1)(
+          Effect.gen(function* () {
+            const oldRaw = yield* kvGet(kv, valueKey(namespace, validatedKey), "Settings.delete")
+            yield* kvRemove(kv, valueKey(namespace, validatedKey), "Settings.delete")
+            yield* removeFromIndex(kv, namespace, validatedKey, "Settings.delete")
+            if (Option.isSome(oldRaw)) {
+              yield* publishChange(changes, {
+                key: validatedKey,
+                oldValue: oldRaw.value,
+                newValue: undefined,
+                source: resolvedOptions?.source ?? "delete"
+              })
+            }
           })
-        }
+        )
       }).pipe(Effect.withSpan("Settings.delete", { attributes: { namespace, key } })),
     keys: () =>
       readIndex(kv, namespace, "Settings.keys").pipe(
@@ -534,21 +555,25 @@ const makeStore = (
       Effect.gen(function* () {
         const resolvedOptions = yield* decodeMutationOptions(options, "Settings.update")
         const validatedKey = yield* decodeKey(key, "Settings.update")
-        const raw = yield* kvGet(kv, valueKey(namespace, validatedKey), "Settings.update")
-        const current = Option.isSome(raw)
-          ? Option.some(yield* decodeValue(schema, raw.value, validatedKey, "Settings.update"))
-          : Option.none()
-        const next = yield* updateFn(current)
-        const encoded = yield* encodeValue(schema, next, validatedKey, "Settings.update")
-        yield* kvSet(kv, valueKey(namespace, validatedKey), encoded, "Settings.update")
-        yield* addToIndex(kv, namespace, validatedKey, "Settings.update")
-        yield* publishChange(changes, {
-          key: validatedKey,
-          oldValue: optionToOptional(raw),
-          newValue: encoded,
-          source: resolvedOptions?.source ?? "update"
-        })
-        return next
+        return yield* lock.withPermits(1)(
+          Effect.gen(function* () {
+            const raw = yield* kvGet(kv, valueKey(namespace, validatedKey), "Settings.update")
+            const current = Option.isSome(raw)
+              ? Option.some(yield* decodeValue(schema, raw.value, validatedKey, "Settings.update"))
+              : Option.none()
+            const next = yield* updateFn(current)
+            const encoded = yield* encodeValue(schema, next, validatedKey, "Settings.update")
+            yield* kvSet(kv, valueKey(namespace, validatedKey), encoded, "Settings.update")
+            yield* addToIndex(kv, namespace, validatedKey, "Settings.update")
+            yield* publishChange(changes, {
+              key: validatedKey,
+              oldValue: optionToOptional(raw),
+              newValue: encoded,
+              source: resolvedOptions?.source ?? "update"
+            })
+            return next
+          })
+        )
       }).pipe(Effect.withSpan("Settings.update", { attributes: { namespace, key } })),
     changes: () => Stream.fromPubSub(changes),
     migrated: () => Stream.fromPubSub(migrations),

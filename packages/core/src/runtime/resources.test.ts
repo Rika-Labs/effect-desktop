@@ -482,8 +482,54 @@ test("non-reusable explicit id reuse cannot refresh a disposed handle", () =>
         kind: "process",
         id: "018e2f36-5800-7000-8000-000000000012",
         expectedGeneration: 0,
-        actualGeneration: -1
+        actualGeneration: 1
       })
+    })
+  ))
+
+test("non-reusable explicit id keeps generations monotonic across repeated reuse", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* makeResourceRegistry()
+      const reusedId = id("018e2f36-5800-7000-8000-000000000023")
+      const register = () =>
+        registry.register({
+          kind: "process",
+          id: reusedId,
+          ownerScope: "scope-process",
+          state: "running"
+        })
+
+      const first = yield* register()
+      yield* registry.dispose(first.id)
+      const second = yield* register()
+      yield* registry.dispose(second.id)
+      const third = yield* register()
+
+      const secondStale = yield* registry.assertFresh(second).pipe(
+        Effect.match({
+          onFailure: (error) => error,
+          onSuccess: () => {
+            throw new Error("expected disposed second handle to be stale")
+          }
+        })
+      )
+      const secondShareExit = yield* Effect.exit(registry.share(second, "target-scope"))
+      const thirdFresh = yield* registry.assertFresh(third)
+
+      expect(first.generation).toBe(0)
+      expect(second.generation).toBe(1)
+      expect(third.generation).toBe(2)
+      expect(thirdFresh.handle.generation).toBe(2)
+      expect(secondStale).toBeInstanceOf(StaleHandle)
+      expect(secondStale).toMatchObject({
+        tag: "StaleHandle",
+        kind: "process",
+        id: "018e2f36-5800-7000-8000-000000000023",
+        expectedGeneration: 1,
+        actualGeneration: 2
+      })
+      expectFailure(secondShareExit, StaleHandle)
     })
   ))
 

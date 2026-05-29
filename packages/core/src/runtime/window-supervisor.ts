@@ -177,10 +177,16 @@ const openSingleWindow = (
   options: WindowSupervisorOptions
 ): Effect.Effect<OpenedDeclaredWindow, WindowSupervisorError, Scope.Scope> =>
   Effect.gen(function* () {
-    const windowScope = yield* Scope.fork(outerScope)
-    const opened = yield* windows
-      .create(toWindowCreateInput(registration.spec))
-      .pipe(Effect.tapError(() => Scope.close(windowScope, Exit.interrupt())))
+    const { opened, windowScope } = yield* Effect.uninterruptible(
+      Effect.gen(function* () {
+        const windowScope = yield* Scope.fork(outerScope)
+        const opened = yield* windows
+          .create(toWindowCreateInput(registration.spec))
+          .pipe(Effect.tapError(() => Scope.close(windowScope, Exit.interrupt())))
+        yield* Scope.addFinalizer(windowScope, windows.destroy(opened.windowId).pipe(Effect.ignore))
+        return { opened, windowScope }
+      })
+    )
 
     if (registration.services !== undefined) {
       const windowContext = windowContextLayer(
@@ -196,11 +202,9 @@ const openSingleWindow = (
       const services: Layer.Layer<never, ResourceOwnerInvalidArgumentError, Scope.Scope> =
         Layer.provide(registration.services, Layer.merge(windowContext, resourceOwner))
       yield* Layer.buildWithScope(services, windowScope).pipe(
-        Effect.tapError(() => closeWindowAndScope(windows, windowScope, opened.windowId))
+        Effect.tapError(() => Scope.close(windowScope, Exit.interrupt()))
       )
     }
-
-    yield* Scope.addFinalizer(windowScope, windows.destroy(opened.windowId).pipe(Effect.ignore))
 
     if (options.smokeTest === true) {
       yield* Scope.close(windowScope, Exit.succeed(undefined))
@@ -212,16 +216,6 @@ const openSingleWindow = (
       spec: registration.spec
     } as const
   })
-
-const closeWindowAndScope = (
-  windows: HostWindowClient,
-  scope: Scope.Scope,
-  windowId: string
-): Effect.Effect<void, never, never> =>
-  windows.destroy(windowId).pipe(
-    Effect.ignore,
-    Effect.flatMap(() => Scope.close(scope, Exit.interrupt()))
-  )
 
 const recordToRegistrations = (
   windows: Readonly<Record<string, WindowSpec>>

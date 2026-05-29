@@ -150,9 +150,9 @@ export const RestoreWorkflowLayer: Layer.Layer<
       ).pipe(Effect.ignore)
 
     yield* Effect.gen(function* () {
-      yield* snapshotCurrent.execute
-      yield* restoreDb.execute
-      yield* restoreFiles.execute
+      yield* snapshotCurrent
+      yield* restoreDb
+      yield* restoreFiles
     }).pipe(
       Effect.catchCause((cause: Cause.Cause<RestoreFailure>) =>
         rollback().pipe(Effect.andThen(Effect.failCause(cause)))

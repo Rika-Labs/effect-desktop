@@ -322,6 +322,13 @@ export const makePermissionRegistry = (
           }
           const signal = yield* Deferred.make<PermissionRevokedError>()
           yield* Ref.update(grants, (current) => addWaiter(current, prepared.grant.token, signal))
+          const reread = (yield* Ref.get(grants)).get(prepared.grant.token)
+          if (reread !== undefined && reread.status !== "active") {
+            yield* Ref.update(grants, (current) =>
+              removeWaiter(current, prepared.grant.token, signal)
+            )
+            return yield* revokedError("PermissionRegistry.use", snapshot(reread))
+          }
           const revoke = Deferred.await(signal).pipe(Effect.flatMap((error) => Effect.fail(error)))
           return yield* Effect.raceFirst(effect, revoke).pipe(
             Effect.ensuring(

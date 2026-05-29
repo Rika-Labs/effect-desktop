@@ -568,6 +568,76 @@ test("Client rejects unknown response kinds as InvalidOutput", () =>
     })
   ))
 
+test("Client converts null and undefined responses to typed InvalidOutput failures", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      for (const value of [null, undefined] as const) {
+        const ProjectRpcs = makeProjectRpcs(`ProjectRpcs.NullishResponse.${String(value)}`)
+        const client = Client({ project: ProjectRpcs }, { request: () => Effect.succeed(value) })
+
+        const exit = yield* Effect.exit(
+          client.project.open(new ProjectOpenInput({ path: "/tmp/project" }))
+        )
+
+        expect(Exit.isFailure(exit)).toBe(true)
+        if (Exit.isFailure(exit)) {
+          expect(Cause.hasDies(exit.cause)).toBe(false)
+        }
+        expectFailureTag(exit, "InvalidOutput")
+      }
+    })
+  ))
+
+test("makeUnaryDesktopTransportFromBridgeClientExchange converts nullish responses to failure frames", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      for (const value of [null, undefined] as const) {
+        const responses: unknown[] = []
+
+        const transport = yield* makeUnaryDesktopTransportFromBridgeClientExchange(
+          {
+            request: () => Effect.succeed(value)
+          },
+          { now: () => 43, nextTraceId: () => "trace-transport" }
+        )
+        const fiber = yield* transport
+          .run((envelope) =>
+            Effect.sync(() => {
+              responses.push(envelope)
+            })
+          )
+          .pipe(Effect.forkChild({ startImmediately: true }))
+
+        const sendExit = yield* Effect.exit(
+          transport.send(
+            new HostProtocolRequestEnvelope({
+              kind: "request",
+              id: "request-nullish-response",
+              method: "Project.open",
+              timestamp: 42,
+              traceId: "trace-request"
+            })
+          )
+        )
+        yield* Effect.yieldNow
+        yield* Fiber.interrupt(fiber)
+
+        expect(Exit.isSuccess(sendExit)).toBe(true)
+        expect(responses).toContainEqual(
+          expect.objectContaining({
+            kind: "response",
+            id: "request-nullish-response",
+            traceId: "trace-request",
+            error: expect.objectContaining({
+              tag: "InvalidOutput",
+              operation: "Project.open"
+            })
+          })
+        )
+      }
+    })
+  ))
+
 test("Client propagates exchange failures", () =>
   Effect.runPromise(
     Effect.gen(function* () {

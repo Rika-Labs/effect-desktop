@@ -2,6 +2,7 @@ import { expect, test } from "bun:test"
 
 import {
   HostProtocolBackpressureOverflowError,
+  HostProtocolCancelledError,
   HostProtocolFileNotFoundError,
   HostProtocolInvalidArgumentError,
   HostProtocolPermissionDeniedError,
@@ -849,6 +850,24 @@ processTest("Process kill preserves the actual child exit result", () =>
   )
 )
 
+processTest("Process exit reports the exact terminating signal without prefix collision", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const child = makeFakeChild({
+        exit: { code: 0, signal: "SIGIOT" },
+        naturalExitDelayMs: 0,
+        stdout: []
+      })
+      const fixture = yield* makeFixture(makeFakeSpawner(() => child))
+      const handle = yield* fixture.service.spawn("sleep", ["10"])
+
+      const status = yield* handle.exit
+
+      expect(status).toEqual(new ProcessExitStatus({ code: 0, signal: "SIGIOT" }))
+    })
+  )
+)
+
 processTest("Process kill rejects control bytes in signal names", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -961,6 +980,34 @@ processTest("Process scope close interrupts the scoped exit observer", () =>
       expect(child.kills).toEqual(["SIGTERM"])
       expect(child.exitCodeInterrupted).toBe(true)
       expect((yield* fixture.registry.list()).entries).toEqual([])
+    })
+  )
+)
+
+processTest("Process scope close settles handle.exit for awaiters outside the owner scope", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const child = makeFakeChild({
+        completeExitOnKill: false,
+        exit: { code: 0 },
+        naturalExitDelayMs: 60_000,
+        stdout: []
+      })
+      const fixture = yield* makeFixture(
+        makeFakeSpawner(() => child),
+        { gracefulShutdownMs: 50 }
+      )
+
+      const handle = yield* fixture.service.spawn("sleep", ["30"])
+      const awaiter = yield* Effect.forkChild(Effect.exit(handle.exit), {
+        startImmediately: true
+      })
+
+      yield* fixture.registry.closeScope("scope-main")
+
+      const exit = yield* Fiber.join(awaiter)
+
+      expectFailure(exit, HostProtocolCancelledError)
     })
   )
 )

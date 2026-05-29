@@ -70,6 +70,61 @@ test("ApprovalBroker coalesces identical concurrent requests into one host promp
     })
   ))
 
+test("ApprovalBroker completes a same-key waiter that coalesces while the decision audit is in flight", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const decisionAuditEntered = yield* Deferred.make<void>()
+      const decisionAuditRelease = yield* Deferred.make<void>()
+      let requestedCount = 0
+      const audit: AuditEventsApi = {
+        emit: (event: AuditEvent) =>
+          Effect.gen(function* () {
+            if (event.kind === "approval-requested") {
+              requestedCount += 1
+              return
+            }
+            yield* Deferred.succeed(decisionAuditEntered, undefined)
+            yield* Deferred.await(decisionAuditRelease)
+          }),
+        observe: () => Stream.empty
+      }
+      const prompt: ApprovalPromptPort = {
+        prompt: (request) => Effect.succeed(outcome(request, "approved-once", 1_100))
+      }
+      const broker = yield* makeApprovalBroker({ prompt, audit, now: () => 1_000 })
+      const request = approvalRequest("request-1", "filesystem.write", "window-main", "/tmp/app")
+
+      const first = yield* broker.ask(request).pipe(Effect.forkChild({ startImmediately: true }))
+
+      // The loop has produced its outcome and is now suspended inside the
+      // decision audit, after snapshotting the active entry but before
+      // finishPrompt removes it. A same-key request that coalesces here must
+      // still be completed.
+      yield* Deferred.await(decisionAuditEntered)
+      const requestedBefore = requestedCount
+      const second = yield* broker
+        .ask(copyRequest(request, "request-2"))
+        .pipe(Effect.forkChild({ startImmediately: true }))
+
+      // Let the second fiber reach its coalesced await inside the broker.
+      yield* yieldUntil(() => requestedCount > requestedBefore)
+      yield* Effect.yieldNow
+      yield* Effect.yieldNow
+
+      yield* Deferred.succeed(decisionAuditRelease, undefined)
+
+      const firstResult = yield* Fiber.join(first).pipe(Effect.timeoutOption("100 millis"))
+      const secondResult = yield* Fiber.join(second).pipe(Effect.timeoutOption("100 millis"))
+
+      expect(Option.isSome(firstResult)).toBe(true)
+      expect(Option.isSome(secondResult)).toBe(true)
+      if (Option.isSome(secondResult)) {
+        expect(secondResult.value.outcome).toBe("approved-once")
+        expect(secondResult.value.requestId).toBe("request-2")
+      }
+    })
+  ))
+
 test("ApprovalBroker rejects the ninth distinct queued request for one actor", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -538,6 +593,14 @@ const outcome = (
     traceId: request.traceId ?? "trace-1",
     decidedAt,
     source: "host"
+  })
+
+const yieldUntil = (predicate: () => boolean): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      if (predicate()) return
+      yield* Effect.yieldNow
+    }
   })
 
 const memoryAudit = (rows: AuditEvent[]): AuditEventsApi => ({

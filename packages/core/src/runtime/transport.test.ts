@@ -540,6 +540,46 @@ test("in-memory transport rejects sends after close", () =>
     })
   ))
 
+test("in-memory transport rejects sends after the peer closes", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const [left, right] = yield* makeInMemoryTransportPair()
+
+      yield* right.close()
+      const exit = yield* Effect.exit(left.send(new Uint8Array([0x68, 0x69])))
+
+      expectFailure(exit, TransportClosedError)
+      yield* left.close()
+    })
+  ))
+
+test("in-memory transport ends the peer receive with a typed closed failure on close", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const [left, right] = yield* makeInMemoryTransportPair()
+      const received: number[][] = []
+      const fiber = yield* Effect.forkChild(
+        right.receive.pipe(
+          Stream.runForEach((frame) =>
+            Effect.sync(() => {
+              received.push(Array.from(frame))
+            })
+          ),
+          Effect.exit
+        ),
+        { startImmediately: true }
+      )
+
+      yield* left.send(new Uint8Array([1]))
+      yield* left.close()
+
+      const exit = yield* Fiber.join(fiber)
+
+      expect(received).toEqual([[1]])
+      expectFailure(exit, TransportClosedError)
+    })
+  ))
+
 test("connection close reports adapter close failures", () =>
   Effect.runPromise(
     Effect.gen(function* () {

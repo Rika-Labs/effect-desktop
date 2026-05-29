@@ -1,5 +1,6 @@
 import {
   HostProtocolBackpressureOverflowError,
+  HostProtocolCancelledError,
   HostProtocolFileNotFoundError,
   HostProtocolPermissionDeniedError,
   HostProtocolResourceBusyError,
@@ -286,6 +287,7 @@ export const makeProcess = (
                       input.command,
                       gracefulShutdownMs,
                       disposalOrigin,
+                      exitState,
                       Ref.get(exitObserved).pipe(Effect.map((observed) => !observed))
                     ),
                     kind: "process",
@@ -695,6 +697,7 @@ const disposeChild = (
   command: string,
   gracefulShutdownMs: number,
   disposalOrigin: Ref.Ref<ProcessDisposalOrigin>,
+  exitState: Deferred.Deferred<ProcessExitStatus, ProcessError>,
   closeProcessScope: Effect.Effect<boolean, never, never>
 ): Effect.Effect<void, never, never> =>
   Effect.gen(function* disposeChild() {
@@ -732,6 +735,21 @@ const disposeChild = (
     }
 
     yield* Scope.close(processScope, Exit.void)
+    yield* Deferred.fail(exitState, makeProcessDisposedCancelled(command, "Process.dispose"))
+  })
+
+const makeProcessDisposedCancelled = (
+  command: string,
+  operation: string
+): HostProtocolCancelledError =>
+  new HostProtocolCancelledError({
+    source: "host",
+    tag: "Cancelled",
+    ...makeProcessErrorCommon(
+      "Cancelled",
+      `process disposed before exit was observed: ${command}`,
+      operation
+    )
   })
 
 type ProcessDisposalOrigin = "running" | "observer" | "registry"
@@ -1007,10 +1025,22 @@ const mapPlatformError = (
   return makeHostProtocolInvalidArgumentError("command", error.message, operation)
 }
 
+const PROCESS_SIGNAL_SET: ReadonlySet<string> = new Set(PROCESS_SIGNALS)
+const QUOTED_SIGNAL_PATTERN = /signal:\s*'([A-Z0-9]+)'/
+
+const isProcessSignalInput = (value: string): value is ProcessSignalInput =>
+  PROCESS_SIGNAL_SET.has(value)
+
 const platformErrorSignal = (error: PlatformError): ProcessSignalInput | undefined => {
   const cause = error.cause === undefined ? "" : formatUnknownError(error.cause)
   const message = `${error.message} ${cause}`
-  return PROCESS_SIGNALS.find((signal) => message.includes(signal))
+  const quoted = QUOTED_SIGNAL_PATTERN.exec(message)?.[1]
+  if (quoted !== undefined && isProcessSignalInput(quoted)) {
+    return quoted
+  }
+  return PROCESS_SIGNALS.find((signal) =>
+    new RegExp(`(?<![A-Z0-9])${signal}(?![A-Z0-9])`).test(message)
+  )
 }
 
 const makeProcessErrorCommon = (

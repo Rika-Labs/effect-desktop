@@ -193,11 +193,16 @@ const bridgeFailureError = (error: unknown, operation: string): HostProtocolErro
   }
 }
 
+const bridgeResponseKind = (response: unknown): unknown =>
+  typeof response === "object" && response !== null
+    ? (response as { readonly kind?: unknown }).kind
+    : undefined
+
 const validateBridgeClientResponse = (
   operation: string,
   response: unknown
 ): Effect.Effect<BridgeClientResponse, HostProtocolError, never> => {
-  const responseKind = (response as { readonly kind?: unknown }).kind
+  const responseKind = bridgeResponseKind(response)
   if (responseKind === "success" || responseKind === "failure") {
     return Effect.succeed(response as BridgeClientResponse)
   }
@@ -349,7 +354,7 @@ const requestContractMethod = <Spec extends BridgeUnaryMethodSpec>(
       })
     )
     const response = yield* runRequestWithInterruption(exchange, request, options)
-    const responseKind = (response as { readonly kind?: unknown }).kind
+    const responseKind = bridgeResponseKind(response)
 
     if (responseKind === "failure") {
       const failureResponse = response as Extract<

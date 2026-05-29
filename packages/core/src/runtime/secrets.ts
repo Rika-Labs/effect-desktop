@@ -5,7 +5,7 @@ import {
   type HostProtocolError,
   type SecretBytes
 } from "@orika/bridge"
-import { Context, Data, Effect, Layer, Option, Schema } from "effect"
+import { Context, Data, Effect, Layer, Option, Schema, SchemaIssue } from "effect"
 
 import { emitAuditEvent, secretsAuditEvent, type AuditEventsApi } from "./audit-events.js"
 
@@ -487,15 +487,15 @@ const decodeKeyInput = (
   operation: string
 ): Effect.Effect<SecretsKeyInput, SecretsInvalidArgumentError, never> =>
   Schema.decodeUnknownEffect(SecretsKeyInput)(input).pipe(
-    Effect.mapError((cause) => {
-      const message = formatUnknownError(cause)
-      return new SecretsInvalidArgumentError({
-        operation,
-        field: message.includes("key") ? "key" : "namespace",
-        message,
-        cause: Option.some(cause)
-      })
-    }),
+    Effect.mapError(
+      (cause) =>
+        new SecretsInvalidArgumentError({
+          operation,
+          field: keyInputField(cause),
+          message: formatUnknownError(cause),
+          cause: Option.some(cause)
+        })
+    ),
     Effect.flatMap((decoded) =>
       Effect.all([
         validateName(decoded.namespace, "namespace", operation),
@@ -520,7 +520,33 @@ const validateName = (
         })
       )
 
+const schemaIssueFormatter = SchemaIssue.makeFormatterStandardSchemaV1()
+
+const keyInputField = (error: unknown): "namespace" | "key" => {
+  if (Schema.isSchemaError(error) && SchemaIssue.isIssue(error.issue)) {
+    for (const issue of schemaIssueFormatter(error.issue).issues) {
+      const segment = issue.path?.[0]
+      if (segment === "namespace" || segment === "key") {
+        return segment
+      }
+    }
+  }
+  return "namespace"
+}
+
 const formatUnknownError = (error: unknown): string => {
-  if (error instanceof Error) return error.message
+  if (error instanceof Error) {
+    if (error.message.length > 0) {
+      return error.message
+    }
+    const cause = (error as { readonly cause?: unknown }).cause
+    if (cause !== undefined && cause !== null) {
+      const nested = formatUnknownError(cause)
+      if (nested.length > 0) {
+        return error.name.length > 0 ? `${error.name}: ${nested}` : nested
+      }
+    }
+    return error.name
+  }
   return String(error)
 }

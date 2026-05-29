@@ -199,14 +199,17 @@ const makeWindowStateRepository = (
 
     return Object.freeze({
       restore: (windowId: string) =>
-        Effect.gen(function* () {
-          yield* decodeWindowId(windowId, "WindowState.restore")
-          const result = yield* read
-          yield* publishReadEvent(result)
-          const store = result.store
-          const record = store.windows[windowId]
-          return record === undefined ? Option.none() : Option.some(validateBounds(record))
-        }),
+        Semaphore.withPermit(
+          mutationGate,
+          Effect.gen(function* () {
+            yield* decodeWindowId(windowId, "WindowState.restore")
+            const result = yield* read
+            yield* publishReadEvent(result)
+            const store = result.store
+            const record = store.windows[windowId]
+            return record === undefined ? Option.none() : Option.some(validateBounds(record))
+          })
+        ),
       persist: (windowId: string, state: WindowStateRecord) =>
         Semaphore.withPermit(
           mutationGate,

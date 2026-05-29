@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { Effect, Exit, Fiber, Layer, ManagedRuntime, Schema, Stream } from "effect"
+import { Cause, Effect, Exit, Fiber, Layer, ManagedRuntime, Schema, Stream } from "effect"
 import { EventJournal, EventLog as EL, EventLogEncryption } from "effect/unstable/eventlog"
 
 import {
@@ -17,6 +17,14 @@ import { PermissionActor, type NormalizedCapability } from "./permission-contrac
 const filesystemWrite = (roots: readonly string[]): NormalizedCapability => ({
   kind: "filesystem.write",
   roots,
+  audit: "always"
+})
+
+const processSpawn = (kind: "process.spawn" | "pty.spawn"): NormalizedCapability => ({
+  kind,
+  commands: ["git"],
+  environment: "none",
+  shell: false,
   audit: "always"
 })
 
@@ -114,6 +122,41 @@ test("AuditEvents applies configured redaction policy before writing events", ()
         expect(encodedPayload).toContain("<redacted:redacted>")
         expect(encodedPayload).toContain("safe-session")
         expect(encodedPayload).not.toContain("123-45-6789")
+      }),
+      eventLogLayer
+    )
+  ))
+
+test("AuditEvents preserves required capability fields for process and pty grants", () =>
+  Effect.runPromise(
+    runScoped(
+      Effect.gen(function* () {
+        const audit = yield* makeAuditFixture()
+
+        for (const kind of ["process.spawn", "pty.spawn"] as const) {
+          const exit = yield* Effect.exit(
+            audit.emit(
+              permissionAuditEvent({
+                kind: "permission-granted",
+                source: "test",
+                traceId: `trace-${kind}`,
+                outcome: "granted",
+                normalizedCapability: processSpawn(kind),
+                actor: new PermissionActor({ kind: "process", id: "worker-1" })
+              })
+            )
+          )
+          expect(Exit.isSuccess(exit)).toBe(true)
+        }
+
+        const log = yield* EL.EventLog
+        const entries = yield* log.entries
+        expect(entries.length).toBe(2)
+        for (const entry of entries) {
+          const decoded =
+            entry.payload instanceof Uint8Array ? Buffer.from(entry.payload).toString("utf8") : ""
+          expect(/environment.none/.test(decoded)).toBe(true)
+        }
       }),
       eventLogLayer
     )
@@ -265,6 +308,10 @@ test("AuditEvents rejects malformed typed eventlog payloads before append", () =
         )
 
         expect(Exit.isFailure(exit)).toBe(true)
+        if (Exit.isFailure(exit)) {
+          expect(Cause.hasFails(exit.cause)).toBe(true)
+          expect(Cause.hasDies(exit.cause)).toBe(false)
+        }
       }),
       eventLogLayer
     )

@@ -756,7 +756,7 @@
     {
       "name": "HostPtyWritePayload",
       "kind": "class",
-      "signature": "export class HostPtyWritePayload extends Schema.Class<HostPtyWritePayload>(\"HostPtyWritePayload\")({ ptyId: Schema.NonEmptyString, bytesBase64: Schema.NonEmptyString }) {}"
+      "signature": "export class HostPtyWritePayload extends Schema.Class<HostPtyWritePayload>(\"HostPtyWritePayload\")({ ptyId: Schema.NonEmptyString, bytesBase64: Schema.String }) {}"
     },
     {
       "name": "HostVersionPayload",

@@ -783,6 +783,49 @@ test("PermissionRegistry revokes in-flight grant users through the lifecycle bus
     })
   ))
 
+test("PermissionRegistry interrupts a use that is revoked between status check and waiter registration", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const reachedUsedAudit = yield* Deferred.make<void>()
+      const releaseUsedAudit = yield* Deferred.make<void>()
+      const audit: AuditEventsApi = {
+        emit: (event: AuditEvent) =>
+          event.kind === "permission-used"
+            ? Effect.gen(function* () {
+                yield* Deferred.succeed(reachedUsedAudit, undefined)
+                yield* Deferred.await(releaseUsedAudit)
+              })
+            : Effect.void,
+        observe: () => Stream.empty
+      }
+
+      let currentTime = 1_000
+      const registry = yield* makePermissionRegistry({
+        audit,
+        nextToken: () => "grant-1",
+        now: () => currentTime
+      })
+      const grant = yield* registry.grant(filesystemWrite(["/tmp/app"]), context("window-main"))
+
+      const inFlight = yield* Deferred.make<string>()
+      const useFiber = yield* registry
+        .use(grant, Deferred.await(inFlight))
+        .pipe(Effect.forkChild({ startImmediately: true }))
+
+      yield* Deferred.await(reachedUsedAudit)
+      currentTime = 1_250
+      yield* registry.revoke(grant.token)
+      yield* Deferred.succeed(releaseUsedAudit, undefined)
+      yield* Deferred.succeed(inFlight, "escaped-revocation")
+
+      const exit = yield* Fiber.await(useFiber)
+      expectRevoked(exit, (error) => {
+        expect(error.reason).toBe("revoked")
+        expect(error.token).toBe("grant-1")
+      })
+    })
+  ))
+
 const actor = (id: string): PermissionActor => new PermissionActor({ kind: "window", id })
 
 const context = (id: string) => ({ actor: actor(id) })

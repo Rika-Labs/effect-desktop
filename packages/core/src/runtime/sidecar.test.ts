@@ -79,16 +79,94 @@ test("Sidecar readiness failure updates status and fails ready effect", () =>
     })
   ))
 
-const makeFakeProcessHandle = (): ProcessHandle =>
+test("Sidecar disposes the resource when the process exits before readiness", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      let kills = 0
+      const processHandle = makeFakeProcessHandle({
+        exit: Effect.succeed(new ProcessExitStatus({ code: 0 })),
+        kill: () => Effect.sync(() => void (kills += 1)),
+        stdout: Stream.empty
+      })
+      const process = Object.freeze({
+        spawn: () => Effect.succeed(processHandle),
+        list: () => Effect.succeed([]),
+        observe: () => Stream.empty
+      } satisfies ProcessApi)
+      const registry = yield* makeResourceRegistry()
+      const sidecar = yield* makeSidecar(process, registry)
+
+      const handle = yield* sidecar.start(
+        new SidecarCommand({
+          args: [],
+          command: "helper",
+          ownerScope: "scope-main"
+        }),
+        { readiness: { _tag: "Line", match: "ready", stream: "stdout" } }
+      )
+      const readyExit = yield* Effect.exit(handle.ready)
+      yield* Effect.yieldNow
+      yield* Effect.yieldNow
+
+      expectFailure(readyExit, SidecarError)
+      expect(kills).toBe(1)
+      const snapshot = yield* registry.list()
+      expect(snapshot).toEqual({ entries: [] })
+    })
+  ))
+
+test("Sidecar kills the live process when the readiness stream errors", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      let kills = 0
+      const processHandle = makeFakeProcessHandle({
+        exit: Effect.never,
+        kill: () => Effect.sync(() => void (kills += 1)),
+        stdout: Stream.fail(makeHostProtocolHostUnavailableError("Process.stdout"))
+      })
+      const process = Object.freeze({
+        spawn: () => Effect.succeed(processHandle),
+        list: () => Effect.succeed([]),
+        observe: () => Stream.empty
+      } satisfies ProcessApi)
+      const registry = yield* makeResourceRegistry()
+      const sidecar = yield* makeSidecar(process, registry)
+
+      const handle = yield* sidecar.start(
+        new SidecarCommand({
+          args: [],
+          command: "helper",
+          ownerScope: "scope-main"
+        }),
+        { readiness: { _tag: "Line", match: "ready", stream: "stdout" } }
+      )
+      const readyExit = yield* Effect.exit(handle.ready)
+      yield* Effect.yieldNow
+      yield* Effect.yieldNow
+
+      expectFailure(readyExit, SidecarError)
+      expect(kills).toBe(1)
+      const snapshot = yield* registry.list()
+      expect(snapshot).toEqual({ entries: [] })
+    })
+  ))
+
+interface FakeProcessHandleOverrides {
+  readonly exit?: ProcessHandle["exit"]
+  readonly kill?: ProcessHandle["kill"]
+  readonly stdout?: ProcessHandle["stdout"]
+}
+
+const makeFakeProcessHandle = (overrides: FakeProcessHandleOverrides = {}): ProcessHandle =>
   Object.freeze({
     all: Stream.empty,
-    exit: Effect.succeed(new ProcessExitStatus({ code: 0 })),
-    kill: () => Effect.void,
+    exit: overrides.exit ?? Effect.succeed(new ProcessExitStatus({ code: 0 })),
+    kill: overrides.kill ?? (() => Effect.void),
     pid: 42,
     resource: fakeProcessResource,
     stderr: Stream.empty,
     stdin: Sink.drain,
-    stdout: Stream.empty
+    stdout: overrides.stdout ?? Stream.empty
   } satisfies ProcessHandle)
 
 const fakeProcessResource: ManagedResourceHandle<"process", "running"> = Object.freeze({

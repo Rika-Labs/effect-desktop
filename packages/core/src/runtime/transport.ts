@@ -524,15 +524,10 @@ const makeQueuedConnection = (
         if (closed) {
           return yield* new TransportClosedError({ operation: `${operation}.send` })
         }
-        yield* Queue.offer(outbound, payload.slice()).pipe(
-          Effect.mapError(
-            (error) =>
-              new TransportWriteError({
-                operation: `${operation}.send`,
-                cause: Option.some(error)
-              })
-          )
-        )
+        const accepted = yield* Queue.offer(outbound, payload.slice())
+        if (!accepted) {
+          return yield* new TransportClosedError({ operation: `${operation}.send` })
+        }
       }),
     receive: Stream.fromQueue(inbound),
     close: () =>
@@ -541,8 +536,8 @@ const makeQueuedConnection = (
           return
         }
         closed = true
-        yield* Queue.shutdown(inbound)
-        yield* Queue.shutdown(outbound)
+        yield* Queue.fail(inbound, new TransportClosedError({ operation: `${operation}.receive` }))
+        yield* Queue.fail(outbound, new TransportClosedError({ operation: `${operation}.send` }))
       })
   })
 }

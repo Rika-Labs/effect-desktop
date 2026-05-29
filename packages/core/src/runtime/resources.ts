@@ -267,7 +267,7 @@ const makeResourceRegistryInstance = (
     const markDisposed = (id: ResourceId, entry: StoredResourceEntry): void => {
       disposedGenerations.set(id, {
         kind: entry.handle.kind,
-        generation: entry.reusableId ? entry.handle.generation + 1 : -1,
+        generation: entry.reusableId ? entry.handle.generation + 1 : entry.handle.generation,
         reusableId: entry.reusableId
       })
     }
@@ -419,8 +419,7 @@ const makeResourceRegistryInstance = (
           return Effect.succeed(publicEntry(entry) as ResourceEntry<Kind, State>)
         }
 
-        const disposed = disposedGenerations.get(handle.id)
-        const actualGeneration = disposed?.generation ?? entry?.handle.generation ?? -1
+        const actualGeneration = entry?.handle.generation ?? -1
         return publishEvent(events, {
           _tag: "ResourceStale",
           handle: publicHandle(handle),
@@ -563,10 +562,7 @@ const makeResourceRegistryInstance = (
                       kind: handle.kind,
                       id: handle.id,
                       expectedGeneration: handle.generation,
-                      actualGeneration:
-                        disposedGenerations.get(handle.id)?.generation ??
-                        stored?.handle.generation ??
-                        -1
+                      actualGeneration: stored?.handle.generation ?? -1
                     })
                     return [{ _tag: "stale" as const, stale }, current] as const
                   }

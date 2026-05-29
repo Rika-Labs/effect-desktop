@@ -101,6 +101,61 @@ test("PermissionApproval workflow grants when user approves", () =>
     })
   ))
 
+test("PermissionApproval workflow declares and emits approval-requested exactly once across replay", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const baseRegistry = yield* makePermissionRegistry()
+      let declareCount = 0
+      const registry: PermissionRegistryApi = {
+        ...baseRegistry,
+        declare: (capability, options) =>
+          Effect.sync(() => {
+            declareCount += 1
+          }).pipe(Effect.andThen(baseRegistry.declare(capability, options)))
+      }
+
+      const capability = {
+        kind: "filesystem.read" as const,
+        roots: ["/tmp"],
+        audit: "on-deny" as const
+      }
+      const actor = { kind: "app" as const, id: "test-app" }
+      const traceId = "trace-replay-1"
+      const auditRows: AuditEvent[] = []
+
+      let capturedToken: string | undefined
+
+      const layer = Layer.provideMerge(
+        makePermissionApprovalWorkflowLayer({
+          registry,
+          audit: memoryAudit(auditRows),
+          notify: (token, _traceId) =>
+            Effect.sync(() => {
+              capturedToken = token
+            })
+        }),
+        WorkflowEngine.layerMemory
+      )
+
+      yield* runScoped(
+        Effect.gen(function* () {
+          const fiber = yield* Effect.forkChild(
+            PermissionApprovalWorkflow.execute({ traceId, capability, actor }),
+            { startImmediately: true }
+          )
+          const token = yield* waitForToken(() => capturedToken)
+          yield* resolveApprovalDeferred(token, true)
+          return yield* Fiber.join(fiber)
+        }),
+        layer
+      )
+
+      expect(declareCount).toBe(1)
+      expect(auditRows.filter((row) => row.kind === "approval-requested").length).toBe(1)
+      expect(auditRows.filter((row) => row.kind === "approval-granted").length).toBe(1)
+    })
+  ))
+
 test("PermissionApproval workflow fails with PermissionDenied when user denies", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -229,6 +284,54 @@ test("PermissionApproval workflow records a grant with ttl when ttlMs provided",
       expect(result.grantedAt).toBe(now)
       expect(result.expiresAt).toBeDefined()
       expect(result.expiresAt! - result.grantedAt).toBe(ttlMs)
+    })
+  ))
+
+test("PermissionApproval workflow returns a live grant for ttl that has not yet expired", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* makePermissionRegistry({ now: () => now })
+
+      const capability = {
+        kind: "secrets.read" as const,
+        namespaces: ["vault"],
+        audit: "always" as const
+      }
+      const actor = { kind: "app" as const, id: "test-app" }
+      const traceId = "trace-ttl-live-1"
+      const ttlMs = 50
+
+      let capturedToken: string | undefined
+
+      const layer = Layer.provideMerge(
+        makePermissionApprovalWorkflowLayer({
+          registry,
+          now: () => now,
+          notify: (token, _traceId) =>
+            Effect.sync(() => {
+              capturedToken = token
+            })
+        }),
+        WorkflowEngine.layerMemory
+      )
+
+      const result = yield* runScoped(
+        Effect.gen(function* () {
+          const fiber = yield* Effect.forkChild(
+            PermissionApprovalWorkflow.execute({ traceId, capability, actor, ttlMs }),
+            { startImmediately: true }
+          )
+          const token = yield* waitForToken(() => capturedToken)
+          yield* resolveApprovalDeferred(token, true)
+          const grant = yield* Fiber.join(fiber)
+          const snapshot = yield* registry.inspect(grant.token)
+          return { grant, status: snapshot.status }
+        }).pipe(Effect.provideService(Clock.Clock, fixedClock(now))),
+        layer
+      )
+
+      expect(result.grant).toBeInstanceOf(Grant)
+      expect(result.status).toBe("active")
     })
   ))
 

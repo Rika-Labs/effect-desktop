@@ -46,6 +46,7 @@ type PendingCall = {
   fiber: Fiber.Fiber<BridgeClientResponse, unknown> | undefined
   cancel: ((request: HostProtocolCancelByRequestEnvelope) => Effect.Effect<void>) | undefined
   cancelledBy: "renderer" | "runtime" | "host" | undefined
+  cancelRequested: boolean
 }
 
 interface ResolvedDesktopRpcHandlerOptions {
@@ -107,6 +108,21 @@ const dispatch = <Rpcs extends Rpc.Any, E extends HostProtocolError, R>(
         )
       }
 
+      const pending: PendingCall = {
+        fiber: undefined,
+        cancel: undefined,
+        cancelledBy: undefined,
+        cancelRequested: false
+      }
+      pendingCalls.set(request.id, pending)
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => {
+          if (pendingCalls.get(request.id) === pending) {
+            pendingCalls.delete(request.id)
+          }
+        })
+      )
+
       yield* options.onState({
         tag: "Pending",
         id: request.id,
@@ -140,22 +156,18 @@ const dispatch = <Rpcs extends Rpc.Any, E extends HostProtocolError, R>(
       }
 
       let canceledBy: "renderer" | "runtime" | "host" = "runtime"
-      const pending: PendingCall = {
-        fiber: undefined,
-        cancel: undefined,
-        cancelledBy: undefined
-      }
       const fiber = yield* Effect.forkScoped(
         runDispatch(group, handlers, terminalStates, pending, options, request)
       )
       pending.fiber = fiber
-      pendingCalls.set(request.id, pending)
+      if (pending.cancelRequested) {
+        yield* Fiber.interrupt(fiber)
+      }
 
       const exit = yield* Effect.exit(Fiber.join(fiber)).pipe(
         Effect.ensuring(
           Effect.sync(() => {
             canceledBy = pending.cancelledBy ?? "runtime"
-            pendingCalls.delete(request.id)
           })
         )
       )
@@ -301,6 +313,7 @@ const cancel = (
     }
 
     pending.cancelledBy = "renderer"
+    pending.cancelRequested = true
     if (pending.cancel !== undefined) {
       return yield* pending.cancel(request)
     }

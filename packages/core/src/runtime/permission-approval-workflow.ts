@@ -1,5 +1,5 @@
 import { Clock, Effect, Exit, Schema } from "effect"
-import { DurableClock, DurableDeferred, Workflow, WorkflowEngine } from "effect/unstable/workflow"
+import { Activity, DurableDeferred, Workflow, WorkflowEngine } from "effect/unstable/workflow"
 
 import { makeSecretString } from "@orika/bridge"
 
@@ -21,6 +21,28 @@ const approvalPrompt = DurableDeferred.make<typeof Schema.Boolean>("approval-pro
   success: Schema.Boolean
 })
 
+const ApprovalFailed = Schema.TaggedStruct("PermissionApprovalFailed", {
+  traceId: Schema.NonEmptyString,
+  phase: Schema.Union([
+    Schema.Literal("declare"),
+    Schema.Literal("audit"),
+    Schema.Literal("grant"),
+    Schema.Literal("revoke")
+  ]),
+  cause: Schema.String
+})
+
+const PermissionDenied = Schema.TaggedStruct("PermissionDenied", {
+  traceId: Schema.NonEmptyString,
+  reason: Schema.Literal("user-denied")
+})
+
+const GrantToken = Schema.Struct({
+  token: Schema.NonEmptyString,
+  grantedAt: Schema.Number,
+  expiresAt: Schema.optionalKey(Schema.Number)
+})
+
 export const PermissionApprovalWorkflow = Workflow.make({
   name: "PermissionApproval",
   payload: {
@@ -32,22 +54,7 @@ export const PermissionApprovalWorkflow = Workflow.make({
   },
   idempotencyKey: (p) => p.traceId,
   success: Grant,
-  error: Schema.Union([
-    Schema.TaggedStruct("PermissionDenied", {
-      traceId: Schema.NonEmptyString,
-      reason: Schema.Literal("user-denied")
-    }),
-    Schema.TaggedStruct("PermissionApprovalFailed", {
-      traceId: Schema.NonEmptyString,
-      phase: Schema.Union([
-        Schema.Literal("declare"),
-        Schema.Literal("audit"),
-        Schema.Literal("grant"),
-        Schema.Literal("revoke")
-      ]),
-      cause: Schema.String
-    })
-  ])
+  error: Schema.Union([PermissionDenied, ApprovalFailed])
 })
 
 export interface PermissionApprovalWorkflowOptions {
@@ -63,26 +70,32 @@ export const makePermissionApprovalWorkflowLayer = (options: PermissionApprovalW
       const capability = payload.capability
       const actor = payload.actor
 
-      yield* options.registry
-        .declare(capability, {
-          effect: "approval",
-          actor,
-          source: `approval:${payload.traceId}`
-        })
-        .pipe(Effect.mapError((cause) => approvalFailed(payload.traceId, "declare", cause)))
+      yield* Activity.make({
+        name: `declare:${payload.traceId}`,
+        error: ApprovalFailed,
+        execute: Effect.gen(function* () {
+          yield* options.registry
+            .declare(capability, {
+              effect: "approval",
+              actor,
+              source: `approval:${payload.traceId}`
+            })
+            .pipe(Effect.mapError((cause) => approvalFailed(payload.traceId, "declare", cause)))
 
-      yield* emitAuditEvent(
-        options.audit,
-        approvalAuditEvent({
-          kind: "approval-requested",
-          source: "PermissionApprovalWorkflow",
-          traceId: payload.traceId,
-          outcome: "requested",
-          actor,
-          ...(payload.resource === undefined ? {} : { resource: payload.resource }),
-          details: { capability }
+          yield* emitAuditEvent(
+            options.audit,
+            approvalAuditEvent({
+              kind: "approval-requested",
+              source: "PermissionApprovalWorkflow",
+              traceId: payload.traceId,
+              outcome: "requested",
+              actor,
+              ...(payload.resource === undefined ? {} : { resource: payload.resource }),
+              details: { capability }
+            })
+          ).pipe(Effect.mapError((cause) => approvalFailed(payload.traceId, "audit", cause)))
         })
-      ).pipe(Effect.mapError((cause) => approvalFailed(payload.traceId, "audit", cause)))
+      })
 
       const token = yield* DurableDeferred.token(approvalPrompt)
 
@@ -93,17 +106,21 @@ export const makePermissionApprovalWorkflowLayer = (options: PermissionApprovalW
       const approved = yield* DurableDeferred.await(approvalPrompt)
 
       if (!approved) {
-        yield* emitAuditEvent(
-          options.audit,
-          approvalAuditEvent({
-            kind: "approval-denied",
-            source: "PermissionApprovalWorkflow",
-            traceId: payload.traceId,
-            outcome: "denied",
-            actor,
-            ...(payload.resource === undefined ? {} : { resource: payload.resource })
-          })
-        ).pipe(Effect.mapError((cause) => approvalFailed(payload.traceId, "audit", cause)))
+        yield* Activity.make({
+          name: `deny:${payload.traceId}`,
+          error: ApprovalFailed,
+          execute: emitAuditEvent(
+            options.audit,
+            approvalAuditEvent({
+              kind: "approval-denied",
+              source: "PermissionApprovalWorkflow",
+              traceId: payload.traceId,
+              outcome: "denied",
+              actor,
+              ...(payload.resource === undefined ? {} : { resource: payload.resource })
+            })
+          ).pipe(Effect.mapError((cause) => approvalFailed(payload.traceId, "audit", cause)))
+        })
 
         return yield* Effect.fail({
           _tag: "PermissionDenied" as const,
@@ -112,66 +129,55 @@ export const makePermissionApprovalWorkflowLayer = (options: PermissionApprovalW
         })
       }
 
-      const grantedAt = yield* currentTimeMillis(options.now)
-      const expiresAt = payload.ttlMs !== undefined ? grantedAt + payload.ttlMs : undefined
+      const granted = yield* Activity.make({
+        name: `grant:${payload.traceId}`,
+        success: GrantToken,
+        error: ApprovalFailed,
+        execute: Effect.gen(function* () {
+          const grantedAt = yield* currentTimeMillis(options.now)
+          const expiresAt = payload.ttlMs !== undefined ? grantedAt + payload.ttlMs : undefined
 
-      const grant = yield* options.registry
-        .grant(
-          capability,
-          {
-            actor,
-            ...(payload.resource === undefined ? {} : { resource: payload.resource }),
-            traceId: payload.traceId
-          },
-          {
-            ...(expiresAt !== undefined ? { expiresAt } : {}),
-            source: `approval:${payload.traceId}`
+          const grant = yield* options.registry
+            .grant(
+              capability,
+              {
+                actor,
+                ...(payload.resource === undefined ? {} : { resource: payload.resource }),
+                traceId: payload.traceId
+              },
+              {
+                ...(expiresAt !== undefined ? { expiresAt } : {}),
+                source: `approval:${payload.traceId}`
+              }
+            )
+            .pipe(Effect.mapError((cause) => approvalFailed(payload.traceId, "grant", cause)))
+
+          yield* emitAuditEvent(
+            options.audit,
+            approvalAuditEvent({
+              kind: "approval-granted",
+              source: "PermissionApprovalWorkflow",
+              traceId: payload.traceId,
+              outcome: "granted",
+              actor,
+              ...(payload.resource === undefined ? {} : { resource: payload.resource }),
+              details: { token: grantAuditToken(grant.token), grantedAt, expiresAt }
+            })
+          ).pipe(Effect.mapError((cause) => approvalFailed(payload.traceId, "audit", cause)))
+
+          return {
+            token: grant.token,
+            grantedAt,
+            ...(expiresAt !== undefined ? { expiresAt } : {})
           }
-        )
-        .pipe(Effect.mapError((cause) => approvalFailed(payload.traceId, "grant", cause)))
-
-      yield* emitAuditEvent(
-        options.audit,
-        approvalAuditEvent({
-          kind: "approval-granted",
-          source: "PermissionApprovalWorkflow",
-          traceId: payload.traceId,
-          outcome: "granted",
-          actor,
-          ...(payload.resource === undefined ? {} : { resource: payload.resource }),
-          details: { token: grantAuditToken(grant.token), grantedAt, expiresAt }
         })
-      ).pipe(Effect.mapError((cause) => approvalFailed(payload.traceId, "audit", cause)))
-
-      if (payload.ttlMs !== undefined && expiresAt !== undefined) {
-        yield* DurableClock.sleep({
-          name: `ttl:${payload.traceId}`,
-          duration: `${payload.ttlMs} millis`
-        })
-
-        yield* options.registry
-          .revoke(grant.token)
-          .pipe(Effect.mapError((cause) => approvalFailed(payload.traceId, "revoke", cause)))
-
-        yield* emitAuditEvent(
-          options.audit,
-          approvalAuditEvent({
-            kind: "approval-denied",
-            source: "PermissionApprovalWorkflow",
-            traceId: payload.traceId,
-            outcome: "expired",
-            actor,
-            ...(payload.resource === undefined ? {} : { resource: payload.resource }),
-            details: { token: grantAuditToken(grant.token), expiredAt: expiresAt }
-          })
-        ).pipe(Effect.mapError((cause) => approvalFailed(payload.traceId, "audit", cause)))
-      }
+      })
 
       return new Grant({
         traceId: payload.traceId,
-        token: grant.token,
-        grantedAt,
-        ...(expiresAt !== undefined ? { expiresAt } : {})
+        token: granted.token,
+        grantedAt: granted.grantedAt,
+        ...(granted.expiresAt !== undefined ? { expiresAt: granted.expiresAt } : {})
       })
     })
   )

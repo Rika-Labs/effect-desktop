@@ -191,3 +191,26 @@ test("redactForJsonWithEvidence reports redacted paths without raw values", () =
   expect(JSON.stringify(result.evidence)).not.toContain("secret-token")
   expect(JSON.stringify(result.evidence)).not.toContain("secret-key")
 })
+
+test("redactForJsonWithEvidence emits one row per pattern-matched field", () => {
+  const result = redactForJsonWithEvidence({ api_key: "x" })
+
+  expect(result.value).toEqual({ api_key: "<redacted:redacted>" })
+  expect(result.evidence).toEqual([
+    { path: "<redacted-key>", action: "redacted", reason: "secret-pattern" }
+  ])
+})
+
+test("redactForJsonWithEvidence does not double-count multiple pattern matches", () => {
+  const result = redactForJsonWithEvidence({ api_key: "x", token: "y" })
+
+  expect(result.evidence).toHaveLength(2)
+  expect(result.evidence.every((item) => item.reason === "secret-pattern")).toBe(true)
+})
+
+test("redactForJsonWithEvidence reports caller-supplied secrets as redacted-value once", () => {
+  const result = redactForJsonWithEvidence({ note: makeSecretString("hunter2") })
+
+  expect(result.evidence).toEqual([{ path: "note", action: "redacted", reason: "redacted-value" }])
+  expect(JSON.stringify(result.evidence)).not.toContain("hunter2")
+})

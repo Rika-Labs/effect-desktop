@@ -162,10 +162,15 @@ const startSidecar = (
         .pipe(Effect.orDie)
 
       const handle = makeHandle(resource, child, status, ready)
-      yield* observeReadiness(child, options.readiness, ready, publish).pipe(
-        Effect.forkScoped,
-        Scope.provide(scope)
-      )
+      yield* observeReadiness(
+        scope,
+        child,
+        options.readiness,
+        resource,
+        ready,
+        closed,
+        publish
+      ).pipe(Effect.forkScoped, Scope.provide(scope))
       yield* observeExit(child, resource, ready, closed, publish).pipe(
         Effect.forkScoped,
         Scope.provide(scope)
@@ -214,9 +219,12 @@ const makeHandle = (
   })
 
 const observeReadiness = (
+  scope: Scope.Closeable,
   process: ProcessHandle,
   readiness: SidecarReadiness,
+  resource: ManagedResourceHandle<"sidecar", "running">,
   ready: Deferred.Deferred<SidecarReadyPayload, SidecarError>,
+  closed: Ref.Ref<boolean>,
   publish: (state: SidecarState) => Effect.Effect<void, never, never>
 ): Effect.Effect<void, never, never> => {
   if (readiness._tag === "None") {
@@ -243,12 +251,32 @@ const observeReadiness = (
     ),
     Effect.tapError((error) =>
       Deferred.fail(ready, error).pipe(
-        Effect.andThen(publish({ _tag: "Failed", message: error.message, recoverable: false }))
+        Effect.andThen(publish({ _tag: "Failed", message: error.message, recoverable: false })),
+        Effect.andThen(teardownAfterReadinessFailure(scope, closed, resource, process))
       )
     ),
     Effect.ignore
   )
 }
+
+const teardownAfterReadinessFailure = (
+  scope: Scope.Closeable,
+  closed: Ref.Ref<boolean>,
+  resource: ManagedResourceHandle<"sidecar", "running">,
+  process: ProcessHandle
+): Effect.Effect<void, never, never> =>
+  Ref.modify(closed, (current) => [current, true] as const).pipe(
+    Effect.flatMap((wasClosed) =>
+      wasClosed
+        ? Effect.void
+        : resource
+            .dispose()
+            .pipe(
+              Effect.andThen(process.kill().pipe(Effect.ignore)),
+              Effect.andThen(Scope.close(scope, Exit.void))
+            )
+    )
+  )
 
 const observeExit = (
   process: ProcessHandle,
