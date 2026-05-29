@@ -1,14 +1,16 @@
 import { expect, test } from "bun:test"
 import {
   type HostProtocolEnvelope,
+  type HostProtocolError,
   HostProtocolResponseEnvelope,
   type HostProtocolRequestEnvelope,
   HostProtocolStreamByRequestEnvelope,
   makeDesktopClientProtocol,
+  makeHostProtocolHostUnavailableError,
   rpcSupport
 } from "@orika/bridge"
-import { Effect, Layer, ManagedRuntime, Option, Queue, Stream } from "effect"
-import { RpcClient, RpcSchema } from "effect/unstable/rpc"
+import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Queue, Stream } from "effect"
+import { RpcClient, RpcClientError, RpcSchema } from "effect/unstable/rpc"
 
 import {
   SystemAppearanceChangedEvent,
@@ -138,6 +140,49 @@ const directSystemAppearanceChangedEvent = (payload: unknown) =>
       methods: requests.map((request) => request.method)
     }
   })
+
+test("SystemAppearance preserves the host error tag and recoverable flag through the RPC client", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const hostFailure = makeHostProtocolHostUnavailableError("SystemAppearance.getAppearance")
+      const exit = yield* runScoped(
+        Effect.gen(function* () {
+          const appearance = yield* SystemAppearance
+          return yield* Effect.exit(appearance.getAppearance())
+        }),
+        Layer.provide(SystemAppearance.layer, SystemAppearanceSurface.clientLayer).pipe(
+          Layer.provide(protocolLayerFailingSend(wrapHostError(hostFailure)))
+        )
+      )
+
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        expect(Cause.squash(exit.cause)).toMatchObject({
+          tag: "HostUnavailable",
+          recoverable: true,
+          operation: "SystemAppearance.getAppearance"
+        })
+      }
+    })
+  ))
+
+const wrapHostError = (error: HostProtocolError): RpcClientError.RpcClientError =>
+  new RpcClientError.RpcClientError({
+    reason: new RpcClientError.RpcClientDefect({ message: error.message, cause: error })
+  })
+
+const protocolLayerFailingSend = (
+  failure: RpcClientError.RpcClientError
+): Layer.Layer<RpcClient.Protocol> =>
+  Layer.effect(RpcClient.Protocol)(
+    RpcClient.Protocol.make((_write, _clientIds) =>
+      Effect.succeed({
+        send: () => Effect.fail(failure),
+        supportsAck: false,
+        supportsTransferables: false
+      })
+    )
+  )
 
 const runScoped = <A, E, R>(
   effect: Effect.Effect<A, E, R>,

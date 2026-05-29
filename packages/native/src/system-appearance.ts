@@ -1,5 +1,6 @@
 import {
   type BridgeClientExchange,
+  hostProtocolErrorFromRpcClientError,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
   type RpcGroup,
@@ -266,7 +267,8 @@ const runSystemAppearanceRpcStream = <A, E>(
 const mapSystemAppearanceRpcClientError = (error: unknown): SystemAppearanceError =>
   isSystemAppearanceError(error)
     ? error
-    : makeHostProtocolInternalError("SystemAppearance RPC client failed", "SystemAppearance")
+    : (hostProtocolErrorFromRpcClientError(error) ??
+      makeHostProtocolInternalError("SystemAppearance RPC client failed", "SystemAppearance"))
 
 const isSystemAppearanceError = (error: unknown): error is SystemAppearanceError =>
   typeof error === "object" &&

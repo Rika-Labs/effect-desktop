@@ -488,6 +488,7 @@ const routeActivation = (
       )
     }
     const context = permissionContext(request.permissionContext)
+    yield* options.commands.invoke(surface.registration.commandId, request.payload, context)
     yield* emitActivationAudit(
       options,
       "routed",
@@ -498,7 +499,6 @@ const routeActivation = (
         source: surface.registration.source
       }
     ).pipe(Effect.ignore)
-    yield* options.commands.invoke(surface.registration.commandId, request.payload, context)
     const result = new ActivationRouteResult({
       surfaceId: request.surfaceId,
       commandId: surface.registration.commandId,

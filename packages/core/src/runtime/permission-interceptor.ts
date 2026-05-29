@@ -231,12 +231,14 @@ export const makePermissionInterceptorLayer = (
           const capability = capabilityDecision.capability
           const grant = yield* registry
             .check(capability, context)
-            .pipe(Effect.mapError((error) => toPermissionDenied(error, capability)))
+            .pipe(Effect.mapError((error) => toPermissionDenied(error, capability, context)))
           return yield* registry
             .use(grant, effect)
             .pipe(
               Effect.mapError((error) =>
-                isPermissionRegistryError(error) ? toPermissionDenied(error, capability) : error
+                isPermissionRegistryError(error)
+                  ? toPermissionDenied(error, capability, context)
+                  : error
               )
             )
         })
@@ -313,7 +315,8 @@ const decodePermissionContext = (
 
 const toPermissionDenied = (
   error: PermissionRegistryError,
-  capability: NormalizedCapabilityType
+  capability: NormalizedCapabilityType,
+  context: PermissionContext
 ): PermissionDenied => {
   if (error._tag === "PermissionDenied") {
     return new PermissionDenied({
@@ -325,11 +328,21 @@ const toPermissionDenied = (
     })
   }
 
+  if (error._tag === "PermissionRevoked") {
+    return new PermissionDenied({
+      reason: error.reason,
+      capability: error.capability,
+      actor: error.actor,
+      traceId: error.traceId,
+      message: `permission ${error.reason}`
+    })
+  }
+
   return new PermissionDenied({
     reason: error._tag,
     capability,
-    actor: new PermissionActor({ kind: "app", id: "unknown" }),
-    traceId: "unknown",
+    actor: context.actor,
+    traceId: context.traceId ?? "unknown",
     message: error instanceof Error ? error.message : String(error)
   })
 }
