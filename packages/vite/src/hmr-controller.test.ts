@@ -252,6 +252,36 @@ describe("HMR controller", () => {
       })
     ))
 
+  test("dispose does not surface interrupted in-flight sends as runtime errors", () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const stdinStarted = yield* Deferred.make<void>()
+        const fake = makeFakeProcessLayer({
+          stdin: Sink.forEach(() =>
+            Deferred.succeed(stdinStarted, undefined).pipe(Effect.andThen(Effect.never))
+          )
+        })
+        const server = makeFakeServer()
+        const controller = makeHmrController({
+          entry: "src/runtime.ts",
+          cwd: "/workspace/app",
+          server,
+          processLayer: fake.layer
+        })
+
+        yield* waitFor(() => server.sent.some(([event]) => event === RUNTIME_READY_EVENT))
+
+        const up = new Uint8Array([9, 8, 7])
+        server.emitWs(FRAME_UP_EVENT, { data: Buffer.from(up).toString("base64") })
+        yield* Deferred.await(stdinStarted)
+
+        controller.dispose()
+        yield* waitFor(() => fake.records.every((record) => record.killed))
+
+        expect(server.errors).toEqual([])
+      })
+    ))
+
   test("rapid restarts are serialized through process cleanup", () =>
     Effect.runPromise(
       Effect.gen(function* () {
@@ -290,7 +320,10 @@ interface FakeProcessRecord {
 }
 
 const makeFakeProcessLayer = (
-  options: { readonly initialFrames?: readonly Uint8Array[] } = {}
+  options: {
+    readonly initialFrames?: readonly Uint8Array[]
+    readonly stdin?: Sink.Sink<void, Uint8Array, never, never, never>
+  } = {}
 ): {
   readonly layer: Layer.Layer<ChildProcessSpawner.ChildProcessSpawner, never, never>
   readonly records: FakeProcessRecord[]
@@ -331,11 +364,13 @@ const makeFakeProcessLayer = (
         exitCode: Deferred.await(exit),
         isRunning: Effect.sync(() => !record.killed),
         kill: () => kill,
-        stdin: Sink.forEach((chunk: Uint8Array) =>
-          Effect.sync(() => {
-            record.stdin.push(chunk)
-          })
-        ),
+        stdin:
+          options.stdin ??
+          Sink.forEach((chunk: Uint8Array) =>
+            Effect.sync(() => {
+              record.stdin.push(chunk)
+            })
+          ),
         stdout: Stream.fromQueue(stdout),
         stderr: Stream.empty,
         all: Stream.fromQueue(stdout),

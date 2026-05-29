@@ -1280,7 +1280,7 @@ const maskSourceCapabilityNonCode = (source: string): string => {
   let escaped = false
   let regexCharacterClass = false
   let preserveStringContent = false
-  let templateExpressionDepth: number | undefined
+  const expressionBraceDepths: number[] = []
 
   for (let index = 0; index < source.length; index += 1) {
     const char = source[index] ?? ""
@@ -1328,7 +1328,7 @@ const maskSourceCapabilityNonCode = (source: string): string => {
         result += "  "
         index += 1
         state = "code"
-        templateExpressionDepth = 0
+        expressionBraceDepths.push(0)
         continue
       }
 
@@ -1348,17 +1348,18 @@ const maskSourceCapabilityNonCode = (source: string): string => {
       continue
     }
 
-    if (templateExpressionDepth !== undefined) {
-      if (char === "}" && templateExpressionDepth === 0) {
+    if (expressionBraceDepths.length > 0) {
+      const depth = expressionBraceDepths[expressionBraceDepths.length - 1] ?? 0
+      if (char === "}" && depth === 0) {
         result += " "
+        expressionBraceDepths.pop()
         state = "template"
-        templateExpressionDepth = undefined
         continue
       }
       if (char === "{") {
-        templateExpressionDepth += 1
+        expressionBraceDepths[expressionBraceDepths.length - 1] = depth + 1
       } else if (char === "}") {
-        templateExpressionDepth -= 1
+        expressionBraceDepths[expressionBraceDepths.length - 1] = depth - 1
       }
     }
 
@@ -1463,6 +1464,7 @@ const maskComments = (source: string): string => {
   let result = ""
   let state: "code" | "line-comment" | "block-comment" | "single" | "double" | "template" = "code"
   let escaped = false
+  const expressionBraceDepths: number[] = []
 
   for (let index = 0; index < source.length; index += 1) {
     const char = source[index] ?? ""
@@ -1490,6 +1492,14 @@ const maskComments = (source: string): string => {
     }
 
     if (state === "single" || state === "double" || state === "template") {
+      if (state === "template" && !escaped && char === "$" && next === "{") {
+        result += "${"
+        index += 1
+        state = "code"
+        expressionBraceDepths.push(0)
+        continue
+      }
+
       result += char
       if (escaped) {
         escaped = false
@@ -1503,6 +1513,21 @@ const maskComments = (source: string): string => {
         state = "code"
       }
       continue
+    }
+
+    if (expressionBraceDepths.length > 0) {
+      const depth = expressionBraceDepths[expressionBraceDepths.length - 1] ?? 0
+      if (char === "}" && depth === 0) {
+        result += "}"
+        expressionBraceDepths.pop()
+        state = "template"
+        continue
+      }
+      if (char === "{") {
+        expressionBraceDepths[expressionBraceDepths.length - 1] = depth + 1
+      } else if (char === "}") {
+        expressionBraceDepths[expressionBraceDepths.length - 1] = depth - 1
+      }
     }
 
     if (char === "/" && next === "/") {

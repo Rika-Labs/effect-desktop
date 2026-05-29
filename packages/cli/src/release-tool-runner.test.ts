@@ -1,6 +1,17 @@
 import { expect, test } from "bun:test"
 
-import { Effect, Layer, ManagedRuntime, PlatformError, Sink, Stream } from "effect"
+import {
+  Deferred,
+  Effect,
+  Fiber,
+  Layer,
+  ManagedRuntime,
+  Option,
+  PlatformError,
+  Sink,
+  Stream
+} from "effect"
+import { TestClock } from "effect/testing"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 
 import {
@@ -80,6 +91,29 @@ test("ReleaseToolRunner maps missing tools to ToolError", () => {
   )
 })
 
+test("ReleaseToolRunner drains stdout and stderr concurrently", () => {
+  const runtime = makeRunnerRuntime(makeBackpressuredSpawner())
+  return runtime.runPromise(
+    Effect.gen(function* () {
+      const fiber = yield* runnerProgram({
+        step: "build",
+        command: "tool",
+        args: [],
+        cwd: "/repo"
+      }).pipe(Effect.timeoutOption("1 minute"), Effect.forkChild)
+
+      yield* TestClock.adjust("1 minute")
+      const outcome = yield* Fiber.join(fiber)
+
+      expect(Option.isSome(outcome)).toBe(true)
+      const result = Option.getOrThrow(outcome)
+      expect(result.stdout).toBe("stdout")
+      expect(result.stderr).toBe("stderr")
+      expect(result.exitCode).toBe(0)
+    }).pipe(Effect.scoped, Effect.provide(TestClock.layer()))
+  )
+})
+
 interface FakeSpawnerOptions {
   readonly onCommand?: (command: ChildProcess.StandardCommand) => void
   readonly stdout?: string
@@ -126,3 +160,32 @@ const makeFakeSpawner = (options: FakeSpawnerOptions) =>
 
 const streamText = (text: string): Stream.Stream<Uint8Array> =>
   text.length === 0 ? Stream.empty : Stream.fromIterable([encoder.encode(text)])
+
+const makeBackpressuredSpawner = () =>
+  ChildProcessSpawner.make((command) =>
+    Effect.gen(function* () {
+      if (!ChildProcess.isStandardCommand(command)) {
+        return yield* Effect.die(new Error("expected a standard command"))
+      }
+      const stderrPulled = yield* Deferred.make<void>()
+      const stdoutGatedOnStderr = Stream.fromIterable([encoder.encode("stdout")]).pipe(
+        Stream.concat(Stream.fromEffect(Deferred.await(stderrPulled)).pipe(Stream.drain))
+      )
+      const stderrSignalsWhenPulled = Stream.fromEffect(
+        Deferred.succeed(stderrPulled, undefined)
+      ).pipe(Stream.drain, Stream.concat(Stream.fromIterable([encoder.encode("stderr")])))
+      return ChildProcessSpawner.makeHandle({
+        all: Stream.empty,
+        exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(0)),
+        getInputFd: () => Sink.drain,
+        getOutputFd: () => Stream.empty,
+        isRunning: Effect.succeed(false),
+        kill: () => Effect.void,
+        pid: ChildProcessSpawner.ProcessId(1),
+        stderr: stderrSignalsWhenPulled,
+        stdin: Sink.drain,
+        stdout: stdoutGatedOnStderr,
+        unref: Effect.succeed(Effect.void)
+      })
+    })
+  )

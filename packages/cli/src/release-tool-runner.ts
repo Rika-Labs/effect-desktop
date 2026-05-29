@@ -87,11 +87,14 @@ const runTool = (
       stderr: stderrMode
     })
     const handle = yield* spawner.spawn(command)
-    const [stdout, stderr, exitCode] = yield* Effect.all([
-      readOutput(stdoutMode, handle.stdout, invocation.maxStdoutChars),
-      readOutput(stderrMode, handle.stderr, invocation.maxStderrChars),
-      handle.exitCode
-    ])
+    const [stdout, stderr, exitCode] = yield* Effect.all(
+      [
+        readOutput(stdoutMode, handle.stdout, invocation.maxStdoutChars),
+        readOutput(stderrMode, handle.stderr, invocation.maxStderrChars),
+        handle.exitCode
+      ],
+      { concurrency: "unbounded" }
+    )
 
     return {
       command: [invocation.command, ...invocation.args],

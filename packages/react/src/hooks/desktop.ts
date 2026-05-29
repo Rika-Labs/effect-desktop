@@ -127,8 +127,11 @@ export const useDesktopAction = <Args extends readonly unknown[], A, E>(
   )
 
   const reset = useCallback((): void => {
-    cancelActiveAction()
-  }, [cancelActiveAction])
+    runningRef.current = false
+    queueRef.current = []
+    actionOperation.reset()
+    setState(idle<A, E>())
+  }, [actionOperation])
 
   useEffect(
     () => () => {

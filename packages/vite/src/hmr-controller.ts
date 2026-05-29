@@ -290,7 +290,7 @@ const reportRuntimeError = (server: ViteDevRuntimeServer, error: unknown): void 
 }
 
 const reportRuntimeExit = (server: ViteDevRuntimeServer, exit: Exit.Exit<void, unknown>): void => {
-  if (Exit.isFailure(exit)) {
+  if (Exit.isFailure(exit) && !Cause.hasInterruptsOnly(exit.cause)) {
     reportRuntimeError(server, Cause.squash(exit.cause))
   }
 }

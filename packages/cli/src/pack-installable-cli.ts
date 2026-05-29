@@ -13,7 +13,7 @@ type PackageJsonFile = Schema.Schema.Type<typeof PackageJsonFile>
 
 const PackageJsonDependencies = Schema.UndefinedOr(Schema.Record(Schema.String, Schema.String))
 
-class PackInstallableCliError extends Data.TaggedError("PackInstallableCliError")<{
+export class PackInstallableCliError extends Data.TaggedError("PackInstallableCliError")<{
   readonly message: string
   readonly cause?: unknown
 }> {}
@@ -24,10 +24,15 @@ export const runPackInstallableCli = (
 ): Effect.Effect<void, PackInstallableCliError | CliError.CliError, BunServices.BunServices> =>
   Command.runWith(makePackCommand(cwd), { version: "0.0.0" })(args)
 
+export const reportPackInstallableCliError = (
+  error: PackInstallableCliError | CliError.CliError
+): Effect.Effect<void> =>
+  error instanceof PackInstallableCliError ? Console.error(error.message) : Effect.void
+
 export const runPackInstallableCliMain = (args: readonly string[], cwd: string): void => {
   const program = runPackInstallableCli(args, cwd).pipe(
     Effect.provide(BunServices.layer),
-    Effect.tapError((error) => Console.error(error.message))
+    Effect.tapError(reportPackInstallableCliError)
   )
 
   BunRuntime.runMain(program, { disableErrorReporting: true })
@@ -42,10 +47,14 @@ const makePackCommand = (cwd: string) =>
     ({ destination }) => packInstallableCli(cwd, destination)
   ).pipe(Command.withDescription("Pack an installable desktop CLI artifact."))
 
-const packInstallableCli = (
+export const packInstallableCli = (
   cwd: string,
   destination: string
-): Effect.Effect<void, PackInstallableCliError, BunServices.BunServices> =>
+): Effect.Effect<
+  void,
+  PackInstallableCliError,
+  FileSystem.FileSystem | Path.Path | ChildProcessSpawner.ChildProcessSpawner
+> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
@@ -55,7 +64,9 @@ const packInstallableCli = (
     yield* fs
       .makeDirectory(path.dirname(outputRoot), { recursive: true })
       .pipe(mapPlatformError(`failed to create ${path.dirname(outputRoot)}`))
-    yield* fs.makeDirectory(outputRoot).pipe(mapPlatformError(`failed to create ${outputRoot}`))
+    yield* fs
+      .makeDirectory(outputRoot, { recursive: true })
+      .pipe(mapPlatformError(`failed to create ${outputRoot}`))
 
     for (const name of PACKAGE_NAMES) {
       yield* copyPackage(fs, path, repoRoot, outputRoot, name)

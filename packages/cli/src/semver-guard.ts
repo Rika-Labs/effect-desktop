@@ -134,6 +134,7 @@ export type VerificationMatrix = typeof VerificationMatrix.Type
 
 const MANIFEST_PATH = "release/semver.json"
 const SPEC_SOURCE = "engineering/SPEC.md §25.6"
+const DEPRECATION_MINIMUM_MINOR_RELEASES = 3
 const BRIDGE_SOURCE = "engineering/SPEC.md §9.3"
 const BRIDGE_ALLOWED_CHANGE =
   "fields may be added with defaults; fields may not be removed or reordered"
@@ -268,6 +269,13 @@ const validateManifest = (
       })
     )
   }
+  if (manifest.deprecationPolicy.minimumMinorReleases < DEPRECATION_MINIMUM_MINOR_RELEASES) {
+    return Effect.fail(
+      new SemverGuardManifestError({
+        message: `deprecation policy minimumMinorReleases must be at least ${DEPRECATION_MINIMUM_MINOR_RELEASES} per ${SPEC_SOURCE}`
+      })
+    )
+  }
   return Effect.void
 }
 
@@ -322,6 +330,13 @@ const validatePackageVersions = (
   manifest: SemverPolicyManifest,
   packageVersions: readonly SemverPackageVersion[]
 ): Effect.Effect<void, SemverGuardManifestError, never> => {
+  if (packageVersions.length === 0) {
+    return Effect.fail(
+      new SemverGuardManifestError({
+        message: `semver release ${manifest.release} has no publishable package manifests to bind`
+      })
+    )
+  }
   const mismatches = packageVersions.filter((pkg) => pkg.version !== manifest.release)
   if (mismatches.length === 0) {
     return Effect.void

@@ -42,7 +42,7 @@ export type FiberEvent =
       readonly _tag: "FiberCompleted"
       readonly key: string
       readonly fiberId: number
-      readonly exit: "success" | "failure"
+      readonly exit: "success" | "failure" | "interrupted"
     }
 
 export type StreamEvent =
@@ -157,6 +157,7 @@ export const FiberInspectorCollectorLive: Layer.Layer<FiberInspectorCollector, n
         ): Effect.Effect<Fiber.Fiber<void, never>, never, R> =>
           Effect.gen(function* () {
             let fiberId = -1
+            let outcome: "success" | "failure" | "interrupted" = "interrupted"
             const started = yield* Deferred.make<void, never>()
             const fiber = yield* FiberMap.run(
               fibers,
@@ -164,13 +165,17 @@ export const FiberInspectorCollectorLive: Layer.Layer<FiberInspectorCollector, n
               Effect.gen(function* () {
                 yield* Deferred.await(started)
                 const exit = yield* Effect.exit(effect)
-                yield* publish({
-                  _tag: "FiberCompleted",
-                  key,
-                  fiberId,
-                  exit: Exit.isSuccess(exit) ? "success" : "failure"
-                })
-              })
+                outcome = Exit.isSuccess(exit) ? "success" : "failure"
+              }).pipe(
+                Effect.onExit(() =>
+                  publish({
+                    _tag: "FiberCompleted",
+                    key,
+                    fiberId,
+                    exit: outcome
+                  })
+                )
+              )
             )
             fiberId = fiber.id
             yield* publish({
@@ -249,7 +254,12 @@ const streamEventsForEntry = (
   current: BridgeStreamRegistryEntry
 ): readonly StreamEvent[] => {
   const events: StreamEvent[] = []
-  if (previous === undefined && current.state === "open") {
+  if (
+    current.state === "open" &&
+    (previous === undefined ||
+      previous.generation !== current.generation ||
+      previous.state === "terminal")
+  ) {
     events.push({
       _tag: "StreamOpened",
       streamId: current.streamId,

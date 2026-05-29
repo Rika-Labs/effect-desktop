@@ -137,35 +137,38 @@ export const runDesktopReproCheck = (
 ): Effect.Effect<DesktopReproReport, ReproCheckError, never> =>
   Effect.gen(function* () {
     const workspace = yield* makeTempDirectory()
-    const result = yield* Effect.exit(
-      Effect.gen(function* () {
-        const first = yield* runPass(options, "first", join(workspace, "first"))
-        yield* removePath(first.packageOutputPath)
-        const second = yield* runPass(options, "second", join(workspace, "second"))
-        const report = yield* diffSnapshots(first, second)
-        if (!report.passed) {
-          return yield* Effect.fail(
-            new ReproDiffError({
-              report,
-              message: `reproducibility check found ${report.differences.length.toString()} differing file(s)`
-            })
+    return yield* Effect.gen(function* () {
+      const first = yield* runPass(options, "first", join(workspace, "first"))
+      yield* removePath(first.packageOutputPath)
+      const second = yield* runPass(options, "second", join(workspace, "second"))
+      const report = yield* diffSnapshots(first, second)
+      if (!report.passed) {
+        return yield* Effect.fail(
+          new ReproDiffError({
+            report,
+            message: `reproducibility check found ${report.differences.length.toString()} differing file(s)`
+          })
+        )
+      }
+      return report
+    }).pipe(
+      Effect.onExit((exit) =>
+        Effect.exit(removePath(workspace)).pipe(
+          Effect.flatMap((cleanup) =>
+            Exit.isFailure(cleanup) && Exit.isSuccess(exit)
+              ? Effect.fail(
+                  new ReproFileError({
+                    operation: "cleanup",
+                    path: workspace,
+                    message: `failed to clean reproducibility workspace ${workspace}`,
+                    cause: cleanup.cause
+                  })
+                )
+              : Effect.void
           )
-        }
-        return report
-      })
-    )
-    const cleanup = yield* Effect.exit(removePath(workspace))
-    if (Exit.isFailure(cleanup) && Exit.isSuccess(result)) {
-      return yield* Effect.fail(
-        new ReproFileError({
-          operation: "cleanup",
-          path: workspace,
-          message: `failed to clean reproducibility workspace ${workspace}`,
-          cause: cleanup.cause
-        })
+        )
       )
-    }
-    return yield* result
+    )
   })
 
 export const formatReproReport = (report: DesktopReproReport): string => {
@@ -202,7 +205,10 @@ export const formatReproError = (
     }
   }
   if (error instanceof ReproPackageRunError) {
-    return { tag: error._tag, message: `${error.pass} package failed: ${error.message}` }
+    return {
+      tag: error._tag,
+      message: `${error.pass} package failed: ${formatNestedRunError(error.message, error.cause)}`
+    }
   }
   if (error instanceof ReproFileError) {
     return { tag: error._tag, message: error.message }

@@ -1067,6 +1067,132 @@ test("ProductionChecker flags source native capability usage inside template exp
     })
   ))
 
+test("ProductionChecker flags unguarded capability after a preceding nested template literal", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {},
+        rendererFiles: [
+          {
+            path: "src/renderer/dock.ts",
+            content: ["const a = `${`x${1}`} txt`", "Dock.setJumpList([])"].join("\n")
+          }
+        ]
+      })
+
+      expect(report.passed).toBe(false)
+      expect(report.failures).toMatchObject([
+        {
+          rule: "unsupported-capability-without-guard",
+          location: {
+            path: "src/renderer/dock.ts",
+            line: 2,
+            column: 1
+          }
+        }
+      ])
+    })
+  ))
+
+test("ProductionChecker ignores capability text inside a nested template literal", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {},
+        rendererFiles: [
+          {
+            path: "src/renderer/dock.ts",
+            content: "const x = `${`a${1}b`} then Dock.setJumpList([]) text`"
+          }
+        ]
+      })
+
+      expect(report.passed).toBe(true)
+      expect(report.failures).toEqual([])
+    })
+  ))
+
+test("ProductionChecker ignores capability text inside a non-nested template literal", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {},
+        rendererFiles: [
+          {
+            path: "src/renderer/dock.ts",
+            content: "const x = `${1} then Dock.setJumpList([]) text`"
+          }
+        ]
+      })
+
+      expect(report.passed).toBe(true)
+      expect(report.failures).toEqual([])
+    })
+  ))
+
+test("ProductionChecker masks comments inside nested template expressions", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {},
+        rendererFiles: [
+          {
+            path: "src/renderer/x.ts",
+            content: "const a = `${`${/* rawBridge */ 1}`}`"
+          }
+        ]
+      })
+
+      expect(report.passed).toBe(true)
+      expect(report.failures).toEqual([])
+    })
+  ))
+
+test("ProductionChecker masks comments inside template expressions", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {},
+        rendererFiles: [
+          {
+            path: "src/renderer/x.ts",
+            content: "const a = `${/* rawBridge */ 1}`"
+          }
+        ]
+      })
+
+      expect(report.passed).toBe(true)
+      expect(report.failures).toEqual([])
+    })
+  ))
+
+test("ProductionChecker flags raw bridge usage inside nested template expressions", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const report = yield* runProductionCheck({
+        config: {},
+        rendererFiles: [
+          {
+            path: "src/renderer/x.ts",
+            content: "const a = `${`${rawBridge()}`}`"
+          }
+        ]
+      })
+
+      expect(report.passed).toBe(false)
+      expect(report.failures).toMatchObject([
+        {
+          rule: "raw-bridge-call",
+          location: {
+            path: "src/renderer/x.ts",
+            line: 1,
+            column: 17
+          }
+        }
+      ])
+    })
+  ))
+
 test("ProductionChecker flags source native capability usage through optional chaining", () =>
   Effect.runPromise(
     Effect.gen(function* () {

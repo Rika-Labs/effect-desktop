@@ -247,6 +247,60 @@ test("DevtoolsShell reports token cleanup failures", () =>
     })
   ))
 
+test("DevtoolsShell releases the listener and token when start is interrupted", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const stateDir = yield* tempStateDir
+      const closed: string[] = []
+      const reachedOpen = yield* Deferred.make<void>()
+      const openBlocking = yield* Deferred.make<void>()
+      const shell = yield* makeDevtoolsShell({
+        transport: fakeTransport(closed),
+        shellWindow: {
+          open: () =>
+            Deferred.succeed(reachedOpen, undefined).pipe(
+              Effect.andThen(Deferred.await(openBlocking))
+            )
+        }
+      })
+
+      const startFiber = yield* shell
+        .start({ profile: "dev", stateDir })
+        .pipe(Effect.forkChild({ startImmediately: true }))
+
+      yield* Deferred.await(reachedOpen)
+      yield* Fiber.interrupt(startFiber)
+      const exit = yield* Fiber.await(startFiber)
+
+      expect(Exit.isFailure(exit)).toBe(true)
+      const tokenPath = `${stateDir}/devtools-token`
+      expect(closed).toEqual(["closed"])
+      expect(yield* fileExists(tokenPath)).toBe(false)
+    })
+  ))
+
+test("DevtoolsShell preserves the shell-open failure when cleanup fails", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const stateDir = yield* tempStateDir
+      const tokenPath = `${stateDir}/devtools-token`
+      const shell = yield* makeDevtoolsShell({
+        transport: {
+          listen: () =>
+            Effect.succeed({
+              url: "http://127.0.0.1:49152",
+              close: replaceTokenWithNonEmptyDirectory(tokenPath)
+            } satisfies DevtoolsListener)
+        },
+        shellWindow: failingShellWindow
+      })
+
+      const error = yield* Effect.flip(shell.start({ profile: "dev", stateDir }))
+
+      expect(error).toBeInstanceOf(DevtoolsShellOpenError)
+    })
+  ))
+
 test("DevtoolsShell fails with a typed error when no shell window port is configured", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -335,3 +389,21 @@ const fakeShellWindow = (opened: string[]): DevtoolsShellWindow => ({
       opened.push(`${url}:${tokenPath}`)
     })
 })
+
+const failingShellWindow: DevtoolsShellWindow = {
+  open: ({ url }) =>
+    Effect.fail(
+      new DevtoolsShellOpenError({
+        operation: "Devtools.shell.open",
+        url,
+        cause: "test shell window failure"
+      })
+    )
+}
+
+const replaceTokenWithNonEmptyDirectory = (tokenPath: string): Effect.Effect<void, never, never> =>
+  Effect.gen(function* () {
+    yield* removeFile(tokenPath)
+    yield* makeDirectory(tokenPath)
+    yield* makeDirectory(`${tokenPath}/child`)
+  })

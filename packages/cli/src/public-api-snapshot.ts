@@ -1,7 +1,7 @@
 import { access, mkdir, readdir, readFile, writeFile } from "node:fs/promises"
 import { dirname, join, relative, resolve } from "node:path"
 
-import { Data, Effect, Option, Schema } from "effect"
+import { Data, Effect, Schema } from "effect"
 import ts from "typescript"
 
 export type PublicApiSymbolKind = "class" | "function" | "interface" | "type" | "value"
@@ -250,13 +250,35 @@ const readRootExportEntrypoint = (packageJson: PackageJson): string | undefined 
   return typeof types === "string" ? types : undefined
 }
 
-const fileExists = (path: string): Effect.Effect<boolean, never, never> =>
-  Effect.option(
-    Effect.tryPromise({
-      try: () => access(path),
-      catch: (cause) => cause
-    })
-  ).pipe(Effect.map(Option.isSome))
+const fileExists = (path: string): Effect.Effect<boolean, PublicApiFileError, never> =>
+  Effect.tryPromise({
+    try: async () => {
+      try {
+        await access(path)
+        return true
+      } catch (cause) {
+        if (isMissingPathError(cause)) {
+          return false
+        }
+        throw cause
+      }
+    },
+    catch: (cause) =>
+      new PublicApiFileError({
+        operation: "access",
+        path,
+        message: `failed to access ${path}`,
+        cause
+      })
+  })
+
+const isMissingPathError = (cause: unknown): boolean => {
+  if (!isRecord(cause)) {
+    return false
+  }
+  const code = cause["code"]
+  return code === "ENOENT" || code === "ENOTDIR"
+}
 
 const snapshotPackage = (
   workspacePackage: WorkspacePackage

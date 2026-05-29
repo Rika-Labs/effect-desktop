@@ -834,7 +834,7 @@ const validateWindowsThumbprint = (
         })
       )
 
-const macosEntitlementsPlist = (
+export const macosEntitlementsPlist = (
   config: DesktopConfig
 ): Effect.Effect<string, SignConfigError, never> =>
   Effect.gen(function* () {
@@ -859,6 +859,9 @@ const permissionNames = (
     return Effect.succeed(new Set())
   }
   if (!Array.isArray(permissions)) {
+    if (isRecord(permissions)) {
+      return Effect.succeed(new Set())
+    }
     return Effect.fail(
       new SignConfigError({
         field: "permissions",

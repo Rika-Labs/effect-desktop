@@ -132,17 +132,22 @@ export const makeDevtoolsShell = (
           const token = mintToken()
           const tokenPath = tokenFilePath(input.stateDir, tokenName)
           yield* writeToken(tokenPath, token)
-          const listener = yield* transport
-            .listen({ host: LoopbackHost, token })
-            .pipe(Effect.tapError(() => removeToken(tokenPath)))
-          const cleanup = listener.close.pipe(Effect.andThen(removeToken(tokenPath)))
-          if (input.openShell !== false) {
-            yield* shellWindow
-              .open({ url: listener.url, tokenPath })
-              .pipe(Effect.tapError(() => cleanup))
-          }
 
-          return enabledHandle(listener.url, tokenPath, cleanup)
+          let acquiredListener: Option.Option<DevtoolsListener> = Option.none()
+          return yield* Effect.gen(function* () {
+            const listener = yield* transport.listen({ host: LoopbackHost, token })
+            acquiredListener = Option.some(listener)
+            if (input.openShell !== false) {
+              yield* shellWindow.open({ url: listener.url, tokenPath })
+            }
+            return enabledHandle(
+              listener.url,
+              tokenPath,
+              listener.close.pipe(Effect.andThen(removeToken(tokenPath)))
+            )
+          }).pipe(
+            Effect.onError(() => releaseAcquired(acquiredListener, tokenPath).pipe(Effect.ignore))
+          )
         })
     } satisfies DevtoolsShellApi)
   })
@@ -322,4 +327,13 @@ const removeToken = (path: string): Effect.Effect<void, DevtoolsTokenError, neve
         path,
         cause
       })
+  })
+
+const releaseAcquired = (
+  listener: Option.Option<DevtoolsListener>,
+  tokenPath: string
+): Effect.Effect<void, DevtoolsTokenError | DevtoolsCleanupError, never> =>
+  Option.match(listener, {
+    onNone: () => removeToken(tokenPath),
+    onSome: (acquired) => acquired.close.pipe(Effect.andThen(removeToken(tokenPath)))
   })
