@@ -505,7 +505,13 @@ const resolvePrivateKey = (
       if (value === undefined || value.length === 0) {
         throw new Error(`${envName} is not set`)
       }
-      return createPrivateKey(value)
+      const key = createPrivateKey(value)
+      if (key.asymmetricKeyType !== "ed25519") {
+        throw new Error(
+          `expected an Ed25519 private key but received ${key.asymmetricKeyType ?? "an unknown key type"}`
+        )
+      }
+      return key
     },
     catch: (cause) =>
       new PublishConfigError({

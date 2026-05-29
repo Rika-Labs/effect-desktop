@@ -30,6 +30,7 @@ export interface ReleaseFileSystemApi {
   readonly readFile: (path: string) => Effect.Effect<Uint8Array, unknown, never>
   readonly readFileString: (path: string) => Effect.Effect<string, unknown, never>
   readonly readLink: (path: string) => Effect.Effect<string, unknown, never>
+  readonly realPath: (path: string) => Effect.Effect<string, unknown, never>
   readonly remove: (path: string) => Effect.Effect<void, unknown, never>
   readonly stat: (path: string) => Effect.Effect<ReleaseFileInfo, unknown, never>
   readonly writeFileString: (path: string, content: string) => Effect.Effect<void, unknown, never>
@@ -58,6 +59,7 @@ export const makeReleaseFileSystem = (): Effect.Effect<
       readFile: (path) => fs.readFile(path),
       readFileString: (path) => fs.readFileString(path),
       readLink: (path) => fs.readLink(path),
+      realPath: (path) => fs.realPath(path),
       remove: (path) => fs.remove(path, { recursive: true, force: true }),
       stat: (path) => fs.stat(path).pipe(Effect.map(releaseFileInfoFromEffectInfo)),
       writeFileString: (path, content) => fs.writeFileString(path, content)

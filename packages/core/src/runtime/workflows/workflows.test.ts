@@ -159,6 +159,54 @@ test("Backup: rejects labels that escape the output directory", () =>
     )
   ))
 
+test("Backup: cleans the partial archive and snapshot directory when archiving fails", () =>
+  Effect.runPromise(
+    runScoped(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem
+        const path = yield* Path
+        const base = yield* tempDir()
+        const userDataDir = path.join(base, "userdata")
+        const outputDir = path.join(base, "backups")
+
+        yield* fs.makeDirectory(userDataDir, { recursive: true }).pipe(Effect.orDie)
+        yield* fs.makeDirectory(outputDir, { recursive: true }).pipe(Effect.orDie)
+        yield* fs
+          .writeFileString(path.join(userDataDir, "notes.txt"), "secret user data")
+          .pipe(Effect.orDie)
+
+        const label = "fail-archive"
+        const archivePath = path.join(outputDir, `${label}.backup`)
+        const snapshotDir = path.join(outputDir, `${label}-snapshot`)
+
+        yield* fs.makeDirectory(archivePath, { recursive: true }).pipe(Effect.orDie)
+        yield* fs.writeFileString(path.join(archivePath, "files"), "blocker").pipe(Effect.orDie)
+
+        const layers = makeBackupLayer({
+          userDataDir,
+          outputDir,
+          dbPath: path.join(base, "app.sqlite")
+        })
+
+        const exit = yield* runScopedExit(
+          BackupWorkflow.execute({ label }).pipe(
+            Effect.provideService(Clock.Clock, fixedClock(now))
+          ),
+          layers
+        )
+
+        expect(Exit.isFailure(exit)).toBe(true)
+        const snapshotExists = yield* fs.exists(snapshotDir).pipe(Effect.orDie)
+        const archiveExists = yield* fs.exists(archivePath).pipe(Effect.orDie)
+        expect(snapshotExists).toBe(false)
+        expect(archiveExists).toBe(false)
+
+        yield* fs.remove(base, { recursive: true, force: true }).pipe(Effect.orDie)
+      }),
+      baseLayer
+    )
+  ))
+
 test("Restore: round-trip restores files and database", () =>
   Effect.runPromise(
     runScoped(

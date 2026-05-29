@@ -132,26 +132,32 @@ export const BackupWorkflowLayer: Layer.Layer<
         yield* fs
           .writeFile(path.join(snapshotDir, "manifest.json"), manifestBytes)
           .pipe(Effect.mapError(wrapError("archive")))
-        yield* fs
-          .copy(snapshotDir, archivePath, { overwrite: true })
-          .pipe(Effect.mapError(wrapError("archive")))
+        yield* fs.copy(snapshotDir, archivePath, { overwrite: true }).pipe(
+          Effect.mapError(wrapError("archive")),
+          Effect.tapError(() =>
+            Effect.ignore(fs.remove(archivePath, { recursive: true, force: true }))
+          )
+        )
         return { archivePath } as { archivePath: string }
       })
     })
 
-    yield* snapshot
-    const dbResult = yield* backupDb
-
-    const archiveResult = yield* BackupWorkflow.withCompensation(
-      archiveActivity.execute,
-      (_value, _cause) => Effect.ignore(fs.remove(archivePath, { recursive: true }))
+    const removeSnapshotDir = fs.remove(snapshotDir, { recursive: true, force: true }).pipe(
+      Effect.tapError((cause) =>
+        Effect.logWarning("failed to remove backup snapshot directory", snapshotDir, cause)
+      ),
+      Effect.ignore
     )
 
-    yield* Effect.ignore(fs.remove(snapshotDir, { recursive: true }))
-
-    return {
-      archivePath: archiveResult.archivePath,
-      dbBytes: dbResult.dbBytes
-    }
+    return yield* Effect.gen(function* () {
+      yield* snapshot
+      const dbResult = yield* backupDb
+      const archiveResult = yield* archiveActivity.execute
+      yield* removeSnapshotDir
+      return {
+        archivePath: archiveResult.archivePath,
+        dbBytes: dbResult.dbBytes
+      }
+    }).pipe(Effect.tapError(() => removeSnapshotDir))
   })
 )

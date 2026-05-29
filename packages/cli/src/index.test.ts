@@ -3914,6 +3914,40 @@ test("desktop check --release rejects empty CVSS exemption sections", () =>
     })
   ))
 
+test("desktop check --release fails when the CVSS exemptions path cannot be enumerated", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-release-"))
+      )
+      try {
+        yield* writeReleaseFixture(directory)
+        yield* Effect.promise(() =>
+          mkdir(join(directory, "engineering", "security"), { recursive: true })
+        )
+        yield* Effect.promise(() =>
+          writeFile(join(directory, "engineering", "security", "exemptions"), "not a directory")
+        )
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--release", "--json"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.tag).toBe("ReleaseGateFileError")
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
 test("desktop check --a11y verifies template accessibility evidence", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -6546,6 +6580,58 @@ test("desktop publish writes a byte-stable Ed25519-signed update manifest", () =
           url: "https://updates.example.invalid/macos-arm64/ORIKA-Playground-0.0.0-macos-arm64.dmg",
           signature: expect.stringContaining("ed25519:")
         })
+      } finally {
+        if (previousPrivateKey === undefined) {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
+        } else {
+          yield* Effect.sync(() => writeTestEnv(privateKeyEnv, previousPrivateKey))
+        }
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
+test("desktop publish rejects a non-Ed25519 private key with a typed config error", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-publish-ec-key-"))
+      )
+      const key = testEd25519Key()
+      const ecPrivateKeyPem = generateKeyPairSync("ec", { namedCurve: "P-256" })
+        .privateKey.export({ type: "pkcs8", format: "pem" })
+        .toString()
+      const privateKeyEnv = "EFFECT_DESKTOP_TEST_UPDATE_PRIVATE_KEY"
+      const previousPrivateKey = yield* Effect.sync(() => readTestEnv(privateKeyEnv))
+      yield* Effect.sync(() => writeTestEnv(privateKeyEnv, ecPrivateKeyPem))
+      try {
+        yield* writePlaygroundFixture(directory, {
+          update: {
+            channel: "stable",
+            feedUrl: "https://updates.example.invalid/{platform}/{channel}.json",
+            publicKey: key.publicKey,
+            privateKeyEnv,
+            keyVersion: 5,
+            minVersion: "0.0.0"
+          }
+        })
+        yield* writePackagedArtifactFixture(directory, "macos-arm64", "dmg")
+
+        const stderr: string[] = []
+        const exitCode = yield* runCli({
+          argv: ["publish", "--config", "apps/inspector/desktop.config.ts", "--json"],
+          cwd: directory,
+          now: () => 1_772_923_200_000,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        const payload = decodeCliJsonError(stderr.join(""))
+        expect(exitCode).toBe(1)
+        expect(payload.tag).toBe("PublishConfigError")
+        expect(payload.message).toContain("Ed25519")
       } finally {
         if (previousPrivateKey === undefined) {
           yield* Effect.sync(() => writeTestEnv(privateKeyEnv, undefined))
@@ -10859,6 +10945,66 @@ test("desktop package rejects build layout symlinks that escape the layout", () 
       }
     })
   ))
+
+packageModeTest(
+  "desktop package rejects build layout symlinks that escape through a second hop",
+  () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const directory = yield* Effect.promise(() =>
+          mkdtemp(join(tmpdir(), "effect-desktop-cli-package-link-"))
+        )
+        try {
+          yield* writePlaygroundFixture(directory)
+          yield* writeBuildLayoutFixture(directory, "linux-x64")
+          const appRoot = join(directory, "apps", "inspector")
+          const layout = join(appRoot, "build", "effect-desktop", "linux-x64")
+          yield* Effect.promise(() => writeFile(join(appRoot, "secret.txt"), "external"))
+          yield* Effect.promise(() =>
+            symlink("../../../../secret.txt", join(layout, "renderer", "hop.txt"))
+          )
+          yield* Effect.promise(() => symlink("./hop.txt", join(layout, "renderer", "entry.txt")))
+          const calls: string[] = []
+          const stderr: string[] = []
+
+          const exitCode = yield* runCli({
+            argv: ["package", "--config", "apps/inspector/desktop.config.ts", "--artifact", "deb"],
+            cwd: directory,
+            hostTarget: "linux-x64",
+            packageCommandRunner: (invocation) =>
+              Effect.sync(() => {
+                calls.push(invocation.step)
+              }),
+            writeStdout: () => {},
+            writeStderr: (text) => {
+              stderr.push(text)
+            }
+          })
+
+          const stagedEntry = join(
+            appRoot,
+            "dist",
+            "desktop",
+            "linux",
+            "ORIKA-Playground-0.0.0-linux-x64.deb",
+            "root",
+            "usr",
+            "lib",
+            "effect-desktop-inspector",
+            "renderer",
+            "entry.txt"
+          )
+          expect(exitCode).toBe(1)
+          expect(calls).toEqual([])
+          expect(stderr.join("")).toContain("PackageFileError")
+          expect(stderr.join("")).toContain("points outside")
+          yield* expectEffectPromiseRejects(stat(stagedEntry))
+        } finally {
+          yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+        }
+      })
+    )
+)
 
 test("desktop package maps linux arm64 RPM metadata to aarch64", () =>
   Effect.runPromise(

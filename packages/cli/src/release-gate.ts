@@ -546,11 +546,18 @@ const validatePolicyDocuments = (files: {
   return Effect.void
 }
 
+const errnoCode = (cause: unknown): string | undefined =>
+  typeof cause === "object" && cause !== null && "code" in cause && typeof cause.code === "string"
+    ? cause.code
+    : undefined
+
 const validateExemptions = (path: string): Effect.Effect<void, ReleaseGateError, never> =>
   Effect.gen(function* () {
     const entries = yield* readDirectory(path).pipe(
       Effect.catchTag("ReleaseGateFileError", (error) =>
-        error.operation === "readdir" ? Effect.succeed<readonly string[]>([]) : Effect.fail(error)
+        errnoCode(error.cause) === "ENOENT"
+          ? Effect.succeed<readonly string[]>([])
+          : Effect.fail(error)
       )
     )
     for (const entry of entries.filter((value) => value.endsWith(".md"))) {

@@ -1692,6 +1692,24 @@ const readlinkPath = (path: string): Effect.Effect<string, PackageFileError, nev
     )
   )
 
+const realPathOf = (path: string): Effect.Effect<string, PackageFileError, never> =>
+  runReleaseFileSystem(
+    Effect.gen(function* () {
+      const fs = yield* ReleaseFileSystem
+      return yield* fs.realPath(path)
+    })
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new PackageFileError({
+          operation: "realpath",
+          path,
+          message: `failed to resolve the real path of ${path}`,
+          cause
+        })
+    )
+  )
+
 const resolveContainedSymlink = (
   root: string,
   symlinkPath: string
@@ -1699,7 +1717,9 @@ const resolveContainedSymlink = (
   Effect.gen(function* () {
     const target = yield* readlinkPath(symlinkPath)
     const resolvedTarget = resolve(dirname(symlinkPath), target)
-    if (isPathInside(root, resolvedTarget)) {
+    const realRoot = yield* realPathOf(root)
+    const realTarget = yield* realPathOf(resolvedTarget)
+    if (isPathInside(realRoot, realTarget)) {
       return resolvedTarget
     }
     return yield* Effect.fail(
