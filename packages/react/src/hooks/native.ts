@@ -12,6 +12,7 @@ import type {
 } from "@orika/native/contracts"
 import { Effect, Stream } from "effect"
 import { AsyncResult } from "effect/unstable/reactivity"
+import { useState } from "react"
 
 import { type StreamState, useDesktopStream, useEffectResult } from "./stream.js"
 
@@ -23,7 +24,10 @@ export const useTheme = (
     SystemAppearanceError,
     never
   >
-): ThemeState => useDesktopStream(onAppearanceChanged())
+): ThemeState => {
+  const [stream] = useState(onAppearanceChanged)
+  return useDesktopStream(stream)
+}
 
 export type PowerEvent =
   | PowerMonitorSuspendEvent
@@ -55,7 +59,7 @@ export const usePower = (streams: {
     s: Stream.Stream<T, PowerMonitorError, never>
   ): Stream.Stream<PowerEvent, PowerMonitorError, never> =>
     s as Stream.Stream<PowerEvent, PowerMonitorError, never>
-  return useDesktopStream(
+  const [stream] = useState(() =>
     Stream.mergeAll(
       [
         asEvent(streams.onSuspend()),
@@ -68,12 +72,15 @@ export const usePower = (streams: {
       { concurrency: 6 }
     )
   )
+  return useDesktopStream(stream)
 }
 
 export const useDisplays = (
   getDisplays: () => Effect.Effect<ReadonlyArray<ScreenDisplay>, ScreenError, never>
-): AsyncResult.AsyncResult<ReadonlyArray<ScreenDisplay>, ScreenError> =>
-  useEffectResult(getDisplays())
+): AsyncResult.AsyncResult<ReadonlyArray<ScreenDisplay>, ScreenError> => {
+  const [effect] = useState(getDisplays)
+  return useEffectResult(effect)
+}
 
 export type DisplaysResult = AsyncResult.AsyncResult<ReadonlyArray<ScreenDisplay>, ScreenError>
 
@@ -83,5 +90,7 @@ export interface ThemeMode {
 
 export const useThemeMode = (
   getAppearance: () => Effect.Effect<SystemAppearanceMode, SystemAppearanceError, never>
-): AsyncResult.AsyncResult<SystemAppearanceMode, SystemAppearanceError> =>
-  useEffectResult(getAppearance())
+): AsyncResult.AsyncResult<SystemAppearanceMode, SystemAppearanceError> => {
+  const [effect] = useState(getAppearance)
+  return useEffectResult(effect)
+}
