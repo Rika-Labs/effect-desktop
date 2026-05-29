@@ -340,6 +340,15 @@ test("CSP config still rejects 'unsafe-eval' on any directive", () => {
   ])
 })
 
+test("CSP config rejects uppercase 'UNSAFE-INLINE' as a forbidden source, not an acknowledgeable addition", () => {
+  expect(cspWeakenings({ policy: "style-src 'self' 'UNSAFE-INLINE'" })).toEqual([
+    {
+      directive: "style-src",
+      reason: "style-src includes forbidden source 'UNSAFE-INLINE'"
+    }
+  ])
+})
+
 test("DEFAULT_CSP_DIRECTIVES never permits 'unsafe-eval' on any directive", () => {
   const entriesWithUnsafeEval = DEFAULT_CSP_DIRECTIVES.filter(([, values]) =>
     values.includes("'unsafe-eval'")

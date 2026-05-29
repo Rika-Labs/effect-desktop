@@ -333,6 +333,19 @@ fn stage_install_rejects_truncated_download_before_touching_filesystem() {
 }
 
 #[test]
+fn stage_install_accepts_uppercase_signed_digest() {
+    let root = test_root("stage-uppercase-digest");
+    let paths = install_paths(&root);
+    fs::create_dir_all(root.join("current")).expect("current dir");
+    fs::write(&paths.current_bundle, b"prior").expect("prior bundle");
+    let mut plan = install_plan(b"new-bundle");
+    plan.expected_sha256 = plan.expected_sha256.to_uppercase();
+
+    stage_install(&plan, &paths, b"new-bundle", 1_000)
+        .expect("uppercase hex digest of the correct bytes must stage");
+}
+
+#[test]
 fn stage_and_commit_verified_bundle_preserving_rollback_metadata() {
     let root = test_root("stage-commit-install");
     let paths = install_paths(&root);

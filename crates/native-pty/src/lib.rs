@@ -93,7 +93,8 @@ impl NativePty {
                 operation: "Pty.write",
             })?;
             writer
-                .write(bytes)
+                .write_all(bytes)
+                .map(|()| bytes.len())
                 .map_err(|error| map_io_error(error, "Pty.write"))
         })?
     }

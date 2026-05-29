@@ -100,7 +100,7 @@ pub fn stage_install(
     }
 
     let actual_sha256 = sha256_hex(downloaded);
-    if actual_sha256 != plan.expected_sha256 {
+    if !actual_sha256.eq_ignore_ascii_case(plan.expected_sha256.trim()) {
         return Err(InstallStagingError::ArtifactDigestMismatch {
             expected_sha256: plan.expected_sha256.clone(),
             actual_sha256,

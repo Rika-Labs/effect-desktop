@@ -704,11 +704,13 @@ export const cspWeakenings = (csp: CspConfig): readonly CspWeakening[] => {
   }
   for (const [directive, overrideValues] of overrides.directives) {
     const defaultValues = defaultCspDirectiveValues(directive)
-    const forbidden = overrideValues.find(
-      (value) =>
-        (value === "'unsafe-inline'" || value === "'unsafe-eval'") &&
+    const forbidden = overrideValues.find((value) => {
+      const lowered = value.toLowerCase()
+      return (
+        (lowered === "'unsafe-inline'" || lowered === "'unsafe-eval'") &&
         !isPermittedDefaultSource(value, defaultValues)
-    )
+      )
+    })
     if (forbidden !== undefined) {
       weakenings.push({
         directive,
