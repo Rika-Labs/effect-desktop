@@ -19,28 +19,34 @@ import {
   HOST_VERSION_METHOD,
   WINDOW_CREATE_METHOD,
   WINDOW_DESTROY_METHOD,
-  WINDOW_EVENT_METHOD
+  WINDOW_EVENT_METHOD,
+  RENDERER_DISCONNECTED_EVENT,
+  RENDERER_RESUME_METHOD,
+  RENDERER_RESUMED_EVENT,
+  RENDERER_RESUME_DENIED_EVENT
 } from "@orika/bridge"
 ```
 
 ## Constants
 
-- `HOST_PROTOCOL_VERSION` — current protocol version. Bumped on breaking changes.
+- `HOST_PROTOCOL_VERSION = "2.0.0"` — current protocol version. Bumped on breaking changes.
 - `HOST_PING_METHOD = "host.ping"` — handshake liveness.
 - `HOST_VERSION_METHOD = "host.version"` — handshake version exchange.
-- `WINDOW_CREATE_METHOD = "Window.create"` — open a window.
-- `WINDOW_DESTROY_METHOD = "Window.destroy"` — close a window.
-- `WINDOW_EVENT_METHOD = "Window.Event"` — raw host window event stream.
+- `WINDOW_CREATE_METHOD = "Window.create"`, `WINDOW_DESTROY_METHOD = "Window.destroy"`, `WINDOW_EVENT_METHOD = "Window.Event"` — window lifecycle and the host window event stream.
+- The full `Window.*`, `Dock.*`, `Menu.*`, `WebView.*`, `Pty.*`, `SafeStorage.*`, `SessionProfile.*`, `CookieStore.*`, `BrowsingData.*`, `SessionPermission.*`, `Download.*`, `NetworkAuth.*`, `WebRequest.*`, and `NativeNetwork.*` method names are exported as `*_METHOD` constants from `@orika/bridge`. See `packages/bridge/src/protocol.ts` for the canonical list.
+- Renderer reconnect events: `RENDERER_DISCONNECTED_EVENT`, `RENDERER_RESUME_METHOD`, `RENDERER_RESUMED_EVENT`, `RENDERER_RESUME_DENIED_EVENT`. `DEFAULT_RECONNECT_WINDOW_MS` and `DEFAULT_MAX_BACKFILL_EVENTS` set the resume defaults.
 
 ## Handshake clients
 
 ```ts
-import { makeHostHandshakeClient, makeHostWindowClient } from "@orika/bridge"
+import { makeHostHandshakeClient, makeHostWindowClient, negotiateHostVersion } from "@orika/bridge"
 ```
 
-`makeHostHandshakeClient(exchange)` returns `{ version(), ping() }`.
+`makeHostHandshakeClient(exchange, options?)` returns `{ ping(): Effect<void, HostProtocolError>; version(): Effect<HostVersionPayload, HostProtocolError> }`. `options` lets you inject `nextRequestId`, `nextTraceId`, and `now`.
 
-`makeHostWindowClient(exchange, options)` returns the raw host Window client used by native adapters, including lifecycle, lookup, bounds/state/chrome methods, and `events()` for `Window.Event`.
+`negotiateHostVersion(client, expected?)` calls `client.version()` and fails with a `HostProtocolInvalidStateError` if the host's `protocolVersion` does not match `expected` (defaults to `HOST_PROTOCOL_VERSION`).
+
+`makeHostWindowClient(exchange, options?)` returns the raw host `Window` client used by native adapters. It covers `create`, `show`/`hide`/`focus`, lookup (`getCurrent`, `getById`, `list`, `getParent`, `getChildren`), bounds/state/chrome methods, attention/progress/decorations, fullscreen, vibrancy, and `subscribeEvents` for `Window.Event`.
 
 ## Why constants
 

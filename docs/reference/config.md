@@ -45,21 +45,29 @@ export default defineDesktopConfig({
 
 ## Top-level fields
 
-| Field         | Type                       | Required | Description                               |
-| ------------- | -------------------------- | -------- | ----------------------------------------- |
-| `app`         | `DesktopAppConfig`         | yes      | id, name, version                         |
-| `runtime`     | `DesktopRuntimeConfig`     | no       | engine (`"bun"` \| `"node"`), entry path  |
-| `renderer`    | `DesktopRendererConfig`    | yes      | framework, entry, dist                    |
-| `web`         | `DesktopWebConfig`         | no       | engine (`"system"` \| `"chrome"`)         |
-| `native`      | `DesktopNativeConfig`      | no       | host crate path overrides                 |
-| `protocol`    | `DesktopProtocolConfig`    | no       | app protocol scheme                       |
-| `build`       | `DesktopBuildConfig`       | no       | targets, output dir                       |
-| `signing`     | object                     | no       | per-platform signing config               |
-| `publishing`  | object                     | no       | updater key + manifest publishing         |
-| `csp`         | `DesktopCspConfig`         | no       | CSP policy and weakening acknowledgements |
-| `redaction`   | `DesktopRedactionPolicy`   | no       | additional secret patterns and allowlist  |
-| `permissions` | array                      | no       | default `PermissionRegistry` declarations |
-| `security`    | `ProductionSecurityConfig` | no       | production check overrides                |
+| Field         | Type                                     | Required | Description                                                  |
+| ------------- | ---------------------------------------- | -------- | ------------------------------------------------------------ |
+| `app`         | `DesktopAppConfig`                       | no       | id, name, version                                            |
+| `runtime`     | `DesktopRuntimeConfig`                   | no       | engine (`"bun"` \| `"node"`), entry path                     |
+| `renderer`    | `DesktopRendererConfig`                  | no       | framework, styling, entry, dist                              |
+| `web`         | `DesktopWebConfig`                       | no       | engine (`"system"` \| `"chrome"`)                            |
+| `native`      | `DesktopNativeConfig`                    | no       | host crate path overrides                                    |
+| `protocols`   | `DesktopProtocolConfig[]`                | no       | custom URL scheme handlers                                   |
+| `protocol`    | `DesktopProtocolRuntimeConfig`           | no       | wire-format limits (frame size, concurrency)                 |
+| `build`       | `DesktopBuildConfig`                     | no       | build targets                                                |
+| `signing`     | object                                   | no       | per-platform signing config                                  |
+| `windows`     | object \| array                          | no       | window declarations (JSON form for tooling)                  |
+| `update`      | `DesktopUpdateConfig`                    | no       | updater channel, signing keys, install policy                |
+| `security`    | `DesktopSecurityConfig`                  | no       | typed bridge, permissions, CSP, redaction, external nav      |
+| `permissions` | `DesktopPermissionsConfig` \| JSON array | no       | filesystem / process / secrets policy (or capability values) |
+| `appProtocol` | `DesktopAppProtocolConfig`               | no       | app-protocol path traversal flag                             |
+| `resources`   | `DesktopResourceConfig`                  | no       | resource scope policy                                        |
+| `contracts`   | `DesktopContractCapabilityRequirement[]` | no       | required RPC capabilities and platform support guards        |
+| `telemetry`   | `DesktopTelemetryConfig`                 | no       | redaction and endpoint                                       |
+| `env`         | `Record<string, Record<string, string>>` | no       | per-profile environment variables                            |
+| `workspace`   | `DesktopWorkspaceConfig`                 | no       | shared workspace config path                                 |
+
+`security.csp` and `security.redaction` live under `security`, not at the top level. There is no top-level `publishing` key; updater signing lives under `update`.
 
 `renderer.framework` defaults to `"react"` and accepts `"react"`, `"solid"`, or `"vue"`. The build report records the selected framework as the renderer provider. Next apps should use the `@orika/next` client adapter over React; there is no separate `renderer.framework: "next"` build mode today.
 
@@ -99,16 +107,29 @@ The default `script-src` is nonce-based and includes `'wasm-unsafe-eval'` so pac
 
 ## Production checks
 
-`runProductionCheck(config)` runs the static security checks defined by SPEC §15-16. Returns:
+`runProductionCheck(input)` runs the static security checks. It takes a `ProductionCheckInput`:
 
 ```ts
-interface ProductionCheckReport {
-  readonly passed: boolean
-  readonly violations: ReadonlyArray<ProductionCheckViolation>
+interface ProductionCheckInput {
+  readonly config: ProductionSecurityConfig
+  readonly configPath?: string
+  readonly rendererFiles?: ReadonlyArray<ProductionCheckFile>
 }
 ```
 
-Each violation has `{ rule, severity, message, fix, location, justification? }`.
+`config` is the `security` / `permissions` / `update` / `appProtocol` / `resources` / `contracts` slice of `DesktopConfig`. `rendererFiles` are scanned for renderer-side rule violations.
+
+Returns:
+
+```ts
+class ProductionCheckReport {
+  readonly passed: boolean
+  readonly failures: ReadonlyArray<ProductionCheckViolation>
+  readonly acknowledgements: ReadonlyArray<ProductionCheckViolation>
+}
+```
+
+`failures` are unacknowledged `fail` violations; `acknowledgements` are entries that the config explicitly downgraded (currently `weakened-csp` via `security.csp.acknowledgeWeakening` + `security.csp.justification`, and `devtools-in-prod`). Each violation has `{ rule, severity, message, fix, location, justification? }`.
 
 ### Rule ids
 
@@ -131,19 +152,21 @@ Each violation has `{ rule, severity, message, fix, location, justification? }`.
 | `unsupported-capability-without-guard` | Platform-limited call without `isSupported` guard        |
 | `secret-pattern-not-redacted`          | Secret-shaped value emitted without redaction            |
 
-Each rule can be acknowledged in `security.acknowledgements` with a justification — turning a `fail` into `acknowledged`. The release gate refuses unacknowledged failures.
+Rules that support acknowledgement (currently `weakened-csp` and `devtools-in-prod`) downgrade from `fail` to `acknowledged` when the config sets the rule-specific opt-in plus a justification. The release gate refuses unacknowledged failures.
 
-## Acknowledgements
+## Acknowledging a weakened CSP
 
 ```ts
 security: {
-  acknowledgements: [
-    { rule: "weakened-csp", justification: "needed for OAuth iframe; tracked in #123" }
-  ]
+  csp: {
+    policy: "script-src 'self' https://oauth.example.com",
+    acknowledgeWeakening: true,
+    justification: "OAuth iframe required; tracked in #123"
+  }
 }
 ```
 
-An acknowledgement narrows the rule's severity to `acknowledged` — the violation still appears in the report, but does not fail the gate.
+The violation still appears in `report.acknowledgements`, but does not fail the gate. There is no top-level `security.acknowledgements` array.
 
 ## Format
 
@@ -157,5 +180,5 @@ Renders the report as a human-readable table for terminals.
 ## Related
 
 - Reference: [CLI commands](cli.md)
-- Tutorial: [Package, sign, and ship](../tutorials/04-package-and-sign.md)
+- How-to: [Sign and notarize](../how-to/sign-and-notarize.md)
 - Source: [`packages/config/src/index.ts`](../../packages/config/src/index.ts)

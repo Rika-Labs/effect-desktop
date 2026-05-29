@@ -87,11 +87,13 @@ the event.
 
 ## Errors
 
-`AppError` is the host protocol error union. Unsupported App methods decode
-through Rust `App.*` routes and fail closed as typed `Unsupported`.
-`onBeforeQuit` has a host event source for app-exit paths, and
-`onSecondInstance`, `onOpenFile`, and `onOpenUrl` have host event sources for
-single-instance launch and duplicate-launch handoff paths.
+`AppError` is the host protocol error union. All `App` methods advertise
+`supported` in their descriptors and decode through Rust `App.*` routes; client
+RPC failures are normalized to typed `AppError` and host transport failures map
+through the host protocol error union. `onBeforeQuit` has a host event source
+for app-exit paths, and `onSecondInstance`, `onOpenFile`, and `onOpenUrl` have
+host event sources for single-instance launch and duplicate-launch handoff
+paths.
 
 ## Notes
 

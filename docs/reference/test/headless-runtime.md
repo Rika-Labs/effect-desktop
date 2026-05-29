@@ -28,8 +28,10 @@ import {
 Returns a `Layer` providing:
 
 - Real `PermissionRegistry`, `ResourceRegistry`, `Telemetry`, `ResourceOwner`.
-- Mock `MockHost`, `MockBridge`.
-- `Filesystem`, `Process`, and `PTY` services backed by memory fixtures.
+- `MockHost` and `MockBridge` services for in-process host-protocol and bridge fakes.
+- `Filesystem`, `Process`, and `PTY` services backed by in-memory adapters that retain the production validation, permission, and cleanup paths.
+
+The layer's error channel is `TelemetryInvalidArgumentError | HostProtocolInvalidArgumentError`.
 
 Compose with your handler layer:
 
@@ -42,6 +44,9 @@ const TestLive = NotesHandlersLive.pipe(Layer.provideMerge(HeadlessRuntime.layer
 Runs an effect against the layer plus resource leak detection:
 
 ```ts
+import { Effect } from "effect"
+import { HeadlessRuntime } from "@orika/test"
+
 await Effect.runPromise(
   HeadlessRuntime.run(
     Effect.gen(function* () {
@@ -53,7 +58,8 @@ await Effect.runPromise(
 ```
 
 `HeadlessRuntime.run` returns an `Effect`; run it with `Effect.runPromise` or the
-test runner helper you normally use for Effect tests.
+test runner helper you normally use for Effect tests. Pass `leakDetection: false`
+to opt out.
 
 ## Runtime options
 
@@ -86,7 +92,26 @@ Pass these under `leakDetection` for `HeadlessRuntime.run`.
 ## `runHeadless(body, options)`
 
 Lower-level host-protocol runner. The body receives a `HeadlessRuntime` value
-with `handshake`, `window`, `request`, `registry`, and recorded `calls()`.
+with `handshake`, `window`, `request`, `registry`, and recorded `calls()`. The
+runner installs the same resource leak check before returning.
+
+```ts
+import { Effect } from "effect"
+import { runHeadless } from "@orika/test"
+
+await Effect.runPromise(
+  runHeadless(
+    (runtime) =>
+      Effect.gen(function* () {
+        yield* runtime.handshake.ping()
+        const window = yield* runtime.window.create({ title: "Headless" })
+        yield* runtime.window.destroy(window.windowId)
+        return runtime.calls().map((call) => call.method)
+      }),
+    { now: () => 1_710_000_000_000 }
+  )
+)
+```
 
 ## `assertNoOpenResourcesIn(registry, options)`
 

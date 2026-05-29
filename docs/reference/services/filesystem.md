@@ -17,44 +17,66 @@ Runtime filesystem service. Enforces root containment, binds handles to the `Res
 ```ts
 import {
   Filesystem,
+  FilesystemLive,
+  makeFilesystem,
   type FilesystemApi,
+  type FilesystemError,
+  type FilesystemEvent,
   type FilesystemOptions,
   type FilesystemPermissionPolicy,
-  FilesystemPermissionDenied,
-  FilesystemInvalidArgument,
-  FilesystemSystemError,
-  makeFilesystem
+  type FilesystemStatResult
 } from "@orika/core"
 ```
 
+`FilesystemError` is the bridge's `HostProtocolError` union; see [`reference/errors.md`](../errors.md).
+
 ## API
 
-| Method        | Signature                                                      |
-| ------------- | -------------------------------------------------------------- |
-| `read`        | `(path) => Effect<Uint8Array>`                                 |
-| `realpath`    | `(path, capability?) => Effect<string>`                        |
-| `write`       | `(path, bytes) => Effect<void>`                                |
-| `writeAtomic` | `(path, bytes) => Effect<void>`                                |
-| `stat`        | `(path) => Effect<FileStat>`                                   |
-| `mkdir`       | `(path, options?) => Effect<void>`                             |
-| `remove`      | `(path, options?) => Effect<void>`                             |
-| `watch`       | `(path, options?) => Stream<FilesystemEvent, FilesystemError>` |
+| Method        | Signature                                                             |
+| ------------- | --------------------------------------------------------------------- |
+| `read`        | `(path) => Effect<Uint8Array, FilesystemError>`                       |
+| `realpath`    | `(path, capability?) => Effect<string, FilesystemError>`              |
+| `write`       | `(path, bytes) => Effect<void, FilesystemError>`                      |
+| `writeAtomic` | `(path, bytes) => Effect<void, FilesystemError>`                      |
+| `stat`        | `(path) => Effect<FilesystemStatResult, FilesystemError>`             |
+| `mkdir`       | `(path, { recursive? }) => Effect<void, FilesystemError>`             |
+| `remove`      | `(path, { recursive? }) => Effect<void, FilesystemError>`             |
+| `watch`       | `(path, { bufferSize? }) => Stream<FilesystemEvent, FilesystemError>` |
 
-Writes are atomic via temp file + rename. Watchers register a scoped resource that closes with the scope.
+`writeAtomic` writes through a sibling `*.tmp.<uuid>` file and renames into place; an interrupted write removes the temp. `read`/`write` go through `effect/FileSystem` directly. Watchers register a scoped resource with the `ResourceRegistry` that closes with the scope.
+
+`FilesystemStatResult` carries `{ path, kind, sizeBytes, modifiedAtMs }`, where `kind` is `"file" | "directory" | "symlink" | "other"`. Symlinks are not followed by `stat`; `realpath` resolves them and the optional `capability` argument controls whether the resolution is authorized as a read or a write.
+
+`FilesystemEvent` carries `{ kind, path, directory, filename? }`, where `kind` is `"created" | "modified" | "deleted" | "renamed"`. The watcher buffers events with a sliding strategy (default 1024).
 
 ## Errors
 
-- `FilesystemPermissionDenied` — path not under a declared root.
-- `FilesystemInvalidArgument` — malformed path or traversal.
-- `FilesystemSystemError` — OS-level error.
+`FilesystemError` is the `HostProtocolError` union:
+
+- `HostProtocolPermissionDeniedError` — path is outside every declared root, or its symlink target escapes the root. Recursive `remove` additionally requires `allowRecursiveRemove: true` in the permission policy.
+- `HostProtocolSymlinkEscapesRootError` — the requested path is inside a permitted root but its resolved target is not.
+- `HostProtocolFileNotFoundError` — `ENOENT` or `NotFound` for read, stat, watch.
+- `HostProtocolDiskFullError` — `ENOSPC` on write or atomic write (`recoverable: true`).
+- `HostProtocolInvalidArgumentError` — malformed path, non-decoding input, or other unmappable OS error.
 
 ## Permissions
 
-Reads need `filesystem.read` for a containing root. Writes need `filesystem.write`. See [How-to: declare a permission](../../how-to/declare-a-permission.md).
+`FilesystemPermissionPolicy` declares roots per capability:
+
+```ts
+type FilesystemPermissionPolicy = {
+  readonly readRoots?: readonly string[]
+  readonly writeRoots?: readonly string[]
+  readonly deleteRoots?: readonly string[]
+  readonly allowRecursiveRemove?: boolean
+}
+```
+
+Capabilities applied per operation: `filesystem.read` (read, stat, realpath default, watch), `filesystem.write` (write, writeAtomic, mkdir), `filesystem.delete` (non-recursive remove), `filesystem.delete.recursive` (recursive remove). All roots are canonicalized via `realPath` before containment checks. See [How-to: declare a permission](../../how-to/declare-a-permission.md).
 
 ## Layer
 
-`FilesystemLive` and `makeFilesystem(...)` require `ResourceOwner` plus `ResourceRegistry`. `Desktop.runtime(...)` provides an app owner, `Desktop.window(..., services)` provides a window owner, and tests can provide `ResourceOwner.test(...)`.
+`FilesystemLive` is a `Layer<Filesystem, never, ResourceOwner | ResourceRegistry | effect/FileSystem | effect/Path>`. It defaults to an empty permission policy and the disabled inspector collector; build a custom layer with `makeFilesystem(registry, owner, options)` when you need a non-empty `FilesystemPermissionPolicy`, a custom `FilesystemInspectorCollectorApi`, or a clock override. `Desktop.runtime(...)` provides an app owner, `Desktop.window(..., services)` provides a window owner, and tests can provide `ResourceOwner.test(...)`.
 
 ## Example
 

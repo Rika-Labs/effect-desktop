@@ -130,7 +130,7 @@ Per platform:
 
 The CLI handles the platform tool invocations and PowerShell unblock for Windows. If signing fails (missing identity, expired cert, no keychain), the typed `SignError` tells you which artifact and which step.
 
-You can also `bun run desktop sign --target macos-arm64` to sign one target at a time, useful when iterating on a single platform.
+You can also `bun run desktop sign --platform macos-arm64` to sign one target at a time, useful when iterating on a single platform.
 
 ## Step 5 — Notarize (macOS only)
 
@@ -168,10 +168,10 @@ You upload the manifest and artifacts to your distribution host (S3, Cloudflare 
 The CLI can re-run the package step and diff the result against a prior run, ensuring the build is reproducible:
 
 ```bash
-bun run desktop check --repro --config desktop.config.ts --baseline path/to/previous-build
+bun run desktop check --repro --config desktop.config.ts
 ```
 
-Reproducible builds are how you prove that the binary you signed is the binary built from a specific commit. If `check --repro` succeeds, two independent builds produce byte-identical artifacts. If it fails, the report names the differing files.
+Reproducible builds are how you prove that the binary you signed is the binary built from a specific commit. The `--repro` check re-runs the package step and diffs the result against the on-disk artifacts; if the two builds produce byte-identical files, the check passes. If it fails, the report names the differing files.
 
 This is optional for the first release but worth wiring into CI before you ship widely — it catches non-determinism (timestamps, build paths) before it becomes a supply-chain problem.
 

@@ -19,11 +19,11 @@ ORIKA splits a desktop app into four explicit owners:
 
 ## Core model
 
-An application is assembled with `Desktop.make`. Runtime services are Effect layers. Renderer-callable APIs are Effect RPC groups. Native authority is exposed through typed services, not raw renderer access.
+An application is assembled with `Desktop.make`. Runtime services are Effect layers. Renderer-callable APIs are canonical Effect `RpcGroup`s. Native authority is exposed through typed services and granted by composing `Desktop.permission(...)` capability values, not by raw renderer access. `BridgeRpc` is a small boundary adapter that translates Effect RPC across the renderer/runtime/host boundary; per `AGENTS.md` it stays only until canonical Effect RPC owns that protocol translation directly.
 
 ## The boundary rule
 
-The renderer never receives raw native authority. Every privileged call crosses a typed RPC client → bridge envelope → runtime handler → permission check → adapter. The boundary buys you a permission chokepoint, typed failures, an audit trail, and a deterministic test double — all without per-call work.
+The renderer never receives raw native authority. Every privileged call crosses a typed RPC client → bridge envelope → runtime handler → permission check → adapter. The boundary buys you a permission chokepoint, typed failures, an audit trail, and a deterministic test double — all without per-call work. Permissions are declared as capability values (e.g. `Native.Permissions.clipboard.readText`) and composed via `Desktop.permissions(Desktop.permission(...), ...)`; the runtime's `PermissionRegistry` and `PermissionInterceptor` enforce them at the RPC layer.
 
 ## Verify the core exports
 

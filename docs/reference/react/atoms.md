@@ -41,11 +41,29 @@ For RPC-shaped state, prefer `useQuery` / `useMutation` / `useStream`.
 
 ## Provider
 
-Wrap your app in `DesktopAtomRegistryProvider` (or rely on `ReactDesktop.from(...).createRoot(...)` which sets it up).
+`ReactDesktop.from(...).DesktopRoot` and the lower-level `DesktopProvider` both install `DesktopAtomRegistryProvider` (the upstream `RegistryContext.Provider` from `@effect/atom-react`) bound to a per-runtime `AtomRegistry`. Mount one of those at the root and every `useAtom*` hook below it reads from the same registry. Use `DesktopAtomRegistryProvider` directly only when wiring a custom registry outside the provider tree.
+
+## Example
+
+```tsx
+import { Atom, useAtom, useAtomValue } from "@orika/react"
+
+const counter = Atom.make(0)
+
+function Counter() {
+  const [count, setCount] = useAtom(counter)
+  return <button onClick={() => setCount((value) => value + 1)}>{count}</button>
+}
+
+function CounterDisplay() {
+  const count = useAtomValue(counter)
+  return <span>{count}</span>
+}
+```
 
 ## Effect reactivity
 
-`AsyncResult` and `Atom` re-export from `effect/unstable/reactivity` — useful for typing your own atoms.
+`AsyncResult` and `Atom` re-export from `effect/unstable/reactivity` — useful for typing your own atoms and for narrowing query/mutation/stream state by hand.
 
 ## Related
 

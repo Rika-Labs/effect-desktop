@@ -22,8 +22,10 @@ import { DevtoolsShell, DevtoolsSnapshotClient } from "@orika/devtools"
 ## `DevtoolsShell`
 
 Effect service that owns the devtools listener lifecycle. It starts only in
-development, or in production when both explicit production gates and safe
-capture are enabled.
+development, or in production when all three production gates align:
+`devtoolsFlag: true`, `securityDevtoolsInProd: true`, and
+`inspectorCapture: "safe"`. Any other production combination either disables
+the shell or fails with `DevtoolsUnsafeProductionCaptureError`.
 
 ```ts
 const shell = yield * DevtoolsShell
@@ -38,14 +40,27 @@ const handle =
 yield * handle.disable
 ```
 
+`shell.start` mints a 32-byte loopback token, writes it to
+`<stateDir>/<tokenName>` (default `devtools-token`, mode 0600), starts a
+loopback HTTP listener on `127.0.0.1`, and returns a `DevtoolsHandle` whose
+`disable` effect closes the listener and removes the token. Errors are tagged:
+`InvalidInput`, `TokenError`, `BindError`, `CleanupError`, `ShellOpenError`,
+`UnsafeProductionCapture`.
+
 When `openShell` is not `false`, provide a `DevtoolsShellWindow` port through
-`DevtoolsShellLive(options)`; the default shell window fails closed with a typed
-`DevtoolsShellOpenError`.
+`DevtoolsShellLive({ shellWindow })`; the default `UnavailableDevtoolsShellWindow`
+fails closed with `DevtoolsShellOpenError`. `DevtoolsShellLive` also accepts
+a custom `transport` (defaults to `BunLoopbackDevtoolsTransport`) and
+`tokenName`.
 
 ## `DevtoolsSnapshotClient`
 
 The client that exports one redacted runtime snapshot from the live panel
-services.
+services. The returned `DevtoolsSnapshot` aggregates `liveRuntime`,
+`diagnostics`, `performance`, `eventLog`, `workflows`, `reactivity`,
+`persistence`, `logs`, `cluster`, `layerGraph`, and the `safety` summary from
+`InspectorSafetyPolicy`. If the safety policy rejects the payload outright,
+`exportSnapshot` fails with `DevtoolsSnapshotSafetyError`.
 
 ```ts
 const client = yield * DevtoolsSnapshotClient
@@ -53,6 +68,9 @@ const snapshot = yield * client.exportSnapshot()
 const resources = snapshot.liveRuntime.resources
 const layers = snapshot.layerGraph.layerGraph
 ```
+
+`DevtoolsSnapshotClientLive` requires every live panel service plus
+`InspectorSafetyPolicy`.
 
 ## Panels
 
@@ -70,11 +88,25 @@ The package ships these live panel services:
 | Layer graph        | Runtime layer dependency snapshot       |
 | Embedded inspector | Recursive inspector view                |
 
+## Adjacent services
+
+| Service                | Source            | Purpose                                                                                                                             |
+| ---------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `CommandsDevtools`     | `@orika/devtools` | Lists registered commands, streams `CommandInvocationRecord`s                                                                       |
+| `WorkersDevtools`      | `@orika/devtools` | Lists `Worker` snapshots, sanitized through `InspectorSafetyPolicy`                                                                 |
+| `DesktopDevtools`      | `@orika/core`     | Unified stream of `DesktopRuntimeEvent` (inspector + telemetry)                                                                     |
+| `DesktopObservability` | `@orika/core`     | Mode router (`off` / `embedded-devtools` / `standalone-inspector`) and Effect Logger/Tracer wiring via `EffectTelemetryRuntimeLive` |
+
 ## Embedded inspector
 
-`DesktopInspector.layer({ mode: "embedded-devtools" })` composes core
-observability with `EmbeddedInspectorPanel`. Production profile returns a
-disabled panel even when embedded mode is requested.
+`DesktopInspector.layer({ mode: "embedded-devtools" })` (alias of
+`DesktopInspectorLive`) composes `DesktopObservability` with
+`EmbeddedInspectorPanel`. The panel gates on profile: `production` returns a
+disabled snapshot (`reason: "production-disabled"`) even when embedded mode is
+requested. Pass `profile`, `frameInterval`, or a pre-built `snapshotClient`
+through `DesktopInspectorLayerOptions`. Standalone mode (`mode:
+"standalone-inspector"`) requires an explicit `webSocketUrl` and merges in
+Effect's upstream `DevTools.layer(webSocketUrl)`.
 
 ## Test helpers
 

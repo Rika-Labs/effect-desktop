@@ -19,13 +19,13 @@ const layer = MockHostLive({
   fixtures: {
     "host.ping": () => undefined
   },
-  now: () => 1710000000000
+  now: () => 1_710_000_000_000
 })
 ```
 
-Records every call. Maintains an in-memory window registry. Preserves trace ids. Implements `host.version`, `host.ping`, `Window.create`, `Window.destroy`.
+Records every call. Maintains an in-memory window registry. Preserves trace ids. Implements the full host-protocol surface: `host.version`, `host.ping`, and every `Window.*` method (`create`, `destroy`, `focus`, `show`, `hide`, `getCurrent`, `list`, bounds, attention, title, vibrancy, fullscreen, state).
 
-After running, inspect `host.calls()` and `host.windows()` from the `MockHost` service to assert what the handler did.
+Fixtures receive `(request, state)` and return either a payload or an `Effect<payload, HostProtocolError>`. Non-JSON payloads fail with `HostProtocolInvalidOutputError`. After running, inspect `host.calls()` (frozen request snapshots) and `host.windows()` (live `WindowCreateInput` map).
 
 ## MockBridge
 
@@ -33,7 +33,7 @@ After running, inspect `host.calls()` and `host.windows()` from the `MockHost` s
 import { Effect } from "effect"
 import { makeMockBridge } from "@orika/test"
 
-const bridge = makeMockBridge({ now: () => 1710000000000 })
+const bridge = makeMockBridge({ now: () => 1_710_000_000_000 })
 
 await Effect.runPromise(bridge.succeed("Notes.list", []))
 await Effect.runPromise(bridge.fail("Notes.save", { _tag: "WriteFailed" }))
@@ -44,13 +44,23 @@ await Effect.runPromise(
 )
 ```
 
-Returns a mock bridge with an `exchange`, a typed `client(...)` helper, queued success/failure/stream responses, and a call log. Enforces the contract — wrong-shape queued responses fail at decode time.
+Returns a `MockBridgeApi` with:
 
-`bridge.calls()` contains the recorded calls with `{ method, payload, traceId, timestamp }`.
+- `exchange` — a `BridgeClientExchange` you can pass to renderer adapters or `Client(...)`.
+- `client(contracts, options?)` — typed client for a record of `BridgeContract` values.
+- `succeed`, `fail`, `streamChunks` — queue responses per method; payloads are JSON-validated and reject non-JSON shapes with `HostProtocolInvalidOutputError`.
+- `calls()` — frozen call log of `{ method, payload, traceId, timestamp }`.
+- `cancels()` — recorded `HostProtocolCancelByRequestEnvelope` values.
+
+A request that has no pinned response fails with `HostProtocolInvalidStateError("missing pinned response")`.
+
+`MockBridgeLive(options?)` exposes the same instance as a `Layer<MockBridge>` when you need it via the service tag.
 
 ## Inject into a renderer test
 
 ```ts
+import { ReactDesktop } from "@orika/react"
+
 const DesktopApp = ReactDesktop.from(Manifest, { transport: bridge.exchange })
 ```
 

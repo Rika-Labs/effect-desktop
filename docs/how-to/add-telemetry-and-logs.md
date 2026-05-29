@@ -53,29 +53,38 @@ Counters increment by tags. Histograms retain bounded samples and publish p50, p
 ## 4. Read
 
 ```ts
+import { Telemetry } from "@orika/core"
+
 const telemetry = yield * Telemetry
 const snapshot = yield * telemetry.snapshot()
-const recentLogs = yield * telemetry.listLogs({ limit: 100 })
-const recentSpans = yield * telemetry.listTraces({ limit: 50 })
+const recentLogs = yield * telemetry.listLogs()
+const recentSpans = yield * telemetry.listTraces()
 const metrics = yield * telemetry.listMetrics()
 ```
 
-Devtools' logs panel renders these live. `observeLogs()`, `observeTraces()`, `observeMetrics()` stream new entries.
+`listLogs`, `listTraces`, `listMetrics`, and `listEvents` all return the full bounded ring — slice client-side if you only want the tail. `observeLogs()`, `observeTraces()`, `observeMetrics()`, and `eventFeed` stream new entries; the logs panel and embedded inspector consume these.
 
 ## 5. Configure bounds
 
 ```ts
-import { makeTelemetry } from "@orika/core"
+import { Effect, Layer } from "effect"
+import { makeTelemetry, Telemetry } from "@orika/core"
 
-const TelemetryLive = makeTelemetry({
-  logRingSize: 5000,
-  traceRingSize: 1000,
-  maxMetrics: 200,
-  histogramSampleSize: 256
-})
+const TelemetryLive = Layer.effect(
+  Telemetry,
+  makeTelemetry({
+    maxLogs: 5_000,
+    traceRingSize: 1_000,
+    maxMetrics: 200,
+    maxHistogramSamples: 256,
+    eventRingSize: 2_000
+  })
+)
 ```
 
-The ring sizes prevent unbounded memory growth from chatty handlers. `maxMetrics` caps the metric snapshot map so high-cardinality metrics don't explode the snapshot.
+`makeTelemetry` returns an `Effect<TelemetryApi>` — provide it through `Layer.effect(Telemetry, ...)` when you need to override the defaults. Ring sizes prevent unbounded memory growth from chatty handlers. `maxMetrics` caps the metric snapshot map so high-cardinality metrics don't explode the snapshot; oldest-by-`updatedAt` is evicted first. Defaults: `maxLogs`, `maxMetrics`, `maxHistogramSamples` = 1,024; `traceRingSize`, `eventRingSize` = 10,000.
+
+To collect Effect's built-in `Metric` registry into the snapshot (counters, gauges, histograms, summaries, frequencies), schedule `telemetry.collectEffectMetrics()` periodically.
 
 ## When to log vs. emit an audit event
 

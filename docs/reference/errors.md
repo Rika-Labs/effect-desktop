@@ -8,98 +8,217 @@ effect_version: 4
 
 # Errors catalog
 
-Every effectful surface in ORIKA returns failures as **typed values**, not thrown exceptions. Application code matches on `_tag` to discriminate. This page lists the framework's error families.
+Every effectful surface in ORIKA returns failures as **typed values**, not thrown exceptions. Application code matches on `_tag` to discriminate. This page lists the framework's tagged error classes by source package.
 
 ## Import
 
-Most errors come from the package that owns the operation. The bridge re-exports the cross-package ones:
+Errors live in the package that owns the operation:
 
 ```ts
 import { HostProtocolError } from "@orika/bridge"
-import { WindowError } from "@orika/native"
-import { PermissionDeniedError, SecretsError } from "@orika/core"
+import { NativeBoundaryError } from "@orika/native"
+import {
+  ApprovalBrokerInvalidArgumentError,
+  ApprovalBrokerQueueOverflowError,
+  PermissionDeniedError,
+  SecretNotFoundError,
+  SettingsKvError
+} from "@orika/core"
 ```
 
-## Bridge / host protocol
+## Bridge / host protocol — `@orika/bridge`
 
-`HostProtocolError` is the union of failures the bridge can return on any RPC:
+`HostProtocolError` is a `Schema.Union` of every failure the host bridge can return on any RPC. Each variant is a `Schema.Class` with a `tag` literal and `recoverable: boolean`:
 
-- `HostProtocolInvalidArgumentError` — payload didn't decode against the schema.
-- `HostProtocolInvalidOutputError` — runtime returned something the schema doesn't accept.
-- `HostProtocolNotFoundError` — method has no registered handler.
-- `HostProtocolUnsupportedError` — operation isn't supported on this platform.
-- `HostProtocolStateError` — protocol state violation (e.g. response without request).
+- `FileNotFound`
+- `PermissionDenied`
+- `Timeout`
+- `Cancelled`
+- `Unsupported`
+- `InvalidArgument`
+- `ResourceBusy`
+- `DiskFull`
+- `RateLimited`
+- `FrameTooLarge`
+- `OriginInvalid`
+- `StaleHandle`
+- `CrossScopeHandle`
+- `BackpressureOverflow`
+- `RendererDisconnected`
+- `RuntimeRestarted`
+- `RuntimeUnavailable`
+- `HostUnavailable`
+- `MethodNotFound`
+- `InvalidOutput`
+- `PermissionRevoked`
+- `StreamClosed`
+- `BinaryDecodeError`
+- `ReconnectBackfillExhausted`
+- `PanicInNativeCode`
+- `NetworkError`
+- `NotFound`
+- `AlreadyExists`
+- `InvalidState`
+- `SymlinkEscapesRoot`
+- `EventLogFull`
+- `UpdateDowngradeRefused`
+- `UpdateDownloadTruncated`
+- `UpdateStaleNotarization`
+- `UpdateSignatureInvalid`
+- `SettingsMigrationFailed`
+- `SettingsRecoveredFromBackup`
+- `EventLogSegmentCorrupt`
+- `PtyForceKillTimeout`
+- `Internal`
 
-All carry `recoverable: boolean` to indicate whether retry has any chance.
+Also exported: `InvalidBridgeMetadataError`.
 
-## Permission registry
+## Native boundary — `@orika/native`
 
-- `PermissionDeniedError` — capability did not match an allow declaration.
-- `PermissionInvalidArgumentError` — capability was malformed.
-- `PermissionGrantNotFoundError` — `use(grant)` referred to an unknown grant.
-- `PermissionRevokedError` — grant was revoked between check and use.
+- `NativeBoundaryError` — closes over `HostProtocolError` at the native/TypeScript boundary with a `reason` of `denied | unsupported | missing-host-method | invalid-input | invalid-output | host-failed`. Use `NativeBoundaryErrors.normalize` to convert host errors to this shape.
+- `NativeCapabilityLookupError`, `NativeCapabilityManifestError`, `UnsupportedCapability`.
+- `WindowPersistenceError`, `UpdateError`, `AppEventWindowNotOpen`.
 
-## Approval broker
+## Desktop framework adapters — `@orika/core`
 
-- `ApprovalBrokerError.QueueOverflow` — per-actor queue full.
-- `ApprovalBrokerError.PortError` — `ApprovalPromptPort` failed.
-- `ApprovalBrokerError.Canceled` — request canceled before resolution.
+Surface errors raised by the framework adapter layer (React/Vue/Solid/Next/Astro):
 
-## Resources
+- `MissingDesktopContextError` — provider not mounted around the component.
+- `MissingDesktopRpcClientError` — renderer RPC client missing or malformed.
+- `MissingDesktopRpcsError` — the requested `RpcGroup` is not in the manifest.
+- `DuplicateDesktopRpcNameError` — two RPC tags lower to the same framework endpoint name.
+- `RendererRpcError` — wraps an unknown RPC failure surfaced through a framework adapter.
 
-- `ResourceLeakError` — a test detected unreleased resources at scope close.
+## Permission registry — `@orika/core`
 
-## Filesystem
+- `PermissionInvalidArgumentError` (`_tag: "InvalidArgument"`)
+- `PermissionDeniedError` (`_tag: "PermissionDenied"`) — carries `reason: "explicit-deny" | "approval-denied" | "revoked" | "expired" | "consumed" | "default-deny"`.
+- `PermissionAuditFailedError` (`_tag: "PermissionAuditFailed"`)
+- `PermissionGrantNotFoundError` (`_tag: "PermissionGrantNotFound"`)
+- `PermissionRevokedError` (`_tag: "PermissionRevoked"`)
 
-- `FilesystemPermissionDenied` — path not under a declared root.
-- `FilesystemInvalidArgument` — malformed path or parameters.
-- `FilesystemSystemError` — OS-level failure (carries `errno` when available).
+## Approval broker — `@orika/core`
 
-## Process
+`ApprovalBrokerError` is the union of:
 
-Process failures arrive as `HostProtocolError` on the operation that produced them — `spawn`, `kill`, `stdin.write`, `stdout` reads. Non-zero exit codes are not failures; they're carried in `ProcessExitStatus.code`.
+- `ApprovalBrokerInvalidArgumentError` (`_tag: "InvalidArgument"`)
+- `ApprovalBrokerQueueOverflowError` (`_tag: "QueueOverflow"`)
+- `ApprovalBrokerAuditFailedError` (`_tag: "ApprovalAuditFailed"`)
+- `ApprovalBrokerPromptFailedError` (`_tag: "ApprovalPromptFailed"`)
 
-## PTY
+## Filesystem — `@orika/core`
 
-PTY failures are also `HostProtocolError`. `open`, `write`, `resize`, `kill`, `output`, and `onExit` each fail with typed reasons.
+`FilesystemError` is a type alias for `HostProtocolError`. Match on the host protocol tags above (`PermissionDenied`, `InvalidArgument`, `FileNotFound`, `SymlinkEscapesRoot`, `DiskFull`, etc.) rather than filesystem-specific classes.
 
-## Worker
+## Process and PTY — `@orika/core`
 
-- `CapabilityNotHeld` — declared capability has no matching permission.
-- `ChannelError` — message did not validate against `inputSchema` or `outputSchema`.
-- `WorkerCrashed` — worker terminated unexpectedly. Carries last error if available.
+Process and PTY failures arrive as `HostProtocolError` on the failing operation. Non-zero exit codes are not failures; they ride on the result payload.
 
-## Settings
+## Worker — `@orika/core`
 
-- `SettingsError.InvalidArgument` — malformed key, schema, or path.
-- `SettingsError.SchemaMismatch` — stored value didn't decode against the schema.
-- `SettingsError.MigrationFailed` — a migration callback errored.
-- `SettingsError.Corrupt` — database file unreadable.
-- `SettingsRecoveredFromBackup` — informational; backup was used.
-- `SettingsMigrated` — informational; migration applied.
+`WorkerError` is the union of:
 
-## Secrets
+- `WorkerChannelError` (`_tag: "ChannelError"`)
+- `WorkerCapabilityNotHeldError` (`_tag: "CapabilityNotHeld"`)
+- `WorkerCrashedError` (`_tag: "WorkerCrashed"`)
+- `WorkerInvalidArgumentError` (`_tag: "InvalidArgument"`)
+- `WorkerResourceBusyError` (`_tag: "ResourceBusy"`)
+- `WorkerStaleHandleError` (`_tag: "StaleHandle"`)
+- `WorkerUnsupportedError` (`_tag: "Unsupported"`)
 
-- `SecretsError.NotFound` — no value at `(namespace, key)`.
-- `SecretsError.PermissionDenied` — capability not declared.
-- `SecretsError.InvalidArgument` — malformed namespace or key.
-- `SecretsError.StorageUnavailable` — platform safe-storage unavailable.
+## Settings — `@orika/core`
 
-## SQLite
+`SettingsError` is the union of:
 
-- `SqlError` from `@effect/sql-sqlite-bun` — pass-through SQL errors with statement and bind context.
+- `SettingsInvalidArgumentError` (`_tag: "InvalidArgument"`)
+- `SettingsKvError` (`_tag: "KvError"`)
+- `SettingsMigrationFailedError` (`_tag: "SettingsMigrationFailed"`)
+- `SettingsRecoveredFromBackupError` (`_tag: "SettingsRecoveredFromBackup"`)
 
-## CLI
+`SettingsMigrated` is a schema class describing a successful migration record, not an error.
 
-Each command exports its own pipeline error union — see [CLI reference](cli.md).
+## Secrets — `@orika/core`
 
-## Documentation gate
+`SecretsError` is the union of:
 
-- `DocsGateFileError` — manifest or page unreadable.
-- `DocsGateManifestError` — manifest schema/content invalid.
-- `DocsGateMissingPageError` — required page absent or empty.
-- `DocsGateExampleFailedError` — runnable block failed or timed out.
-- `DocsGateCoverageError` — required token missing from a page's runnable block.
+- `SecretNotFoundError` (`_tag: "SecretNotFound"`)
+- `SecretsSafeStorageUnavailableError` (`_tag: "SafeStorageUnavailable"`)
+- `SecretsPermissionDeniedError` (`_tag: "PermissionDenied"`)
+- `SecretsInvalidArgumentError` (`_tag: "InvalidArgument"`)
+- `SecretsAuditFailedError` (`_tag: "SecretsAuditFailed"`)
+- `SecretsCommittedAuditFailedError` (`_tag: "SecretsCommittedAuditFailed"`)
+- `HostProtocolError` (propagated)
+
+## Commands — `@orika/core`
+
+- `CommandRegistryInvalidInputError` (`_tag: "InvalidInput"`)
+- `CommandRegistryCommandNotFoundError` (`_tag: "CommandNotFound"`)
+- `CommandRegistryCommandAlreadyRegisteredError`
+- `CommandRegistryRegistrationLostError` (`_tag: "RegistrationLost"`)
+- `CommandRegistryHandlerFailureError` (`_tag: "HandlerFailure"`)
+- `CommandRegistryAuditFailedError` (`_tag: "CommandAuditFailed"`)
+- `CommandRegistryCommittedAuditFailedError`
+
+## Resources, telemetry, transport, sidecar — `@orika/core`
+
+- `ResourceInvalidArgumentError` (`_tag: "InvalidArgument"`)
+- `ResourceOwnerInvalidArgumentError` (`_tag: "InvalidArgument"`)
+- `TelemetryInvalidArgumentError` (`_tag: "InvalidArgument"`)
+- `TransportInvalidArgumentError`, `TransportFrameTooLargeError`, `TransportFrameTruncatedError`, `TransportClosedError`, `TransportWriteError`, `TransportReadError`, `TransportCloseError`
+- `FrameTooLargeError`, `FrameTruncatedError`, `InvalidFrameLimitError` (transport framing)
+- `SidecarError` (`_tag: "SidecarError"`)
+- `ProviderRegistryError` (`_tag: "ProviderRegistryError"`)
+- `StartupWindowConfigError`, `DesktopObservabilityConfigError`, `DesktopConfigError`, `DesktopRpcSurfaceError`
+- `WindowStateReadFailed`, `WindowStateWriteFailed`, `WindowStateCorruptRenamed`, `WindowStateInvalidArgumentError`
+- `InspectorSafetyPolicyInvalidArgumentError`, `InspectorTransportInvalidArgumentError`
+- `StdoutWriteError`, `AutoSaveError`, `SqliteInvalidArgumentError`
+- `NativeParityMatrixError`
+- Workflows: `RestoreError`, `BackupError`
+
+`SqlError` from `@effect/sql-sqlite-bun` is propagated as-is for SQL operations.
+
+## Tests — `@orika/test`
+
+- `ResourceLeakError` — a deterministic test detected unreleased resources at scope close.
+
+## Config — `@orika/config`
+
+- `ProductionCheckInvalidInput` (`_tag: "InvalidInput"`)
+- `DesktopConfigDecodeError`
+
+## CLI — `@orika/cli`
+
+The CLI surfaces a number of pipeline error families. Major ones:
+
+- Docs gate: `DocsGateFileError`, `DocsGateManifestError`, `DocsGateMissingPageError`, `DocsGateExampleFailedError`, `DocsGateCoverageError`.
+- Doctor: `DoctorMissing`, `DoctorCapabilityTruthUnavailable`.
+- Build: `BuildConfigError`, `BuildUnsupportedTargetError`, `BuildUnsupportedHostError`, `BuildCommandFailedError`, `BuildFileError`.
+- Package: `PackageConfigError`, `PackageUnsupportedHostError`, `PackageUnsupportedTargetError`, `PackageUnsupportedArtifactError`, `PackageCommandFailedError`, `PackageMissingBuildArtifactError`, `PackageFileError`.
+- Sign / notarize: `SignConfigError`, `SignUnsupportedHostError`, `SignUnsupportedTargetError`, `SignFileError`, `SignCommandFailedError`, `NotarizeConfigError`, `NotarizeUnsupportedHostError`, `NotarizeUnsupportedTargetError`, `NotarizeFileError`, `NotarizeCommandFailedError`.
+- Publish / update manifest: `PublishConfigError`, `PublishFileError`, `PublishSignatureError`.
+- Release: `ReleaseError`, `ReleaseGateFileError`, `ReleaseGateManifestError`, `ReleaseGateEvidenceError`, `ToolError`.
+- Public API snapshot: `PublicApiFileError`, `PublicApiPackageError`, `PublicApiTypeScriptError`, `PublicApiSnapshotMismatchError`.
+- Reproducible build: `ReproBuildRunError`, `ReproPackageRunError`, `ReproFileError`, `ReproDiffError`.
+- Targets: `UnsupportedDesktopHostTargetError`, `UnsupportedDesktopTargetError`.
+- Accessibility gate: `AccessibilityGateFileError`, `AccessibilityGateManifestError`, `AccessibilityGateEvidenceError`.
+- Semver guard: `SemverGuardFileError`, `SemverGuardManifestError`, `SemverGuardPolicyError`.
+- Streams: `CliStreamError`.
+
+`CliUsageError` is a plain `Error` subclass used for argument validation before the typed pipeline takes over.
+
+See the [CLI reference](cli.md) for which error union each subcommand returns.
+
+## Devtools — `@orika/devtools`
+
+- `DevtoolsInvalidInputError` (`_tag: "InvalidInput"`)
+- `DevtoolsTokenError` (`_tag: "TokenError"`)
+- `DevtoolsBindError` (`_tag: "BindError"`)
+- `DevtoolsCleanupError` (`_tag: "CleanupError"`)
+- `DevtoolsShellOpenError` (`_tag: "ShellOpenError"`)
+- `DevtoolsUnsafeProductionCaptureError`
+- `DevtoolsSnapshotSafetyError` (`_tag: "SnapshotSafetyError"`)
+- `DevtoolsInvalidOptionError`
+- `InspectorFixtureError`
 
 ## Patterns
 
@@ -110,8 +229,8 @@ Each command exports its own pipeline error union — see [CLI reference](cli.md
   Effect.catchTag("PermissionDenied", (err) =>
     showPermissionPrompt(err.capability)
   ),
-  Effect.catchTag("FilesystemSystemError", (err) =>
-    showFilesystemError(err.message)
+  Effect.catchTag("FileNotFound", (err) =>
+    showMissingFile(err.path)
   )
 )
 ```
@@ -120,7 +239,7 @@ Each command exports its own pipeline error union — see [CLI reference](cli.md
 
 ```ts
 .pipe(
-  Effect.catchTag("HostProtocolUnsupportedError", () => Effect.succeed(fallback))
+  Effect.catchTag("Unsupported", () => Effect.succeed(fallback))
 )
 ```
 

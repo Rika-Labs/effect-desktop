@@ -17,30 +17,34 @@ openssl genpkey -algorithm Ed25519 -out updater-private.pem
 openssl pkey -in updater-private.pem -pubout -out updater-public.pem
 ```
 
-Add to `desktop.config.ts`:
+Add to `desktop.config.ts` under `update`:
 
 ```ts
-publishing: {
-  keyVersion: 1,
-  privateKeyPath: process.env.UPDATER_KEY_PATH,    // path to updater-private.pem
-  publicKeys: [process.env.UPDATER_PUBLIC_KEY]      // contents of updater-public.pem
+update: {
+  channel: "stable",                                // "stable" | "beta" | "canary"
+  feedUrl: "https://updates.example.com/{platform}/{channel}.json",
+  publicKey: "ed25519:<base64-public-key>",         // contents of updater-public.pem (Ed25519 envelope)
+  privateKeyEnv: "UPDATER_PRIVATE_KEY_PEM",         // env var holding the private key PEM at publish time
+  keyVersion: 1
 }
 ```
 
-The public key gets embedded in the app at build time. The private key signs manifests at publish time.
+The public key envelope ships in the app for trust anchoring. `privateKeyEnv` is the **name** of the environment variable the CLI reads the private key PEM from at publish time — never the key itself. `feedUrl` must contain both `{platform}` and `{channel}` placeholders.
 
 ## 2. Publish the manifest
 
 ```bash
-bun run desktop publish --config desktop.config.ts --channel stable
+bun run desktop publish --config desktop.config.ts
 ```
 
-Produces a signed `update-manifest.json` (one per channel). The manifest binds:
+There is no `--channel` flag. The channel comes from `update.channel` in `desktop.config.ts`. To ship multiple channels, run `publish` once per channel with different config files (or override the field in profile overrides).
+
+The signed `update-manifest.json` is canonical JSON (sorted keys, deterministic whitespace) so the Ed25519 signature is reproducible. The manifest binds:
 
 - App id and version.
-- Channel name (`stable`, `beta`, etc.).
-- Per-target artifact url, hash, size.
-- Signature over all of the above.
+- Channel name.
+- Per-target artifact url, SHA-256, byte size.
+- Ed25519 signature over the canonical bytes.
 - Key version.
 
 Upload the manifest and artifacts to your distribution host (S3, Cloudflare R2, GitHub Releases, your own CDN). The framework doesn't care where they live.
@@ -76,7 +80,7 @@ A manifest can declare a rollback pack per channel. By default, non-newer versio
 
 ## Channels
 
-The `channel` flag on `publish` lets you ship to `beta`, `nightly`, etc. without disturbing `stable`. Users on `stable` only see manifests at `https://updates.example.com/stable/manifest.json`; users on `beta` follow `/beta/manifest.json`. Each channel has its own version-monotonicity check.
+`update.channel` in `desktop.config.ts` is one of `stable`, `beta`, or `canary`. Each channel resolves through the `{channel}` placeholder in `update.feedUrl`, so users on `stable` and `beta` follow distinct manifest URLs. Each channel has its own version-monotonicity check enforced at publish time.
 
 ## Why signed manifests
 

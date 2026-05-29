@@ -18,7 +18,7 @@ It also does not provide native cookie read, write, remove, or watch behavior.
 ## Import
 
 ```ts
-import { RendererPgliteLive } from "@orika/platform-browser"
+import { RendererPgliteLive } from "@orika/platform-browser/sql-pglite"
 ```
 
 ## SQLite WASM

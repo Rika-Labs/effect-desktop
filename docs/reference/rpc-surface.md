@@ -17,56 +17,98 @@ import { Desktop } from "@orika/core"
 const Rpc = Desktop.Rpc
 ```
 
-## `Rpc.surface(name, group, options)`
+## `Rpc.surface(tag, group, options)`
 
 Bundles one `RpcGroup` into:
 
-- A **server layer** — the runtime side of the contract.
-- A **generated client layer** — bridge-backed renderer client.
-- A **deterministic test client layer** — for unit tests.
-- **Schema docs** — JSON-serializable description of every method.
-- **Contract-law checks** — verifies the shape conforms to the layer-first contract.
+- A **server layer** (`DesktopRpcsLayer`) you pass to `Desktop.make({ rpcs })`.
+- A **generated client layer** that binds your `Context.Key` to either the raw `DesktopRpcClient<Rpcs>` (direct surface) or a hand-mapped facade (mapped surface).
+- A **deterministic test client layer factory** that wires the same handlers through `RpcServer.makeNoSerialization` + `RpcClient.makeNoSerialization` for unit tests.
+- **Schema docs** — `DesktopRpcSchemaDoc` rows describing every endpoint (and any capability facts).
+- **Contract-law checks** — `DesktopRpcContractLaw` entries that verify bridge-compatible tags, unique endpoint names, and schema-backed endpoints.
+
+`tag` is the surface namespace. Every RPC tag in the group must start with `${tag}.`.
+
+Direct surface (public service _is_ the generated client):
 
 ```ts
-const WindowSurface = Desktop.Rpc.surface("Window", WindowRpcGroup, {
-  // optional: capability metadata, support metadata, custom client mapping
+import { Context, Effect, Schema } from "effect"
+import { Rpc, RpcClient, RpcGroup } from "effect/unstable/rpc"
+import { Desktop } from "@orika/core"
+
+const Ping = Rpc.make("Notes.ping", { success: Schema.String })
+const NotesRpcs = RpcGroup.make(Ping)
+
+class NotesClient extends Context.Service<
+  NotesClient,
+  RpcClient.RpcClient<RpcGroup.Rpcs<typeof NotesRpcs>>
+>()("app/NotesClient") {}
+
+const NotesHandlers = NotesRpcs.toLayer({
+  "Notes.ping": () => Effect.succeed("pong")
+})
+
+const NotesSurface = Desktop.Rpc.surface("Notes", NotesRpcs, {
+  service: NotesClient,
+  handlers: NotesHandlers
+})
+```
+
+Mapped surface (public service is a hand-written facade over the generated client):
+
+```ts
+class NotesFacade extends Context.Service<
+  NotesFacade,
+  { readonly ping: () => Effect.Effect<string> }
+>()("app/NotesFacade") {}
+
+const NotesFacadeSurface = Desktop.Rpc.surface("Notes", NotesRpcs, {
+  service: NotesFacade,
+  handlers: NotesHandlers,
+  client: (client) => ({ ping: () => client["Notes.ping"](undefined) })
 })
 ```
 
 The result has the shape:
 
 ```ts
-interface DesktopSurface<Rpcs> {
-  readonly name: string
-  readonly group: RpcGroup<Rpcs>
-  readonly serverLayer: Layer.Layer<...>
-  readonly clientLayer: Layer.Layer<...>
-  readonly testClientLayer: (dependencies?: Layer.Layer<...>) => Layer.Layer<...>
-  readonly schemaDocs: ReadonlyArray<SchemaDoc>
-  readonly contractLaws: ReadonlyArray<ContractLaw>
+interface DesktopRpcSurface<Tag, Group, Rpcs, ServiceId, ServerE, ServerR> {
+  readonly _tag: "DesktopRpcSurface"
+  readonly tag: Tag
+  readonly group: Group
+  readonly serverLayer: DesktopRpcsLayer<ServerE, ..., ServerR>
+  readonly clientLayer: Layer.Layer<ServiceId, never, RpcClient.Protocol | Rpc.MiddlewareClient<Rpcs>>
+  readonly testClientLayer: DesktopRpcTestClientLayerFactory<Rpcs, ServiceId, ServerE, ServerR>
+  readonly schemaDocs: readonly DesktopRpcSchemaDoc[]
+  readonly contractLaws: readonly DesktopRpcContractLaw[]
 }
 ```
 
-Call `testClientLayer()` when handlers need no extra services. Pass the same
-service dependencies the handlers need when testing a flattened surface whose
-generated client and handler dependency share one service tag.
+`testClientLayer()` builds a deterministic in-memory client + server pair using the surface's handlers. The factory is overloaded:
+
+- `testClientLayer()` — when handlers need no extra services.
+- `testClientLayer(dependencies)` — provide the handlers' `ServerR` requirement as a `Layer`.
+
+`schemaDocs` are JSON-serializable `DesktopRpcSchemaDoc` rows (payload/success/error schemas, capability, support). `contractLaws` is a fixed list — `bridge-compatible-tags`, `unique-endpoint-names`, `schema-backed-endpoints` — each returning `Effect<void, DesktopRpcSurfaceError>`.
+
+Pass `options.capabilityFacts` to publish capability facts that are not callable RPCs. Their `tag` must be in the surface namespace but must not collide with a callable RPC tag.
 
 ## `Rpc.supportedGroup(group)`
 
-Filters a descriptor `RpcGroup` to only the RPCs annotated as supported. Schema docs and descriptors still see every endpoint; the generated `SupportedDesktopRpcClient<Rpcs>` only contains the callable ones.
+Filters an `RpcGroup` to the RPCs whose `RpcSupport` annotation is not `unsupported`. Schema docs still describe every endpoint; the resulting group only contains the callable ones.
 
 ```ts
 const supported = Desktop.Rpc.supportedGroup(WindowRpcs)
-// supported.toClient() only has create/close
+// supported.requests only contains the supported RPCs
 ```
 
 ## `DesktopRpcClient<Rpcs>`
 
-The generated client type for an RPC group. Each method is `(input) => Effect.Effect<output, error>`.
+Alias for `RpcClient.RpcClient<Rpcs, RpcClientError.RpcClientError>`. Each method is `(input) => Effect.Effect<output, error | RpcClientError, never>` (or `Stream` for streaming endpoints).
 
 ## `SupportedDesktopRpcClient<Rpcs>`
 
-The filtered version — only methods marked supported.
+`DesktopRpcClient<Rpcs>` filtered through `SupportedRpc<Rpcs>` — only methods whose `RpcSupport` status is not `unsupported`.
 
 ## When to use surface
 

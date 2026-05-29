@@ -12,10 +12,12 @@ Global shortcut command-binding contract. The TypeScript service defines support
 
 ## Methods
 
-| Method         | Payload           | Success                 |
-| -------------- | ----------------- | ----------------------- |
-| `isRegistered` | `{ accelerator }` | `{ registered: false }` |
-| `isSupported`  | `void`            | support result          |
+| Method         | Payload           | Success                   |
+| -------------- | ----------------- | ------------------------- |
+| `isRegistered` | `{ accelerator }` | `{ registered: boolean }` |
+| `isSupported`  | `void`            | `{ supported, reason? }`  |
+
+`isRegistered` is permission-free (`authority: none`) so callers can probe before requesting the `register`/`unregister`/`unregisterAll` `native.invoke` capabilities. The host-routed `register`/`unregister`/`unregisterAll` capability facts remain `unsupported` everywhere today, so `isRegistered` returns `false` in practice until a host adapter lands.
 
 ## Events
 

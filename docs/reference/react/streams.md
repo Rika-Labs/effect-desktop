@@ -8,49 +8,70 @@ effect_version: 4
 
 # Streams
 
-`useDesktopStream` subscribes to an RPC method declared with `stream: true`. The bridge handles framing and backpressure; the renderer gets typed updates.
+Stream hooks subscribe to a `Stream.Stream` source — either an RPC method declared with `stream: true` or any Effect stream you construct yourself. The runtime appends emitted items into a bounded buffer; unmounting cancels the underlying fiber.
 
-## Import
+## Generated stream endpoints
 
-```ts
-const stream = DesktopApp.useDesktop(NotesRpcs).import.useStream(input, options)
+```tsx
+function Importer({ directory }: { directory: string }) {
+  const notes = DesktopApp.useDesktop(NotesRpcs)
+  const stream = notes.importNotes.useStream({ directory }, { capacity: 64 })
+
+  return (
+    <ul>
+      {stream.data.map((entry, index) => (
+        <li key={index}>{entry.title}</li>
+      ))}
+    </ul>
+  )
+}
 ```
 
 ## Shape
 
 ```ts
+import { Cause, Option } from "effect"
+
 interface StreamState<A, E> {
-  readonly status: "pending" | "loading" | "error" | "success"
-  readonly value?: A // last emitted item
-  readonly error?: E
+  readonly status: "idle" | "running" | "closed" | "failure"
+  readonly data: readonly A[]
+  readonly error: Option.Option<Cause.Cause<E>>
 }
 ```
+
+`data` is a bounded ring of the most recent items, oldest first. `status` becomes `"closed"` when the source terminates cleanly, `"failure"` when it dies; `error` is `Option.some(cause)` only on failure.
 
 ## Options
 
 ```ts
-{
-  capacity?: number             // buffered items (default 32)
-  onItem?: (item: A) => void    // side-effect per item
+interface DesktopStreamOptions<A> {
+  readonly capacity?: number | "unbounded" // bounded buffer; default depends on runtime, "unbounded" disables trimming
+  readonly onItem?: (item: A) => void // side effect per emitted item
 }
 ```
 
+`capacity` is normalized by `normalizeDesktopStreamCapacity`; pass `0` or `"unbounded"` to disable trimming, otherwise items beyond the cap are dropped from the head.
+
 ## Conditional subscription
 
-Pass `undefined` as input to pause; reactivating with new input restarts the subscription.
+For endpoints that accept input, pass `undefined` to mount the hook with an empty payload. Endpoints declared without a payload accept only an options object:
 
 ```ts
-const stream = useStream(enabled ? { directory } : undefined, { capacity: 64 })
+const stream = notes.importNotes.useStream(enabled ? { directory } : undefined, { capacity: 64 })
+
+// No-payload stream:
+const tail = notes.tail.useStream({ capacity: 0, onItem: (line) => console.log(line) })
 ```
 
 ## Cancellation
 
-Unmounting the subscription cancels the underlying Effect — the runtime sends `HostProtocolCancelByRequestEnvelope` and closes the source scope.
+Unmounting cancels the source fiber via the framework runtime — the RPC client closes the bridge scope and the host releases any resources tied to it.
 
 ## Lower-level
 
-- `useSubscribable(subscribable, options?)` — subscribe to an arbitrary Effect Subscribable.
-- `useEffectResult(result)` — wrap an Effect result as a `StreamState`.
+- `useDesktopStream(stream, options?, runtime?)` — subscribe to any `Stream.Stream<A, E, R>` with the same `StreamState` semantics. `runtime` defaults to an empty `ManagedRuntime`.
+- `useSubscribable(ref)` — subscribe to a `SubscriptionRef<A>` and return the latest value (or `undefined` before the first emission).
+- `useEffectResult(effect, deps?, runtime?)` — run an `Effect<A, E, R>` and return `AsyncResult.AsyncResult<A, E>`. `useDisplays` / `useThemeMode` are built on this helper.
 
 ## Related
 

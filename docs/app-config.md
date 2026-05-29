@@ -61,5 +61,5 @@ bun run desktop check --config desktop.config.ts
 ## Where to go next
 
 - [Configuration reference](reference/config.md) — every field and rule
-- [Tutorial: package, sign, and ship](tutorials/04-package-and-sign.md)
 - [How-to: package for macOS](how-to/package-for-macos.md)
+- [How-to: ship an update](how-to/ship-an-update.md)

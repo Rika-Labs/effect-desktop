@@ -33,7 +33,7 @@ export const TodoList = Rpc.make("Todos.list", {
 export const TodoRpcs = RpcGroup.make(TodoCreate, TodoList)
 ```
 
-Pick `Rpc.make`'s success type carefully — it's the boundary the bridge will Schema-decode at. `payload`, `success`, `error`, and `stream` are the only fields you should set.
+Pick `Rpc.make`'s success type carefully — it's the boundary the bridge will Schema-decode at. `payload`, `success`, and `error` are the fields you set; mark a method as streaming by passing `RpcSchema.Stream(chunk, error)` as the `success`.
 
 ## 2. Implement the handlers
 
@@ -122,22 +122,30 @@ function CreateTodo() {
 }
 ```
 
-`useMutation` for actions, `useQuery` for reads, `useStream` for streaming endpoints (`stream: true`).
+`useMutation` for actions, `useQuery` for reads, `useStream` for streaming endpoints (those whose `success` is `RpcSchema.Stream(chunk, error)`).
 
 ## When to add capability metadata
 
-If a handler performs privileged work (filesystem, process, secret, native invoke), annotate the RPC with capability metadata so the framework checks it before dispatch:
+If a handler performs privileged work (filesystem, process, secret, native invoke), annotate the RPC with `RpcCapability` so the permission interceptor checks it before dispatch:
 
 ```ts
-import { P } from "@orika/core"
+import { RpcCapability, P } from "@orika/core"
 
 export const TodoExport = Rpc.make("Todos.export", {
   payload: { path: Schema.String },
   success: Schema.Struct({ bytesWritten: Schema.Number })
-}).pipe(P.requireFilesystemWrite())
+}).pipe(RpcCapability({ kind: "filesystem.write" }))
 ```
 
-`PermissionRegistry` checks the capability before the handler runs. The handler still receives the call only if a matching declaration permits it.
+Declare the matching capability at the app level so the permission registry knows what's allowed. `P.filesystemWrite({ roots })` returns the normalized capability shape:
+
+```ts
+import { Desktop, P } from "@orika/core"
+
+Desktop.permission(P.filesystemWrite({ roots: ["/Users/me/Documents"] }))
+```
+
+`PermissionInterceptor` (installed by the framework) checks the RPC's capability against the registry on every call; mismatches fail with `PermissionDenied`.
 
 ## Related
 

@@ -58,10 +58,11 @@ transport.
 
 ## Errors
 
-`AutostartError` is the host protocol error union. Malformed launch arguments or
-unsafe app identity values return `InvalidArgument`. Host filesystem or registry
-failure returns `HostUnavailable`. Platforms outside macOS, Windows, and Linux
-return typed `Unsupported` with reason `host-adapter-unimplemented`.
+`AutostartError` is the host protocol error union. Malformed launch arguments
+(empty strings or Unicode control characters) return `InvalidArgument`. Host
+filesystem or registry failure returns `HostUnavailable`. Platforms outside
+macOS, Windows, and Linux return typed `Unsupported` with reason
+`host-adapter-unimplemented`.
 
 ## Related
 

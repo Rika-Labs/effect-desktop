@@ -48,28 +48,28 @@ Process commands, network hosts, secret namespaces, and native invoke methods do
 
 ## Approval flow
 
-When a capability resolves to `approval`, control passes to `ApprovalBroker`:
+When a capability resolves to `approval`, the framework drives the user-facing prompt through `PermissionApprovalWorkflow` (durable workflow) backed by `ApprovalBroker`:
 
 ```mermaid
 flowchart LR
   H[Handler] -->|check| PR[PermissionRegistry]
-  PR -->|approval| AB[ApprovalBroker]
+  PR -->|approval rule matches| AB[ApprovalBroker / Workflow]
   AB -->|coalesce dupes| AB
-  AB -->|render prompt| AP[ApprovalPromptPort]
+  AB -->|prompt| AP[ApprovalPromptPort]
   AP -->|user decides| AB
-  AB -->|grant or deny| PR
+  AB -->|grant or denied-outcome| PR
   PR -->|GrantedCapability or PermissionDenied| H
 ```
 
 The broker enforces three properties that make approval flows usable rather than infuriating:
 
 - **Coalescing.** Identical `(operation, actor, resource)` requests share one prompt. Five concurrent file-read calls from the same window produce one user-facing question.
-- **At most one visible prompt per actor.** Distinct requests queue behind it up to a configurable depth (default 8). The ninth fails as `QueueOverflow` rather than burying the user.
-- **Denied-for-scope cache.** If the user denies a prompt, future identical requests fail without re-prompting until the cache is cleared.
+- **At most one active prompt per actor.** Distinct requests queue behind it up to `maxQueueDepthPerActor` (default `8`). The ninth fails as `QueueOverflow` rather than burying the user.
+- **Denied-for-scope cache.** An outcome of `denied-for-scope` is cached per `(operation, actor, resource)`; future identical requests resolve immediately with the cached outcome from `source: "scope-cache"`.
 
 The prompt itself is rendered by the **host**, not the renderer. `ApprovalPromptPort` is a substitutable seam — in production it is the OS-native modal; in tests it is a deterministic resolver. Renderer code never constructs an authoritative prompt. (See [why](boundary-rule.md).)
 
-If you need to bypass the prompt for development, set `devApproveAll: true` on the broker. Approvals still emit audit events with `source: "dev-approve-all"`, so the bypass is reviewable rather than invisible.
+If you need to bypass the prompt for development, set `devApproveAll: true` on the broker. Approvals still emit `approval-requested` + `approval-granted` audit events with `source: "dev-bypass"`, so the bypass is reviewable rather than invisible.
 
 ## Grants are tokens with a lifecycle
 
@@ -89,17 +89,16 @@ There is no "ambient permission" model. A grant is a value you hold, just like a
 
 ## Audit events are not optional
 
-When an `AuditEventsApi` is provided to the registry (the default), every check writes a structured event:
+When an `AuditEventsApi` is wired into the registry, every decision and grant lifecycle transition writes a structured event:
 
-- `permission/check` — the capability + actor + outcome + trace id.
-- `permission/grant` — a grant was issued.
-- `permission/use` — the grant was used.
-- `permission/revoke` — the grant was revoked.
-- `permission/expire` — the grant TTL elapsed.
-- `permission/consume` — a one-time grant was used.
-- `approval/requested`, `approval/granted`, `approval/denied`.
+- `permission-granted`, `permission-denied` — emitted by `check`.
+- `permission-used` — emitted by `use`.
+- `permission-revoked` — emitted by `revoke`.
+- `permission-expired` — emitted when a TTL elapses on `inspect` / `use`.
+- `permission-consumed` — emitted when a `oneTime` grant is consumed.
+- `approval-requested`, `approval-granted`, `approval-denied` — emitted by the broker / workflow.
 
-Events are redacted before they hit the event log — secret-shaped fields are replaced with `Redacted` values. The audit log is the answer to "what did this app actually do at 3:42 AM?" — and you don't have to instrument anything yourself to get it.
+Events run through the inspector safety policy (which delegates to the shared `RedactionFilter`) before they reach the event log; secret-shaped fields are replaced with `Redacted` values, and grant tokens are emitted as `Redacted` strings. The audit log is the answer to "what did this app actually do at 3:42 AM?" — and you don't have to instrument anything yourself to get it.
 
 ## Why deny-by-default
 

@@ -16,7 +16,6 @@ effect_version: 4
 import {
   runCli,
   runDesktopBuild,
-  runDesktopCheck,
   runDesktopPackage,
   runDesktopSign,
   runDesktopNotarize,
@@ -31,78 +30,93 @@ import {
 
 ## Commands
 
-| Command                                   | Description                                 |
-| ----------------------------------------- | ------------------------------------------- |
-| `desktop --help`                          | Top-level help                              |
-| `desktop check`                           | Run production security checks              |
-| `desktop check --docs`                    | Run the documentation release gate          |
-| `desktop check --repro --baseline <path>` | Reproducibility check against a prior build |
-| `desktop build`                           | Build renderer and runtime                  |
-| `desktop package`                         | Stage platform artifacts                    |
-| `desktop sign`                            | Sign artifacts                              |
-| `desktop notarize`                        | Notarize macOS artifacts (Apple)            |
-| `desktop publish`                         | Publish signed update manifest              |
-| `desktop release`                         | Run the full release workflow               |
-| `desktop doctor`                          | Diagnose environment prerequisites          |
+| Command            | Description                                                                                                                               |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `desktop --help`   | Top-level help                                                                                                                            |
+| `desktop build`    | Build renderer, runtime, native host, bridge manifest, and app manifest into `build/effect-desktop/<target>`                              |
+| `desktop package`  | Stage the fixed §23.2 artifact set from an existing build layout                                                                          |
+| `desktop sign`     | Sign existing `dist/desktop/<platform>` artifacts and write `sign-report.json`                                                            |
+| `desktop notarize` | Submit signed macOS artifacts to Apple notarization, staple tickets, and assess Gatekeeper                                                |
+| `desktop publish`  | Publish an Ed25519-signed `update-manifest.json` from packaged release artifacts                                                          |
+| `desktop release`  | Run `package`, `sign`, `notarize` when needed, and `publish` as a resumable release workflow                                              |
+| `desktop doctor`   | Validate Bun, Rust, platform SDK, WebView runtime, signing credentials, build tools, package manager state, native host cache, and config |
+| `desktop check`    | Run production security, reproducibility, public API, docs, release, accessibility, or semver checks (exactly one mode flag per run)      |
 
-## Common flags
+## Flags
 
-| Flag               | Description                                                         |
-| ------------------ | ------------------------------------------------------------------- |
-| `--config <path>`  | Path to `desktop.config.ts` (default: cwd)                          |
-| `--target <a,b>`   | Restrict to specific build targets (e.g. `macos-arm64,windows-x64`) |
-| `--channel <name>` | Update channel for `publish`                                        |
+The CLI rejects unknown flags per command. The matrix below enumerates the exact accepted flags as declared in `packages/cli/src/index.ts`.
 
-## `runDesktopCheck(options) → ProductionCheckReport`
+| Command    | Flags                                                                                                                                                                                            |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `build`    | `--config <path>` (default `desktop.config.ts`), `--platform <id>`, `--profile <name>` (default `dev`), `--json`                                                                                 |
+| `package`  | `--config <path>`, `--platform <id>`, `--artifact <kind>`, `--json`                                                                                                                              |
+| `sign`     | `--config <path>`, `--platform <id>`, `--json`                                                                                                                                                   |
+| `notarize` | `--config <path>`, `--platform <id>`, `--json`                                                                                                                                                   |
+| `publish`  | `--config <path>`, `--platform <id>`, `--json`                                                                                                                                                   |
+| `release`  | `--config <path>`, `--platform <id>`, `--artifact <kind>`, `--version <semver>`, `--json`                                                                                                        |
+| `doctor`   | `--config <path>`, `--ci`, `--json`                                                                                                                                                              |
+| `check`    | One of `--production`, `--repro`, `--api`, `--docs`, `--release`, `--a11y`, `--semver`; plus `--config <path>`, `--renderer <name>`, `--platform <id>`, `--artifact <kind>`, `--write`, `--json` |
 
-```ts
-const report = await Effect.runPromise(runDesktopCheck({ cwd: process.cwd() }))
-if (!report.passed) {
-  for (const v of report.violations) {
-    console.error(`${v.rule}: ${v.message}`)
-  }
-}
-```
+`--platform` accepts a desktop target id such as `macos-arm64`, `macos-x64`, `windows-x64`, `linux-x64`, or `linux-arm64`. There is no `--target`, no `--channel`, and no `--baseline` flag — update channel comes from `desktop.config.ts#update.channel`.
+
+`--json` switches every command to a Schema-encoded JSON report on stdout (success) or stderr (failure). The check command modes are mutually exclusive; combining two (e.g. `--repro --api`) is a usage error.
 
 ## `runDesktopBuild(options) → DesktopBuildReport`
 
-Returns `{ layout, elapsed, artifacts }`.
+Returns `{ appId, appName, appVersion, target, providers, providerBudgets, providerMeasurements, layoutPath, appManifestPath, bridgeManifestPath, steps }`. Each step report carries `{ name, command?, cwd?, elapsedMs, outputPath, provider?, cacheKey, status: "rebuilt" | "reused", reason }`.
 
 ## `runDesktopPackage(options) → DesktopPackageReport`
 
-Returns `{ artifacts: [{ path, kind, size, hash }, ...] }`.
+Returns `{ appId, appName, appVersion, target, layoutPath, outputPath, providers, artifacts, steps }`. Each artifact report carries `{ kind, target, artifactPath, artifactJsonPath, checksumsPath, appId, appName, appVersion, sizeBytes, sha256, linuxIntegration? }`.
 
 ## `runDesktopSign(options) → DesktopSignReport`
 
-Returns `{ artifacts: [{ path, signed, error? }, ...] }`.
+Returns `{ appId, appName, appVersion, target, outputPath, artifacts, steps }`. Each artifact report carries `{ kind, artifactPath, signedPaths, signaturePath? }`. Signing failures fail the effect with a `SignPipelineError` variant rather than encoding `signed: false` on the row.
 
 ## `runDesktopNotarize(options) → DesktopNotarizeReport`
 
-Returns `{ artifacts: [{ path, stapled, error? }, ...] }`.
+Returns `{ appId, appName, appVersion, target, outputPath, artifacts, steps }`. Each artifact report carries `{ kind, artifactPath, alreadyStapled, submissionId?, status?, assessed }`.
 
-## `runDesktopPublish(options)`
+## `runDesktopPublish(options) → DesktopPublishReport`
 
-Returns the signed manifest plus distribution metadata.
+Returns the signed manifest plus distribution metadata. The signed `update-manifest.json` is canonical JSON (sorted keys, no extraneous whitespace) so the Ed25519 signature is reproducible.
 
-## `runDesktopReproCheck(options)`
+## `runDesktopReproCheck(options) → DesktopReproReport`
 
-Returns either the diff report (failure) or success.
+Returns a diff report whose `differences` array is empty on success. Non-empty differences fail the effect with a typed `ReproCheckError`.
 
 ## `runDesktopDoctor(options) → DesktopDoctorReport`
 
-Returns a Schema-typed `DesktopDoctorReport`: `{ probes: [{ name, status, message, evidence }], ... }`. The `native-capabilities` probe decodes the generated native parity matrix bundled with the CLI, so doctor and the native reference page report the same support and host-router counts. Gate on `status === "missing"` for required prerequisites, and treat a `native-capabilities` warning as a native host-route support gap to inspect before using those APIs.
+Returns a Schema-typed `DesktopDoctorReport`: `{ passed, ci, platform, arch, probes, layerGraph? }`. Each probe is a `DoctorDiagnostic` with `{ name, status: "ok" | "missing" | "warning", component, message, remediation?, installCommand?, docsUrl?, evidence }`. Probe names are exactly:
+
+- `bun-version`
+- `rust-toolchain`
+- `platform-sdk`
+- `webview-runtime`
+- `signing-credentials`
+- `build-tools`
+- `package-manager-state`
+- `native-capabilities`
+- `native-host-cache`
+- `config`
+
+The `native-capabilities` probe decodes the parity matrix bundled with the CLI at `packages/cli/src/native-parity-matrix.json`, so doctor and the native parity reference report the same counts. Gate on `status === "missing"` for required prerequisites, and treat a `native-capabilities` warning as a host-route support gap.
+
+`runDesktopDoctor` fails with `DoctorCapabilityTruthUnavailable` when the bundled parity matrix is missing or invalid — that is a build-system failure, not a probe result.
 
 ## `runReleaseWorkflow(config, services)`
 
-Runs the full release sequence (check → build → package → sign → notarize → publish) with telemetry and resume-on-failure.
+Runs the resumable release workflow (`package` → `sign` → `notarize` when targeting macOS → `publish`) with telemetry and resume-on-failure. The workflow requires a `WorkflowEngine` layer; the CLI provides `WorkflowEngine.layerMemory` by default.
 
 ## Error types
 
 Each command exports a closed error union:
 
 - `PackagePipelineError` — `PackageCommandFailedError`, `PackageConfigError`, `PackageFileError`, `PackageMissingBuildArtifactError`, `PackageUnsupportedArtifactError`, `PackageUnsupportedHostError`, `PackageUnsupportedTargetError`.
-- `SignPipelineError` — similar shape for signing.
-- `NotarizePipelineError`, `PublishPipelineError`, `ReproCheckPipelineError` — for their phases.
+- `SignPipelineError` — `SignCommandFailedError`, `SignConfigError`, `SignFileError`, `SignUnsupportedHostError`, `SignUnsupportedTargetError`.
+- `NotarizePipelineError` — `NotarizeCommandFailedError`, `NotarizeConfigError`, `NotarizeFileError`, `NotarizeUnsupportedHostError`, `NotarizeUnsupportedTargetError`.
+- `PublishPipelineError` — `PublishConfigError`, `PublishFileError`, `PublishSignatureError`.
+- `BuildPipelineError` — `BuildConfigError`, `BuildUnsupportedHostError`, `BuildUnsupportedTargetError`, `BuildCommandFailedError`, `BuildFileError`.
 
 ## Format helpers
 

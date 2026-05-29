@@ -63,11 +63,11 @@ export const WindowHandlersLive = WindowRpcGroup.toLayer({
   /* handlers */
 })
 
-// + surface
-export const WindowSurface = DesktopRpc.surface("Window", WindowRpcGroup, options)
+// + surface (native modules use NativeSurface.make, which delegates to Desktop.Rpc.surface)
+export const WindowSurface = NativeSurface.make("Window", WindowRpcGroup, options)
 ```
 
-`WindowMethodNames` exists so callers can check the exported method list without running anything. `WindowRpcs` is the descriptor for schema docs, handlers, generated clients, and contract-law checks. The public `WindowApi` is mapped on top where the framework owns durable desktop policy such as optional create defaults and event-resource reconciliation.
+`WindowMethodNames` exists so callers can check the exported method list without running anything. `WindowRpcs` is the descriptor for schema docs, handlers, generated clients, and contract-law checks. The public `WindowApi` is mapped on top where the framework owns durable desktop policy such as optional create defaults and event-resource reconciliation. App-level (non-native) RPC capabilities call `Desktop.Rpc.surface(...)` directly; the layer-first contract is the same in both cases.
 
 ## Composing layers in your app
 

@@ -45,7 +45,8 @@ test("Notes.save persists and returns a savedAt timestamp", async () => {
 If you need a specific native service in the test (say, `WindowTest` instead of leaving it undefined):
 
 ```ts
-import { Layer } from "effect"
+import { test, expect } from "bun:test"
+import { Effect, Layer } from "effect"
 import { HeadlessRuntime, WindowTest } from "@orika/test"
 import { Window } from "@orika/native"
 
@@ -61,6 +62,8 @@ test("creates a window", async () => {
   )
 })
 ```
+
+For multi-surface scenarios, `TestDesktop.layer({ permissions: "allow-all" })` composes `ClipboardTest`, `DialogTest`, `ScreenTest`, `WindowTest`, and a `PermissionRegistry` in one layer; pair it with `TestDesktop.windows` and `TestDesktop.expectNoLeakedResources` for assertions.
 
 ## 4. Queue RPC responses on the mock bridge
 
@@ -79,19 +82,25 @@ The bridge enforces the contract — queueing a response with the wrong shape fa
 ## 5. Assert resource cleanup
 
 ```ts
+import { Effect } from "effect"
 import { ResourceRegistry } from "@orika/core"
-import { assertNoOpenResourcesIn } from "@orika/test"
+import { assertNoOpenResources } from "@orika/test"
 
-const registry = yield * ResourceRegistry
-yield * assertNoOpenResourcesIn(registry, { testName: "save persists" })
+Effect.gen(function* () {
+  // ...handler effect...
+  yield* assertNoOpenResources({ testName: "save persists" })
+})
 ```
 
-`HeadlessRuntime.run` does this automatically. Call `assertNoOpenResourcesIn`
-directly when you run a manually composed layer through `Effect.runPromise`.
+`HeadlessRuntime.run` does this automatically. Call `assertNoOpenResources`
+directly when you compose a layer manually; pass an already-built
+`ResourceRegistryApi` to `assertNoOpenResourcesIn(registry, options)` when you
+own the registry outside an Effect.
 
 ## 6. Render-side tests with React Testing Library
 
 ```tsx
+import { test } from "bun:test"
 import { Effect } from "effect"
 import { render, screen } from "@testing-library/react"
 import { ReactDesktop } from "@orika/react"
@@ -117,9 +126,9 @@ The renderer's transport is just another layer; substituting it gives you a dete
 ## What you don't write
 
 - A mock filesystem (`MemoryFilesystem`).
-- A mock process spawner (`MockProcess`).
-- A mock window manager (`TestWindow`, `MockHost`).
-- A mock approval queue (test layer for `ApprovalBroker`).
+- A mock process spawner (`MockProcess`, `MockPTY`).
+- A mock window manager (`WindowTest`, `TestDesktop`, `MockHost`).
+- A mock secret store (`makeMemorySecretsSafeStorage`).
 
 If a faked service you need isn't in `@orika/test`, that's an issue worth filing.
 

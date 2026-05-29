@@ -50,12 +50,14 @@ import {
 ```ts
 {
   script: string
-  inputSchema: Schema.Schema<I>
-  outputSchema: Schema.Schema<O>
+  inputSchema: Schema.Decoder<I, never>
+  outputSchema: Schema.Decoder<O, never>
   context?: { resource?: string, traceId?: string }
-  capabilities?: NormalizedCapability[]
+  capabilities?: readonly NormalizedCapability[]
 }
 ```
+
+A `Schema.Schema<I>` value satisfies `Schema.Decoder<I, never>` directly; explicit codecs are also accepted. The untyped overload `WorkerRawSpawnOptions` accepts `unknown` schema values for callers that resolve them dynamically.
 
 Workers are registered under the `ResourceOwner` that built the `Worker` service. `Desktop.runtime(...)` supplies an app owner, `Desktop.window(..., services)` supplies a window owner, and custom job layers can provide `ResourceOwner.job(...)`.
 

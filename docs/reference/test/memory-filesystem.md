@@ -13,8 +13,10 @@ In-memory implementation of the `Filesystem` service. Same contract — root con
 ## Import
 
 ```ts
-import { MemoryFilesystem, type MemoryFilesystemOptions } from "@orika/test"
+import { MemoryFilesystem, MemoryFilesystemLive, type MemoryFilesystemOptions } from "@orika/test"
 ```
+
+`MemoryFilesystemLive` is an alias for `MemoryFilesystem.layer`.
 
 ## Layer
 
@@ -24,6 +26,7 @@ import { ResourceOwner, ResourceRegistryLive } from "@orika/core"
 
 const FilesystemLive = MemoryFilesystem.layer({
   directories: ["/workspace"],
+  files: [{ path: "/workspace/seed.txt", bytes: new TextEncoder().encode("seed") }],
   permissions: {
     readRoots: ["/workspace"],
     writeRoots: ["/workspace"]
@@ -31,12 +34,25 @@ const FilesystemLive = MemoryFilesystem.layer({
 }).pipe(Layer.provide(ResourceRegistryLive), Layer.provide(ResourceOwner.test("test")))
 ```
 
+## Options
+
+```ts
+{
+  files?: readonly { path: string; bytes: Uint8Array }[]
+  directories?: readonly string[]
+  symlinks?: readonly { path: string; target: string }[]
+  permissions?: FilesystemPermissionPolicy
+  now?: () => number  // defaults to Effect Clock
+}
+```
+
 ## Behavior
 
 - Reads, writes, atomic replace, stats, removal.
-- Watchers fire deterministically.
-- Symlinks supported.
+- Watchers fire deterministically and dispose their registry entry on close.
+- Symlinks supported, with the production root-containment policy (escape returns `SymlinkEscapesRoot`).
 - Permission checks identical to production `Filesystem`.
+- Default file timestamps come from the Effect `Clock` so `TestClock` makes them deterministic.
 
 ## Why match the production contract
 

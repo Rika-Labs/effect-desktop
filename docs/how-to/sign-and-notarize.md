@@ -28,23 +28,32 @@ The CLI invokes the platform tool with the right arguments. Windows additionally
 
 ### Inspect the report
 
-`runDesktopSign` returns a `DesktopSignReport`:
+`runDesktopSign` returns a `DesktopSignReport`. Each `artifact` row carries `{ kind, artifactPath, signedPaths, signaturePath? }`:
 
 ```
 {
+  appId: "dev.example.notes",
+  appName: "Notes",
+  appVersion: "1.2.3",
+  target: "macos-arm64",
+  outputPath: "dist/desktop/macos",
   artifacts: [
-    { path: "dist/macos-arm64/Notes.app", signed: true },
-    { path: "dist/windows-x64/Notes.exe", signed: true }
-  ]
+    {
+      kind: "app",
+      artifactPath: "dist/desktop/macos/Notes.app",
+      signedPaths: ["dist/desktop/macos/Notes.app"]
+    }
+  ],
+  steps: [/* SignStepReport rows */]
 }
 ```
 
-A `signed: false` row carries an `error` describing the failure (missing identity, expired cert, locked keychain).
+Signing failures fail the effect with a typed `SignPipelineError` variant (`SignConfigError`, `SignCommandFailedError`, etc.); they are not encoded as `signed: false` rows.
 
 ### Sign one platform at a time
 
 ```bash
-bun run desktop sign --target macos-arm64
+bun run desktop sign --platform macos-arm64
 ```
 
 Useful when iterating on a single platform.
@@ -69,18 +78,27 @@ The CLI:
 
 ### The report
 
-`runDesktopNotarize` returns a `DesktopNotarizeReport`:
+`runDesktopNotarize` returns a `DesktopNotarizeReport`. Each `artifact` row carries `{ kind, artifactPath, alreadyStapled, submissionId?, status?, assessed }`:
 
 ```
 {
+  target: "macos-arm64",
+  outputPath: "dist/desktop/macos",
   artifacts: [
-    { path: "dist/macos-arm64/Notes.app", stapled: true },
-    { path: "dist/macos-x64/Notes.app", stapled: false, error: "rejected: missing entitlement com.apple.security.cs.allow-jit" }
-  ]
+    {
+      kind: "app",
+      artifactPath: "dist/desktop/macos/Notes.app",
+      alreadyStapled: false,
+      submissionId: "abcd-1234-...",
+      status: "Accepted",
+      assessed: true
+    }
+  ],
+  steps: [/* NotarizeStepReport rows */]
 }
 ```
 
-For a rejected submission, fetch the full notary log:
+Rejections fail the effect with `NotarizeCommandFailedError`. For a rejected submission, fetch the full notary log:
 
 ```bash
 xcrun notarytool log <submission-id> --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD"

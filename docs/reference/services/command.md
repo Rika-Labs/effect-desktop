@@ -40,22 +40,23 @@ import {
 const registry = yield * CommandRegistry
 ```
 
-| Method               | Signature                                                                        |
-| -------------------- | -------------------------------------------------------------------------------- |
-| `registerGroup`      | `(registration: CommandGroupRegistration<Rpcs, E, R>) => Effect<ResourceHandle>` |
-| `unregister`         | `(id: string) => Effect<void, CommandRegistryError>`                             |
-| `invoke`             | `(id: string, input: unknown, context: PermissionContext) => Effect<unknown>`    |
-| `list`               | `() => Effect<readonly CommandSnapshot[]>`                                       |
-| `observeInvocations` | `() => Stream<CommandInvocationRecord>`                                          |
+| Method               | Signature                                                                                                                                     |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `registerGroup`      | `(registration: CommandGroupRegistration<Rpcs, E, R>) => Effect<ResourceHandle<"command-group", "registered">, CommandRegistryError \| E, R>` |
+| `unregister`         | `(id: string) => Effect<void, CommandRegistryError>`                                                                                          |
+| `invoke`             | `(id: string, input: unknown, context: PermissionContext) => Effect<unknown, CommandRegistryError>`                                           |
+| `list`               | `() => Effect<readonly CommandSnapshot[]>`                                                                                                    |
+| `observeInvocations` | `() => Stream<CommandInvocationRecord>`                                                                                                       |
+
+The registry wraps every group in the `PermissionInterceptor` middleware before binding handlers, so the capability check runs inside the same RPC dispatch as the handler. Internally it uses a flat `RpcTest.makeClient` as the per-command dispatcher.
 
 `DesktopCommands.layer(group, handlers, { ownerScope })` is the app-facing layer
 helper for scoped registration. It registers every RPC in the group as a command
-and disposes the command group when the owning scope closes.
+and disposes the command group when the owning scope closes (`ownerScope` defaults to `"app"`).
 
-## Registration Shape
+## Registration shape
 
-Each command is an Effect RPC endpoint with a `RpcCapability`. The capability is
-the permission contract checked before the handler runs.
+Each command is an Effect RPC endpoint with a `RpcCapability` annotation. The capability is decoded against `NormalizedCapability` — `{ kind: "none" }` and missing capabilities fail registration with `CommandRegistryInvalidInputError`.
 
 ```ts
 import { Effect, Schema } from "effect"

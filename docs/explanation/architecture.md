@@ -59,12 +59,14 @@ The pitch is plain: **the parts that need to be small, fast, and adversary-resis
 The path of a single call from a button click to a returned value:
 
 1. The renderer calls a generated typed client method (e.g. `say.run({ name: "Ada" })`).
-2. The bridge serializes a `HostProtocolRequestEnvelope` carrying method name, payload, trace id, and request id.
+2. The `BridgeRpc` boundary adapter serializes a `HostProtocolRequestEnvelope` carrying method name, payload, trace id, and request id.
 3. Framing prepends a length so the framed transport (stdio today; in-memory in tests) can deframe.
-4. The runtime decodes the envelope, looks up the handler in the `RpcGroup.toLayer` registry, decodes the payload through Effect Schema, runs the handler, encodes the result, and frames the response.
+4. The runtime decodes the envelope, looks up the handler in the `RpcGroup.toLayer` registry, decodes the payload through Effect Schema, applies the `PermissionInterceptor` middleware against the configured `PermissionRegistry`, runs the handler, encodes the result, and frames the response.
 5. The bridge resolves the original promise on the renderer side, typed exactly as the contract declared.
 
 If anything fails, the failure is **typed** — no thrown exception crosses the wire. A `PermissionDenied`, a `WindowError`, or a custom `GreetingError` arrives as a tagged value that TypeScript has narrowed for you.
+
+`BridgeRpc` is a boundary adapter, not a permanent abstraction. `AGENTS.md` keeps it only while it owns native/web protocol semantics that canonical Effect RPC cannot yet express locally; the goal is to remove it as Effect RPC absorbs those concerns. Application code never sees `BridgeRpc` — it composes canonical `RpcGroup`s and layers.
 
 ## Why everything is a contract
 

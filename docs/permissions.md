@@ -29,11 +29,11 @@ capture still need a dedicated profile/session-partitioned native service.
 
 ## Decision order (fixed)
 
-1. Explicit deny.
+1. Explicit `deny`.
 2. Revoked / expired / consumed.
 3. Approval-denied cache.
-4. Approval (routes to `ApprovalBroker`).
-5. Allow.
+4. `approval` (issued grant; user prompt is driven by `PermissionApprovalWorkflow` / `ApprovalBroker`, not by `check`).
+5. `allow`.
 6. Default deny.
 
 ## Verify Permission Exports

@@ -68,7 +68,7 @@ Linux `getReducedTransparency` remains unsupported. The current Linux host
 dependency surface does not expose a stable desktop-wide transparency reduction
 setting.
 
-`isSupported` is protected by `native.invoke:SystemAppearance.isSupported`.
+`isSupported` is protected by the `native.invoke` capability for the `SystemAppearance` primitive (same authority as the snapshot getters), so callers must hold `Native.Permissions.systemAppearance` before probing.
 
 ## Events
 

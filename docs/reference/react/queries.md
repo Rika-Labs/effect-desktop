@@ -15,9 +15,28 @@ payloads like `{ query }` do not restart the query on every render.
 
 ## Import (per-method)
 
-```ts
-const list = DesktopApp.useDesktop(TodoRpcs).list.useQuery()
-const filtered = DesktopApp.useDesktop(TodoRpcs).search.useQuery({ query })
+```tsx
+import { AsyncResult } from "effect/unstable/reactivity"
+
+function TodoList({ query }: { query: string }) {
+  const todos = DesktopApp.useDesktop(TodoRpcs)
+  const list = todos.list.useQuery()
+  const filtered = todos.search.useQuery({ query })
+
+  if (AsyncResult.isInitial(list)) {
+    return <span>Loading…</span>
+  }
+  if (AsyncResult.isFailure(list)) {
+    return <span>Failed.</span>
+  }
+  return (
+    <ul>
+      {list.value.map((todo) => (
+        <li key={todo.id}>{todo.title}</li>
+      ))}
+    </ul>
+  )
+}
 ```
 
 ## Shape
@@ -43,18 +62,21 @@ directly.
 
 ## Lower-level
 
-- `useDesktopQuery(operation, deps?)` — explicit Effect operation and React
-  dependency list; returns `{ state, status, reload, cancel, reset }`.
-- `useDesktopResource(endpoint, input?, options?)` — auto-fetch resource with `dispose` semantics.
-- `useResource(effect, options?)` — generic resource hook for any Effect.
+- `useDesktopQuery(operation, deps?)` — explicit Effect operation. Returns `DesktopQuery<A, E>` = `{ state, status, reload, cancel, reset }`. When `deps` is omitted, the operation re-runs only when `reload()` is called. When `deps` is supplied, both `deps` changes and `reload()` re-run it.
+- `useDesktopAction(operation, options?)` — explicit Effect operation returning `DesktopAction<Args, A, E>` = `{ state, status, run, cancel, reset }`. See [Mutations](mutations.md) for `concurrency` semantics.
+- `useDesktopResource(resource, deps?)` — tracks a `DesktopDisposable<E>` (`{ dispose(): Effect<void, E> }`); calls `dispose()` on unmount or when `deps` change. Returns `DesktopResourceState<E>` = `{ status: "idle" | "active" | "disposed" | "failure", error }`. Pass `undefined` to keep the resource slot idle.
+- `useResource` — alias for `useDesktopResource`.
+- `statusOf(state)` — derives the same status union from a raw `AsyncResult`.
 
 ## Conditional fetch
 
-Pass `undefined` as input to pause:
+Generated query hooks accept `undefined` to skip the request. The hook still mounts; the query simply runs against the `undefined` input until a real payload arrives:
 
 ```ts
-const result = useQuery(searchEnabled ? { query } : undefined)
+const result = todos.search.useQuery(searchEnabled ? { query } : undefined)
 ```
+
+Pass the same object literal across renders (or memoize it) — object payloads are compared by JSON-stable identity, so `{ query }` does not restart the query on every render.
 
 ## Related
 

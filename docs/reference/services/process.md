@@ -15,10 +15,14 @@ Runtime primitive for spawned child processes. Validates inputs, enforces a perm
 ```ts
 import {
   Process,
+  ProcessLayer,
+  ProcessLive,
   type ProcessApi,
   type ProcessSpawnInput,
+  type ProcessSpawnOptions,
   type ProcessExitStatus,
   type ProcessHandle,
+  type ProcessSnapshot,
   type ProcessBudgetPolicy,
   type ProcessPermissionPolicy,
   makeProcess
@@ -27,23 +31,23 @@ import {
 
 ## API
 
-| Method    | Signature                                             |
-| --------- | ----------------------------------------------------- |
-| `spawn`   | `(command, args?, options?) => Effect<ProcessHandle>` |
-| `list`    | `() => Effect<ProcessSnapshot[]>`                     |
-| `observe` | `() => Stream<readonly ProcessSnapshot[]>`            |
+| Method    | Signature                                                           |
+| --------- | ------------------------------------------------------------------- |
+| `spawn`   | `(command, args?, options?) => Effect<ProcessHandle, ProcessError>` |
+| `list`    | `() => Effect<readonly ProcessSnapshot[]>`                          |
+| `observe` | `() => Stream<readonly ProcessSnapshot[]>`                          |
 
 ## `ProcessSpawnOptions`
 
 ```ts
 {
   cwd?: string
-  env?: Record<string, string>
+  env?: Readonly<Record<string, string>>
   shell?: boolean
 }
 ```
 
-Shellless. No shell expansion. Pass arguments as an array.
+Shellless by default. No shell expansion. Pass arguments as an array. `shell: true` is rejected unless `ProcessPermissionPolicy.shell` is `true`.
 
 Processes are registered under the `ResourceOwner` that built the `Process` service. `Desktop.runtime(...)` supplies an app owner, `Desktop.window(..., services)` supplies a window owner, and custom job layers can provide `ResourceOwner.job(...)`.
 
@@ -51,24 +55,54 @@ Processes are registered under the `ResourceOwner` that built the `Process` serv
 
 ```ts
 {
+  readonly resource: ManagedResourceHandle<"process", "running">
   readonly pid: number
-  readonly stdout: Stream<Uint8Array>
-  readonly stderr: Stream<Uint8Array>
-  readonly stdin: { write, close }
-  readonly exit: Effect<ProcessExitStatus>
-  readonly kill: (signal?: string) => Effect<void>
+  readonly stdin: Sink<void, unknown, never, ProcessError, never>
+  readonly all: Stream<Uint8Array, ProcessError>
+  readonly stdout: Stream<Uint8Array, ProcessError>
+  readonly stderr: Stream<Uint8Array, ProcessError>
+  readonly exit: Effect<ProcessExitStatus, ProcessError>
+  readonly kill: (signal?: unknown) => Effect<void, ProcessError>
 }
 ```
 
-Streams are bounded — older chunks drop if the consumer falls behind.
+`stdout`, `stderr`, and `all` are bounded streams; producers that exceed the per-stream byte budget fail with `HostProtocolBackpressureOverflowError`. `stdin` is an Effect `Sink` — pipe a `Stream<Uint8Array>` into it (e.g. `Stream.fromIterable([bytes]).pipe(Stream.run(handle.stdin))`). `kill` accepts a signal name from the validated signal set (`SIGTERM` is used when omitted). The handle re-checks freshness against `ResourceRegistry` before sending the signal.
+
+## `ProcessBudgetPolicy`
+
+```ts
+{
+  maxConcurrent?: number          // default 16 (per owner scope)
+  stdoutBufferBytes?: number      // default 1_048_576
+  stderrBufferBytes?: number      // default 262_144
+}
+```
+
+## `ProcessPermissionPolicy`
+
+```ts
+{
+  spawn?: readonly string[]   // exact command allowlist
+  shell?: boolean             // gate `shell: true` spawns
+}
+```
 
 ## Permissions
 
-`process.spawn` capability with **exact-match** command. Allowing `git` does not allow `gh`.
+`process.spawn` capability with **exact-match** command. Allowing `git` does not allow `gh`. Shell metacharacters in the command string (`;`, `|`, `&`, `>`, `<`, backtick, newline, `$(`) are rejected before any host call. `shell: true` requires `permissions.shell === true`.
 
 ## Errors
 
-Failures arrive as `HostProtocolError` on the operation that produced them. Non-zero exit codes are not failures; they're carried in `ProcessExitStatus.code`.
+Failures arrive as `HostProtocolError` on the operation that produced them — never thrown:
+
+- `PermissionDenied` — spawn rejected by `process.spawn` or `process.shell` policy.
+- `InvalidArgument` — bad payload, shell metacharacter, bad signal, non-`Uint8Array` stdin chunk.
+- `FileNotFound` — host could not locate the command.
+- `ResourceBusy` — per-owner-scope concurrency budget exceeded.
+- `BackpressureOverflow` — `stdout`/`stderr`/`all` consumer fell behind the buffer budget.
+- `StaleHandle` — `kill` called on a handle whose registry entry has been disposed.
+
+Non-zero exit codes are not failures; they're carried in `ProcessExitStatus.code` (with `signal` when the OS reports one).
 
 ## Test layer
 

@@ -16,27 +16,22 @@ The doctor command checks every prerequisite for every release step on the curre
 
 ## What it checks
 
-Always:
+Doctor runs ten probes in order. The probe `name` field uses these exact identifiers:
 
-- Bun version matches `package.json#packageManager`.
-- Rust toolchain is available.
-- Platform SDK and WebView runtime are available for the current host.
-- Signing credentials are configured when needed.
-- Build tools are available.
-- Package manager state is Bun-pinned with a lockfile.
-- Native capability truth is available from the generated parity matrix.
-- Native host build cache is present when packaging.
-- Desktop config has required app metadata.
+| Probe                   | What it verifies                                                                                               |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `bun-version`           | Installed Bun version meets the workspace's pinned `package.json#packageManager` floor                         |
+| `rust-toolchain`        | `cargo` and `rustc` resolve and respond to `--version`                                                         |
+| `platform-sdk`          | Host SDK present: `xcode-select -p` (macOS), `where cl` (Windows), `pkg-config webkit2gtk-4.1` (Linux)         |
+| `webview-runtime`       | System WebView present (always OK on macOS; reads `EdgeUpdate` registry on Windows; `webkit2gtk-4.1` on Linux) |
+| `signing-credentials`   | Per-platform signing config is present (warning when missing, not a failure)                                   |
+| `build-tools`           | `hdiutil` (macOS), `wix` (Windows), or `dpkg-deb` (Linux) responds                                             |
+| `package-manager-state` | `package.json#packageManager` is pinned to Bun and `bun.lock` exists                                           |
+| `native-capabilities`   | The bundled native parity matrix decodes and reports zero missing host routes                                  |
+| `native-host-cache`     | `target/debug/host` (or `host.exe`) exists; warning when missing                                               |
+| `config`                | `desktop.config.ts` loads, stays inside the workspace, and supplies required app metadata                      |
 
-Per-platform:
-
-| Platform | Additional checks                                   |
-| -------- | --------------------------------------------------- |
-| macOS    | Xcode CLI tools, system WebView runtime, `hdiutil`  |
-| Windows  | Visual Studio build tools, WebView2 runtime, WiX    |
-| Linux    | `webkit2gtk-4.1`, `dpkg-deb`, package manager state |
-
-If you've set release-related environment variables (`APPLE_ID`, `WINDOWS_CERT_THUMBPRINT`, `UPDATER_KEY_PATH`), the doctor verifies they point at something usable.
+Doctor fails with `DoctorCapabilityTruthUnavailable` (not a probe warning) when the bundled parity matrix is missing or invalid — that is a CLI build defect.
 
 ## Reading the output
 
@@ -48,10 +43,10 @@ result            ok
 [OK] bun-version: Bun 1.3.13 satisfies 1.3.13
 [OK] rust-toolchain: cargo and rustc are available
 [WARN] signing-credentials: signing credentials are not configured; unsigned local packages remain allowed
-[OK] native-capabilities: native capability matrix reports 287 methods, 239 host-routed, 0 missing host routes
+[OK] native-capabilities: native capability matrix reports 286 methods, 238 host-routed, 0 missing host routes
 ```
 
-Each row maps to one probe. `missing` probes fail the gate with a non-zero exit. Warnings are advisory, but a `native-capabilities` warning means some declared native methods still lack host routes.
+Each row maps to one probe. `missing` probes fail the gate with a non-zero exit. Warnings are advisory, but a `native-capabilities` warning means some declared native methods still lack host routes. The exact counts come from the parity matrix bundled with the CLI (`packages/cli/src/native-parity-matrix.json`) and stay in sync with [`reference/native/parity-matrix.md`](../reference/native/parity-matrix.md).
 
 ## When to run it
 

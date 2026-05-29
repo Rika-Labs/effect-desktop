@@ -14,16 +14,18 @@ ORIKA's test support is built around substitutable layers, mock bridge clients, 
 
 ## Public surface
 
-`@orika/test` exports:
+`@orika/test` exports (from the package root and `./bridge`, `./core`, `./native`, `./renderer` subpaths):
 
-- `runHeadless` and `HeadlessRuntime`.
-- `MockHost` and `MockBridge`.
-- `MemoryFilesystem`.
-- `MockProcess` and `MockPTY`.
+- `HeadlessRuntime` (`.layer`, `.run`), `runHeadless`.
+- `MockHost`, `MockHostLive`, `makeMockHost`.
+- `MockBridge`, `MockBridgeLive`, `makeMockBridge`.
+- `MemoryFilesystem.layer`, `MemoryFilesystemLive`, `makeMemoryFilesystem`.
+- `MockProcess.layer` / `MockProcessLive`, `makeMockProcess`.
+- `MockPTY.layer` / `MockPtyLayer`, `makeMockPty`.
 - `makeMemorySecretsSafeStorage` (memory `SafeStorage`).
-- `assertNoOpenResources` and leak detection helpers.
-- Native test layers — `WindowTest`, `ScreenTest`, `DialogTest`, `ClipboardTest`.
-- Capability law helpers for layer parity.
+- `assertNoOpenResources`, `assertNoOpenResourcesIn`, `installResourceLeakDetection`, `ResourceLeakError`, `registerLeakMatchers`, `formatLeakedHandleReport`, `leakedHandles`.
+- Native test layers — `ClipboardTest`, `ClipboardClientTest`, `DialogTest`, `DialogClientTest`, `ScreenTest`, `WindowTest`, `TestDesktop` (`layer`, `windows`, `expectNoLeakedResources`), `TestPermissionRegistry`.
+- Capability law helpers — `CapabilityLaws`, `LayerMatrix`, `FailureAssertions`.
 
 ## Verify Test Exports
 

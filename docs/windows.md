@@ -28,7 +28,7 @@ Window RPC tags and avoids host/runtime modules.
 
 ## Common operations
 
-The supported methods include creation, lookup, visibility, bounds, state, attention, progress, and close. Renderer code uses React helpers:
+`Window` covers creation, lookup (`getCurrent`, `getById`, `list`, `getParent`, `getChildren`), visibility (`show`, `hide`, `focus`), bounds and centering (logical-coordinate, host-routed), state (`minimize`, `maximize`, `restore`, `setFullscreen`, `setSimpleFullscreen`, `getState`), macOS chrome (`setTitleBarStyle`, `setVibrancy`, `clearVibrancy`, `setShadow`, `setTitleBarTransparent`, `setTransparent`, `setTrafficLights`), z-order and taskbar (`setAlwaysOnTop`, `setSkipTaskbar`), progress and attention (`setProgress`, `requestAttention`, `cancelAttention`), `events`, and `close`/`destroy`. Renderer code uses React helpers:
 
 ```tsx
 import { useCreateWindowMutation } from "@orika/react"
@@ -56,7 +56,7 @@ if (
 
 ## Lifecycle
 
-Each window is a scoped resource. Closing the window closes its scope and any per-window resources (workers, watchers, settings stores) it owned. `WindowPersistence` persists per-window geometry across launches through explicit `save`, `restore`, and `clear` calls; there is no `restoreState` flag on `WindowSpec`.
+Each window is a scoped resource. Closing the window closes its scope and any per-window resources (workers, watchers, settings stores) declared in the `services` Layer passed to `Desktop.window(id, spec, services)`. When the host destroys a parent created with `Window.create({ parent })`, its registered children are closed before the parent. `WindowPersistence` from `@orika/native` persists per-window geometry across launches through explicit `save`, `restore`, and `clear` calls; there is no `restoreState` flag on `WindowSpec`.
 
 ## Where to go next
 

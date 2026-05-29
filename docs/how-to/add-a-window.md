@@ -77,7 +77,7 @@ To close a different window by handle, use `useCloseWindowMutation` and pass the
 
 ## 4. Route between windows in the renderer
 
-Open fixed views on distinct renderer routes, then choose the panel from the route. `useCurrentWindowId()` returns the host window resource id for native window operations; it is not the `Desktop.window(...)` declaration id.
+Open fixed views on distinct renderer routes, then choose the panel from the route. `useCurrentWindowId()` returns `Option<string>` carrying the host window resource id for native window operations; it is not the `Desktop.window(...)` declaration id.
 
 ```tsx
 export function App() {

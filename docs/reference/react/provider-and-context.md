@@ -24,47 +24,60 @@ import {
 } from "@orika/react"
 ```
 
-## `ReactDesktop.from(manifest, options?)`
+## `ReactDesktop.from(manifest)`
 
-Builds an adapter from a manifest. Returns a value with:
+Builds an adapter from a `DesktopAppManifest`. Returns a frozen value with:
 
-- `useDesktop(group)` — typed hooks for an `RpcGroup`.
-- `createRoot(children, props?)` — root wrapper that installs the context provider.
-- `client` — direct access to the typed client map.
+- `app` — the original manifest.
+- `DesktopRoot` — root component. Props: `transport?`, `rpcs?: DesktopRpcsLayer`, `children`.
+- `createRoot(children, props?)` — helper that constructs `<DesktopRoot>` with `children`.
+- `useDesktop(group)` — typed hooks for an `RpcGroup` declared by the manifest.
 
-```ts
-const DesktopApp = ReactDesktop.from(Manifest)
+```tsx
+const DesktopApp = ReactDesktop.from(Desktop.manifest(NotesApp))
 
 export function Root() {
-  return DesktopApp.createRoot(<App />)
+  return DesktopApp.createRoot(<App />, { rpcs: NotesLayer })
 }
 
 function App() {
   const notes = DesktopApp.useDesktop(NotesRpcs)
-  // notes.list, notes.save, notes.delete — all typed
+  const list = notes.list.useQuery()
+  const create = notes.create.useMutation()
+  // ...
 }
 ```
 
+`DesktopRoot` mounts a `ManagedRuntime` for the RPC client layer, resolves the current `WindowHandle` (when the manifest declares `Native.Window`), and wraps children in both the `ReactDesktopContext` and a `DesktopProvider`. It disposes the runtime on unmount.
+
 ## `DesktopProvider`
 
-Lower-level provider component. `ReactDesktop.from(manifest).createRoot(...)` uses this internally; you can use it directly when you need finer control over context.
+Lower-level provider component. Props: `client?: DesktopClient`, `currentWindow?: WindowHandle`, `onCleanupError?: (error, context) => void`, `children`.
+
+`createRoot`/`DesktopRoot` wraps this internally with the resolved RPC-backed `DesktopClient`. Use it directly when wiring tests, SSR, or hosts that supply their own `DesktopClient` implementation. Omitting `client` installs an unavailable stub.
 
 ## `useDesktopClient()`
 
-Returns the full bridge client map. It throws if no `DesktopProvider` is mounted. Use `useDesktop()` when fallback UI needs to model the missing-provider case explicitly as `Option.Option<DesktopClient>`.
+Returns the `DesktopClient` from the surrounding provider. Throws `RangeError("DesktopProvider is required before calling useDesktopClient")` when no provider is mounted.
 
-## `useDesktop(group)`
+## `useDesktop()`
 
-Returns typed hooks for an `RpcGroup`. Each method gets `useQuery`, `useMutation`, or `useStream` based on the endpoint kind.
+Returns `Option.Option<DesktopClient>` — `Option.none()` when no provider is mounted. Use this when fallback UI needs to model the missing-provider case without throwing.
 
-## `createUnavailableDesktopClient()`
+## `useDesktop(group)` (on `ReactDesktop.from(...)`)
 
-Stub client for when the runtime isn't reachable. All methods reject with `MissingDesktopRpcClientError`. Useful as a placeholder during SSR or before connection.
+The adapter exposes a `useDesktop(group)` that returns typed hooks for an `RpcGroup` registered in the manifest. Each generated endpoint gets `useQuery`, `useMutation`, or `useStream` based on its declared kind and carries an `RpcSupport` `support`/`isSupported` pair.
+
+Throws `MissingDesktopContextError` if called outside a `DesktopRoot`, and `MissingDesktopRpcClientError` if `DesktopRoot` was mounted without an RPC client for the group.
+
+## `createUnavailableDesktopClient(message?)`
+
+Returns a `DesktopClient` whose `window.create`/`close`/`destroy` effects fail with a `HostProtocolError` of kind `"InvalidState"` (current: `"missing host bridge"` by default, overridable via `message`). Use as a placeholder during SSR or before the host bridge is connected — `usePower`/`useTheme`/`useDisplays`-style hooks will surface the failure as the `"unavailable"` status.
 
 ## Errors
 
-- `MissingDesktopContextError` — hook called outside a provider.
-- `MissingDesktopRpcClientError` — RPC client unavailable.
+- `MissingDesktopContextError` (re-exported from `@orika/core`) — `ReactDesktop.useDesktop(group)` called outside a `DesktopRoot`.
+- `MissingDesktopRpcClientError` (re-exported from `@orika/core`) — `DesktopRoot` mounted without an RPC client layer that covers the requested group.
 
 ## Related
 

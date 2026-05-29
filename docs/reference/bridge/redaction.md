@@ -8,34 +8,49 @@ effect_version: 4
 
 # Redaction
 
-The bridge runs every outgoing payload through `RedactionFilter` before encoding. Secret-shaped fields are replaced with `Redacted` values whose serialized form is `<redacted>`.
+`RedactionFilter` walks structured data and replaces secret-shaped values with Effect `Redacted` instances. When the value is later serialized (or materialized via `redactForJson`), the redacted slot reads as `<redacted>`.
 
 ## Import
 
 ```ts
-import { RedactionFilter, redact } from "@orika/bridge"
+import {
+  RedactionFilter,
+  redact,
+  redactForJson,
+  redactWithEvidence,
+  redactForJsonWithEvidence,
+  type RedactionFilterOptions,
+  type RedactionEvidence
+} from "@orika/bridge"
 ```
 
-(Also re-exported as `Desktop.RedactionFilter` and `Desktop.redact` from `@orika/core`.)
+`RedactionFilter` and `redact` are also re-exported as `Desktop.RedactionFilter` and `Desktop.redact` from `@orika/core`.
 
 ## How matching works
 
-Field name patterns from SPEC §14.10 — `token`, `password`, `secret`, `apiKey`, `credential`, `authorization`, `bearer`, etc. The filter walks structured data and replaces matching values, preserving object shape.
+Keys are matched against `RedactionFilter.defaultPattern` (case-insensitive):
 
-Custom patterns and explicit allowlist paths can be configured per-instance.
+```
+/api[_-]?key|token|password|secret|bearer|authorization|cookie|session[_-]?id|refresh[_-]?token|client[_-]?secret|private[_-]?key/i
+```
+
+Pass `RedactionFilterOptions.additionalPatterns` to extend matching, `allowlist` to exempt specific keys or dotted paths, and `defaultPatternEnabled: false` to disable the built-in pattern. The filter preserves object identity when nothing changed, handles cycles, and never touches `Uint8Array` payloads or already-`Redacted` values.
+
+`redactWithEvidence` / `redactForJsonWithEvidence` return `{ value, evidence }` where each `RedactionEvidence` row carries the redacted dotted path, the action, and whether the reason was `secret-pattern` or an existing `redacted-value`.
 
 ## Where it runs
 
-- Every audit event, before append.
-- Every bridge error, before emission.
-- Every `CrashReporter` breadcrumb's `details`.
-- Every devtools snapshot.
+Redaction is opt-in per integration. The framework wires it through:
 
-You can opt **in** to redaction in custom paths but you can't opt **out** at the audit layer.
+- `AuditEvents` — when `redaction` is passed to `makeAuditEvents`, every event's `details` is filtered before append.
+- `CrashReporter` breadcrumb `details` (via `redactForJson` in `@orika/native`).
+- The inspector safety policy (`redactForJsonWithEvidence` in `@orika/core`), used by devtools snapshots and diagnostic bundles.
+
+Application code can call `redact` / `redactForJson` directly when emitting custom telemetry or logs.
 
 ## Production check
 
-`secret-pattern-not-redacted` rule (in `desktop check`) catches code paths that emit a secret-shaped value without passing through the filter.
+The `secret-pattern-not-redacted` lint rule in `@orika/config` flags configurations that emit secret-shaped values without passing through the filter.
 
 ## Related
 

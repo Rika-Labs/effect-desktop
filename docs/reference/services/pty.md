@@ -41,13 +41,15 @@ import {
 
 ```ts
 {
-  argv: [string, ...string[]]
+  argv: readonly [string, ...string[]]
   rows: number
   cols: number
   cwd?: string
-  env?: Record<string, string>
+  env?: Readonly<Record<string, string>>
 }
 ```
+
+`argv[0]` is the command checked against `pty.spawn`; `argv[1..]` are arguments. `rows`/`cols` must be positive integers.
 
 PTY sessions are registered under the `ResourceOwner` that built the `PTY` service. `Desktop.runtime(...)` supplies an app owner, `Desktop.window(..., services)` supplies a window owner, and custom job layers can provide `ResourceOwner.job(...)`.
 
@@ -66,7 +68,21 @@ PTY sessions are registered under the `ResourceOwner` that built the `PTY` servi
 }
 ```
 
-`kill(signal?)` sends the requested signal after validating it. Use `onExit` to await the process status. Owner-scope cleanup also terminates the PTY if the caller does not kill it explicitly.
+`kill(signal?)` sends the requested signal after validating it (`PtySignalInput` accepts either a control-character-free string or a positive integer). Use `onExit` to await the process status. Owner-scope cleanup terminates the PTY via `terminateTree`, escalating to `forceKillTree` after `gracefulShutdownMs`. `outputMetrics` exposes input/output frame counts, dropped bytes, queue depth, and coalescing factor for devtools.
+
+## `PtyBudgetPolicy`
+
+```ts
+{
+  maxConcurrent?: number          // default 16 per owner scope
+  outputBufferBytes?: number      // default 262_144
+  outputCoalesceBytes?: number    // default 65_536
+  outputCoalesceMs?: number       // default 4
+  outputOverflow?: "block" | "dropNewest" | "dropOldest" | "error"  // default "dropOldest"
+}
+```
+
+Output frames larger than `outputBufferBytes` are dropped (or fail when `outputOverflow` is `"error"`). Adjacent frames are coalesced within the `outputCoalesceMs` / `outputCoalesceBytes` window to reduce per-frame overhead.
 
 ## Adapter
 

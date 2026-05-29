@@ -63,6 +63,26 @@ yield *
 
 `Schedule` composes — combine `exponential`, `jittered`, `recurs`, `upTo`, `whileInput` to build the policy you need.
 
+## Framework retry schedules
+
+`@orika/core` exports `DesktopSchedules` — the retry/backoff policies the framework itself uses. Reach for these before authoring a one-off `Schedule` so subsystems stay consistent.
+
+```ts
+import { Effect } from "effect"
+import { DesktopSchedules, DesktopScheduleLimits, DesktopDurations } from "@orika/core"
+
+yield * submitCrashReport.pipe(Effect.retry(DesktopSchedules.crashReportSubmission))
+```
+
+| Constant                                 | Shape                                                             |
+| ---------------------------------------- | ----------------------------------------------------------------- |
+| `DesktopSchedules.hostReconnect`         | Exponential 100ms + jitter, no cap                                |
+| `DesktopSchedules.releaseToolProbe`      | Fixed 500ms, `releaseToolProbeRetries` (2) recurrences            |
+| `DesktopSchedules.crashReportSubmission` | Exponential 1s + jitter, `crashReportSubmissionRetries` (10) cap  |
+| `DesktopSchedules.updateBundleDownload`  | Exponential 500ms + jitter, `updateBundleDownloadRetries` (5) cap |
+| `DesktopScheduleLimits`                  | The retry counts above, as named constants                        |
+| `DesktopDurations.updateCheckPoll`       | `"7 days"` — the update-check poll interval                       |
+
 ## Worker-style background work
 
 When you want a separate worker runtime with its own resource handle and capability preflight:

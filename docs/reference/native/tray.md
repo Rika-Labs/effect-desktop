@@ -23,12 +23,12 @@ until `Tray.create` can allocate one through the host tray registry, so destroy 
 instead of accepting synthetic handles.
 
 `Tray.setIcon` is also tied to the Linux tray backend. Updating a Linux tray icon requires an owned
-AppIndicator-backed handle and the backend's temporary PNG icon path management, so the host keeps the
-method partial until that backend is shipped and probed.
+AppIndicator-backed handle and the backend's temporary PNG icon path management, so Linux remains
+unsupported (`host-tray-unavailable`) until that backend is shipped and probed.
 
 `Tray.setMenu` has the same Linux dependency. The local backend maps menu templates into GTK menu objects
 owned by the AppIndicator tray item; without that adapter and runtime probe, Linux menu mutation remains
-unsupported.
+unsupported (`host-tray-unavailable`).
 
 `Tray.setTitle` is currently macOS-only. The local tray backend documents Windows title support as
 unsupported and its Windows implementation does not mutate a native title; Linux title support depends on
@@ -93,11 +93,11 @@ ResourceRegistry-backed tray lifecycle policy and deterministic resource-layer c
 
 ## Platform Notes
 
-| Platform | Status      | Notes                                      |
-| -------- | ----------- | ------------------------------------------ |
-| macOS    | supported   | Supports icon, tooltip, title, menu, event |
-| Windows  | partial     | Title is unsupported                       |
-| Linux    | unsupported | GTK/appindicator dependency is not shipped |
+| Platform | Status      | Notes                                                                                                                                    |
+| -------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| macOS    | supported   | Supports `create`, `destroy`, `setIcon`, `setTooltip`, `setTitle`, `setMenu`, activation events                                          |
+| Windows  | partial     | `setTitle` is unsupported (`windows-tray-title-unavailable`); other methods are supported                                                |
+| Linux    | unsupported | `host-tray-unavailable` (GTK/AppIndicator dependency not shipped); `setTooltip` reports method-specific `linux-tray-tooltip-unavailable` |
 
 ## Errors
 

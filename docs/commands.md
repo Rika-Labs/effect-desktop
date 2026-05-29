@@ -10,30 +10,34 @@ effect_version: 4
 
 > Full reference: [`reference/services/command.md`](reference/services/command.md).
 
-Commands are logical actions that can be bound to menus, shortcut contracts, context menus, devtools, or app UI. The `CommandRegistry` keeps the list; bindings reference command **ids**, not implementations.
+Commands are Effect `RpcGroup` endpoints, registered with the `CommandRegistry` so menus, shortcut contracts, context menus, devtools, and app UI can invoke them by **id** without duplicating handler implementations.
 
-Current host status: menu, context-menu, and global-shortcut command binding is available at the TypeScript service boundary with substitutable clients. The Rust host currently routes app/window menu installation, but host-backed menu/context-menu activation events and global shortcut registration/pressed events remain unimplemented.
+Current host status: the registry and its TypeScript binding lifecycle are available with substitutable clients. The Rust host currently routes app/window menu installation, but host-backed menu/context-menu activation events and global-shortcut registration/pressed events remain unimplemented.
 
 ## Public surface
 
-`@orika/core` exports `CommandRegistry`, command snapshot types, invocation records, registration errors, and observation streams.
+`@orika/core` exports `CommandRegistry` (the `Context.Service`), `DesktopCommands.layer` for scoped group registration, `CommandSnapshot`, `CommandInvocationRecord`, the `CommandRegistry*Error` tagged errors (plus `PermissionDenied`), and `observeInvocations`.
 
 `@orika/devtools` exports `CommandsDevtools` and `CommandsDevtoolsLive` for listing commands and observing invocations.
 
-## Verify Command Exports
+## Verify command exports
 
 ```ts run
-import { CommandRegistry } from "../packages/core/src/index.js"
+import { CommandRegistry, DesktopCommands } from "../packages/core/src/index.js"
 import { CommandsDevtools } from "../packages/devtools/src/index.js"
 
-if (CommandRegistry === undefined || CommandsDevtools === undefined) {
-  throw new Error("CommandRegistry or CommandsDevtools is unavailable")
+if (
+  CommandRegistry === undefined ||
+  DesktopCommands === undefined ||
+  CommandsDevtools === undefined
+) {
+  throw new Error("CommandRegistry, DesktopCommands, or CommandsDevtools is unavailable")
 }
 ```
 
 ## Rule
 
-Menus and shortcut bindings invoke command **ids**. They do not duplicate command implementation per binding.
+Menus and shortcut bindings invoke command **ids**. They do not duplicate command implementation per binding. Each command id is the RPC tag; the permission interceptor checks the RPC's `RpcCapability` before the handler runs.
 
 ## Where to go next
 

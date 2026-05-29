@@ -169,7 +169,7 @@ host lifecycle remain reserved for later phases.
 
 ## Errors
 
-`WindowError = HostProtocolError` — invalid arg, not found, unsupported, internal.
+`WindowError = HostProtocolError`. Methods return tagged variants including `InvalidArgument`, `NotFound`, `Unsupported` (with a method-specific `reason` such as `simple-fullscreen-macos-only`), `InvalidState` (host rejected the requested transition), `InvalidOutput`, `StaleHandle`, `PermissionDenied`/`PermissionRevoked`, and host-internal failures (`Internal`, `HostUnavailable`, `Timeout`). Bridge clients additionally fail with `MethodNotFound` when a host build does not export the method.
 
 ## Layer composition
 

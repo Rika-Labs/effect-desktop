@@ -8,7 +8,7 @@ effect_version: 4
 
 # Window hooks
 
-React adapter wrappers over the `Window` RPC. Saves you from writing `useDesktop(WindowRendererRpcs).create.useMutation()` everywhere.
+React adapter wrappers over the `Window` RPC. They read the `DesktopProvider`'s `DesktopClient` directly, so callers don't need to reach for `useDesktop(WindowRendererRpcs).create.useMutation()` explicitly. `ReactDesktop.from(...).DesktopRoot` populates that client when the manifest declares `Native.Window`.
 
 ## Imports
 
@@ -62,25 +62,39 @@ return Option.match(id, {
 
 ## `useCreateWindowMutation()`
 
-Mutation that opens a new window:
+`MutationResult<WindowCreateOptions | undefined, WindowHandle, WindowError>`. Opens a new window and resolves to the resulting `WindowHandle`:
 
 ```tsx
-const createWindow = useCreateWindowMutation()
-createWindow.run({ title: "Preferences", renderer: "/preferences" })
+function NewWindowButton() {
+  const createWindow = useCreateWindowMutation()
+  return (
+    <button
+      disabled={createWindow.isRunning}
+      onClick={() => createWindow.run({ title: "Preferences", renderer: "/preferences" })}
+    >
+      Open preferences
+    </button>
+  )
+}
 ```
+
+`WindowCreateOptions` is the renderer-facing alias for `WindowCreateInput`: optional `title`, `width`, `height`, `renderer`, `parent`, `titleBarStyle`, `vibrancy`, `trafficLights`.
 
 ## `useCloseWindowMutation()` / `useCloseCurrentWindowMutation()`
 
-Close by handle, or close the current window:
+`useCloseWindowMutation()` is `MutationResult<{ window: WindowHandle }, void, WindowError>` — pass the handle inside an object. `useCloseCurrentWindowMutation()` takes no input and resolves the current window from the provider (or `WindowApi.getCurrent` when the manifest exposes it):
 
 ```tsx
 const close = useCloseCurrentWindowMutation()
-<button onClick={() => close.run()}>Close</button>
+return <button onClick={() => close.run()}>Close</button>
+
+const closeOther = useCloseWindowMutation()
+closeOther.run({ window: handle })
 ```
 
 ## `useDestroyWindowMutation()` / `useDestroyCurrentWindowMutation()`
 
-Destroy by handle, or destroy the current window. Destroy is the explicit lifecycle operation; `close` remains available as the compatibility alias for app code that still speaks in close semantics.
+Same input shape as the close variants. Destroy is the unconditional lifecycle operation that frees the host window resource; close performs the OS-level close, which may be cancelable by the host UI.
 
 ## Related
 

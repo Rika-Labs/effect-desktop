@@ -89,7 +89,7 @@ For typed table access:
 
 ```ts
 import { Schema } from "effect"
-import { SqlModel } from "@effect/sql"
+import { SqlModel } from "@orika/core"
 
 class Note extends Schema.Class<Note>("Note")({
   id: Schema.String,
@@ -123,7 +123,7 @@ yield *
 - For renderer-side persistence in a browser context, import `SqliteClient`
   directly from `@effect/sql-sqlite-wasm` and use `SqliteClient.layer`
   (SQLite WASM in a Web Worker), or use `RendererPgliteLive` from
-  `@orika/platform-browser` when you need PGlite.
+  `@orika/platform-browser/sql-pglite` when you need PGlite.
 
 ## Related
 

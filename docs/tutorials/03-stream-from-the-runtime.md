@@ -21,7 +21,7 @@ In this tutorial you'll add an "import notes from a folder" feature that:
 
 ## The shape of streaming RPC
 
-A streaming RPC method returns a `Stream<A, E, R>` instead of an `Effect<A, E, R>`. The bridge knows how to chunk, frame, and deliver each item to the renderer. The renderer subscribes through `useDesktopStream(...)` and gets `{ status, value, error }` updates.
+A streaming RPC method returns a `Stream<A, E, R>` instead of an `Effect<A, E, R>`. The bridge knows how to chunk, frame, and deliver each item to the renderer. The renderer subscribes through the per-RPC `useStream(...)` hook (built on `useDesktopStream`) and gets a `StreamState<A, E>` with `{ status, data, error }`: `status` is `"idle" | "running" | "closed" | "failure"`, `data` is a bounded array of every emitted item, and `error` is `Option<Cause<E>>` populated only on failure.
 
 ```mermaid
 flowchart LR
@@ -130,6 +130,7 @@ Create `apps/inspector/src/notes/ImportPanel.tsx`:
 
 ```tsx
 import { useState } from "react"
+import { Option } from "effect"
 import { ReactDesktop } from "@orika/react"
 import { Manifest } from "../renderer-manifest.js"
 import { NotesRpcs } from "./contracts.js"
@@ -141,7 +142,13 @@ export function ImportPanel() {
   const [directory, setDirectory] = useState("")
   const [enabled, setEnabled] = useState(false)
 
-  const stream = notes.import.useStream(enabled ? { directory } : undefined, { capacity: 64 })
+  const stream = notes.import.useStream(enabled ? { directory } : ({ directory: "" } as never), {
+    capacity: 64
+  })
+
+  const latest = stream.data.at(-1)
+  const completed = stream.data.find((item) => item.kind === "completed")
+  const lastSkipped = latest?.kind === "skipped" ? latest : undefined
 
   return (
     <section>
@@ -160,25 +167,25 @@ export function ImportPanel() {
 
       {enabled && <button onClick={() => setEnabled(false)}>Cancel</button>}
 
-      {stream.status === "loading" && stream.value && (
-        <progress max={stream.value.total} value={stream.value.imported + stream.value.skipped}>
-          {stream.value.imported}/{stream.value.total}
+      {stream.status === "running" && latest && (
+        <progress max={latest.total} value={latest.imported + latest.skipped}>
+          {latest.imported}/{latest.total}
         </progress>
       )}
 
-      {stream.status === "loading" && stream.value?.kind === "skipped" && (
+      {lastSkipped && (
         <p>
-          Skipped {stream.value.file}: {stream.value.message}
+          Skipped {lastSkipped.file}: {lastSkipped.message}
         </p>
       )}
 
-      {stream.status === "success" && stream.value?.kind === "completed" && (
+      {stream.status === "closed" && completed && (
         <p>
-          Done. Imported {stream.value.imported}, skipped {stream.value.skipped}.
+          Done. Imported {completed.imported}, skipped {completed.skipped}.
         </p>
       )}
 
-      {stream.status === "error" && <p>Import failed: {String(stream.error)}</p>}
+      {stream.status === "failure" && Option.isSome(stream.error) && <p>Import failed.</p>}
     </section>
   )
 }
@@ -186,9 +193,9 @@ export function ImportPanel() {
 
 Three things to notice:
 
-1. **Conditional subscription.** Passing `undefined` as the input pauses the subscription. We use a `enabled` flag so the stream only starts when the user clicks.
-2. **`capacity: 64`** sets how many in-flight items the renderer buffers. Older items are dropped if the consumer can't keep up.
-3. **Cancel by setting `enabled = false`.** Unmounting the subscription tears down the stream — the framework sends a `HostProtocolCancelByRequestEnvelope` to the runtime, which cancels the underlying Effect fiber and releases the scoped `Filesystem` reads. End to end.
+1. **`StreamState<A, E>` is cumulative.** `stream.data` is a bounded array of every emitted item — `data.at(-1)` is the most recent. `status` walks `"idle" -> "running" -> "closed"` on success, `-> "failure"` on error.
+2. **`capacity: 64`** caps the buffered history. Older items are dropped once the array exceeds that length.
+3. **Cancel by unmounting the subscription.** When `enabled` flips back, swap the hook call to a paused variant or unmount `<ImportPanel />` — the framework sends a `HostProtocolCancelByRequestEnvelope` to the runtime, which cancels the underlying Effect fiber and releases the scoped `Filesystem` reads. End to end.
 
 ## Step 4 — Declare the filesystem permission
 
@@ -225,7 +232,7 @@ Type a directory path, click Start. The progress bar updates as files import. Cl
 - **Cancellation.** Closing the subscription cancels the Effect fiber and unwinds the scope.
 - **Per-item failure handling.** A bad file is a skipped event, not a crash.
 - **Observability.** The audit log records each filesystem read; devtools' event-log panel shows you the live stream of imports.
-- **Type safety.** `stream.value` is `ImportProgress | undefined`. TypeScript narrows on `kind`.
+- **Type safety.** `stream.data` is `readonly ImportProgress[]`. TypeScript narrows each entry on `kind`.
 
 ## When to reach for a worker instead
 

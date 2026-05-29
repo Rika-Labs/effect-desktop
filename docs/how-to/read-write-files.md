@@ -67,11 +67,15 @@ Watcher resources close when their scope closes.
 
 ## 5. Failure shapes
 
-- `FilesystemPermissionDenied` — path not under a declared root.
-- `FilesystemInvalidArgument` — malformed path, traversal attempt.
-- `FilesystemSystemError` — OS-level error (ENOENT, EACCES, etc.).
+`Filesystem` operations fail with the `HostProtocolError` union:
 
-All typed; none thrown.
+- `HostProtocolPermissionDeniedError` — path not under a declared root, or recursive remove without `allowRecursiveRemove`.
+- `HostProtocolSymlinkEscapesRootError` — requested path is inside a root but its target escapes it.
+- `HostProtocolFileNotFoundError` — `ENOENT` / not found.
+- `HostProtocolDiskFullError` — `ENOSPC` while writing.
+- `HostProtocolInvalidArgumentError` — malformed path or other unmappable OS error.
+
+All typed via tagged errors; none thrown.
 
 ## Related
 

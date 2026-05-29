@@ -19,17 +19,20 @@ const create = DesktopApp.useDesktop(TodoRpcs).create.useMutation()
 ## Shape
 
 ```ts
-interface MutationResult<I, O, E> {
-  readonly state: AsyncResult.AsyncResult<O, E>
+interface MutationResult<I, A, E> {
+  readonly state: AsyncResult.AsyncResult<A, E>
   readonly status: "idle" | "running" | "success" | "failure" | "canceled" | "unavailable"
   readonly run: (input: I) => void
-  readonly runPromise: (input: I) => Promise<Exit.Exit<O, E>>
+  readonly runPromise: (input: I) => Promise<Exit.Exit<A, E>>
   readonly reset: () => void
+  readonly isIdle: boolean
   readonly isRunning: boolean
   readonly isSuccess: boolean
-  readonly isFailure: boolean
+  readonly isFailure: boolean // true for both "failure" and "unavailable"
 }
 ```
+
+When the payload type is `void` or `undefined`, `run` and `runPromise` take no argument.
 
 ## Example
 

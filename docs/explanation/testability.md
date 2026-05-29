@@ -13,7 +13,7 @@ A framework that is hard to test produces apps that are hard to test. ORIKA's de
 ## Three properties that make tests easy
 
 - **Every service is a tag.** `Window`, `Filesystem`, `Process`, `Settings`, `Secrets` — all are `Context.Service` tags. Tests provide a different layer for the same tag.
-- **Every native module ships a test layer.** `WindowTest`, `ScreenTest`, `DialogTest`, `ClipboardTest`. They satisfy the same contract as the live versions, run entirely in memory, and record what was called.
+- **Every native module ships a test layer.** `WindowTest`, `ScreenTest`, `DialogTest`, `ClipboardTest` (plus their client-side variants and the composed `TestDesktop`). They satisfy the same contract as the live versions, run entirely in memory, and record what was called.
 - **The bridge is substitutable.** `makeMockBridge(options)` returns a mock bridge with an `exchange`, typed `client(...)` helper, response queues, and call log. It enforces the contract — calls with wrong shapes fail at decode time, just like production.
 
 Together, these turn most desktop tests into ordinary unit tests. No real OS, no real window manager, no real notarization — and yet the test exercises the actual runtime path your handlers take.
@@ -56,19 +56,20 @@ You can also call `assertNoOpenResourcesIn(registry, options)` directly in tests
 
 ## Native test layers as proofs
 
-Each native module (`packages/native/src/<name>.ts`) has a corresponding test layer. The test in `packages/native/src/<name>.test.ts` is run **three times**:
+Each native module (`packages/native/src/<name>.ts`) has a corresponding test layer. `CapabilityLaws.run(suite, layers)` from `@orika/test` runs the same law set against multiple layers — typically:
 
-1. Direct client + live service — proves the contract works.
-2. Live service through the bridge protocol — proves the bridge wiring works.
-3. Test layer — proves the deterministic in-memory implementation matches the contract.
+1. The test layer (e.g. `ClipboardTest()`) — proves the deterministic in-memory implementation matches the contract.
+2. The bridge client layer (`Surface.bridgeClientLayer(bridge.exchange)`) — proves the bridge wiring decodes and encodes the same shapes.
+3. The live service layer where the host is available.
 
-If you change the live behavior without updating the test layer, one of those proofs fails. This keeps `MemoryFilesystem` and friends honest — they cannot drift from the live contract without breaking CI.
+If you change live behavior without updating the test layer, one of those proofs fails. This keeps `MemoryFilesystem`, `ClipboardTest`, and friends honest — they cannot drift from the live contract without breaking CI.
 
 ## What you write in your own tests
 
 A typical handler test:
 
 ```ts
+import { test, expect } from "bun:test"
 import { Effect } from "effect"
 import { HeadlessRuntime } from "@orika/test"
 import { MyAppHandlersLive } from "../src/handlers.js"
@@ -90,6 +91,8 @@ test("Notes.save persists and returns a savedAt timestamp", async () => {
 A renderer test (with React Testing Library):
 
 ```tsx
+import { test, expect } from "bun:test"
+import { Effect } from "effect"
 import { render, screen, fireEvent } from "@testing-library/react"
 import { ReactDesktop } from "@orika/react"
 import { makeMockBridge } from "@orika/test"

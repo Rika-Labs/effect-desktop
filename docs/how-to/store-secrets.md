@@ -10,7 +10,7 @@ effect_version: 4
 
 `Secrets` is the app-level facade over native `SafeStorage`. Secret bytes never enter logs because they ride as `Redacted<Uint8Array>`, every operation is permission-checked, and successful accesses write audit events without the value.
 
-Current host status: native `SafeStorage` routes `set`, `get`, `list`, `delete`, and `isAvailable` through the platform credential store on supported hosts. If the credential store is unavailable, locked, denied, or unsupported on the current platform, `Secrets` fails loudly with `StorageUnavailable`; there is no silent plaintext fallback.
+Current host status: native `SafeStorage` routes `set`, `get`, `list`, `delete`, and `isAvailable` through the platform credential store on supported hosts. If the credential store is unavailable, locked, denied, or unsupported on the current platform, `Secrets` fails loudly with `SecretsSafeStorageUnavailableError`; there is no silent plaintext fallback.
 
 ## 1. Declare the namespace permission
 
@@ -32,7 +32,7 @@ yield *
   )
 ```
 
-Without these declarations, `Secrets.get` and `Secrets.set` for the `tokens` namespace return `PermissionDenied`.
+Without these declarations, `Secrets.get` and `Secrets.set` for the `tokens` namespace return `SecretsPermissionDeniedError`.
 
 ## 2. Write a secret
 
@@ -84,9 +84,9 @@ Successful operations write a `secret/accessed` audit event with namespace, key,
 
 ## What gets validated
 
-- **Namespace and key segments.** Must match the framework's allowed pattern (no `/`, no path traversal). Invalid input returns `SecretsError.InvalidArgument`.
-- **Permissions.** Each call checks the matching `secrets.read` or `secrets.write` capability.
-- **Storage availability.** Missing keys return `SecretsError.NotFound`; an unavailable safe-storage backend returns `SecretsError.StorageUnavailable`.
+- **Namespace and key segments.** Must match `[A-Za-z0-9._-]+` (no `/`, no path traversal). Invalid input returns `SecretsInvalidArgumentError`.
+- **Permissions.** Each call checks the matching `secrets.read` or `secrets.write` capability for the namespace.
+- **Storage availability.** Missing keys return `SecretNotFoundError`; an unavailable safe-storage backend returns `SecretsSafeStorageUnavailableError`. A successful storage write whose post-commit audit fails returns `SecretsCommittedAuditFailedError` so callers know storage and audit diverged.
 
 ## When to use `SafeStorage` directly
 

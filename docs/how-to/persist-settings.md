@@ -35,6 +35,8 @@ const program = Effect.gen(function* () {
 ## 2. Read and write typed values
 
 ```ts
+import { Effect, Option, Schema } from "effect"
+
 const Theme = Schema.Literals(["light", "dark", "system"])
 
 // Read with a default
@@ -43,16 +45,18 @@ const theme = yield * store.getOrDefault("theme", Theme, "system")
 // Write
 yield * store.set("theme", Theme, "dark")
 
-// Read or fail
-const required = yield * store.get("apiBaseUrl", Schema.String)
-//             ^? Effect<string, SettingsError | NotFound, never>
+// Read returns Option<A>
+const apiBaseUrl = yield * store.get("apiBaseUrl", Schema.String)
+//                ^? Effect<Option<string>, SettingsError, never>
 
-// Update inside a transaction
+// Read-modify-write through an effectful updater
 yield *
-  store.update(
-    "counters",
-    Schema.Record({ key: Schema.String, value: Schema.Number }),
-    (counts) => ({ ...counts, opens: (counts.opens ?? 0) + 1 })
+  store.update("counters", Schema.Record({ key: Schema.String, value: Schema.Number }), (current) =>
+    Effect.succeed({
+      ...(Option.getOrElse(current, () => ({})) as Record<string, number>),
+      opens:
+        ((Option.getOrUndefined(current) as Record<string, number> | undefined)?.opens ?? 0) + 1
+    })
   )
 ```
 
@@ -60,9 +64,11 @@ Every read decodes through the schema. Every write encodes. Mismatched data fail
 
 ## 3. Migrate when you change the shape
 
-Pass a `migrations` array on the layer to handle version bumps:
+Pass a `migrations` array on the layer to handle version bumps. Each migration receives a `SettingsMigrationContext` with `getRaw`, `setRaw`, `deleteRaw`, and `rename`:
 
 ```ts
+import { Effect, Option } from "effect"
+
 const settingsLayer = Settings.layer({
   path: "preferences.sqlite",
   schemaVersion: 2,
@@ -70,16 +76,19 @@ const settingsLayer = Settings.layer({
     {
       from: 1,
       to: 2,
-      migrate: (raw) => {
-        // raw is the stored object
-        return { ...raw, theme: raw.theme ?? "system" }
-      }
+      migrate: (ctx) =>
+        Effect.gen(function* () {
+          const theme = yield* ctx.getRaw("theme")
+          if (Option.isNone(theme)) {
+            yield* ctx.setRaw("theme", "system")
+          }
+        })
     }
   ]
 })
 ```
 
-Migrations run inside a SQLite transaction with the metadata update. They emit `SettingsMigrated` events through `migrated()`.
+Migrations advance the persisted schema version through the underlying `KeyValueStore`. After the final migration, `Settings` publishes a `SettingsMigrated { from, to, durationMs }` event through `migrated()`.
 
 ## 4. Subscribe to changes
 
@@ -96,9 +105,9 @@ yield *
 
 `changes()` emits `{ key, oldValue, newValue, source }` on every write. Useful for cross-window sync (one window writes, another reacts).
 
-## 5. Recover from corruption
+## 5. Plan for recovery
 
-If the database file is corrupt when the layer opens and you supply `backupPath`, Settings replaces the corrupt file with the backup and reopens it:
+Settings validates `backupPath` on layer construction so a malformed value fails fast:
 
 ```ts
 const settingsLayer = Settings.layer({
@@ -108,7 +117,7 @@ const settingsLayer = Settings.layer({
 })
 ```
 
-A failed copy returns `SettingsRecoveredFromBackup` rather than throwing.
+`SettingsRecoveredFromBackupError` is the typed failure shape callers should match if you wire automatic restore on top. Settings itself does not yet copy the backup over a corrupt primary file.
 
 ## When NOT to use Settings
 

@@ -62,8 +62,8 @@ In exchange, you do **not** pay for these later:
 
 Two layers:
 
-1. **The `desktop check` CLI** runs production checks (`packages/config`) that detect raw bridge calls, native host imports in renderer code, filesystem writes outside declared roots, secret access without audit, and other boundary violations. The check is a release gate; CI runs it.
-2. **The `PermissionRegistry` itself.** Even if you smuggle a raw call into renderer code, the runtime handler will refuse to execute it without a granted capability. There is no way to opt out of the check from inside a handler.
+1. **The boundary surface.** `@orika/bridge` only carries Schema-validated capability-annotated RPCs; the `PermissionInterceptor` middleware decodes each call's capability annotation and checks it before the handler runs. There is no untyped escape that bypasses the interceptor.
+2. **The `PermissionRegistry` itself.** Even if you smuggle a raw call into a handler, the registry returns `PermissionDenied` without a matching declaration. Handlers cannot opt out of the check.
 
 ## When you think you have a real exception
 

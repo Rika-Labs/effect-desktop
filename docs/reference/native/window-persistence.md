@@ -25,16 +25,16 @@ import { WindowPersistence, WindowPersistenceLive } from "@orika/native"
 | `clear`   | `(window) => Effect<void, WindowPersistenceError>`                           |
 | `events`  | `(window) => Stream<WindowStateEvent, WindowPersistenceError>`               |
 
-`WindowPersistenceLive` requires `Window`, `Screen`, and `KeyValueStore`. Use `makeWindowPersistenceLayer({ path, bundleId, now })` when tests or apps need a deterministic store path.
+`WindowPersistenceLive` is `WindowPersistence.layer()` and requires `Window`, `Screen`, and `KeyValueStore.KeyValueStore`. `WindowPersistence.layer(options?)` and the equivalent `makeWindowPersistenceLayer(options?)` accept `{ path?, bundleId?, now? }` for tests or apps that need a deterministic store path or clock. The save record also carries `zoom`, `devtoolsPanel`, and `scrollPositions` provided through `WindowPersistenceSaveOptions`.
 
 ## Behavior
 
-- `save` reads `Window.getBounds`, `Window.getState`, and `Screen.getDisplays`, then persists the record under the window handle id.
-- `restore` reads persisted state, snaps stale or off-screen display coordinates to the current display policy, then applies `Window.setBounds` and `Window.setFullscreen`.
-- `clear` validates the window through `Window.getById` before removing the selected window record.
+- `save` reads `Window.getBounds`, `Window.getState`, and `Screen.getDisplays`, picks the display containing the window's center (falling back to intersecting, then primary, then first), and persists the record under the window handle id. A per-instance `Semaphore` serializes writes across concurrent saves.
+- `restore` reads persisted state, snaps stale or off-screen display coordinates to the current display policy, exits fullscreen first if the live window is currently fullscreen, applies `Window.setBounds`, then re-enters fullscreen with `Window.setFullscreen(true)` when the saved record was fullscreen. The result reports `restored: false` when no record exists.
+- `clear` validates the window through `Window.getById` and matches the resolved handle id before removing the selected window record.
 - `events` validates the window through `Window.getById` before exposing that window's persistence events.
-- Host permission, unsupported-platform, invalid input/output, and host failures are normalized to `WindowPersistenceError`.
-- Storage failures from `WindowState` are reported as `storage-failed`.
+- Host permission, unsupported-platform, invalid input/output, and host failures are normalized to `WindowPersistenceError` with a `reason` literal (`denied`, `unsupported`, `invalid-input`, `invalid-output`, `host-failed`, or `storage-failed`).
+- Storage failures from `WindowState` are reported as `storage-failed`; `WindowStateInvalidArgumentError` is mapped to `invalid-input`.
 
 The native host still enforces the underlying `Window.*` and `Screen.*` permissions before work happens. `WindowPersistence` does not add a separate permission boundary; it composes the existing host-backed services and validates clear/event access through `Window.getById`.
 

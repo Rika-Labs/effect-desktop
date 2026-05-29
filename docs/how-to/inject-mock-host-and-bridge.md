@@ -12,31 +12,33 @@ effect_version: 4
 
 ## MockHost
 
-`MockHostLive(options)` is a fake Rust host. It records every call, maintains an in-memory window registry, preserves trace IDs, and implements `host.version`, `host.ping`, `Window.create`, `Window.destroy`.
+`MockHostLive(options)` is a fake Rust host. It records every call, maintains an in-memory window registry, preserves trace IDs, and implements the full host-protocol surface (`host.version`, `host.ping`, and every `Window.*` method).
 
 ```ts
+import { test, expect } from "bun:test"
 import { Effect, ManagedRuntime } from "effect"
 import { WINDOW_CREATE_METHOD, WINDOW_DESTROY_METHOD, makeHostWindowClient } from "@orika/bridge"
 import { MockHost, MockHostLive } from "@orika/test"
 
-const runtime = ManagedRuntime.make(MockHostLive())
+test("MockHost speaks host protocol in-process", () => {
+  const runtime = ManagedRuntime.make(MockHostLive())
+  return runtime.runPromise(
+    Effect.gen(function* () {
+      const host = yield* MockHost
+      const window = makeHostWindowClient(host)
+      const created = yield* window.create({ title: "Docs" })
+      yield* window.destroy(created.windowId)
 
-await runtime.runPromise(
-  Effect.gen(function* () {
-    const host = yield* MockHost
-    const window = makeHostWindowClient(host)
-    const created = yield* window.create({ title: "Docs" })
-    yield* window.destroy(created.windowId)
-
-    expect(host.calls().map((call) => call.method)).toEqual([
-      WINDOW_CREATE_METHOD,
-      WINDOW_DESTROY_METHOD
-    ])
-  })
-)
+      expect(host.calls().map((call) => call.method)).toEqual([
+        WINDOW_CREATE_METHOD,
+        WINDOW_DESTROY_METHOD
+      ])
+    })
+  )
+})
 ```
 
-Override host behavior with `fixtures` when you need a specific response or typed host failure. After running, read `host.calls()` and `host.windows()` to assert what the handler did.
+Override host behavior with `fixtures` (per-method `(request, state) => payload | Effect`) when you need a specific response or typed host failure. After running, read `host.calls()` and `host.windows()` to assert what the handler did.
 
 ## MockBridge
 
@@ -44,9 +46,10 @@ Override host behavior with `fixtures` when you need a specific response or type
 
 ```ts
 import { Effect } from "effect"
+import { ReactDesktop } from "@orika/react"
 import { makeMockBridge } from "@orika/test"
 
-const bridge = makeMockBridge({ now: () => 1710000000000 })
+const bridge = makeMockBridge({ now: () => 1_710_000_000_000 })
 
 await Effect.runPromise(bridge.succeed("Notes.list", [{ id: "1", title: "First" }]))
 await Effect.runPromise(bridge.fail("Notes.save", { _tag: "WriteFailed" }))

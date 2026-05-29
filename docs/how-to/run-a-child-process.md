@@ -67,17 +67,20 @@ yield *
 
 ## 4. Send input
 
+`handle.stdin` is an Effect `Sink` of `Uint8Array`. Drive it from a `Stream`:
+
 ```ts
-yield * handle.stdin.write(new TextEncoder().encode("hello\n"))
-yield * handle.stdin.close()
+yield * Stream.fromIterable([new TextEncoder().encode("hello\n")]).pipe(Stream.run(handle.stdin))
 ```
+
+The sink closes the underlying pipe when the stream ends.
 
 ## 5. Kill explicitly (optional)
 
 The framework kills the process tree when the owner scope closes. If you want to terminate sooner:
 
 ```ts
-yield * handle.kill // sends SIGTERM
+yield * handle.kill() // sends SIGTERM
 yield * handle.kill("SIGKILL")
 ```
 
@@ -85,7 +88,7 @@ yield * handle.kill("SIGKILL")
 
 ```ts
 const snapshots = yield * proc.list()
-// [{ pid, command, args, ownerScope, childPids, state, lastExit }, ...]
+// [{ resourceId, pid, command, args, ownerScope, state, startedAt, updatedAt, lastExit }, ...]
 ```
 
 Devtools' processes panel renders this live.

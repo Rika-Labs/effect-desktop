@@ -8,13 +8,13 @@ effect_version: 4
 
 # How to package for macOS
 
-Run the package command with macOS targets:
+Run the package command for a macOS target:
 
 ```bash
-bun run desktop package --config desktop.config.ts --target macos-arm64,macos-x64
+bun run desktop package --config desktop.config.ts --platform macos-arm64
 ```
 
-The CLI stages a `.app` bundle for each target with the framework's default hardened-runtime entitlements.
+`--platform` takes one desktop target id (`macos-arm64` or `macos-x64`). Run the command once per target you ship. The CLI stages a `.app` bundle for that target with the framework's default hardened-runtime entitlements.
 
 ## What the bundle contains
 
@@ -59,7 +59,7 @@ The CLI generates an `entitlements.plist` from this map and passes it to `codesi
 ## Sign
 
 ```bash
-bun run desktop sign --config desktop.config.ts --target macos-arm64
+bun run desktop sign --config desktop.config.ts --platform macos-arm64
 ```
 
 The CLI invokes `codesign --deep --options=runtime --identity "<your identity>" --entitlements entitlements.plist Notes.app`.
@@ -69,7 +69,7 @@ If the identity isn't found, the sign step fails with `SignConfigError` naming t
 ## Notarize
 
 ```bash
-bun run desktop notarize --config desktop.config.ts --target macos-arm64
+bun run desktop notarize --config desktop.config.ts --platform macos-arm64
 ```
 
 Requires `APPLE_ID`, `APPLE_TEAM_ID`, and `APPLE_APP_PASSWORD` (an app-specific password from appleid.apple.com). The CLI calls `xcrun notarytool submit` and waits for the result.

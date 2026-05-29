@@ -22,7 +22,7 @@ ORIKA is a host/runtime/renderer framework.
 
 ## Data flow
 
-Renderer code calls a generated RPC client. The bridge serializes a `HostProtocolRequestEnvelope`. The runtime handler executes an Effect program. Responses return as typed payloads or typed failures.
+Renderer code calls a generated Effect RPC client. The `BridgeRpc` boundary adapter serializes a `HostProtocolRequestEnvelope` and crosses to the runtime, where canonical Effect RPC dispatches into the handler layer. The handler executes an Effect program inside the layer graph (services, permissions, scopes). Responses return as typed payloads or typed tagged failures. `BridgeRpc` exists only as a boundary adapter (see `AGENTS.md`); the public contract is a canonical `RpcGroup`, not a bridge-specific DSL.
 
 ## Verify the Envelope and App Exports
 

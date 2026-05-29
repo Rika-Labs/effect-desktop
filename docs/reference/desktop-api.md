@@ -21,20 +21,22 @@ import { Desktop } from "@orika/core"
 Creates a desktop app descriptor.
 
 ```ts
-function make<RIn = never, E = never>(
-  config: DesktopMakeConfig<RIn, E>
-): DesktopAppDescriptor<RIn, E>
+function make<RIn = never, E = never, RpcHandlerR = unknown>(
+  config: DesktopMakeConfig<RIn, E, RpcHandlerR>
+): DesktopAppDescriptor<RIn, E, RpcHandlerR>
 ```
 
-| Field         | Type                           | Description                                                                                                                  |
-| ------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
-| `id`          | `string`                       | Reverse-DNS app id (e.g. `dev.example.notes`).                                                                               |
-| `windows`     | `DesktopWindowsLayer<RIn>`     | Immutable window declarations. Build via `Desktop.window(id, spec, services?)`; compose multiple via `Desktop.windows(...)`. |
-| `rpcs`        | `DesktopRpcsLayer<E, RIn>`     | Immutable RPC declarations. Build via `Desktop.rpc(group, handlers)`; compose multiple via `Desktop.rpcs(...)`.              |
-| `native`      | `DesktopNativeLayer`           | Immutable native surface declarations. Build via `Desktop.native(Native.<Surface>)` or `Desktop.native(Native.all)`.         |
-| `providers`   | `DesktopProvidersLayer`        | Immutable provider declarations. Build via `Desktop.provider(...)`; compose multiple via `Desktop.providers(...)`.           |
-| `permissions` | `DesktopPermissionsLayer`      | Immutable permission declarations. Build via `Desktop.permissions(Desktop.permission(capability), ...)`.                     |
-| `workflows`   | `DesktopWorkflowsLayer<RIn,E>` | Immutable workflow layer declarations. Build via `Desktop.workflow(layer)`; compose multiple via `Desktop.workflows(...)`.   |
+`id` defaults to `"app"` when omitted. All declaration fields default to empty arrays.
+
+| Field         | Type                            | Description                                                                                                                  |
+| ------------- | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `id`          | `string` (optional)             | Reverse-DNS app id (e.g. `dev.example.notes`). Defaults to `"app"`.                                                          |
+| `windows`     | `DesktopWindowsLayer<RIn>`      | Immutable window declarations. Build via `Desktop.window(id, spec, services?)`; compose multiple via `Desktop.windows(...)`. |
+| `rpcs`        | `DesktopRpcsLayer<E, RIn, …>`   | Immutable RPC declarations. Build via `Desktop.rpc(group, handlers)`; compose multiple via `Desktop.rpcs(...)`.              |
+| `native`      | `DesktopNativeLayer<E, RIn, …>` | Immutable native surface declarations. Build via `Desktop.native(Native.<Surface>)` or `Desktop.native(Native.all)`.         |
+| `providers`   | `DesktopProvidersLayer`         | Immutable provider declarations. Build via `Desktop.provider(...)`; compose multiple via `Desktop.providers(...)`.           |
+| `permissions` | `DesktopPermissionsLayer`       | Immutable capability declarations. Build via `Desktop.permissions(Desktop.permission(capability), ...)`.                     |
+| `workflows`   | `DesktopWorkflowsLayer<RIn, E>` | Immutable workflow layer declarations. Build via `Desktop.workflow(layer)`; compose multiple via `Desktop.workflows(...)`.   |
 
 `WindowSpec` is `{ title, width?, height?, renderer? }`. The window id is the first argument to `Desktop.window(id, spec)` — there is no `id` field on the spec itself.
 
@@ -213,5 +215,5 @@ export const Manifest = Desktop.manifest(App)
 
 - [`Desktop.Rpc`](rpc-surface.md)
 - [Configuration](config.md)
-- Tutorial: [Build a notes app](../tutorials/01-build-a-notes-app.md)
+- How-to: [Define an RPC surface](../how-to/define-an-rpc-surface.md)
 - Source: [`packages/core/src/index.ts`](../../packages/core/src/index.ts)
