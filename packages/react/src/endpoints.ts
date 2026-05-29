@@ -42,15 +42,30 @@ export type ReactEndpoint =
   | MutationEndpoint<unknown, unknown, unknown>
   | StreamEndpoint<unknown, unknown, unknown>
 
+const ENDPOINT_INPUT_UNKEYABLE = "@orika/react/endpoints/unkeyable-input"
+
+const endpointInputReplacer = (_key: string, value: unknown): unknown => {
+  if (value instanceof Map) {
+    return { __orikaMap: Array.from(value.entries()) }
+  }
+  if (value instanceof Set) {
+    return { __orikaSet: Array.from(value.values()) }
+  }
+  if (typeof value === "bigint") {
+    return { __orikaBigInt: value.toString() }
+  }
+  return value
+}
+
 export const stableEndpointInputDependency = (input: unknown): unknown => {
   if (input === null || typeof input !== "object") {
     return input
   }
 
   try {
-    return JSON.stringify(input)
+    return JSON.stringify(input, endpointInputReplacer)
   } catch {
-    return input
+    return ENDPOINT_INPUT_UNKEYABLE
   }
 }
 
