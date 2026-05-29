@@ -2160,6 +2160,56 @@ test(
   CLI_REPRO_TEST_TIMEOUT_MS
 )
 
+test(
+  "desktop check --repro fails when both passes produce no comparable output",
+  () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const directory = yield* Effect.promise(() =>
+          mkdtemp(join(tmpdir(), "effect-desktop-cli-repro-empty-"))
+        )
+        try {
+          const buildRoot = join(directory, "build")
+          const packageRoot = join(directory, "package")
+
+          const exit = yield* Effect.exit(
+            runDesktopReproCheck({
+              buildRunner: () =>
+                Effect.gen(function* () {
+                  yield* Effect.tryPromise({
+                    try: () => mkdir(buildRoot, { recursive: true }),
+                    catch: toTryPromiseError
+                  })
+                  return { target: "linux-x64", layoutPath: buildRoot }
+                }),
+              packageRunner: () =>
+                Effect.gen(function* () {
+                  yield* Effect.tryPromise({
+                    try: () => mkdir(packageRoot, { recursive: true }),
+                    catch: toTryPromiseError
+                  })
+                  return { outputPath: packageRoot }
+                })
+            })
+          )
+
+          expect(Exit.isFailure(exit)).toBe(true)
+          if (Exit.isFailure(exit)) {
+            const failReason = exit.cause.reasons.find((reason) => reason._tag === "Fail")
+            const error = failReason?.error as
+              | { readonly _tag?: string; readonly message?: string }
+              | undefined
+            expect(error?._tag).toBe("ReproFileError")
+            expect(error?.message).toContain("compared 0 files")
+          }
+        } finally {
+          yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+        }
+      })
+    ),
+  CLI_REPRO_TEST_TIMEOUT_MS
+)
+
 const reproSymlinkTest = process.platform === "win32" ? test.skip : test
 
 reproSymlinkTest(

@@ -264,6 +264,17 @@ const diffSnapshots = (
     const firstByPath = new Map(firstEntries.map((entry) => [entry.relativePath, entry]))
     const secondByPath = new Map(secondEntries.map((entry) => [entry.relativePath, entry]))
     const relativePaths = [...new Set([...firstByPath.keys(), ...secondByPath.keys()])].toSorted()
+    if (relativePaths.length === 0) {
+      return yield* Effect.fail(
+        new ReproFileError({
+          operation: "diff",
+          path: first.rootPath,
+          message:
+            "reproducibility check compared 0 files; the build or package step produced no comparable output",
+          cause: undefined
+        })
+      )
+    }
     const differences: ReproDifference[] = []
     if (first.target !== second.target) {
       differences.push({
@@ -442,6 +453,13 @@ const listSnapshotEntries = (
     return entries.toSorted((a, b) => a.relativePath.localeCompare(b.relativePath))
   })
 
+const EXCLUDED_REPORT_FILES: ReadonlySet<string> = new Set([
+  "build-report.json",
+  "notarize-report.json",
+  "package-report.json",
+  "sign-report.json"
+])
+
 const walkSnapshotEntries = (
   rootPath: string,
   currentPath: string,
@@ -450,7 +468,7 @@ const walkSnapshotEntries = (
   Effect.gen(function* () {
     const children = yield* readDirectory(currentPath)
     for (const child of children.toSorted()) {
-      if (child.endsWith("-report.json")) {
+      if (EXCLUDED_REPORT_FILES.has(child)) {
         continue
       }
       const childPath = join(currentPath, child)
