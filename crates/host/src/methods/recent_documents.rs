@@ -228,6 +228,7 @@ fn has_windows_dot_path_segment(path: &str) -> bool {
         .any(|segment| matches!(segment, "." | ".."))
 }
 
+#[cfg(any(not(windows), test))]
 fn unsupported(operation: &'static str) -> HostProtocolError {
     HostProtocolError::unsupported(
         host_protocol::RECENT_DOCUMENTS_UNSUPPORTED_REASON,

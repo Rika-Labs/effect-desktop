@@ -653,6 +653,7 @@ fn map_native_error(error: PtyError) -> HostProtocolError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use host_protocol::{PtyIdPayload, PtyReadPayload};
     use serde::de::DeserializeOwned;
 

@@ -38,6 +38,7 @@ pub(crate) enum WebEngineKind {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum WebEngineBuildTarget {
+    #[cfg(not(target_os = "linux"))]
     Window,
     #[cfg(not(target_os = "linux"))]
     Child,

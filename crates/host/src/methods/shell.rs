@@ -595,10 +595,12 @@ fn current_platform() -> HostProtocolPlatform {
 mod tests {
     #[cfg(unix)]
     use super::execute_shell_command;
+    #[cfg(not(target_os = "windows"))]
+    use super::trash_item_with;
     use super::{
         host_unavailable_command_error, is_executable_path, open_external, open_external_with,
-        open_path, shell_command, show_item_in_folder_with, trash_item, trash_item_with,
-        unsupported_command_error, validate_external_url, validate_path, ShellCommand,
+        open_path, shell_command, show_item_in_folder_with, trash_item, unsupported_command_error,
+        validate_external_url, validate_path, ShellCommand,
     };
     use host_protocol::{HostProtocolError, ShellOpenExternalPayload};
     use serde_json::json;

@@ -210,7 +210,10 @@ pub(crate) fn force_termination(child: &mut Child) -> io::Result<()> {
 
 #[cfg(unix)]
 pub(crate) fn cleanup_process_tree_after_exit(child: &Child) -> io::Result<()> {
-    send_signal_to_process_group(child, libc::SIGKILL)
+    match send_signal_to_process_group(child, libc::SIGKILL) {
+        Err(error) if error.raw_os_error() == Some(libc::EPERM) => Ok(()),
+        result => result,
+    }
 }
 
 #[cfg(unix)]
