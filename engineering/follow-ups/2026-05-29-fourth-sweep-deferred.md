@@ -40,7 +40,7 @@ than a parallel unbounded map). Needs care with the actor/authorization model.
 ## 3. (MEDIUM) tray.destroy / notification.close: guard set after the native call (concurrent double-destroy)
 
 In `tray.destroy` (and the parallel `notification.close`) the
-`explicitlyDestroyed.add(id)` / `explicitlyClosed.add(id)` guard is set *after*
+`explicitlyDestroyed.add(id)` / `explicitlyClosed.add(id)` guard is set _after_
 `client.destroy`/`client.close`. A concurrent scope teardown running the
 create-time dispose finalizer does not yet see the guard and issues a second native
 destroy/close — violating the documented exactly-once contract (the existing
@@ -60,7 +60,7 @@ race.)
 - attachment-intake: an audit-write failure on the denial path masks PermissionDenied
   as Internal (Effect.andThen sequences only on success) — run the audit emit with
   Effect.ignore so the security failure is preserved.
-- diagnostics-bundle: an audit-write failure on the *success* path of `write` (via
+- diagnostics-bundle: an audit-write failure on the _success_ path of `write` (via
   Effect.tap) converts a committed file write into a reported failure, inviting a
   duplicate privileged write on retry — decouple success-audit failures from the result.
 - display-capture: grant.id/traceId/captureId use BridgeSafeNonEmptyString (NUL-only),

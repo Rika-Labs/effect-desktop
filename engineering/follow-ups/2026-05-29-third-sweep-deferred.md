@@ -29,8 +29,9 @@ destroyed — with no audit row, unlike the dispatch drop path which emits
 `EventDroppedTargetClosed`.
 
 Two fixes, in increasing scope:
+
 - **Observability (small):** in `windowClosed`, capture `pendingEventsFor(current,
-  windowId)` inside the `SubscriptionRef.modify` and `emitAudit` an
+windowId)` inside the `SubscriptionRef.modify` and `emitAudit` an
   `EventDroppedTargetClosed` for each before clearing. Makes the loss visible but
   does not reopen the document.
 - **Correct (larger):** stop pinning the global firstResponder buffer to a single
