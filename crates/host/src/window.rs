@@ -1510,6 +1510,7 @@ pub(crate) struct MenuCommandBinding {
 }
 
 impl MenuCommandBinding {
+    #[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
     pub(crate) fn new(item_id: String, command_id: String, window_id: Option<String>) -> Self {
         Self {
             item_id,
@@ -7272,6 +7273,7 @@ fn set_simple_fullscreen(
     }
 }
 
+#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
 fn accepts_idempotent_simple_fullscreen_rejection(current: bool, desired: bool) -> bool {
     !current && !desired
 }
@@ -8443,11 +8445,13 @@ fn install_muda_menu_event_handler() {
     muda::MenuEvent::set_event_handler(Some(forward_muda_menu_event));
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(crate) fn next_menu_native_item_id(prefix: &str) -> String {
     let next = MENU_SEQUENCE.fetch_add(1, Ordering::Relaxed);
     format!("menu:{prefix}:{next}")
 }
 
+#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
 pub(crate) fn replace_menu_command_bindings(
     bindings: Vec<(String, MenuCommandBinding)>,
     operation: &'static str,

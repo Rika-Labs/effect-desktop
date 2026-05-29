@@ -332,7 +332,10 @@ fn platform_list(operation: &'static str) -> Result<Vec<String>, HostProtocolErr
     test_recent_documents_list().unwrap_or_else(|| Err(unsupported(operation)))
 }
 
-#[cfg(any(not(target_os = "macos"), test))]
+#[cfg(any(
+    test,
+    all(not(target_os = "macos"), not(windows), not(target_os = "linux"))
+))]
 fn test_recent_documents_add(path: &str) -> Option<Result<(), HostProtocolError>> {
     #[cfg(test)]
     {
@@ -351,7 +354,10 @@ fn test_recent_documents_add(path: &str) -> Option<Result<(), HostProtocolError>
     }
 }
 
-#[cfg(any(not(target_os = "macos"), test))]
+#[cfg(any(
+    test,
+    all(not(target_os = "macos"), not(windows), not(target_os = "linux"))
+))]
 fn test_recent_documents_clear() -> Option<Result<(), HostProtocolError>> {
     #[cfg(test)]
     {
@@ -368,7 +374,10 @@ fn test_recent_documents_clear() -> Option<Result<(), HostProtocolError>> {
     }
 }
 
-#[cfg(any(not(target_os = "macos"), test))]
+#[cfg(any(
+    test,
+    all(not(target_os = "macos"), not(windows), not(target_os = "linux"))
+))]
 fn test_recent_documents_list() -> Option<Result<Vec<String>, HostProtocolError>> {
     #[cfg(test)]
     {
