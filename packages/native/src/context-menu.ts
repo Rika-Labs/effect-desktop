@@ -223,7 +223,9 @@ const runContextMenuRpcStream = <A, E>(
 ): Stream.Stream<A, ContextMenuError, never> => runNativeRpcStream(stream, operation, Surface)
 
 const contextMenuCommandResourceId = (itemId: string, commandId: string): ResourceId =>
-  makeResourceId(`context-menu-command:${itemId}:${commandId}`)
+  makeResourceId(
+    `context-menu-command:${encodeURIComponent(itemId)}:${encodeURIComponent(commandId)}`
+  )
 
 const toContextMenuShowInput = (input: ContextMenuShowOptions): unknown => ({
   window: toWindowHandle(input.window),

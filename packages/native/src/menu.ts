@@ -352,7 +352,7 @@ const menuBridgeClientFromRpcClient = (
 }
 
 const menuCommandResourceId = (itemId: string, commandId: string): ResourceId =>
-  makeResourceId(`menu-command:${itemId}:${commandId}`)
+  makeResourceId(`menu-command:${encodeURIComponent(itemId)}:${encodeURIComponent(commandId)}`)
 
 const toWindowHandle = (handle: WindowHandle): MenuWindowHandle =>
   Object.freeze({

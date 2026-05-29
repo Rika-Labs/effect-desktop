@@ -222,3 +222,19 @@ const decodeByteStream = <E, R>(
       return new TextDecoder().decode(output)
     })
   )
+
+test("makeProviderRegistry freezes each registered capability against post-registration mutation", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const capability = new ProviderCapability({ name: "filesystem", description: "original" })
+      const registry = yield* makeProviderRegistry([
+        { kind: "runtime", id: "bun", capabilities: [capability] }
+      ])
+
+      const capabilities = yield* registry.capabilitiesFor("runtime", "bun")
+      expect(capabilities).toHaveLength(1)
+      const registered = capabilities[0]
+      expect(registered?.name).toBe("filesystem")
+      expect(Object.isFrozen(registered)).toBe(true)
+    })
+  ))

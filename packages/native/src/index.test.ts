@@ -11740,7 +11740,7 @@ test("GlobalShortcut bindCommand invokes CommandRegistry for matching registrar 
 
       expect(handle).toMatchObject({
         kind: "global-shortcut-command",
-        id: "global-shortcut-command:window-1:CmdOrCtrl+K",
+        id: "global-shortcut-command:window-1:CmdOrCtrl%2BK",
         ownerScope: windowHandle.ownerScope,
         state: "registered"
       })
@@ -11861,7 +11861,7 @@ test("GlobalShortcut bindCommand invokes CommandRegistry for matching registrar 
 
       expect(handle).toMatchObject({
         kind: "global-shortcut-command",
-        id: "global-shortcut-command:window-1:CmdOrCtrl+K",
+        id: "global-shortcut-command:window-1:CmdOrCtrl%2BK",
         ownerScope: windowHandle.ownerScope,
         state: "registered"
       })

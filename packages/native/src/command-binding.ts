@@ -37,6 +37,9 @@ export const bindScopedCommand = <Kind extends ResourceKind, Event, RegisterE>(
       }
       yield* options.events.pipe(
         Stream.runForEach(options.invoke),
+        Effect.tapError((error) =>
+          Effect.logWarning("scoped command event stream failed", options.kind, options.id, error)
+        ),
         Effect.forkScoped,
         Scope.provide(bindingScope)
       )

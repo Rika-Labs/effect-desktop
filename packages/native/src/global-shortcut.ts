@@ -437,7 +437,9 @@ const linuxGlobalShortcutSupport = (
 }
 
 const globalShortcutCommandResourceId = (windowId: string, accelerator: string): ResourceId =>
-  makeResourceId(`global-shortcut-command:${windowId}:${accelerator}`)
+  makeResourceId(
+    `global-shortcut-command:${encodeURIComponent(windowId)}:${encodeURIComponent(accelerator)}`
+  )
 
 const toWindowHandle = (handle: GlobalShortcutWindowHandle): GlobalShortcutWindowHandle =>
   Object.freeze({

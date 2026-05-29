@@ -106,7 +106,9 @@ const providerKey = (kind: ProviderKind, provider: string): string => `${kind}:$
 const freezeProvider = <Provider extends AnyProvider>(provider: Provider): Provider =>
   Object.freeze({
     ...provider,
-    capabilities: Object.freeze([...provider.capabilities])
+    capabilities: Object.freeze(
+      provider.capabilities.map((capability) => Object.freeze(capability))
+    )
   })
 
 const capitalizeProviderKind = (kind: ProviderKind): string =>
