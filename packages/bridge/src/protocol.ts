@@ -1322,8 +1322,20 @@ export const makeDesktopClientProtocol = (
                 timestamp,
                 traceId
               }
-              if (resolved.windowId !== "") fields.windowId = resolved.windowId
-              if (resolved.originToken !== "") fields.originToken = resolved.originToken
+              if (resolved.windowId !== "") {
+                fields.windowId = yield* validateHostProtocolNonEmptyString(
+                  "windowId",
+                  resolved.windowId,
+                  request.tag
+                )
+              }
+              if (resolved.originToken !== "") {
+                fields.originToken = yield* validateHostProtocolNonEmptyString(
+                  "originToken",
+                  resolved.originToken,
+                  request.tag
+                )
+              }
               if (request.payload !== undefined) fields.payload = request.payload
               const envelope = new HostProtocolRequestEnvelope(fields)
               requestClients.set(transportRequestId, { clientId: _clientId, requestId })

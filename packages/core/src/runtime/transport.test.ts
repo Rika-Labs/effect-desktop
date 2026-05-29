@@ -352,6 +352,25 @@ test("unframeStream validates frameQueueCapacity", () =>
     })
   ))
 
+test("unframeStream caps json-rpc header bytes before the terminator is found", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const transport = yield* makeTransport()
+      const filler = new Uint8Array(64).fill(0x41)
+      const exit = yield* Effect.exit(
+        transport
+          .unframeStream({
+            scheme: "json-rpc",
+            maxFrameBytes: 32,
+            chunks: Stream.fromIterable([filler, filler, filler])
+          })
+          .pipe(Stream.runCollect)
+      )
+
+      expectFailure(exit, TransportFrameTooLargeError)
+    })
+  ))
+
 test("Transport service validates unframeStream chunks input", () =>
   Effect.runPromise(
     Effect.gen(function* () {

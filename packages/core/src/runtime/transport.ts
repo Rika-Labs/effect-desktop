@@ -724,6 +724,9 @@ class JsonRpcFrameDecoder {
     while (this.#buffer.byteLength > 0) {
       const headerEnd = findHeaderEnd(this.#buffer)
       if (headerEnd < 0) {
+        if (this.#buffer.byteLength > this.#maxFrameBytes) {
+          throw new FrameTooLargeError({ size: this.#buffer.byteLength, max: this.#maxFrameBytes })
+        }
         return frames
       }
 

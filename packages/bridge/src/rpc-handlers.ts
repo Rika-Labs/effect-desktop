@@ -108,6 +108,12 @@ const dispatch = <Rpcs extends Rpc.Any, E extends HostProtocolError, R>(
         )
       }
 
+      if (pendingCalls.has(request.id)) {
+        return yield* Effect.fail(
+          makeHostProtocolInvalidStateError("Pending", "dispatch", request.method)
+        )
+      }
+
       const pending: PendingCall = {
         fiber: undefined,
         cancel: undefined,

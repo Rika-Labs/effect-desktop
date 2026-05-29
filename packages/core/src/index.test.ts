@@ -951,6 +951,18 @@ test("Desktop.rpc pairs an RpcGroup with its implementation for app adapters", (
   })
 })
 
+test("Desktop.manifest rejects duplicate window ids instead of collapsing them", () => {
+  expect(() =>
+    core.Desktop.manifest({
+      id: "duplicate-window-manifest",
+      windows: core.Desktop.windows(
+        core.Desktop.window("main", { title: "A" }),
+        core.Desktop.window("main", { title: "B" })
+      )
+    })
+  ).toThrow("registered more than once")
+})
+
 test("Desktop.native composes an empty native layer without adding runtime surfaces", () =>
   Effect.runPromise(
     Effect.gen(function* () {

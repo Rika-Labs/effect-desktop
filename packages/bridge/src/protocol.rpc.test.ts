@@ -427,6 +427,46 @@ test("makeDesktopClientProtocol send translates Request to HostProtocolRequestEn
     })
   ))
 
+test("makeDesktopClientProtocol send fails typed when windowId carries a control character", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const sent: HostProtocolEnvelope[] = []
+      const transport: DesktopTransportSend & DesktopTransportRun = {
+        send: (envelope) =>
+          Effect.sync(() => {
+            sent.push(envelope)
+          }),
+        run: (_onEnvelope) => Effect.never
+      }
+
+      const exit = yield* Effect.scoped(
+        Effect.gen(function* () {
+          const protocol = yield* makeDesktopClientProtocol(transport, {
+            windowId: `bad${String.fromCharCode(1)}window`,
+            nextTraceId: () => "trace-rpc-test"
+          })
+          return yield* Effect.exit(
+            protocol.send(0, {
+              _tag: "Request",
+              id: "req-1",
+              tag: "Ping",
+              payload: { message: "hello" },
+              headers: [],
+              traceId: "trace-rpc-test"
+            })
+          )
+        })
+      ).pipe(Effect.provideService(Clock.Clock, fixedClock(1_715_000_000_000)))
+
+      expect(Exit.isFailure(exit)).toBe(true)
+      if (Exit.isFailure(exit)) {
+        expect(exit.cause.reasons.some((reason) => reason._tag === "Die")).toBe(false)
+        expect(exit.cause.reasons.some((reason) => reason._tag === "Fail")).toBe(true)
+      }
+      expect(sent).toEqual([])
+    })
+  ))
+
 test("makeDesktopClientProtocol send translates Interrupt to HostProtocolCancelByRequestEnvelope", () =>
   Effect.runPromise(
     Effect.gen(function* () {

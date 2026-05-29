@@ -93,3 +93,49 @@ test("cancel during dispatch preamble still interrupts the call and records Canc
       expect(states.some((state) => state.tag === "Canceled")).toBe(true)
     })
   ))
+
+test("dispatch rejects a concurrent duplicate request id instead of running the handler twice", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const handlerEntered = yield* Deferred.make<void>()
+      const handlerGate = yield* Deferred.make<void>()
+      let handlerRuns = 0
+
+      const runtime = makeDesktopRpcHandlerRuntime(
+        group,
+        group.toLayer({
+          Ping: () =>
+            Effect.sync(() => {
+              handlerRuns += 1
+            }).pipe(
+              Effect.andThen(Deferred.succeed(handlerEntered, undefined)),
+              Effect.andThen(Deferred.await(handlerGate)),
+              Effect.as("pong")
+            )
+        }),
+        { originAuth: { verify: () => Effect.void } }
+      )
+
+      const frame = () =>
+        new HostProtocolRequestEnvelope({
+          kind: "request",
+          id: "dup-id",
+          method: "Ping",
+          timestamp: 1710000000000,
+          traceId: "trace-dup",
+          payload: { message: "hello" }
+        })
+
+      const firstFiber = yield* Effect.forkChild(runtime.dispatch(frame()))
+      yield* Deferred.await(handlerEntered)
+      const secondFiber = yield* Effect.forkChild(runtime.dispatch(frame()))
+      yield* Effect.sleep("50 millis")
+      const runsWhileFirstInFlight = handlerRuns
+      yield* Deferred.succeed(handlerGate, undefined)
+      yield* Fiber.join(firstFiber).pipe(Effect.exit)
+      const secondExit = yield* Fiber.join(secondFiber).pipe(Effect.exit)
+
+      expect(runsWhileFirstInFlight).toBe(1)
+      expect(Exit.isFailure(secondExit)).toBe(true)
+    })
+  ))

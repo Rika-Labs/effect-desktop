@@ -671,6 +671,7 @@ export const manifest = <RIn = never, E = never, RpcHandlerR = unknown>(
 ): DesktopAppManifest => {
   const registrations = [...(config.rpcs ?? []), ...nativeRpcRegistrationsSync(config.native ?? [])]
   const windowRegistrations = config.windows
+  failOnDuplicateWindowIds(config.id, windowRegistrations)
   return Object.freeze({
     _tag: "DesktopAppManifest" as const,
     id: config.id,
