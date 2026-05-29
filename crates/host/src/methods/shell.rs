@@ -206,9 +206,19 @@ fn validate_url_shape(
     operation: &'static str,
 ) -> Result<(), HostProtocolError> {
     if matches!(scheme, "http" | "https") {
-        let rest = url.strip_prefix(&format!("{scheme}://")).ok_or_else(|| {
-            HostProtocolError::invalid_argument("url", "must include authority", operation)
-        })?;
+        // The scheme has been validated by `url_scheme`/`normalize_scheme`, so its
+        // ASCII length matches the original-case prefix. Slice past it rather than
+        // rebuilding a case-sensitive `strip_prefix`, which would reject valid
+        // mixed-case schemes (e.g. `HTTP://example.com`).
+        let separator = "://";
+        let prefix_len = scheme.len() + separator.len();
+        let rest = url
+            .get(scheme.len()..)
+            .filter(|tail| tail.starts_with(separator))
+            .and_then(|_| url.get(prefix_len..))
+            .ok_or_else(|| {
+                HostProtocolError::invalid_argument("url", "must include authority", operation)
+            })?;
         let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
         if authority.is_empty() {
             return Err(HostProtocolError::invalid_argument(
@@ -248,11 +258,21 @@ fn has_parent_traversal(path: &str) -> bool {
 }
 
 fn is_executable_path(path: &str) -> bool {
-    let lower = path.to_ascii_lowercase();
+    let lower = path_basename(path).to_ascii_lowercase();
     let executable_extension = EXECUTABLE_EXTENSIONS
         .iter()
         .any(|extension| lower.ends_with(extension));
     executable_extension || is_unix_executable_file(path)
+}
+
+// Final non-empty path segment, splitting on both separators. Mirrors the TS
+// client (`packages/native/src/shell.ts`), which strips trailing slashes before
+// the extension test so `/Applications/Evil.app/` is still detected as a bundle.
+fn path_basename(path: &str) -> &str {
+    path.split(['/', '\\'])
+        .rev()
+        .find(|segment| !segment.is_empty())
+        .unwrap_or(path)
 }
 
 #[cfg(unix)]
@@ -713,6 +733,47 @@ mod tests {
                 "executable-path-denied",
                 host_protocol::SHELL_OPEN_PATH_METHOD,
             )
+        );
+    }
+
+    #[test]
+    fn open_path_detects_executable_bundles_with_trailing_separators() {
+        // A raw RPC caller can append a path separator that `open` tolerates as
+        // the bundle; the guard must still classify it as executable.
+        assert!(is_executable_path("/Applications/Calculator.app/"));
+        assert!(is_executable_path("/Applications/Calculator.app//"));
+        assert!(is_executable_path("C:\\Programs\\Setup.exe\\"));
+        assert!(!is_executable_path("/Users/me/documents/"));
+        assert_eq!(
+            open_path(Some(json!({ "path": "/Applications/Calculator.app/" })))
+                .expect_err("executable bundle with trailing slash"),
+            HostProtocolError::unsupported(
+                "executable-path-denied",
+                host_protocol::SHELL_OPEN_PATH_METHOD,
+            )
+        );
+    }
+
+    #[test]
+    fn open_external_accepts_mixed_case_http_schemes() {
+        assert_eq!(
+            validate_external_url(&ShellOpenExternalPayload::new("HTTP://example.com", None)),
+            Ok(())
+        );
+        assert_eq!(
+            validate_external_url(&ShellOpenExternalPayload::new(
+                "Https://Example.com/path",
+                None,
+            )),
+            Ok(())
+        );
+        assert_eq!(
+            validate_external_url(&ShellOpenExternalPayload::new("HTTPS://", None)),
+            Err(HostProtocolError::invalid_argument(
+                "url",
+                "must include authority",
+                host_protocol::SHELL_OPEN_EXTERNAL_METHOD,
+            ))
         );
     }
 

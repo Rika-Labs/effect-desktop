@@ -348,7 +348,7 @@ fn validate_published_at(field_name: &'static str, value: &str) -> Result<(), Up
                 message: format!("{field_name} must be RFC3339 date-time"),
             });
         }
-        if fraction.parse::<u32>().is_err() {
+        if !fraction.bytes().all(|byte| byte.is_ascii_digit()) {
             return Err(UpdateManifestError::ManifestShapeInvalid {
                 message: format!("{field_name} must be RFC3339 date-time"),
             });

@@ -1293,7 +1293,10 @@ fn valid_semver_number(part: &str) -> bool {
     if part.is_empty() || !part.chars().all(|value| value.is_ascii_digit()) {
         return false;
     }
-    part == "0" || !part.starts_with('0')
+    if part != "0" && part.starts_with('0') {
+        return false;
+    }
+    part.parse::<u64>().is_ok()
 }
 
 fn valid_prerelease(value: &str) -> bool {
@@ -1413,8 +1416,8 @@ fn invalid_state(
 #[cfg(test)]
 mod tests {
     use super::{
-        directory_digest, file_digest, install, install_with_event, is_supported, list, remove,
-        update, EXTENSION_PACKAGE_ENV_LOCK,
+        compare_semver, directory_digest, file_digest, install, install_with_event, is_supported,
+        list, remove, update, valid_semver, EXTENSION_PACKAGE_ENV_LOCK,
     };
     use host_protocol::{ExtensionPackageEventPhase, HostProtocolError};
     use serde_json::{json, Value};
@@ -1845,6 +1848,48 @@ mod tests {
         let payload = is_supported().expect("support payload should encode");
 
         assert_eq!(payload, Some(json!({ "supported": true })));
+        clear_store();
+    }
+
+    #[test]
+    fn valid_semver_rejects_overflowing_numeric_component() {
+        assert!(valid_semver("1.0.0"));
+        assert!(valid_semver("18446744073709551615.0.0"));
+        assert!(!valid_semver("99999999999999999999.0.0"));
+        assert!(!valid_semver("18446744073709551616.0.0"));
+        assert!(!valid_semver("1.0.99999999999999999999"));
+    }
+
+    #[test]
+    fn compare_semver_orders_large_in_range_components() {
+        assert_eq!(compare_semver("18446744073709551615.0.0", "1.0.0"), 1);
+        assert_eq!(compare_semver("1.0.0", "18446744073709551615.0.0"), -1);
+    }
+
+    #[test]
+    fn install_rejects_incoherent_compatibility_before_persisting_state() {
+        let _guard = EXTENSION_PACKAGE_ENV_LOCK.lock().expect("env lock");
+        let temp = temp_root("incoherent-compatibility");
+        let store = temp.join("store");
+        let source = temp.join("source");
+        fs::create_dir_all(source.join("dist")).expect("source dir");
+        fs::write(source.join("dist/main.js"), "v1\n").expect("source file");
+        set_store(&store);
+        let mut payload = valid_install_payload(&source, None);
+        payload["manifest"]["compatibility"]["minHostVersion"] = json!("99999999999999999999.0.0");
+        payload["manifest"]["compatibility"]["maxHostVersion"] = json!("1.0.0");
+
+        let error = install(Some(payload)).expect_err("overflowing minHostVersion must fail");
+
+        assert_eq!(
+            error,
+            HostProtocolError::invalid_argument(
+                "manifest.compatibility.minHostVersion",
+                "must be SemVer",
+                host_protocol::EXTENSION_PACKAGE_INSTALL_METHOD,
+            )
+        );
+        assert!(!store.join("packages").exists());
         clear_store();
     }
 

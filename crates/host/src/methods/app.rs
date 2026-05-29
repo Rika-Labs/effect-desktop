@@ -964,7 +964,10 @@ fn try_lock_single_instance_file(
     _file: &File,
     operation: &'static str,
 ) -> Result<bool, HostProtocolError> {
-    Err(unsupported(operation))
+    Err(HostProtocolError::unsupported(
+        "single-instance file locking is not supported on this platform",
+        operation,
+    ))
 }
 
 #[cfg(not(any(unix, windows)))]
@@ -1369,5 +1372,29 @@ mod tests {
             host_protocol::APP_REQUEST_SINGLE_INSTANCE_LOCK_METHOD,
         )
         .expect("lock metadata should decode")
+    }
+
+    #[cfg(not(any(unix, windows)))]
+    #[test]
+    fn app_single_instance_lock_unsupported_on_exotic_platform() {
+        use super::try_lock_single_instance_file;
+
+        let path = temp_path("unsupported-platform");
+        let file = OpenOptions::new()
+            .create(true)
+            .read(true)
+            .write(true)
+            .truncate(false)
+            .open(&path)
+            .expect("temp lock file should open");
+
+        let error = try_lock_single_instance_file(
+            &file,
+            host_protocol::APP_REQUEST_SINGLE_INSTANCE_LOCK_METHOD,
+        )
+        .expect_err("file locking should be unsupported on this platform");
+
+        assert_eq!(error.tag(), "Unsupported");
+        let _ = std::fs::remove_file(&path);
     }
 }

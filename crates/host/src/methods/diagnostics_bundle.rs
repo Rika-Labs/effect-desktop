@@ -520,6 +520,13 @@ fn redact_value_at(
     key_is_secret: bool,
     evidence: &mut Vec<DiagnosticsBundleRedactionEvidencePayload>,
 ) -> Value {
+    if key_is_secret {
+        evidence.push(DiagnosticsBundleRedactionEvidencePayload::new(
+            "<redacted-path>",
+            "secret-pattern",
+        ));
+        return Value::String(REDACTED_VALUE.to_string());
+    }
     match value {
         Value::Object(entries) => Value::Object(redact_object(entries, path, evidence)),
         Value::Array(entries) => Value::Array(
@@ -527,11 +534,11 @@ fn redact_value_at(
                 .into_iter()
                 .enumerate()
                 .map(|(index, value)| {
-                    redact_value_at(value, &format!("{path}[{index}]"), key_is_secret, evidence)
+                    redact_value_at(value, &format!("{path}[{index}]"), false, evidence)
                 })
                 .collect(),
         ),
-        Value::String(value) if key_is_secret || is_secret_value(&value) => {
+        Value::String(value) if is_secret_value(&value) => {
             evidence.push(DiagnosticsBundleRedactionEvidencePayload::new(
                 "<redacted-path>",
                 "secret-pattern",
@@ -694,6 +701,113 @@ mod tests {
             value["redactionPolicy"]["evidence"][0]["reason"],
             "secret-pattern"
         );
+    }
+
+    #[test]
+    fn redact_redacts_object_value_under_secret_key() {
+        collect(Some(json!({
+            "bundleId": "bundle-rust-redact-object",
+            "sources": ["logs"]
+        })))
+        .expect("collect should succeed");
+
+        let value = redact(Some(json!({
+            "bundleId": "bundle-rust-redact-object",
+            "source": "logs",
+            "payload": { "token": { "value": "supersecret" } }
+        })))
+        .expect("redact should succeed")
+        .expect("redact should return payload");
+
+        assert_eq!(value["payload"]["token"], "<redacted:redacted>");
+        assert_eq!(
+            value["redactionPolicy"]["evidence"][0]["reason"],
+            "secret-pattern"
+        );
+        assert!(
+            !value.to_string().contains("supersecret"),
+            "structured value under secret key must not leak in cleartext"
+        );
+    }
+
+    #[test]
+    fn redact_redacts_array_of_objects_under_secret_key() {
+        collect(Some(json!({
+            "bundleId": "bundle-rust-redact-array",
+            "sources": ["logs"]
+        })))
+        .expect("collect should succeed");
+
+        let value = redact(Some(json!({
+            "bundleId": "bundle-rust-redact-array",
+            "source": "logs",
+            "payload": { "secret": [ { "k": "plaintext" } ] }
+        })))
+        .expect("redact should succeed")
+        .expect("redact should return payload");
+
+        assert_eq!(value["payload"]["secret"], "<redacted:redacted>");
+        assert_eq!(
+            value["redactionPolicy"]["evidence"][0]["reason"],
+            "secret-pattern"
+        );
+        assert!(
+            !value.to_string().contains("plaintext"),
+            "object nested in array under secret key must not leak in cleartext"
+        );
+    }
+
+    #[test]
+    fn write_does_not_leak_structured_secret_under_secret_key() {
+        let bundle_id = "bundle-rust-redact-object-write";
+        collect(Some(json!({ "bundleId": bundle_id, "sources": ["logs"] })))
+            .expect("collect should succeed");
+        redact(Some(json!({
+            "bundleId": bundle_id,
+            "source": "logs",
+            "payload": { "token": { "value": "supersecret" } }
+        })))
+        .expect("redact should succeed");
+        let path = temp_path("diagnostics-structured-secret.json");
+
+        write(Some(json!({
+            "bundleId": bundle_id,
+            "destinationPath": path.to_string_lossy()
+        })))
+        .expect("write should succeed");
+
+        let body = fs::read_to_string(&path).expect("bundle file should exist");
+        assert!(
+            !body.contains("supersecret"),
+            "persisted bundle must not contain cleartext secret"
+        );
+        assert!(body.contains("<redacted:redacted>"));
+        let parsed: Value = serde_json::from_str(&body).expect("bundle should be JSON");
+        assert_eq!(
+            parsed["artifacts"]["logs"]["items"][0]["token"],
+            "<redacted:redacted>"
+        );
+    }
+
+    #[test]
+    fn redact_preserves_non_secret_structured_values() {
+        collect(Some(json!({
+            "bundleId": "bundle-rust-redact-safe-struct",
+            "sources": ["logs"]
+        })))
+        .expect("collect should succeed");
+
+        let value = redact(Some(json!({
+            "bundleId": "bundle-rust-redact-safe-struct",
+            "source": "logs",
+            "payload": { "details": { "value": "ok" }, "items": ["a", "b"] }
+        })))
+        .expect("redact should succeed")
+        .expect("redact should return payload");
+
+        assert_eq!(value["payload"]["details"]["value"], "ok");
+        assert_eq!(value["payload"]["items"][0], "a");
+        assert_eq!(value["payload"]["items"][1], "b");
     }
 
     #[test]

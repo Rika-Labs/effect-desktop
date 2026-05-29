@@ -524,6 +524,7 @@ fn desktop_exec_quote(value: &str) -> String {
     format!(
         "\"{}\"",
         value
+            .replace('%', "%%")
             .replace('\\', "\\\\")
             .replace('"', "\\\"")
             .replace('$', "\\$")
@@ -717,6 +718,8 @@ fn platform_disable(operation: &'static str) -> Result<(), HostProtocolError> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(target_os = "linux")]
+    use super::desktop_exec_quote;
     use super::{disable, enable, is_enabled};
     use host_protocol::{
         AutostartMechanismPayload, AutostartStatusPayload, HostProtocolEnvelope, HostProtocolError,
@@ -824,6 +827,19 @@ mod tests {
             assert!(!registration_file(&root).exists());
         });
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn desktop_exec_quote_escapes_percent_field_codes() {
+        assert_eq!(desktop_exec_quote("%U"), "\"%%U\"");
+        assert_eq!(
+            desktop_exec_quote("--token=100%done"),
+            "\"--token=100%%done\""
+        );
+        assert_eq!(desktop_exec_quote("a%b%c"), "\"a%%b%%c\"");
+        assert_eq!(desktop_exec_quote("--hidden"), "\"--hidden\"");
+        assert_eq!(desktop_exec_quote("$PATH%"), "\"\\$PATH%%\"");
     }
 
     fn assert_status(payload: Option<serde_json::Value>, enabled: bool) {

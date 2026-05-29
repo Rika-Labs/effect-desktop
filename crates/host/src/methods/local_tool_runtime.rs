@@ -688,18 +688,24 @@ pub(crate) fn cancel_run_for_request_id(
     request_id: &str,
     operation: &'static str,
 ) -> Result<(), HostProtocolError> {
-    let active = active_local_tool_run_requests(operation)?
-        .get(request_id)
-        .cloned();
-    if let Some(run) = active {
-        if let Some(child) = run.mark_stopped(operation)? {
-            terminate_child(&child, run.kill_process_tree, operation)?;
+    let to_terminate = {
+        let pending = pending_local_tool_run_requests(operation)?;
+        let active = active_local_tool_run_requests(operation)?
+            .get(request_id)
+            .cloned();
+        if let Some(run) = active {
+            let kill_process_tree = run.kill_process_tree;
+            run.mark_stopped(operation)?
+                .map(|child| (child, kill_process_tree))
+        } else {
+            if pending.contains(request_id) {
+                canceled_local_tool_run_requests(operation)?.insert(request_id.to_string());
+            }
+            None
         }
-        return Ok(());
-    }
-
-    if pending_local_tool_run_requests(operation)?.contains(request_id) {
-        canceled_local_tool_run_requests(operation)?.insert(request_id.to_string());
+    };
+    if let Some((child, kill_process_tree)) = to_terminate {
+        terminate_child(&child, kill_process_tree, operation)?;
     }
     Ok(())
 }
@@ -1111,7 +1117,8 @@ fn track_active_run_request(
     run: ActiveRun,
     operation: &'static str,
 ) -> Result<bool, HostProtocolError> {
-    pending_local_tool_run_requests(operation)?.remove(&request_id);
+    let mut pending = pending_local_tool_run_requests(operation)?;
+    pending.remove(&request_id);
     if canceled_local_tool_run_requests(operation)?.remove(&request_id) {
         let _ = run.mark_stopped(operation)?;
         return Ok(false);
@@ -2789,9 +2796,11 @@ fn is_shell_metacharacter(value: char) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
+        cancel_run_for_request_id, clear_active_run_request,
         clear_runtime_resources_for_runtime_ids, health, is_supported, register,
-        register_with_event, run, stop, OWNED_WORKING_DIRECTORY_BASE,
-        OWNED_WORKING_DIRECTORY_MARKER, UNBOUNDED_OS_BUDGET,
+        register_with_event, run, stop, track_active_run_request, track_pending_run_request,
+        ActiveRun, OWNED_WORKING_DIRECTORY_BASE, OWNED_WORKING_DIRECTORY_MARKER,
+        UNBOUNDED_OS_BUDGET,
     };
     #[cfg(unix)]
     use super::{run_with_event_sink, RuntimeEventSink};
@@ -3471,6 +3480,38 @@ mod tests {
             .expect("terminated run should return status payload")
             .expect("run should return payload");
         assert_eq!(response["status"], json!("failed"));
+    }
+
+    #[test]
+    fn cancel_is_not_lost_during_pending_to_active_transition() {
+        const OPERATION: &str = "host.runtime.cancel";
+
+        for iteration in 0..2000 {
+            let request_id = format!("cancel-race-{iteration}");
+            track_pending_run_request(&request_id, OPERATION).expect("track pending");
+            let run = ActiveRun::new(false);
+
+            let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+            let track_barrier = std::sync::Arc::clone(&barrier);
+            let track_request_id = request_id.clone();
+            let track_run = run.clone();
+            let track_thread = std::thread::spawn(move || {
+                track_barrier.wait();
+                track_active_run_request(track_request_id, track_run, OPERATION)
+                    .expect("track active run request")
+            });
+
+            barrier.wait();
+            cancel_run_for_request_id(&request_id, OPERATION).expect("cancel run request");
+            let tracked = track_thread.join().expect("track thread should not panic");
+
+            assert!(
+                !tracked || run.stopped(OPERATION).expect("read stopped flag"),
+                "cancel was lost on iteration {iteration}: run started but was not marked stopped"
+            );
+
+            clear_active_run_request(&request_id);
+        }
     }
 
     #[cfg(any(unix, windows))]

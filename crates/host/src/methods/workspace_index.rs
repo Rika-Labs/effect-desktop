@@ -565,6 +565,10 @@ fn refresh_session(
                         operation,
                     ));
                 }
+                if is_ignored(&scope, Path::new(&session.root), &path) {
+                    ignored += 1;
+                    continue;
+                }
                 let stale_paths = next_indexed_paths
                     .iter()
                     .filter(|indexed_path| {
@@ -1087,6 +1091,45 @@ mod tests {
                 "ignored": 0
             }))
         );
+    }
+
+    #[test]
+    fn refresh_skips_deleted_ignored_path_instead_of_invalidating() {
+        let workspace = temp_workspace("refresh-deleted-ignored");
+        fs::create_dir_all(workspace.join("src")).expect("src dir");
+        fs::write(workspace.join("src/main.ts"), b"export const value = 1\n").expect("source file");
+        fs::create_dir_all(workspace.join("node_modules/pkg")).expect("ignored dir");
+        let ignored = workspace.join("node_modules/pkg/index.js");
+        fs::write(&ignored, b"module.exports = {}\n").expect("ignored file");
+        open(Some(valid_open_payload(
+            &workspace,
+            "workspace-index-deleted-ignored",
+        )))
+        .expect("workspace should open");
+
+        fs::remove_file(&ignored).expect("ignored file removed");
+        let (payload, events) = refresh_with_event(
+            Some(json!({
+                "indexId": "workspace-index-deleted-ignored",
+                "changedPaths": [ignored.display().to_string()]
+            })),
+            1_710_000_000_050,
+        )
+        .expect("refresh should succeed");
+
+        assert_eq!(
+            payload,
+            Some(json!({
+                "indexId": "workspace-index-deleted-ignored",
+                "state": "opened",
+                "indexed": 0,
+                "invalidated": 0,
+                "ignored": 1
+            }))
+        );
+        assert!(!events.iter().any(|(_, event)| {
+            event["phase"] == "entry-invalidated" && event["path"] == ignored.display().to_string()
+        }));
     }
 
     #[test]

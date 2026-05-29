@@ -89,6 +89,30 @@ fn manifest_validation_rejects_empty_app_id_invalid_version_and_bad_timestamp() 
 }
 
 #[test]
+fn verifies_manifest_with_long_fractional_second() {
+    let signed = sign_value(json!({
+        "schemaVersion": 1,
+        "appId": "dev.effect-desktop.inspector",
+        "version": "1.2.3",
+        "channel": "stable",
+        "keyVersion": 5,
+        "publishedAt": "2026-05-06T00:00:00.4294967296Z",
+        "artifacts": [artifact()]
+    }));
+
+    let verified = verify_manifest(
+        &signed.json,
+        &[TrustAnchor {
+            key_version: 5,
+            public_key: signed.public_key,
+        }],
+    )
+    .expect("ten-digit fractional second is valid RFC3339 and must verify");
+
+    assert_eq!(verified.version, "1.2.3");
+}
+
+#[test]
 fn canonical_bytes_are_stable_for_reordered_fields() {
     let signed = signed_manifest(5, "1.2.3");
     let reordered = json!({
@@ -340,6 +364,46 @@ fn stage_and_commit_verified_bundle_preserving_rollback_metadata() {
         b"new-bundle"
     );
     assert!(!commit_temp_path(&prepared).exists());
+    remove_test_root(root);
+}
+
+#[cfg(unix)]
+#[test]
+fn commit_removes_temp_artifact_when_copy_fails() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = test_root("commit-copy-failure-cleanup");
+    let paths = install_paths(&root);
+    fs::create_dir_all(root.join("current")).expect("current dir");
+    fs::write(&paths.current_bundle, b"prior").expect("prior bundle");
+    let plan = install_plan(b"new-bundle");
+
+    let prepared =
+        stage_install(&plan, &paths, b"new-bundle", 1_000).expect("verified bytes should stage");
+
+    let commit_temp = commit_temp_path(&prepared);
+    fs::write(&commit_temp, b"stale").expect("seed stale commit temp");
+    fs::set_permissions(&commit_temp, fs::Permissions::from_mode(0o444))
+        .expect("make commit temp read-only so the copy fails");
+
+    let error =
+        commit_staged_install(&prepared).expect_err("copy into a read-only destination must fail");
+
+    match error {
+        InstallStagingError::Io { operation, .. } => {
+            assert_eq!(operation, "copy-staged-bundle-to-commit-temp");
+        }
+        other => panic!("expected copy Io error, got {other:?}"),
+    }
+
+    assert!(
+        !commit_temp.exists(),
+        "failed copy must not leak the commit temp artifact"
+    );
+    assert_eq!(
+        fs::read(&paths.current_bundle).expect("prior bundle still readable"),
+        b"prior"
+    );
     remove_test_root(root);
 }
 

@@ -327,10 +327,10 @@ fn validate_path(path: &str, operation: &'static str) -> Result<(), HostProtocol
             operation,
         ));
     }
-    if path.contains('\0') {
+    if path.chars().any(char::is_control) {
         return Err(HostProtocolError::invalid_argument(
             "path",
-            "must not contain NUL bytes",
+            "must not contain control characters",
             operation,
         ));
     }
@@ -378,6 +378,10 @@ fn validate_id(
 }
 
 fn is_safe_absolute_path(path: &str) -> bool {
+    if path.chars().any(char::is_control) {
+        return false;
+    }
+
     if path.starts_with('/') {
         return !has_dot_segment(path.split('/'));
     }
@@ -808,6 +812,51 @@ mod tests {
             .expect_err("null owner scope")
             .tag(),
             "InvalidArgument"
+        );
+    }
+
+    #[test]
+    fn native_file_system_rejects_control_character_paths() {
+        let _guard = super::state_test_guard();
+        for path in [
+            "/tmp/a\u{1}b",
+            "/tmp/a\u{7f}b",
+            "/tmp/a\nb",
+            "/tmp/a\u{80}b",
+        ] {
+            assert_eq!(
+                stat(Some(json!({ "path": { "path": path } })))
+                    .expect_err("control character stat path")
+                    .tag(),
+                "InvalidArgument",
+                "stat should reject {path:?}"
+            );
+            assert_eq!(
+                open(Some(json!({ "path": { "path": path }, "mode": "read" })))
+                    .expect_err("control character open path")
+                    .tag(),
+                "InvalidArgument",
+                "open should reject {path:?}"
+            );
+            assert_eq!(
+                watch_with_event_sender(Some(json!({ "path": { "path": path } })), None)
+                    .expect_err("control character watch path")
+                    .tag(),
+                "InvalidArgument",
+                "watch should reject {path:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn native_file_system_drops_control_character_event_paths() {
+        assert!(
+            super::path_to_valid_payload(std::path::Path::new("/tmp/a\u{1}b")).is_none(),
+            "control character event paths must not produce a payload"
+        );
+        assert!(
+            super::path_to_valid_payload(std::path::Path::new("/tmp/clean")).is_some(),
+            "clean absolute event paths must produce a payload"
         );
     }
 

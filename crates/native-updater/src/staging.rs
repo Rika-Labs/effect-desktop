@@ -139,9 +139,15 @@ pub fn commit_staged_install(prepared: &PreparedInstall) -> Result<(), InstallSt
             .map_err(|error| io_error("create-current-parent", parent, error))?;
     }
     let commit_temp = commit_temp_path(prepared);
-    fs::copy(&prepared.paths.staged_bundle, &commit_temp)
-        .map_err(|error| io_error("copy-staged-bundle-to-commit-temp", &commit_temp, error))?;
-    preserve_replacement_permissions(&prepared.paths.current_bundle, &commit_temp)?;
+    fs::copy(&prepared.paths.staged_bundle, &commit_temp).map_err(|error| {
+        let _ = fs::remove_file(&commit_temp);
+        io_error("copy-staged-bundle-to-commit-temp", &commit_temp, error)
+    })?;
+    preserve_replacement_permissions(&prepared.paths.current_bundle, &commit_temp).inspect_err(
+        |_| {
+            let _ = fs::remove_file(&commit_temp);
+        },
+    )?;
     atomic_replace(&commit_temp, &prepared.paths.current_bundle).map_err(|error| {
         let _ = fs::remove_file(&commit_temp);
         io_error(

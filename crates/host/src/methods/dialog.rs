@@ -14,6 +14,9 @@ use host_protocol::{
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{to_value, Value};
 
+const DEFAULT_CONFIRM_LABEL: &str = "OK";
+const DEFAULT_CANCEL_LABEL: &str = "Cancel";
+
 pub(crate) fn open_file(payload: Option<Value>) -> Result<Option<Value>, HostProtocolError> {
     open_file_with(&NativeDialogAdapter, payload)
 }
@@ -148,17 +151,19 @@ impl DialogAdapter for NativeDialogAdapter {
 
         #[cfg(not(target_os = "linux"))]
         {
-            let confirm_label = input.confirm_label().unwrap_or("OK");
+            let confirm_label = input.confirm_label().unwrap_or(DEFAULT_CONFIRM_LABEL);
             let buttons = match (input.confirm_label(), input.cancel_label()) {
                 (Some(confirm), Some(cancel)) => {
                     rfd::MessageButtons::OkCancelCustom(confirm.to_string(), cancel.to_string())
                 }
-                (Some(confirm), None) => {
-                    rfd::MessageButtons::OkCancelCustom(confirm.to_string(), "Cancel".to_string())
-                }
-                (None, Some(cancel)) => {
-                    rfd::MessageButtons::OkCancelCustom("OK".to_string(), cancel.to_string())
-                }
+                (Some(confirm), None) => rfd::MessageButtons::OkCancelCustom(
+                    confirm.to_string(),
+                    DEFAULT_CANCEL_LABEL.to_string(),
+                ),
+                (None, Some(cancel)) => rfd::MessageButtons::OkCancelCustom(
+                    DEFAULT_CONFIRM_LABEL.to_string(),
+                    cancel.to_string(),
+                ),
                 _ => rfd::MessageButtons::OkCancel,
             };
             let result = apply_confirm_dialog_options(rfd::MessageDialog::new(), input)
@@ -242,8 +247,14 @@ fn zenity_confirm(
     let mut command = zenity_command();
     command.arg("--question");
     apply_zenity_text_options(&mut command, input.title(), input.message(), input.detail());
-    command.args(["--ok-label", input.confirm_label().unwrap_or("OK")]);
-    command.args(["--cancel-label", input.cancel_label().unwrap_or("Cancel")]);
+    command.args([
+        "--ok-label",
+        input.confirm_label().unwrap_or(DEFAULT_CONFIRM_LABEL),
+    ]);
+    command.args([
+        "--cancel-label",
+        input.cancel_label().unwrap_or(DEFAULT_CANCEL_LABEL),
+    ]);
     match run_zenity(command, operation)? {
         ZenityOutcome::Accepted(_) => Ok(true),
         ZenityOutcome::Cancelled => Ok(false),
@@ -639,16 +650,16 @@ fn validate_confirm(
     validate_optional_display_text(input.detail(), "detail", operation)?;
     validate_optional_display_text(input.confirm_label(), "confirmLabel", operation)?;
     validate_optional_display_text(input.cancel_label(), "cancelLabel", operation)?;
-    match (input.confirm_label(), input.cancel_label()) {
-        (Some(confirm), Some(cancel)) if confirm == cancel => {
-            Err(HostProtocolError::invalid_argument(
-                "confirmLabel",
-                "must differ from cancelLabel",
-                operation,
-            ))
-        }
-        _ => Ok(()),
+    if input.confirm_label().unwrap_or(DEFAULT_CONFIRM_LABEL)
+        == input.cancel_label().unwrap_or(DEFAULT_CANCEL_LABEL)
+    {
+        return Err(HostProtocolError::invalid_argument(
+            "confirmLabel",
+            "must differ from cancelLabel",
+            operation,
+        ));
     }
+    Ok(())
 }
 
 fn validate_optional_default_path(
@@ -749,6 +760,8 @@ mod tests {
 
     struct FailingDialogAdapter;
 
+    struct PanicOnConfirmAdapter;
+
     impl super::DialogAdapter for TestDialogAdapter {
         fn open_file(
             &self,
@@ -840,6 +853,43 @@ mod tests {
         }
     }
 
+    impl super::DialogAdapter for PanicOnConfirmAdapter {
+        fn open_file(
+            &self,
+            _input: &host_protocol::DialogOpenFilePayload,
+        ) -> Result<Vec<PathBuf>, HostProtocolError> {
+            unreachable!("open_file should not be reached")
+        }
+
+        fn open_directory(
+            &self,
+            _input: &host_protocol::DialogOpenDirectoryPayload,
+        ) -> Result<Vec<PathBuf>, HostProtocolError> {
+            unreachable!("open_directory should not be reached")
+        }
+
+        fn save_file(
+            &self,
+            _input: &host_protocol::DialogSaveFilePayload,
+        ) -> Result<Option<PathBuf>, HostProtocolError> {
+            unreachable!("save_file should not be reached")
+        }
+
+        fn message(
+            &self,
+            _input: &host_protocol::DialogMessagePayload,
+        ) -> Result<(), HostProtocolError> {
+            unreachable!("message should not be reached")
+        }
+
+        fn confirm(
+            &self,
+            _input: &host_protocol::DialogConfirmPayload,
+        ) -> Result<bool, HostProtocolError> {
+            unreachable!("confirm must not run for a rejected colliding-label payload")
+        }
+    }
+
     #[test]
     fn open_file_returns_selected_paths_as_data() {
         let payload = open_file_with(
@@ -901,6 +951,50 @@ mod tests {
         )
         .expect("confirm should succeed");
         assert_eq!(confirmed.expect("payload"), json!({ "confirmed": true }));
+    }
+
+    #[test]
+    fn confirm_rejects_label_colliding_with_implicit_default() {
+        assert_eq!(
+            confirm_with(
+                &PanicOnConfirmAdapter,
+                Some(json!({ "message": "Delete everything?", "cancelLabel": "OK" })),
+            )
+            .expect_err("cancelLabel colliding with default confirm should fail"),
+            HostProtocolError::invalid_argument(
+                "confirmLabel",
+                "must differ from cancelLabel",
+                host_protocol::DIALOG_CONFIRM_METHOD,
+            )
+        );
+
+        assert_eq!(
+            confirm_with(
+                &PanicOnConfirmAdapter,
+                Some(json!({ "message": "Delete everything?", "confirmLabel": "Cancel" })),
+            )
+            .expect_err("confirmLabel colliding with default cancel should fail"),
+            HostProtocolError::invalid_argument(
+                "confirmLabel",
+                "must differ from cancelLabel",
+                host_protocol::DIALOG_CONFIRM_METHOD,
+            )
+        );
+    }
+
+    #[test]
+    fn confirm_allows_distinct_labels_against_implicit_defaults() {
+        confirm_with(
+            &TestDialogAdapter,
+            Some(json!({ "message": "Proceed?", "confirmLabel": "Yes" })),
+        )
+        .expect("distinct confirm label should reach adapter");
+
+        confirm_with(
+            &TestDialogAdapter,
+            Some(json!({ "message": "Proceed?", "cancelLabel": "No" })),
+        )
+        .expect("distinct cancel label should reach adapter");
     }
 
     #[test]

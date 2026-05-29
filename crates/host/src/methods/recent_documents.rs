@@ -191,7 +191,11 @@ fn validate_platform_path(path: &str, operation: &'static str) -> Result<(), Hos
 
 fn is_safe_absolute_path(path: &str) -> bool {
     if path.starts_with('/') {
-        return !has_dot_path_segment(path, '/');
+        // Scan both `/` and `\` separators: on Windows a `/`-rooted path treats
+        // backslash as a real separator, so a `..` segment such as `/foo\..\bar`
+        // must be rejected. Backslash is not a POSIX separator, so scanning for
+        // it only tightens validation.
+        return !has_windows_dot_path_segment(path);
     }
     if is_windows_absolute_path(path) || is_windows_unc_absolute_path(path) {
         return !has_windows_dot_path_segment(path);
@@ -216,11 +220,6 @@ fn is_windows_unc_absolute_path(path: &str) -> bool {
         && matches!(segments.next(), Some(""))
         && segments.next().is_some_and(|segment| !segment.is_empty())
         && segments.next().is_some_and(|segment| !segment.is_empty())
-}
-
-fn has_dot_path_segment(path: &str, separator: char) -> bool {
-    path.split(separator)
-        .any(|segment| matches!(segment, "." | ".."))
 }
 
 fn has_windows_dot_path_segment(path: &str) -> bool {
@@ -953,6 +952,12 @@ mod tests {
             "InvalidArgument"
         );
         assert_eq!(
+            add(Some(json!({ "path": { "path": "/foo\\..\\bar" } })))
+                .expect_err("backslash dot segment on slash-rooted path")
+                .tag(),
+            "InvalidArgument"
+        );
+        assert_eq!(
             add(Some(json!({ "path": { "path": "\\\\" } })))
                 .expect_err("unc root")
                 .tag(),
@@ -977,6 +982,34 @@ mod tests {
                 "must be omitted",
                 host_protocol::RECENT_DOCUMENTS_CLEAR_METHOD,
             )
+        );
+    }
+
+    #[test]
+    fn slash_rooted_path_with_backslash_dot_segment_is_rejected() {
+        // `/foo\..\bar` is slash-rooted, so it takes the POSIX branch. Windows
+        // honours backslash as a separator, so the embedded `..` must be
+        // rejected rather than forwarded to SHAddToRecentDocs.
+        assert_eq!(
+            add(Some(json!({ "path": { "path": "/foo\\..\\bar" } })))
+                .expect_err("backslash dot segment")
+                .tag(),
+            "InvalidArgument"
+        );
+        assert_eq!(
+            add(Some(json!({ "path": { "path": "/foo\\.\\bar" } })))
+                .expect_err("single-dot backslash segment")
+                .tag(),
+            "InvalidArgument"
+        );
+        // A slash-rooted path that embeds a backslash but no dot segment passes
+        // validation and reaches the unsupported platform stub, proving the
+        // tighter scan does not over-reject legitimate paths.
+        assert_eq!(
+            add(Some(json!({ "path": { "path": "/foo\\bar" } })))
+                .expect_err("backslash without dot segment")
+                .tag(),
+            "Unsupported"
         );
     }
 
