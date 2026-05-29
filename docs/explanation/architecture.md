@@ -102,7 +102,7 @@ Effect is not a coat of paint. It is the **lifecycle model** of the runtime:
 - A `Layer<A, E, R>` produces a service `A` from dependencies `R`, possibly failing with `E`. The runtime is a composition of layers — settings, sqlite, permission registry, audit events, telemetry, native handlers.
 - A `Scope` owns disposable things — windows, file watchers, processes, PTYs, workers. When the scope closes, every resource closes with it.
 - A `Stream<A, E, R>` carries multi-value flows — process stdout, audit events, telemetry, devtools snapshots — with backpressure and cancellation built in.
-- A `Schedule` describes retry and timing policies — used for crash retry, approval coalescing, and update polling.
+- A `Schedule` describes retry and timing policies — used for crash retry, host reconnect, and update polling.
 
 The framework's job is to give you _useful starting layers_ (`PermissionRegistry`, `Settings`, `Telemetry`, …) and a discipline for assembling them. See [layer-first design](layer-first-design.md) for the rules that govern public APIs.
 

@@ -77,7 +77,7 @@ if (schema._tag !== "Refinement" && schema._tag !== "StringKeyword") {
 ```
 ````
 
-The CLI extracts every `ts run` block, writes it to a temp file, and runs `bun <file>`. A non-zero exit fails the gate. Keep examples small — examples have a default 60-second timeout per `DesktopTimeouts.docsExampleMillis`.
+The CLI extracts every `ts run` block, writes it to a temp file, and runs `bun <file>`. A non-zero exit fails the gate. Keep examples small — examples have a default 10-second timeout per `DesktopTimeouts.docsExampleMillis`.
 
 ## Adding a brand-new page outside the 23 release set
 

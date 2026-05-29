@@ -124,6 +124,16 @@ function CreateTodo() {
 
 `useMutation` for actions, `useQuery` for reads, `useStream` for streaming endpoints (those whose `success` is `RpcSchema.Stream(chunk, error)`).
 
+Every non-stream RPC binds to `useMutation` by default. To expose `useQuery` instead, annotate the RPC with `RpcEndpoint.query` (exported from `@orika/core`, also available as `Desktop.RpcEndpoint`):
+
+```ts
+import { RpcEndpoint } from "@orika/core"
+
+export const TodoList = Rpc.make("Todos.list", {
+  success: Schema.Array(Schema.Struct({ id: Schema.String, title: Schema.String }))
+}).pipe(RpcEndpoint.query)
+```
+
 ## When to add capability metadata
 
 If a handler performs privileged work (filesystem, process, secret, native invoke), annotate the RPC with `RpcCapability` so the permission interceptor checks it before dispatch:

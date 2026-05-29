@@ -18,7 +18,7 @@ The `Filesystem` service owns runtime filesystem access behind permission policy
 
 ## Security model
 
-Writable roots are explicit. Paths are normalized and checked before writes, copies, deletes, or symlink-sensitive operations. Reads need `filesystem.read` for a containing root; writes need `filesystem.write`.
+Writable roots are explicit. Paths are normalized and checked before writes, deletes, or symlink-sensitive operations. Reads need `filesystem.read` for a containing root; writes need `filesystem.write`.
 
 ## Verify Filesystem Test Surface
 

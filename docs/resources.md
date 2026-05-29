@@ -14,7 +14,7 @@ Resources model long-lived runtime or native ownership: windows, streams, file w
 
 ## Public surface
 
-`@orika/core` exports `ResourceRegistry`, `ManagedResource`, resource ids, resource kinds, snapshots, disposal helpers, and registry constructors.
+`@orika/core` exports `ResourceRegistry`, `ManagedResourceHandle`, resource ids, resource kinds, snapshots, disposal helpers, and registry constructors.
 
 ## Runtime rule
 

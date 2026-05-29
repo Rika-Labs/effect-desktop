@@ -102,10 +102,12 @@ yield * session.kill("SIGTERM")
 
 ## 6. Cleanup
 
-When the owning `ResourceOwner` scope closes, the PTY is closed, the process is signaled, and the resource is unregistered. Explicit close:
+When the owning `ResourceOwner` scope closes, the PTY is terminated, the process is signaled, and the resource is unregistered.
+
+`session.kill()` does not close the session — it sends a default signal to the child. The process then exits, and the exit observer disposes the resource. For an explicit teardown without waiting on the scope, dispose the resource directly:
 
 ```ts
-yield * session.kill()
+yield * session.resource.dispose()
 ```
 
 ## Adapter substitution

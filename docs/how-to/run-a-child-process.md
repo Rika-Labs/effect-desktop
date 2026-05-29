@@ -12,18 +12,15 @@ effect_version: 4
 
 ## 1. Declare what's allowed to run
 
-```ts
-import { PermissionRegistry } from "@orika/core"
+The `Process` service authorizes spawns against the `spawn` allowlist you pass when building its layer. `ProcessLive` ships with an empty allowlist, so it denies every spawn — build the layer with `ProcessLayer` to grant commands:
 
-const permissions = yield * PermissionRegistry
-yield *
-  permissions.declare(
-    { kind: "process.spawn", command: "git" },
-    { effect: "allow", source: "app-init" }
-  )
+```ts
+import { ProcessLayer } from "@orika/core"
+
+const layer = ProcessLayer({ permissions: { spawn: ["git"] } })
 ```
 
-`process.spawn` capabilities use **exact match** on the command. Allowing `git` does not allow `gh` or `git-secret`.
+The `spawn` allowlist uses **exact match** on the command. Allowing `git` does not allow `gh` or `git-secret`.
 
 ## 2. Spawn
 
@@ -58,7 +55,7 @@ The spawned process is owned by the `ResourceOwner` that built the `Process` ser
 
 ## 3. Stream output
 
-`handle.stdout` and `handle.stderr` are bounded `Stream`s. They drop oldest chunks when the consumer falls behind, so a runaway process doesn't OOM the runtime.
+`handle.stdout` and `handle.stderr` are bounded `Stream`s. When the consumer falls behind past the buffer budget, the stream fails with a `BackpressureOverflow` error rather than dropping chunks, so a runaway process doesn't OOM the runtime.
 
 ```ts
 yield *
@@ -89,6 +86,7 @@ yield * handle.kill("SIGKILL")
 ```ts
 const snapshots = yield * proc.list()
 // [{ resourceId, pid, command, args, ownerScope, state, startedAt, updatedAt, lastExit }, ...]
+// lastExit is an Option<ProcessExitStatus> — Option.none() until the process exits, then Option.some(status)
 ```
 
 Devtools' processes panel renders this live.
@@ -99,6 +97,7 @@ All process failures are typed `HostProtocolError` values on the operation that 
 
 - Spawn rejected by permissions → `PermissionDenied`.
 - Invalid arguments (path, command shape) → `InvalidArgument`.
+- Consumer falls behind past the buffer budget → `BackpressureOverflow` on the stream.
 - Process killed by the framework on cleanup → audit event with reason.
 - Exit non-zero → returned through `handle.exit` as a `ProcessExitStatus`, not a failure.
 

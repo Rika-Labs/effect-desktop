@@ -17,16 +17,18 @@ Every public capability owns an `RpcGroup`. The framework gives you two shapes f
 
 ## Direct surface
 
-`packages/native/src/screen.ts` is the worked example. The public service `Screen` _is_ the RPC client:
+A direct surface omits the `client` mapper, so the public service _is_ the generated `DesktopRpcClient<Rpcs>`. Callers invoke the generated method straight through:
 
 ```ts
-const screen = yield * Screen
-const displays = yield * screen.getDisplays()
+const client = yield * Notes
+const list = yield * client["Notes.List"](undefined)
 ```
 
-That call is exactly the generated client method. There is no hand-written wrapper between you and the contract. If `getDisplays` changes its return type, every caller updates.
+That call is exactly the generated client method. There is no hand-written wrapper between you and the contract. If the contract changes its return type, every caller updates.
 
 Use **direct** when the capability is purely a passthrough — the runtime semantics are fully captured by the contract, and there is nothing the framework adds on top.
+
+No shipping native module uses the direct shape today: every `NativeSurface.make` call site in `packages/native/src` passes a `client:` mapper, so all of them are mapped. The direct shape (no `client` key) appears only in core tests (`packages/core/src/index.test.ts`).
 
 ## Mapped surface
 
@@ -67,7 +69,7 @@ Regardless of which shape you pick, `Desktop.Rpc.surface(...)` returns:
 - **Schema docs** — JSON-serializable descriptions of every method.
 - **Contract-law checks** — verifies the shape conforms to the layer-first contract.
 
-These are values, not magic. You can grep `Window.surface.layer` in your runtime entry and trace what gets installed.
+These are values, not magic. You can grep `WindowSurface` in your runtime entry and trace what gets installed through its `serverLayer` and `clientLayer` fields.
 
 ## Related
 

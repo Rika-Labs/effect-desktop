@@ -55,7 +55,7 @@ The config package owns 14 production security check rules — typed bridge enfo
 Run them via:
 
 ```bash
-bun run desktop check --config desktop.config.ts
+bun run desktop check --production --config desktop.config.ts
 ```
 
 ## Where to go next

@@ -28,7 +28,7 @@ The log carries level, timestamp, subsystem, operation, trace id, message, and y
 Effect's tracing is wired automatically — every Effect span is captured in `Telemetry`'s trace ring (default 10,000 spans). To add custom spans:
 
 ```ts
-import { Effect, Tracer } from "effect"
+import { Effect } from "effect"
 
 yield *
   Effect.gen(function* () {
@@ -44,8 +44,8 @@ import { Metric } from "effect"
 const importedNotes = Metric.counter("notes.imported")
 const importDuration = Metric.histogram("notes.import.duration", { boundaries: [10, 100, 1000] })
 
-yield * importedNotes(Effect.succeed(1))
-yield * importDuration(Effect.succeed(elapsedMs))
+yield * Metric.update(importedNotes, 1)
+yield * Metric.update(importDuration, elapsedMs)
 ```
 
 Counters increment by tags. Histograms retain bounded samples and publish p50, p95, p99.

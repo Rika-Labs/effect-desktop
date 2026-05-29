@@ -77,7 +77,7 @@ await Effect.runPromise(bridge.succeed("Notes.list", []))
 await Effect.runPromise(bridge.succeed("Notes.save", { id: "n1", savedAt: 0 }))
 ```
 
-The bridge enforces the contract — queueing a response with the wrong shape fails at decode time, just like production.
+`succeed` and `fail` validate that the queued payload is JSON-serializable at queue time. Contract-shape validation happens later, when a typed client decodes the queued response on read.
 
 ## 5. Assert resource cleanup
 
@@ -104,19 +104,19 @@ import { test } from "bun:test"
 import { Effect } from "effect"
 import { render, screen } from "@testing-library/react"
 import { ReactDesktop } from "@orika/react"
+import { makeUnaryDesktopTransportFromBridgeClientExchange } from "@orika/bridge"
 import { makeMockBridge } from "@orika/test"
 import { Manifest } from "../src/renderer-manifest.js"
 
 test("renders the greeting", async () => {
   const bridge = makeMockBridge()
   await Effect.runPromise(bridge.succeed("Greeting.say", { message: "Hi, Test!" }))
-  const DesktopApp = ReactDesktop.from(Manifest, { transport: bridge.exchange })
-
-  render(
-    <DesktopApp.createRoot>
-      <Greeter />
-    </DesktopApp.createRoot>
+  const transport = await Effect.runPromise(
+    makeUnaryDesktopTransportFromBridgeClientExchange(bridge.exchange)
   )
+  const DesktopApp = ReactDesktop.from(Manifest)
+
+  render(DesktopApp.createRoot(<Greeter />, { transport }))
   // ... interact, assert
 })
 ```

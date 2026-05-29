@@ -30,7 +30,7 @@ Inside renderer code (anything under your renderer entry, your React/Solid/Vue c
 
 In renderer code:
 
-- ✅ Calls to generated clients via `useDesktop(NativeRpcs)`, e.g. `clipboard.writeText.useMutation()`.
+- ✅ Calls to generated clients via `useDesktop(ClipboardRpcs)`, e.g. `clipboard.writeText.useMutation()`.
 - ✅ Subscriptions through `useDesktopStream(...)` or `useSubscribable(...)`.
 - ✅ Permission prompts and approval UI via `usePermission`, `usePermissionApproval`, `PermissionApprovalQueue`.
 - ✅ Window helpers from the React adapter: `useCurrentWindow`, `useCreateWindowMutation`, `useCloseCurrentWindowMutation`.

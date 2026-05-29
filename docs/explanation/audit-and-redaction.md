@@ -8,7 +8,7 @@ effect_version: 4
 
 # Audit and redaction
 
-The framework records what privileged code does. Permission checks, approvals, secret access, command transitions, and job retries each write a structured `AuditEvent` through the runtime `EventLog` after passing through the inspector safety policy (which delegates to the shared redaction filter). You don't have to instrument anything to get this; it's wired into the services that own those operations.
+The framework records what privileged code does. Permission checks, approvals, secret access, and command transitions each write a structured `AuditEvent` through the runtime `EventLog` after passing through the inspector safety policy (which delegates to the shared redaction filter). You don't have to instrument anything to get this; it's wired into the services that own those operations.
 
 ## Why audit
 
@@ -30,7 +30,7 @@ Audit is not logging. Logging is human-readable narration; audit is machine-read
 | `ApprovalBroker`, `PermissionApprovalWorkflow` | `approval-requested`, `approval-granted`, `approval-denied`                                                                     |
 | `Secrets`                                      | `secrets-accessed`                                                                                                              |
 | Command runtime                                | `command-registered`, `command-unregistered`, `command-invoked`                                                                 |
-| Job runner                                     | `job-retrying`                                                                                                                  |
+| Job runner                                     | `permission-denied`, `permission-used`                                                                                          |
 | Bridge / RPC                                   | `trace-id-missing`                                                                                                              |
 
 Every event carries:

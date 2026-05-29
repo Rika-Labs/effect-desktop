@@ -25,11 +25,15 @@ ORIKA has separate storage surfaces for renderer persistence, runtime settings, 
 
 `@orika/platform-browser` exports browser persistence helpers and IndexedDB helpers; the optional PGlite boundary (`RendererPgliteLive`) lives on the `@orika/platform-browser/sql-pglite` subpath so the optional Postgres engine never lands in a renderer bundle unless you opt in. For SQLite WASM, import `SqliteClient` directly from `@effect/sql-sqlite-wasm` and use its `layer` or `layerMemory`.
 
-These renderer-side layers are not native browsing-data controls. Effect
-Desktop does not yet expose a host-backed API to clear WebView cache, cookies,
-local storage, IndexedDB, or history by profile, session, or data type.
-Cookie read, write, remove, and watch operations are likewise not wired through
-the native host boundary.
+These renderer-side layers are not native browsing-data controls. For
+host-backed control, `@orika/native` exposes the `BrowsingData` service
+(`clear`/`listTypes`/`isSupported`/`events`) to clear WebView cache, cookies,
+local storage, IndexedDB, history, or service workers, scoped by
+`SessionProfileResource` and `BrowsingDataType`. Cookie read, write, remove,
+and watch operations live on the `CookieStore` service
+(`get`/`set`/`remove`/`isSupported` plus an `events` stream), which requires a
+live WebView. See [`reference/native/browsing-data.md`](reference/native/browsing-data.md)
+and [`reference/native/cookie-store.md`](reference/native/cookie-store.md).
 
 ## Verify Storage Test Surface
 

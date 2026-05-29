@@ -37,7 +37,7 @@ runtime module that calls `Desktop.make(...)` into renderer code.
 ## The pattern
 
 For any renderer-safe native module exported from `@orika/native/renderer`
-(`Window`, `Clipboard`, `Dialog`, `Path`, `Screen`, `Shell`, …):
+(`Clipboard`, `Dialog`, `Path`, `Screen`, `Shell`, …):
 
 1. The renderer imports `<Name>Rpcs` from `@orika/native/renderer` and calls `useDesktop(<Name>Rpcs)` to get a typed client.
 2. The framework dispatches to a runtime handler.
@@ -186,7 +186,7 @@ Don't assume support — check it and degrade gracefully.
 
 ## Permissions
 
-`native.invoke` capabilities cover native services. Declare allowed native calls with permission constants such as `Native.Permissions.clipboard.readText`. Pass `Native.Clipboard` directly to `Desktop.native(...)` for availability. Privileged calls such as `SafeStorage`, `Updater.install`, and `Protocol.register` should stay explicit and reviewable.
+`native.invoke` capabilities cover native services. Declare allowed native calls with permission constants such as `Native.Permissions.clipboard.readText`. Pass `Native.Clipboard` directly to `Desktop.native(...)` for availability. Privileged calls such as `SafeStorage`, `Updater.install`, and `Protocol.registerAppProtocol` should stay explicit and reviewable.
 
 ## Related
 

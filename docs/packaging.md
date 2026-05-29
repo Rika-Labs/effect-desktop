@@ -34,7 +34,7 @@ if (typeof runDesktopPackage !== "function" || command.length === 0) {
 
 ## Rule
 
-Package the **exact** artifact set consumed by signing, notarization, publishing, and reproducibility checks. Artifact identity is release evidence — every report carries `{ path, kind, size, hash }`.
+Package the **exact** artifact set consumed by signing, notarization, publishing, and reproducibility checks. Artifact identity is release evidence — every report carries `{ artifactPath, kind, sizeBytes, sha256 }`.
 
 ## Where to go next
 

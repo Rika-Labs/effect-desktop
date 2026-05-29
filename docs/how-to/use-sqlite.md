@@ -89,15 +89,18 @@ For typed table access:
 
 ```ts
 import { Schema } from "effect"
+import { Model } from "effect/unstable/schema"
 import { SqlModel } from "@orika/core"
 
-class Note extends Schema.Class<Note>("Note")({
-  id: Schema.String,
+class Note extends Model.Class<Note>("Note")({
+  id: Model.Generated(Schema.String),
   body: Schema.String,
   updatedAt: Schema.Number
 }) {}
 
-const NoteRepo = yield * SqlModel.makeRepository(Note, { tableName: "notes", idColumn: "id" })
+const NoteRepo =
+  yield *
+  SqlModel.makeRepository(Note, { tableName: "notes", spanPrefix: "NoteRepo", idColumn: "id" })
 
 yield * NoteRepo.insertVoid(new Note({ id, body, updatedAt: Date.now() }))
 const found = yield * NoteRepo.findById(id)
@@ -110,7 +113,7 @@ The repository handles encoding/decoding through the Schema.
 ```ts
 yield *
   permissions.declare(
-    { kind: "sqlite.open", roots: [process.cwd()] },
+    { kind: "sqlite.open", roots: [process.cwd()], audit: "always" },
     { effect: "allow", source: "app-init" }
   )
 ```

@@ -46,6 +46,7 @@ Override host behavior with `fixtures` (per-method `(request, state) => payload 
 
 ```ts
 import { Effect } from "effect"
+import { makeUnaryDesktopTransportFromBridgeClientExchange } from "@orika/bridge"
 import { ReactDesktop } from "@orika/react"
 import { makeMockBridge } from "@orika/test"
 
@@ -62,7 +63,11 @@ await Effect.runPromise(
 )
 
 // Inject into a renderer test
-const DesktopApp = ReactDesktop.from(Manifest, { transport: bridge.exchange })
+const DesktopApp = ReactDesktop.from(Manifest)
+const transport = await Effect.runPromise(
+  makeUnaryDesktopTransportFromBridgeClientExchange(bridge.exchange)
+)
+const root = DesktopApp.createRoot(children, { transport })
 ```
 
 After running, `bridge.calls()` contains the recorded calls with `{ method, payload, traceId, timestamp }`.

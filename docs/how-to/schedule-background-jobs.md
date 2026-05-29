@@ -16,9 +16,9 @@ ORIKA has three runtime primitives for background work, each with a different sh
 | ---------------------------------------------------------------- | --------------------------------------------- |
 | Separate TypeScript worker runtime with a typed channel          | [`Worker`](spawn-a-worker.md)                 |
 | Long-lived companion process you spawn at runtime                | [`Sidecar`](../reference/services/sidecar.md) |
-| In-runtime Effect work that needs cancellation but not isolation | `Effect.fork` inside a handler                |
+| In-runtime Effect work that needs cancellation but not isolation | `Effect.forkScoped` inside a handler          |
 
-`Worker` is best when you want **capability scoping** — the worker declares what permissions it needs and the registry refuses to spawn one with more than it holds. `Sidecar` is best for long-lived companion processes (language servers, sync daemons). Plain `Effect.fork` is best for everything else.
+`Worker` is best when you want **capability scoping** — the worker declares what permissions it needs and the registry refuses to spawn one with more than it holds. `Sidecar` is best for long-lived companion processes (language servers, sync daemons). Plain `Effect.forkScoped` is best for everything else.
 
 ## Forked Effect inside a handler
 
@@ -28,7 +28,7 @@ import { Effect, Schedule, Duration } from "effect"
 const MyHandlersLive = MyRpcs.toLayer(
   Effect.gen(function* () {
     // Start a background loop scoped to the handler layer
-    yield* Effect.fork(
+    yield* Effect.forkScoped(
       Effect.gen(function* () {
         yield* doSomeWork()
       }).pipe(Effect.repeat(Schedule.fixed(Duration.minutes(5))), Effect.scoped)
@@ -55,13 +55,13 @@ yield *
     Effect.retry(
       Schedule.exponential(Duration.seconds(1)).pipe(
         Schedule.jittered,
-        Schedule.compose(Schedule.recurs(5))
+        Schedule.both(Schedule.recurs(5))
       )
     )
   )
 ```
 
-`Schedule` composes — combine `exponential`, `jittered`, `recurs`, `upTo`, `whileInput` to build the policy you need.
+`Schedule` composes — combine `exponential`, `jittered`, `recurs`, `both`, `andThen`, `addDelay`, `spaced` to build the policy you need.
 
 ## Framework retry schedules
 

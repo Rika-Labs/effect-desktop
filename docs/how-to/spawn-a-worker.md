@@ -48,7 +48,7 @@ const program = Effect.gen(function* () {
     script: "workers/indexer.ts",
     inputSchema: InMessage,
     outputSchema: OutMessage,
-    capabilities: [{ kind: "filesystem.read", roots: ["/Users/me/Documents"] }]
+    capabilities: [{ kind: "filesystem.read", roots: ["/Users/me/Documents"], audit: "always" }]
   })
 
   // Send a message
@@ -79,7 +79,7 @@ const live = yield * worker.list()
 // [{ id, script, ownerScope, resourceId, status, uptimeMs, capabilities, lastError? }, ...]
 ```
 
-Devtools' workflows panel renders this list live.
+The Devtools `WorkersDevtools` service exposes this list live via `list()`/`observe()`.
 
 ## Why workers and not plain `setTimeout`?
 

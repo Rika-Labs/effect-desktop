@@ -50,9 +50,9 @@ The point: **production code paths run unchanged**. The handler doesn't know it'
 
 ## Resource leak detection
 
-`HeadlessRuntime.run` runs `installResourceLeakDetection(registry)` by default. If your handler opens a process, watcher, or worker without closing it, the test fails with a `ResourceLeakError` that names the resource id and kind. You don't have to write this assertion — you have to opt out.
+`HeadlessRuntime.run` asserts no open resources via `assertNoOpenResourcesIn(registry, ...)` after the effect completes, unless you pass `leakDetection: false`. If your handler opens a process, watcher, or worker without closing it, the run fails with a `ResourceLeakError` that names the resource id and kind. You don't have to write this assertion — you have to opt out.
 
-You can also call `assertNoOpenResourcesIn(registry, options)` directly in tests that don't use `HeadlessRuntime.run`.
+You can also call `assertNoOpenResourcesIn(registry, options)` directly in tests that don't use `HeadlessRuntime.run`. For suites that aren't built on `HeadlessRuntime.run`, `installResourceLeakDetection(registry, options)` registers an `afterEach` hook that runs the same assertion after every test.
 
 ## Native test layers as proofs
 
@@ -94,20 +94,21 @@ A renderer test (with React Testing Library):
 import { test, expect } from "bun:test"
 import { Effect } from "effect"
 import { render, screen, fireEvent } from "@testing-library/react"
+import { Desktop } from "@orika/core"
 import { ReactDesktop } from "@orika/react"
-import { makeMockBridge } from "@orika/test"
+import { GreetingRpcs } from "../src/contracts.js"
 import { Manifest } from "../src/renderer-manifest.js"
 
 test("renders the greeting", async () => {
-  const bridge = makeMockBridge()
-  await Effect.runPromise(bridge.succeed("Greeting.say", { message: "Hi, Test!" }))
-  const DesktopApp = ReactDesktop.from(Manifest, { transport: bridge.exchange })
-
-  render(
-    <DesktopApp.createRoot>
-      <Greeter />
-    </DesktopApp.createRoot>
+  const rpcs = Desktop.rpc(
+    GreetingRpcs,
+    GreetingRpcs.toLayer({
+      "Greeting.say": () => Effect.succeed({ message: "Hi, Test!" })
+    })
   )
+  const DesktopApp = ReactDesktop.from(Manifest)
+
+  render(DesktopApp.createRoot(<Greeter />, { rpcs }))
   fireEvent.click(screen.getByText("Greet"))
   expect(await screen.findByText("Hi, Test!")).toBeInTheDocument()
 })

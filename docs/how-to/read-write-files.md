@@ -13,19 +13,19 @@ effect_version: 4
 ## 1. Declare the root
 
 ```ts
-import { PermissionRegistry } from "@orika/core"
+import { P, PermissionRegistry } from "@orika/core"
 
 const permissions = yield * PermissionRegistry
 yield *
-  permissions.declare(
-    { kind: "filesystem.read", roots: ["/Users/me/Documents"] },
-    { effect: "allow", source: "app-init" }
-  )
+  permissions.declare(P.filesystemRead({ roots: ["/Users/me/Documents"] }), {
+    effect: "allow",
+    source: "app-init"
+  })
 yield *
-  permissions.declare(
-    { kind: "filesystem.write", roots: ["/Users/me/Documents"] },
-    { effect: "approval", source: "app-init" }
-  )
+  permissions.declare(P.filesystemWrite({ roots: ["/Users/me/Documents"] }), {
+    effect: "approval",
+    source: "app-init"
+  })
 ```
 
 Reads under `/Users/me/Documents` are allowed. Writes prompt the user the first time.

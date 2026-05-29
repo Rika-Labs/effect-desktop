@@ -99,7 +99,7 @@ const broker =
   })
 ```
 
-Approvals still emit `approval-requested` + `approval-granted` audit events with `source: "dev-bypass"` so the bypass is reviewable, not invisible.
+Approvals still emit `approval-requested` + `approval-granted` audit events, and the granted outcome carries `source: "dev-bypass"` (under `details.outcome.source`) so the bypass is reviewable, not invisible.
 
 ## Related
 

@@ -69,7 +69,9 @@ The wrapper added a name and removed a `pipe` call. It did not add durable seman
 
 ```ts
 // packages/core/src/runtime/secrets.ts — keeps its place
-export class Secrets extends Context.Service<Secrets, SecretsApi>()("@orika/core/Secrets") {}
+export class Secrets extends Context.Service<Secrets, SecretsApi>()(
+  "@orika/core/runtime/secrets"
+) {}
 ```
 
 `Secrets` wraps `SafeStorage` (the native primitive). It earns its place because it:
@@ -77,7 +79,7 @@ export class Secrets extends Context.Service<Secrets, SecretsApi>()("@orika/core
 - Validates namespace and key segments before touching the platform.
 - Checks `secrets.read` / `secrets.write` permissions explicitly.
 - Returns `Redacted<Uint8Array>` so secret bytes can't accidentally hit logs.
-- Emits `secret/accessed` audit events with namespace and outcome.
+- Emits `secrets-accessed` audit events with namespace and outcome.
 - Provides `wipeSecretBytes(...)` so callers can clean up returned bytes.
 
 Five durable desktop concerns. The wrapper stays.

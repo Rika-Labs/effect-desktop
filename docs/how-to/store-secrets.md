@@ -12,27 +12,20 @@ effect_version: 4
 
 Current host status: native `SafeStorage` routes `set`, `get`, `list`, `delete`, and `isAvailable` through the platform credential store on supported hosts. If the credential store is unavailable, locked, denied, or unsupported on the current platform, `Secrets` fails loudly with `SecretsSafeStorageUnavailableError`; there is no silent plaintext fallback.
 
-## 1. Declare the namespace permission
+## 1. Authorize the namespace
 
-At app init:
+Secrets authorization reads only from the `SecretsPermissionPolicy` you pass to `SecretsLayer` (or `makeSecrets`) — not from `PermissionRegistry`. Each policy field is an array of allowed namespaces (`"*"` matches all). Build the layer with the namespaces you intend to use:
 
 ```ts
-import { PermissionRegistry } from "@orika/core"
+import { SecretsLayer } from "@orika/core"
 
-const permissions = yield * PermissionRegistry
-yield *
-  permissions.declare(
-    { kind: "secrets.read", namespaces: ["tokens"] },
-    { effect: "allow", source: "app-init" }
-  )
-yield *
-  permissions.declare(
-    { kind: "secrets.write", namespaces: ["tokens"] },
-    { effect: "allow", source: "app-init" }
-  )
+const secretsLayer = SecretsLayer({
+  appId: "my-app",
+  permissions: { read: ["tokens"], write: ["tokens"] }
+})
 ```
 
-Without these declarations, `Secrets.get` and `Secrets.set` for the `tokens` namespace return `SecretsPermissionDeniedError`.
+Without `"tokens"` in the policy, `Secrets.get` and `Secrets.set` for the `tokens` namespace return `SecretsPermissionDeniedError`.
 
 ## 2. Write a secret
 
@@ -47,7 +40,7 @@ const program = Effect.gen(function* () {
 })
 ```
 
-`makeSecretBytesFromUtf8(string)` wraps the UTF-8 bytes in a `Redacted` container. The `Redacted` value's `toString` and `JSON.stringify` are `<redacted>` — there is no path to accidentally log it.
+`makeSecretBytesFromUtf8(string)` wraps the UTF-8 bytes in a `Redacted` container. The `Redacted` value's `toString` and `JSON.stringify` are `<redacted:SecretBytes>` — there is no path to accidentally log the plaintext.
 
 ## 3. Read a secret
 
@@ -58,12 +51,11 @@ import { wipeSecretBytes } from "@orika/core"
 const program = Effect.gen(function* () {
   const secrets = yield* Secrets
   const stored = yield* secrets.get("tokens", "github")
-  const bytes = Redacted.value(stored) // Uint8Array
-  const text = new TextDecoder().decode(bytes)
+  const text = new TextDecoder().decode(Redacted.value(stored))
 
   // ... use text ...
 
-  wipeSecretBytes(bytes) // zero the buffer when done
+  yield* wipeSecretBytes(stored) // zero the buffer when done
 })
 ```
 
@@ -80,7 +72,7 @@ yield * secrets.delete("tokens", "github")
 
 ## 5. Audit what just happened
 
-Successful operations write a `secret/accessed` audit event with namespace, key, and outcome — but never the value. Denied and failed operations attempt to write the same audit shape before returning the typed failure. Inspect via the devtools event-log panel or query `EventLog` directly.
+Successful operations write a `secrets-accessed` audit event with namespace, key, and outcome — but never the value. Denied and failed operations attempt to write the same audit shape before returning the typed failure. Inspect via the devtools event-log panel or query `EventLog` directly.
 
 ## What gets validated
 

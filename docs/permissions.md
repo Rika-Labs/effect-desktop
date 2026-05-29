@@ -10,7 +10,7 @@ effect_version: 4
 
 > Full essay: [`explanation/permissions-model.md`](explanation/permissions-model.md). Reference: [`PermissionRegistry`](reference/services/permission-registry.md), [`ApprovalBroker`](reference/services/approval-broker.md). How-to: [`declare a permission`](how-to/declare-a-permission.md).
 
-Permissions make privileged behavior explicit. Filesystem writes, process execution, secret access, updater install, external navigation, and native operations cross **named capability policy**.
+Permissions make privileged behavior explicit. Filesystem writes, process execution, secret access, and native operations cross **named capability policy**.
 
 This is not a WebView session permission manager. Browser permission prompts
 for camera, microphone, notifications, geolocation, clipboard, and display

@@ -12,7 +12,7 @@ effect_version: 4
 bun run desktop doctor
 ```
 
-The doctor command checks every prerequisite for every release step on the current platform. It returns a Schema-typed `DesktopDoctorReport` — `{ probes: Array<{ name, status, message, evidence }> }` — and prints a status table.
+The doctor command checks every prerequisite for every release step on the current platform. It returns a Schema-typed `DesktopDoctorReport` — `{ passed, ci, platform, arch, probes: Array<{ name, status, component, message, evidence, ... }>, layerGraph }` — and prints a status table. The top-level `passed` boolean drives the non-zero exit.
 
 ## What it checks
 
@@ -59,7 +59,20 @@ Each row maps to one probe. `missing` probes fail the gate with a non-zero exit.
 
 ```ts
 import { Effect } from "effect"
-import { runDesktopDoctor, runDoctorCommand } from "@orika/cli"
+import { runDesktopDoctor, type DoctorCommandRunner } from "@orika/cli"
+
+// Supply a runner that executes each probe command and returns its output.
+const commandRunner: DoctorCommandRunner = (invocation) =>
+  Effect.gen(function* () {
+    const proc = Bun.spawnSync({
+      cmd: [invocation.command, ...invocation.args],
+      cwd: invocation.cwd
+    })
+    return {
+      stdout: proc.stdout.toString(),
+      stderr: proc.stderr.toString()
+    }
+  })
 
 const report = await Effect.runPromise(
   runDesktopDoctor({
@@ -69,7 +82,7 @@ const report = await Effect.runPromise(
     platform: process.platform,
     arch: process.arch,
     bunVersion: Bun.version,
-    commandRunner: runDoctorCommand
+    commandRunner
   })
 )
 const missing = report.probes.filter((probe) => probe.status === "missing")

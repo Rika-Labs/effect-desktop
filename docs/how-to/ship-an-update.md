@@ -63,8 +63,8 @@ export const App = Desktop.make({
   windows: Desktop.window("main", { title: "Notes" })
 })
 
-// Updater configuration (feedUrl, channel, publicKeys, pollIntervalMs) is
-// declared in desktop.config.ts under the `publishing` and `updater` sections.
+// Updater configuration (feedUrl, channel, publicKey, privateKeyEnv,
+// keyVersion) is declared in desktop.config.ts under the `update` section.
 // Feed polling and policy enforcement are still application-owned.
 ```
 
@@ -76,11 +76,11 @@ The current host check contract verifies the manifest signature against caller-s
 
 ## 5. Rollback
 
-A manifest can declare a rollback pack per channel. By default, non-newer versions are rejected. To explicitly roll a channel back, publish a new manifest with the older version, `rollback: true`, and `maxVersion` set to the highest installed version that should accept the rollback pack.
+A manifest can declare a rollback pack per channel. To explicitly roll a channel back, publish a new manifest with the older version, `rollback: true`, and `maxVersion` set to the highest installed version that should accept the rollback pack.
 
 ## Channels
 
-`update.channel` in `desktop.config.ts` is one of `stable`, `beta`, or `canary`. Each channel resolves through the `{channel}` placeholder in `update.feedUrl`, so users on `stable` and `beta` follow distinct manifest URLs. Each channel has its own version-monotonicity check enforced at publish time.
+`update.channel` in `desktop.config.ts` is one of `stable`, `beta`, or `canary`. Each channel resolves through the `{channel}` placeholder in `update.feedUrl`, so users on `stable` and `beta` follow distinct manifest URLs. Publish validates only the internal consistency of `update.minVersion`, `update.maxVersion`, and `app.version` (and the rollback rule that `maxVersion` is set when `rollback: true`); it does not compare against any previously published version.
 
 ## Why signed manifests
 

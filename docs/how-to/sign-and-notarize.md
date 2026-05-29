@@ -18,11 +18,11 @@ bun run desktop sign --config desktop.config.ts
 
 Per platform:
 
-| Platform | Tool             | Required config                         |
-| -------- | ---------------- | --------------------------------------- |
-| macOS    | `codesign`       | `signing.macos.identity`                |
-| Windows  | `signtool`       | `signing.windows.certificateThumbprint` |
-| Linux    | `gpg` (optional) | `signing.linux.gpgKey`                  |
+| Platform | Tool             | Required config                                                            |
+| -------- | ---------------- | -------------------------------------------------------------------------- |
+| macOS    | `codesign`       | `signing.macos.identity`                                                   |
+| Windows  | `signtool`       | `signing.windows.thumbprint` (or `signing.windows.pfx.{path,passwordEnv}`) |
+| Linux    | `gpg` (optional) | `signing.linux.gpgKey`                                                     |
 
 The CLI invokes the platform tool with the right arguments. Windows additionally handles the PowerShell unblock for downloaded binaries.
 
@@ -68,11 +68,11 @@ Requires three environment variables:
 
 - `APPLE_ID` — your Apple ID email.
 - `APPLE_TEAM_ID` — your developer team id (10-character string).
-- `APPLE_APP_PASSWORD` — an app-specific password from appleid.apple.com, **not** your Apple ID password.
+- `APPLE_APP_SPECIFIC_PASSWORD` — an app-specific password from appleid.apple.com, **not** your Apple ID password. The env-var name is overridable via `signing.macos.passwordEnv`; a keychain profile (`signing.macos.notarytoolProfile` / `APPLE_NOTARYTOOL_PROFILE`) is an alternative to Apple ID credentials.
 
 The CLI:
 
-1. Submits each signed `.app` to Apple via `xcrun notarytool submit --wait`.
+1. Submits each signed macOS artifact (`.app` and `.dmg`) to Apple via `xcrun notarytool submit --wait`.
 2. Waits for the result (typically 5-15 minutes).
 3. On success, runs `xcrun stapler staple Notes.app` to attach the ticket.
 
@@ -82,6 +82,9 @@ The CLI:
 
 ```
 {
+  appId: "dev.example.notes",
+  appName: "Notes",
+  appVersion: "1.2.3",
   target: "macos-arm64",
   outputPath: "dist/desktop/macos",
   artifacts: [

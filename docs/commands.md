@@ -16,7 +16,7 @@ Current host status: the registry and its TypeScript binding lifecycle are avail
 
 ## Public surface
 
-`@orika/core` exports `CommandRegistry` (the `Context.Service`), `DesktopCommands.layer` for scoped group registration, `CommandSnapshot`, `CommandInvocationRecord`, the `CommandRegistry*Error` tagged errors (plus `PermissionDenied`), and `observeInvocations`.
+`@orika/core` exports `CommandRegistry` (the `Context.Service`), `DesktopCommands.layer` for scoped group registration, `CommandSnapshot`, `CommandInvocationRecord`, the `CommandRegistry*Error` tagged errors (plus `PermissionDenied`), and `CommandRegistry`'s `observeInvocations` stream.
 
 `@orika/devtools` exports `CommandsDevtools` and `CommandsDevtoolsLive` for listing commands and observing invocations.
 

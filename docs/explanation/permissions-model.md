@@ -19,7 +19,7 @@ profile/session partitioning.
 
 ## Three concepts
 
-- **Capability** — what the call wants to do. A normalized value like `{ kind: "filesystem.write", path: "/Users/me/Documents" }`, `{ kind: "process.spawn", command: "git", args: ["status"] }`, or `{ kind: "secrets.read", namespace: "tokens" }`. Capabilities are values you can compare, log, and serialize.
+- **Capability** — what the call wants to do. A normalized value like `{ kind: "filesystem.write", roots: ["/Users/me/Documents"], audit: "always" }`, `{ kind: "process.spawn", commands: ["git"], environment: "none", shell: false, audit: "always" }`, or `{ kind: "secrets.read", namespaces: ["tokens"], audit: "always" }`. Commands are allowlisted by name only. Capabilities are values you can compare, log, and serialize.
 - **Actor** — who is calling. A `{ kind, id }` pair like `{ kind: "window", id: "main" }` or `{ kind: "worker", id: "background-1" }`.
 - **Effect** — what happens when an actor presents a capability. One of `allow`, `deny`, or `approval` (asks the user).
 
@@ -30,7 +30,7 @@ A **`PermissionDeclaration`** binds these three: "this capability shape, present
 When a handler calls `registry.check(capability, context)`, the registry walks declarations in a fixed order. The **first match wins**:
 
 1. **Explicit deny** — a denial wins over everything else, even if a later declaration would allow.
-2. **Revoked / expired / consumed grant** — if the actor previously held a `grant` token that is no longer valid, the call fails as `PermissionRevokedError`, not as a fresh denial.
+2. **Revoked / expired / consumed grant** — if a matching declaration is in a revoked, expired, or consumed state, `check` fails with a `PermissionDeniedError` carrying the corresponding `reason`. (`PermissionRevokedError` is reserved for `use` / `inspect` on a tracked grant token that was revoked or expired after issuance.)
 3. **Approval-denied cache** — if the user already denied this `(operation, actor, resource)`, the registry returns the cached denial without re-prompting.
 4. **Approval** — the call routes through `ApprovalBroker`, which coalesces, queues, and surfaces a host-rendered prompt.
 5. **Allow** — the call proceeds and a tracked `GrantedCapability` token is returned.
@@ -48,7 +48,7 @@ Process commands, network hosts, secret namespaces, and native invoke methods do
 
 ## Approval flow
 
-When a capability resolves to `approval`, the framework drives the user-facing prompt through `PermissionApprovalWorkflow` (durable workflow) backed by `ApprovalBroker`:
+When a capability resolves to `approval`, the framework has two distinct mechanisms for the user-facing prompt. `ApprovalBroker` provides coalescing, queueing, and a scope cache for synchronous host prompts. `PermissionApprovalWorkflow` is a separate durable workflow that resolves a `DurableDeferred` and then issues a grant via the registry; it does not delegate to the broker:
 
 ```mermaid
 flowchart LR

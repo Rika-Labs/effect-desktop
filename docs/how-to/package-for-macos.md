@@ -14,7 +14,7 @@ Run the package command for a macOS target:
 bun run desktop package --config desktop.config.ts --platform macos-arm64
 ```
 
-`--platform` takes one desktop target id (`macos-arm64` or `macos-x64`). Run the command once per target you ship. The CLI stages a `.app` bundle for that target with the framework's default hardened-runtime entitlements.
+`--platform` takes one desktop target id (`macos-arm64` or `macos-x64`). Run the command once per target you ship. `desktop package` stages an unsigned `.app` bundle and its `Info.plist` for that target. Hardened runtime and entitlements are applied later by `desktop sign`.
 
 ## What the bundle contains
 
@@ -25,36 +25,31 @@ Notes.app/
 │   ├── MacOS/
 │   │   └── Notes               # native launcher
 │   └── Resources/
-│       ├── runtime/             # TypeScript runtime entry + dependencies
-│       ├── renderer/            # built renderer assets
-│       └── icon.icns
+│       └── effect-desktop/
+│           ├── runtime/         # TypeScript runtime entry + dependencies
+│           └── renderer/        # built renderer assets
 └── ...
 ```
 
 Defaults are computed from your `desktop.config.ts`:
 
 - `Info.plist` — bundle id from `app.id`, version from `app.version`.
-- Icon from `assets.macos.icon` (or a default).
-- Hardened-runtime flags enabled.
 
-## Customize entitlements
+The v1 packager does not embed a custom icon.
 
-Add to `desktop.config.ts`:
+## Entitlements
+
+Add your signing identity to `desktop.config.ts`:
 
 ```ts
 signing: {
   macos: {
-    identity: "Developer ID Application: Your Name (TEAMID)",
-    entitlements: {
-      "com.apple.security.cs.allow-jit": false,
-      "com.apple.security.network.client": true,
-      "com.apple.security.files.user-selected.read-write": true
-    }
+    identity: "Developer ID Application: Your Name (TEAMID)"
   }
 }
 ```
 
-The CLI generates an `entitlements.plist` from this map and passes it to `codesign`.
+`signing.macos.identity` is the only macOS signing key the pipeline reads. The entitlements plist is generated automatically from the app's declared permissions and written as `effect-desktop-entitlements.plist`, then passed to `codesign`.
 
 ## Sign
 
@@ -62,9 +57,9 @@ The CLI generates an `entitlements.plist` from this map and passes it to `codesi
 bun run desktop sign --config desktop.config.ts --platform macos-arm64
 ```
 
-The CLI invokes `codesign --deep --options=runtime --identity "<your identity>" --entitlements entitlements.plist Notes.app`.
+This step applies the hardened runtime and the generated entitlements. For each path it invokes `codesign --force --sign "<your identity>" --options runtime --entitlements effect-desktop-entitlements.plist <path>`. It signs the nested Mach-O binaries first (under `MacOS/`, `Resources/effect-desktop/native`, and `Resources/effect-desktop/runtime`), then the bundle itself.
 
-If the identity isn't found, the sign step fails with `SignConfigError` naming the missing identity. Run `security find-identity -v -p codesigning` to list available identities.
+If `signing.macos.identity` is not configured, the sign step fails with `SignConfigError`. If a configured identity is absent from the keychain, `codesign` exits non-zero and the step fails with `SignCommandFailedError` carrying the codesign stderr. Run `security find-identity -v -p codesigning` to list available identities.
 
 ## Notarize
 
@@ -72,7 +67,7 @@ If the identity isn't found, the sign step fails with `SignConfigError` naming t
 bun run desktop notarize --config desktop.config.ts --platform macos-arm64
 ```
 
-Requires `APPLE_ID`, `APPLE_TEAM_ID`, and `APPLE_APP_PASSWORD` (an app-specific password from appleid.apple.com). The CLI calls `xcrun notarytool submit` and waits for the result.
+Requires `APPLE_ID`, `APPLE_TEAM_ID`, and `APPLE_APP_SPECIFIC_PASSWORD` (an app-specific password from appleid.apple.com). Alternatively, use a keychain profile via `signing.macos.notarytoolProfile` / `APPLE_NOTARYTOOL_PROFILE`, or configure `signing.macos.appleId`, `signing.macos.teamId`, and `signing.macos.passwordEnv`. The CLI calls `xcrun notarytool submit` and waits for the result.
 
 On success, `xcrun stapler staple Notes.app` attaches the notarization ticket so offline machines can verify it.
 
@@ -87,14 +82,14 @@ Both should succeed. If `spctl` complains about notarization, the staple did not
 
 ## Common failures
 
-| Failure                                    | Cause                                 | Fix                                                              |
-| ------------------------------------------ | ------------------------------------- | ---------------------------------------------------------------- |
-| `errSecInternalComponent`                  | Keychain locked                       | `security unlock-keychain ~/Library/Keychains/login.keychain-db` |
-| Identity not found                         | Wrong identity name                   | `security find-identity -v -p codesigning`                       |
-| Notarization rejected: missing entitlement | Hardened runtime needs an entitlement | Add to `signing.macos.entitlements`                              |
-| Staple fails                               | Notarization rejected before stapling | Read the notary log via `xcrun notarytool log <id>`              |
+| Failure                                    | Cause                                 | Fix                                                                          |
+| ------------------------------------------ | ------------------------------------- | ---------------------------------------------------------------------------- |
+| `errSecInternalComponent`                  | Keychain locked                       | `security unlock-keychain ~/Library/Keychains/login.keychain-db`             |
+| Identity not found                         | Wrong identity name                   | `security find-identity -v -p codesigning`                                   |
+| Notarization rejected: missing entitlement | Hardened runtime needs an entitlement | Declare the matching permission so it is added to the generated entitlements |
+| Staple fails                               | Notarization rejected before stapling | Read the notary log via `xcrun notarytool log <id>`                          |
 
-`bun run desktop doctor` runs all the macOS-specific prerequisite checks (Xcode tools, codesign availability, notarytool credentials, identity presence).
+`bun run desktop doctor` runs the macOS-specific prerequisite checks: Xcode command-line tools (`xcode-select -p`), packaging build tools (`hdiutil`), and a signing-credentials check that warns if signing config is absent.
 
 ## Related
 

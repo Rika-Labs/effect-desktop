@@ -40,12 +40,15 @@ Take `Window` as the worked example.
 
 ```ts
 // 1. Contract
-export const WindowCreate = windowRpc(
-  "create",
-  WindowCreateInput,
-  WindowResource,
-  P.nativeInvoke({ primitive: "Window", methods: ["create"] })
-)
+export const WindowCreate = NativeSurface.rpc("Window", "create", {
+  payload: WindowCreateInput,
+  success: WindowResource,
+  authority: NativeSurface.authority.custom(
+    P.nativeInvoke({ primitive: "Window", methods: ["create"] })
+  ),
+  endpoint: "mutation",
+  support: NativeSurface.support.supported
+})
 
 export const WindowRpcs: RpcGroup.RpcGroup<WindowRpcUnion> = WindowRpcGroup
 
@@ -53,7 +56,7 @@ export const WindowRpcs: RpcGroup.RpcGroup<WindowRpcUnion> = WindowRpcGroup
 export class Window extends Context.Service<Window, WindowApi>()("@orika/native/Window") {}
 
 // 3. Native app-composition surface
-export const window = Native.surface(WindowSurface)
+//    WindowSurface (built below via NativeSurface.make) is the surface.
 
 // 4. Test layer
 //    Provide Window directly, or use @orika/test.
@@ -75,13 +78,7 @@ In your runtime entry, you `Layer.merge` and `Layer.provide` to assemble the dep
 
 ```ts
 import { Layer } from "effect"
-import {
-  PermissionRegistry,
-  ResourceRegistryLive,
-  AuditEventsLive,
-  SettingsLive,
-  TelemetryLive
-} from "@orika/core"
+import { PermissionRegistry, ResourceRegistryLive, AuditEventsLayer } from "@orika/core"
 import {
   Window,
   WindowHandlersLive,
@@ -98,9 +95,7 @@ const ClipboardLayer = Layer.provide(Clipboard.layer, ClipboardClientLayer)
 const RuntimeLive = Layer.mergeAll(
   PermissionRegistryLive,
   ResourceRegistryLive,
-  AuditEventsLive,
-  SettingsLive,
-  TelemetryLive,
+  AuditEventsLayer,
   WindowTest,
   WindowHandlersLive,
   ClipboardLayer,
@@ -108,7 +103,7 @@ const RuntimeLive = Layer.mergeAll(
 )
 ```
 
-`Desktop.make` and `Desktop.layer` give you sensible defaults so you don't usually compose the whole graph by hand. But the graph is always **inspectable** — `Desktop.runtimeGraphSnapshot()` returns it as data, and the devtools layer-graph panel renders it.
+`Desktop.make` and `Desktop.layer` give you sensible defaults so you don't usually compose the whole graph by hand. But the graph is always **inspectable** — `Desktop.runtimeGraphSnapshot(config)` is an `Effect` that produces a `LayerGraphSnapshot`, and the devtools layer-graph panel renders it.
 
 ## Deep modules, narrow interfaces
 

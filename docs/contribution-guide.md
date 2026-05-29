@@ -32,7 +32,7 @@ bun run typecheck      # turbo typecheck
 bun run lint           # ultracite (Oxlint + Oxfmt) with type-aware checks
 bun run lint:types     # alias for lint
 bun run format:check   # oxfmt --check .
-bun test               # turbo test
+bun test               # Bun's native test runner
 bun run cargo:fmt      # cargo fmt --check
 bun run cargo:clippy   # cargo clippy --workspace --all-targets -- -D warnings
 bun run cargo:check    # cargo check --workspace

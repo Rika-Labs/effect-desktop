@@ -46,7 +46,7 @@ Inside the framework, the rule is enforced through the **architecture-debt sweep
 
 Wrappers without durable semantics are removed in the same change that touches them. If removal is too large for the current ticket, an issue is opened with a concrete before/after that shows the current shape and the desired Effect-native shape.
 
-This is why `BridgeRpc` is explicitly marked as a temporary boundary adapter — it carries protocol semantics Effect RPC doesn't yet own locally, but it will be removed as soon as canonical Effect RPC can express the same contract.
+This is why `BridgeRpc` was explicitly marked as a temporary boundary adapter — it carried protocol semantics Effect RPC didn't yet own locally, and it was removed once canonical Effect RPC could express the same contract. Bridge contracts are now authored with canonical `Rpc.make` / `RpcGroup.make`.
 
 ## Why this is a virtue, not a constraint
 
