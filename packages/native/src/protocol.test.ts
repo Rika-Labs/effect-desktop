@@ -106,6 +106,35 @@ test("Protocol bridge client validates asset roots as absolute local paths", () 
   )
 })
 
+test("Protocol bridge client rejects double-encoded traversal in route and deny paths", () => {
+  const requests: HostProtocolRequestEnvelope[] = []
+  return Effect.runPromise(
+    runScoped(
+      Effect.gen(function* () {
+        const client = yield* Protocol
+
+        const doubleEncodedRouteExit = yield* Effect.exit(
+          client.serveRoute({ scheme: "myapp", route: "/%252e%252e/secret" })
+        )
+        const doubleEncodedDenyExit = yield* Effect.exit(
+          client.deny({ scheme: "assets", path: "/%252e%252e/secret" })
+        )
+        const tripleEncodedRouteExit = yield* Effect.exit(
+          client.serveRoute({ scheme: "myapp", route: "/%25252e%25252e/secret" })
+        )
+
+        expectExitFailure(doubleEncodedRouteExit, (error) => hasErrorTag(error, "InvalidArgument"))
+        expectExitFailure(doubleEncodedDenyExit, (error) => hasErrorTag(error, "InvalidArgument"))
+        expectExitFailure(tripleEncodedRouteExit, (error) => hasErrorTag(error, "InvalidArgument"))
+        expect(requests).toEqual([])
+      }),
+      ProtocolSurface.bridgeClientLayer(
+        protocolExchange(requests, () => ({ kind: "success", payload: undefined }))
+      )
+    )
+  )
+})
+
 const runScoped = <A, E, R>(
   effect: Effect.Effect<A, E, R>,
   layer: Layer.Layer<R, never, never>

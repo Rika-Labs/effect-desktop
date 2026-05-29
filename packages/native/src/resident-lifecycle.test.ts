@@ -574,6 +574,51 @@ test("ResidentLifecycle concurrent disable serializes cleanup and reaches host f
     })
   ))
 
+test("ResidentLifecycle interrupted disable keeps registry and handle consistent", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const runtime = yield* configuredRuntime([])
+      const started = yield* Deferred.make<void>()
+      const release = yield* Deferred.make<void>()
+      const baseClient = yield* makeResidentLifecycleMemoryClient()
+      const client: ResidentLifecycleClientApi = {
+        ...baseClient,
+        disable: (input) =>
+          Effect.gen(function* () {
+            yield* Deferred.succeed(started, undefined)
+            yield* Deferred.await(release)
+            return yield* baseClient.disable(input)
+          })
+      }
+
+      const result = yield* runScoped(
+        Effect.gen(function* () {
+          const resident = yield* ResidentLifecycle
+          yield* resident.enable(enableRequest())
+          const afterEnable = yield* runtime.resources.list()
+          const fiber = yield* resident
+            .disable({ traceId: "disable-1" })
+            .pipe(Effect.forkChild({ startImmediately: true }))
+          yield* Deferred.await(started)
+          yield* Fiber.interrupt(fiber)
+          const reEnable = yield* Effect.exit(resident.enable(enableRequest()))
+          const afterReEnable = yield* runtime.resources.list()
+          return { afterEnable, afterReEnable, reEnable }
+        }),
+        makeResidentLifecycleServiceLayer(client, runtime)
+      )
+
+      expect(result.afterEnable.entries).toHaveLength(1)
+      expect(result.afterReEnable.entries).toHaveLength(1)
+      expectExitFailure(result.reEnable, (error) => {
+        expect(error).toMatchObject({
+          tag: "InvalidArgument",
+          operation: "ResidentLifecycle.enable"
+        })
+      })
+    })
+  ))
+
 test("ResidentLifecycle audit failure rolls back enabled host state", () =>
   Effect.runPromise(
     Effect.gen(function* () {

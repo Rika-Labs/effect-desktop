@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test"
 import { CspPolicy } from "@orika/config"
+import { cspInspectorEvent } from "@orika/core"
 import { Clock, Effect, Fiber, Layer, ManagedRuntime, Schema, Stream } from "effect"
 import { HttpClientRequest, HttpRouter, HttpServer, HttpServerRequest } from "effect/unstable/http"
 
@@ -7,6 +8,7 @@ import {
   AppAssetResolver,
   AppAssetRoutes,
   AppCspInspector,
+  AppCspPolicy,
   AppCspPolicyDefault,
   AppHttpServer,
   AppHttpServerLive,
@@ -326,6 +328,107 @@ test("streams CSP blocked decisions through AppCspInspector", () => {
       expect(inner.events[0]?.reason).toBe("path-traversal")
       expect(inner.events[0]?.timestamp).toBe(timestamp)
       expect(inner.events[0]?.traceId).toBe(`csp:${timestamp}`)
+      yield* Effect.promise(() => runtime.dispose())
+    })
+  )
+})
+
+test("emits nonce-issued/applied through AppCspInspector when CSP is applied", () => {
+  const timestamp = 1_710_000_999_111
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const inspector = yield* makeAppCspInspector()
+      const layer = Layer.provide(
+        AppHttpServerLive,
+        Layer.mergeAll(
+          Layer.succeed(AppAssetResolver)(staticResolver),
+          AppCspPolicyDefault,
+          Layer.succeed(AppCspInspector)(inspector)
+        )
+      )
+      const runtime = ManagedRuntime.make(layer)
+      const event = yield* Effect.promise(() =>
+        runtime.runPromise(
+          Effect.gen(function* () {
+            const server = yield* AppHttpServer
+            const fiber = yield* inspector
+              .observe()
+              .pipe(
+                Stream.take(1),
+                (stream) => Stream.runCollect(stream),
+                Effect.forkChild({ startImmediately: true })
+              )
+
+            const response = yield* Effect.scoped(server.handle(makeRequest("/app.js")))
+            expect(response.status).toBe(200)
+            const events = yield* Fiber.join(fiber)
+            return events[0]
+          }).pipe(Effect.provideService(Clock.Clock, fixedClock(timestamp)))
+        )
+      )
+
+      expect(event?.kind).toBe("csp")
+      expect(event?.decision).toBe("nonce-issued")
+      expect(event?.outcome).toBe("applied")
+      yield* Effect.promise(() => runtime.dispose())
+    })
+  )
+})
+
+test("does not emit a policy-applied/disabled event when CSP is disabled", () => {
+  const timestamp = 1_710_000_888_222
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const inspector = yield* makeAppCspInspector()
+      const layer = Layer.provide(
+        AppHttpServerLive,
+        Layer.mergeAll(
+          Layer.succeed(AppAssetResolver)(staticResolver),
+          Layer.succeed(AppCspPolicy)({ policy: new CspPolicy({ directives: [] }) }),
+          Layer.succeed(AppCspInspector)(inspector)
+        )
+      )
+      const sentinel = cspInspectorEvent({
+        kind: "csp",
+        decision: "blocked",
+        source: "test-sentinel",
+        traceId: "csp:sentinel",
+        outcome: "blocked",
+        timestamp
+      })
+      const runtime = ManagedRuntime.make(layer)
+      const events = yield* Effect.promise(() =>
+        runtime.runPromise(
+          Effect.gen(function* () {
+            const server = yield* AppHttpServer
+            const fiber = yield* inspector.observe().pipe(
+              Stream.takeUntil((event) => event.traceId === "csp:sentinel"),
+              (stream) => Stream.runCollect(stream),
+              Effect.forkChild({ startImmediately: true })
+            )
+
+            const response = yield* Effect.scoped(server.handle(makeRequest("/app.js")))
+            expect(response.status).toBe(200)
+            expect(
+              (response.headers as Record<string, string>)["content-security-policy"]
+            ).toBeUndefined()
+            // Publish a sentinel so the bounded collection terminates deterministically;
+            // any real CSP event would have been published before this point.
+            yield* inspector.emit(sentinel)
+            return yield* Fiber.join(fiber)
+          }).pipe(Effect.provideService(Clock.Clock, fixedClock(timestamp)))
+        )
+      )
+
+      const collected = Array.from(events)
+      expect(
+        collected.some(
+          (event) => event.decision === "policy-applied" && event.outcome === "disabled"
+        )
+      ).toBe(false)
+      // Only the sentinel is collected; the disabled-CSP path emitted nothing.
+      expect(collected.length).toBe(1)
+      expect(collected[0]?.traceId).toBe("csp:sentinel")
       yield* Effect.promise(() => runtime.dispose())
     })
   )

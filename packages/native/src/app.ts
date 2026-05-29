@@ -1,5 +1,6 @@
 import {
   type BridgeClientExchange,
+  hostProtocolErrorFromRpcClientError,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
   makeHostProtocolInvalidOutputError,
@@ -394,7 +395,10 @@ const runAppRpcStream = <A, E>(
 ): Stream.Stream<A, AppError, never> => stream.pipe(Stream.mapError(mapAppRpcClientError))
 
 const mapAppRpcClientError = (error: unknown): AppError =>
-  isAppError(error) ? error : makeHostProtocolInternalError("App RPC client failed", "App")
+  isAppError(error)
+    ? error
+    : (hostProtocolErrorFromRpcClientError(error) ??
+      makeHostProtocolInternalError("App RPC client failed", "App"))
 
 const isAppError = (error: unknown): error is AppError =>
   typeof error === "object" &&

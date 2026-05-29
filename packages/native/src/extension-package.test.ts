@@ -444,6 +444,73 @@ test("ExtensionPackage checks compatibility before host side effects", () =>
     })
   ))
 
+test("ExtensionPackage rejects compatibility ranges inverted only by prerelease precedence", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const client = yield* makeExtensionPackageMemoryClient()
+
+      const exit = yield* Effect.exit(
+        client.install(
+          installInput({
+            manifest: manifest({
+              compatibility: new ExtensionPackageCompatibility({
+                minHostVersion: "1.0.0",
+                maxHostVersion: "1.0.0-rc.1"
+              })
+            })
+          })
+        )
+      )
+
+      expectExitFailure(exit, (error) => {
+        expect(error).toMatchObject({
+          tag: "InvalidArgument",
+          operation: "ExtensionPackage.install"
+        })
+      })
+    })
+  ))
+
+test("ExtensionPackage gates host versions by prerelease precedence", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const permissions = yield* configuredPermissions([])
+      let installs = 0
+      const baseClient = yield* makeExtensionPackageMemoryClient()
+      const client: ExtensionPackageClientApi = {
+        ...baseClient,
+        install: (input) =>
+          Effect.sync(() => {
+            installs += 1
+          }).pipe(Effect.andThen(baseClient.install(input)))
+      }
+
+      const exit = yield* runScoped(
+        Effect.gen(function* () {
+          const packages = yield* ExtensionPackage
+          return yield* Effect.exit(
+            packages.install(
+              installInput({
+                manifest: manifest({
+                  compatibility: new ExtensionPackageCompatibility({ maxHostVersion: "1.0.0-rc.1" })
+                })
+              })
+            )
+          )
+        }),
+        makeExtensionPackageServiceLayer(client, { permissions, hostVersion: "1.0.0" })
+      )
+
+      expect(installs).toBe(0)
+      expectExitFailure(exit, (error) => {
+        expect(error).toMatchObject({
+          tag: "InvalidArgument",
+          operation: "ExtensionPackage.install"
+        })
+      })
+    })
+  ))
+
 test("ExtensionPackage rejects malformed SemVer before host transport", () =>
   Effect.runPromise(
     Effect.gen(function* () {

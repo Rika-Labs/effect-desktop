@@ -464,6 +464,7 @@ const makeExtensionConfigService = (
             yield* checkSecretPermission(
               options,
               "read",
+              "read",
               request.actor,
               request.extensionId,
               request.traceId
@@ -509,6 +510,7 @@ const makeExtensionConfigService = (
           if ((request.secrets ?? []).length > 0) {
             yield* checkSecretPermission(
               options,
+              "write",
               "write",
               request.actor,
               request.extensionId,
@@ -564,6 +566,7 @@ const makeExtensionConfigService = (
           if (secretResetKeys.length > 0) {
             yield* checkSecretPermission(
               options,
+              "reset",
               "write",
               request.actor,
               request.extensionId,
@@ -1215,6 +1218,7 @@ const checkConfigPermission = (
   checkPermission(
     options,
     P.nativeInvoke({ primitive: Surface, methods: [method] }),
+    method,
     actor,
     extensionId,
     `ExtensionConfig.${method}`,
@@ -1223,6 +1227,7 @@ const checkConfigPermission = (
 
 const checkSecretPermission = (
   options: ExtensionConfigServiceOptions,
+  method: "read" | "write" | "reset" | "redact",
   access: "read" | "write",
   actor: ExtensionConfigActor,
   extensionId: string,
@@ -1233,6 +1238,7 @@ const checkSecretPermission = (
     access === "read"
       ? P.safeStorageRead({ namespaces: [secretNamespace(extensionId)] })
       : P.safeStorageWrite({ namespaces: [secretNamespace(extensionId)] }),
+    method,
     actor,
     extensionId,
     `ExtensionConfig.secret.${access}`,
@@ -1242,6 +1248,7 @@ const checkSecretPermission = (
 const checkPermission = (
   options: ExtensionConfigServiceOptions,
   capability: NormalizedCapability,
+  method: "read" | "write" | "reset" | "redact",
   actor: ExtensionConfigActor,
   extensionId: string,
   operation: string,
@@ -1270,11 +1277,12 @@ const checkPermission = (
         return emitConfigAudit(
           options,
           "permission-denied",
-          operationMethod(operation),
+          method,
           actor,
           extensionId,
           error.traceId,
-          { reason: error.reason }
+          { reason: error.reason },
+          capability
         ).pipe(Effect.andThen(Effect.fail(permissionDeniedError(capability, error, operation))))
       })
     )
@@ -1308,7 +1316,8 @@ const emitConfigAudit = (
   actor: ExtensionConfigActor,
   extensionId: string,
   traceId: string | undefined,
-  details: unknown
+  details: unknown,
+  capability?: NormalizedCapability
 ): Effect.Effect<void, ExtensionConfigError, never> => {
   if (options.audit === undefined) {
     return Effect.void
@@ -1321,7 +1330,7 @@ const emitConfigAudit = (
       source: operation,
       traceId: traceId ?? options.nextTraceId?.() ?? operation,
       outcome: kind === "permission-denied" ? "denied" : "used",
-      normalizedCapability: P.nativeInvoke({ primitive: Surface, methods: [method] }),
+      normalizedCapability: capability ?? P.nativeInvoke({ primitive: Surface, methods: [method] }),
       actor: permissionActor(actor),
       resource: extensionId,
       details
@@ -1334,13 +1343,6 @@ const emitConfigAudit = (
       )
     )
   )
-}
-
-const operationMethod = (operation: string): "read" | "write" | "reset" | "redact" => {
-  if (operation.includes(".write") || operation.includes(".secret.write")) return "write"
-  if (operation.includes(".reset")) return "reset"
-  if (operation.includes(".redact")) return "redact"
-  return "read"
 }
 
 const permissionActor = (actor: ExtensionConfigActor): PermissionActor =>

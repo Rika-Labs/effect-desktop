@@ -800,16 +800,64 @@ const validateVersion = (
 ): Effect.Effect<void, ExtensionPackageError, never> =>
   SemverPattern.test(value) ? Effect.void : invalid(field, "must be SemVer", operation)
 
-const compareSemver = (left: string, right: string): number => {
-  const leftParts = left.split(/[+-]/u)[0]?.split(".").map(Number) ?? []
-  const rightParts = right.split(/[+-]/u)[0]?.split(".").map(Number) ?? []
-  for (const index of [0, 1, 2]) {
-    const delta = (leftParts[index] ?? 0) - (rightParts[index] ?? 0)
+interface SemverParts {
+  readonly release: readonly number[]
+  readonly prerelease: readonly string[]
+}
+
+const parseSemver = (value: string): SemverParts => {
+  const withoutBuild = value.split("+", 1)[0] ?? ""
+  const dashIndex = withoutBuild.indexOf("-")
+  const releaseText = dashIndex === -1 ? withoutBuild : withoutBuild.slice(0, dashIndex)
+  const prereleaseText = dashIndex === -1 ? "" : withoutBuild.slice(dashIndex + 1)
+  return {
+    release: releaseText.split(".").map(Number),
+    prerelease: prereleaseText === "" ? [] : prereleaseText.split(".")
+  }
+}
+
+const comparePrereleaseIdentifier = (left: string, right: string): number => {
+  const leftNumeric = /^\d+$/u.test(left)
+  const rightNumeric = /^\d+$/u.test(right)
+  if (leftNumeric && rightNumeric) {
+    return Number(left) - Number(right)
+  }
+  if (leftNumeric) {
+    return -1
+  }
+  if (rightNumeric) {
+    return 1
+  }
+  return left < right ? -1 : left > right ? 1 : 0
+}
+
+const comparePrerelease = (left: readonly string[], right: readonly string[]): number => {
+  if (left.length === 0 || right.length === 0) {
+    if (left.length === right.length) {
+      return 0
+    }
+    return left.length === 0 ? 1 : -1
+  }
+  const shared = Math.min(left.length, right.length)
+  for (let index = 0; index < shared; index += 1) {
+    const delta = comparePrereleaseIdentifier(left[index] ?? "", right[index] ?? "")
     if (delta !== 0) {
       return delta
     }
   }
-  return 0
+  return left.length - right.length
+}
+
+const compareSemver = (left: string, right: string): number => {
+  const leftParts = parseSemver(left)
+  const rightParts = parseSemver(right)
+  for (const index of [0, 1, 2]) {
+    const delta = (leftParts.release[index] ?? 0) - (rightParts.release[index] ?? 0)
+    if (delta !== 0) {
+      return delta
+    }
+  }
+  return comparePrerelease(leftParts.prerelease, rightParts.prerelease)
 }
 
 const invalid = (

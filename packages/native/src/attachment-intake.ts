@@ -1,5 +1,6 @@
 import {
   type BridgeClientExchange,
+  HostProtocolInternalError,
   HostProtocolPermissionDeniedError,
   HostProtocolUnsupportedError,
   makeHostProtocolInternalError,
@@ -728,14 +729,21 @@ const emitIntakeAudit = (
       details
     })
   ).pipe(
-    Effect.mapError((error) =>
-      makeHostProtocolInternalError(
-        `failed to write attachment intake audit event: ${error.message}`,
-        operation
-      )
+    Effect.mapError(
+      (error) =>
+        new HostProtocolInternalError({
+          tag: "Internal",
+          message: `failed to write attachment intake audit event (method=${error.method}): ${formatCause(error.cause)}`,
+          operation,
+          cause: error,
+          recoverable: false
+        })
     )
   )
 }
+
+const formatCause = (cause: unknown): string =>
+  cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause)
 
 const permissionActor = (actor: AttachmentIntakeActor): PermissionActor =>
   new PermissionActor({

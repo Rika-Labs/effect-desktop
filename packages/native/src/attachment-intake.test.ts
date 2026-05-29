@@ -6,6 +6,7 @@ import {
 } from "@orika/bridge"
 import { type AuditEvent, makePermissionRegistry, P } from "@orika/core"
 import { Cause, Effect, Exit, type Layer, ManagedRuntime, Option, Schema, Stream } from "effect"
+import { EventJournal } from "effect/unstable/eventlog"
 
 import {
   AttachmentIntake,
@@ -222,6 +223,54 @@ test("AttachmentIntake surfaces injected host failure as typed failure", () =>
           tag: "Internal",
           operation: "AttachmentIntake.ingest"
         })
+      })
+    })
+  ))
+
+test("AttachmentIntake preserves audit-write failure method and cause in the Internal error", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const permissions = yield* configuredPermissions([])
+      const client = yield* makeAttachmentIntakeMemoryClient({
+        nextIntakeId: () => "intake-1",
+        nextItemId: () => "item-1"
+      })
+
+      const journalError = new EventJournal.EventJournalError({
+        method: "write",
+        cause: new Error("disk full")
+      })
+      const failingAudit = {
+        emit: () => Effect.fail(journalError),
+        observe: () => Stream.empty as Stream.Stream<AuditEvent, never, never>
+      }
+
+      const runtime = ManagedRuntime.make(
+        makeAttachmentIntakeServiceLayer(client, {
+          permissions,
+          audit: failingAudit,
+          nextTraceId: () => "trace-intake"
+        })
+      )
+      const exit = yield* Effect.promise(() =>
+        runtime.runPromise(
+          Effect.gen(function* () {
+            const intake = yield* AttachmentIntake
+            return yield* Effect.exit(intake.ingest(ingestRequest()))
+          })
+        )
+      )
+      yield* Effect.promise(() => runtime.dispose())
+
+      expectExitFailure(exit, (error) => {
+        expect(error).toMatchObject({
+          tag: "Internal",
+          operation: "AttachmentIntake.ingest"
+        })
+        const message = (error as { readonly message: string }).message
+        expect(message).toContain("write")
+        expect(message).toContain("disk full")
+        expect((error as { readonly cause: unknown }).cause).toBe(journalError)
       })
     })
   ))

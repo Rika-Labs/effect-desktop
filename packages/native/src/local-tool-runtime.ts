@@ -988,8 +988,16 @@ const commandById = (
 const primaryCwd = (manifest: LocalToolRuntimeManifest): string =>
   manifest.policy.cwd.roots[0] ?? ""
 
-const isWithinRoots = (cwd: string, roots: readonly string[]): boolean =>
-  roots.some((root) => cwd === root || cwd.startsWith(`${root}/`))
+const normalizeRootSeparators = (path: string): string => path.replaceAll("\\", "/")
+
+const isWithinRoots = (cwd: string, roots: readonly string[]): boolean => {
+  const normalizedCwd = normalizeRootSeparators(cwd)
+  return roots.some((root) => {
+    const normalizedRoot = normalizeRootSeparators(root)
+    const prefix = normalizedRoot.endsWith("/") ? normalizedRoot : `${normalizedRoot}/`
+    return normalizedCwd === normalizedRoot || normalizedCwd.startsWith(prefix)
+  })
+}
 
 const publishEvent = (
   events: PubSub.PubSub<LocalToolRuntimeEvent>,

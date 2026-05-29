@@ -160,9 +160,7 @@ export class TrayClient extends Context.Service<TrayClient, TrayClientApi>()(
   "@orika/native/TrayClient"
 ) {}
 
-export interface TrayServiceApi extends Omit<TrayClientApi, "isSupported"> {
-  readonly isSupported: () => Effect.Effect<boolean, TrayError, never>
-}
+export type TrayServiceApi = TrayClientApi
 
 export interface TrayServiceOptions {
   readonly resources: ResourceRegistryApi
@@ -216,24 +214,26 @@ const makeTrayService = (client: TrayClientApi, options: TrayServiceOptions): Tr
     setTitle: (tray, title) => client.setTitle(tray, title),
     setMenu: (tray, menu) => client.setMenu(tray, menu),
     destroy: (tray) =>
-      Effect.gen(function* () {
-        if (tray.kind !== "tray" || tray.state !== "open") {
-          return yield* Effect.fail(
-            makeHostProtocolInvalidArgumentError(
-              "tray",
-              "must be an open tray handle",
-              "Tray.destroy"
+      Effect.uninterruptible(
+        Effect.gen(function* () {
+          if (tray.kind !== "tray" || tray.state !== "open") {
+            return yield* Effect.fail(
+              makeHostProtocolInvalidArgumentError(
+                "tray",
+                "must be an open tray handle",
+                "Tray.destroy"
+              )
             )
-          )
-        }
-        yield* client.destroy(tray)
-        explicitlyDestroyed.add(tray.id)
-        yield* options.resources
-          .dispose(tray.id)
-          .pipe(Effect.ensuring(Effect.sync(() => explicitlyDestroyed.delete(tray.id))))
-      }),
+          }
+          yield* client.destroy(tray)
+          explicitlyDestroyed.add(tray.id)
+          yield* options.resources
+            .dispose(tray.id)
+            .pipe(Effect.ensuring(Effect.sync(() => explicitlyDestroyed.delete(tray.id))))
+        })
+      ),
     onActivated: () => client.onActivated(),
-    isSupported: () => client.isSupported().pipe(Effect.map((result) => result.supported))
+    isSupported: () => client.isSupported()
   } satisfies TrayServiceApi)
 }
 
@@ -283,8 +283,7 @@ export const TrayHandlersLive = TrayRpcGroup.toLayer({
   "Tray.isSupported": () =>
     Effect.gen(function* () {
       const tray = yield* Tray
-      const supported = yield* tray.isSupported()
-      return new TraySupportedResult({ supported })
+      return yield* tray.isSupported()
     }),
   "Tray.events.Activated": () =>
     Stream.unwrap(

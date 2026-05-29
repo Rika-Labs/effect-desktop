@@ -443,6 +443,39 @@ test("Job denies before host work", async () => {
   })
 })
 
+test("Job does not audit denied calls as permission-used", async () => {
+  const rows: AuditEvent[] = []
+  const permissions = await Effect.runPromise(makePermissionRegistry())
+  const client = await Effect.runPromise(makeJobMemoryClient())
+
+  const exits = await Effect.runPromise(
+    Effect.gen(function* () {
+      const jobs = yield* Job
+      const start = yield* Effect.exit(jobs.start({ name: "Denied job" }))
+      const control = yield* Effect.exit(jobs.pause({ jobId: "job-x" }))
+      const progress = yield* Effect.exit(jobs.reportProgress({ jobId: "job-x", completed: 1 }))
+      const get = yield* Effect.exit(jobs.get({ jobId: "job-x" }))
+      return { control, get, progress, start }
+    }).pipe(Effect.provide(makeJobServiceLayer(client, { permissions, audit: memoryAudit(rows) })))
+  )
+
+  expectExitFailure(exits.start, (error) => {
+    expect(error).toMatchObject({ tag: "PermissionDenied", operation: "Job.start" })
+  })
+  expectExitFailure(exits.control, (error) => {
+    expect(error).toMatchObject({ tag: "PermissionDenied", operation: "Job.pause" })
+  })
+  expectExitFailure(exits.progress, (error) => {
+    expect(error).toMatchObject({ tag: "PermissionDenied", operation: "Job.reportProgress" })
+  })
+  expectExitFailure(exits.get, (error) => {
+    expect(error).toMatchObject({ tag: "PermissionDenied", operation: "Job.get" })
+  })
+
+  expect(rows.every((row) => row.kind === "permission-denied")).toBe(true)
+  expect(rows.some((row) => row.kind === "permission-used")).toBe(false)
+})
+
 test("Job host RPC runtime denies protected calls before handlers run", async () => {
   const calls: string[] = []
   const snapshot = new JobSnapshot({

@@ -1,5 +1,6 @@
 import {
   type BridgeClientExchange,
+  hostProtocolErrorFromRpcClientError,
   makeHostProtocolInternalError,
   makeHostProtocolInvalidOutputError,
   RpcGroup,
@@ -313,7 +314,8 @@ const runPowerMonitorRpcStream = <A, E>(
 const mapPowerMonitorRpcClientError = (error: unknown): PowerMonitorError =>
   isPowerMonitorError(error)
     ? error
-    : makeHostProtocolInternalError("PowerMonitor RPC client failed", "PowerMonitor")
+    : (hostProtocolErrorFromRpcClientError(error) ??
+      makeHostProtocolInternalError("PowerMonitor RPC client failed", "PowerMonitor"))
 
 const isPowerMonitorError = (error: unknown): error is PowerMonitorError =>
   typeof error === "object" &&

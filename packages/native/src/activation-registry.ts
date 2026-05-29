@@ -318,6 +318,12 @@ const registerSurface = (
   Effect.gen(function* () {
     const registration = yield* validateSurfaceRegistration(input)
     const operation = "ActivationRegistry.registerSurface"
+    const current = yield* Ref.get(surfaces)
+    if (current.has(registration.surfaceId)) {
+      return yield* Effect.fail(
+        invalidArgument("surfaceId", "surface already registered", operation)
+      )
+    }
     yield* authorize(options, registration.actor, "registerSurface", registration.traceId)
     const ownerScope = registration.ownerScope ?? scopeForActor(registration.actor)
     const id = makeResourceId(registration.surfaceId)

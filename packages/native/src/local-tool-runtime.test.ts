@@ -418,6 +418,55 @@ test("LocalToolRuntime rejects malformed manifests before bridge transport", () 
     })
   ))
 
+test("LocalToolRuntime registers Windows manifests whose command cwd is nested under a backslash root", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const windowsRoot = "C:\\app"
+      const windowsExecutable = "C:\\app\\node.exe"
+      const windowsCommandCwd = "C:\\app\\sub"
+      const permissions = yield* configuredPermissions([], {
+        command: windowsExecutable,
+        root: windowsRoot
+      })
+      const client = yield* makeLocalToolRuntimeMemoryClient({
+        nextRuntimeId: () => "runtime-windows"
+      })
+
+      const runtime = ManagedRuntime.make(
+        makeLocalToolRuntimeServiceLayer(client, {
+          permissions,
+          nextRuntimeId: () => "runtime-windows"
+        })
+      )
+      const exit = yield* Effect.promise(() =>
+        runtime.runPromise(
+          Effect.gen(function* () {
+            const runtimeService = yield* LocalToolRuntime
+            return yield* Effect.exit(
+              runtimeService.register(
+                registerRequestWithManifest(
+                  manifest({
+                    commands: [command({ executable: windowsExecutable, cwd: windowsCommandCwd })],
+                    permissions: [
+                      processPermission({ command: windowsExecutable, root: windowsRoot }),
+                      P.filesystemRead({ roots: [windowsRoot] })
+                    ],
+                    policy: policy({ cwdRoots: [windowsRoot], readRoots: [windowsRoot] })
+                  })
+                )
+              )
+            )
+          })
+        )
+      )
+      yield* Effect.promise(() => runtime.dispose())
+
+      expectExitSuccess(exit, (result) => {
+        expect(result.runtimeId).toBe("runtime-windows")
+      })
+    })
+  ))
+
 test("LocalToolRuntime refuses commands not declared in the manifest before run side effects", () =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -999,5 +1048,12 @@ const expectExitFailure = (
   expect(Exit.isFailure(exit)).toBe(true)
   if (Exit.isFailure(exit)) {
     assertion(Cause.squash(exit.cause))
+  }
+}
+
+const expectExitSuccess = <A>(exit: Exit.Exit<A, unknown>, assertion: (value: A) => void) => {
+  expect(Exit.isSuccess(exit)).toBe(true)
+  if (Exit.isSuccess(exit)) {
+    assertion(exit.value)
   }
 }

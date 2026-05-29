@@ -11,7 +11,7 @@ import {
 } from "@orika/bridge"
 import { makeResourceId } from "@orika/core"
 import { Cause, Effect, Exit, Layer, ManagedRuntime, Option, Queue, Schema, Stream } from "effect"
-import { RpcClient, RpcSchema } from "effect/unstable/rpc"
+import { RpcClient, RpcSchema, RpcTest } from "effect/unstable/rpc"
 
 import {
   WebViewApiCallEvent,
@@ -19,7 +19,15 @@ import {
   WebViewNavigationBlockedEvent,
   WebViewRuntimeEvent
 } from "./contracts/webview.js"
-import { WebViewClient, WebViewRpcs, WebViewSurface } from "./webview.js"
+import {
+  WebView,
+  WebViewClient,
+  WebViewHandlersLive,
+  WebViewRpcs,
+  WebViewSurface,
+  type WebViewCreateNavigationOptions,
+  type WebViewServiceApi
+} from "./webview.js"
 
 const webviewHandle = {
   kind: "webview",
@@ -341,6 +349,78 @@ test("WebView direct client consumes canonical RPC event streams", () =>
         url: "https://example.test/"
       })
       expect(result.methods).toEqual(["WebView.events.RuntimeEvent"])
+    })
+  ))
+
+const windowHandle = {
+  kind: "window",
+  id: makeResourceId("window-1"),
+  generation: 0,
+  ownerScope: "window:window-1",
+  state: "open"
+} as const
+
+const sessionProfileHandle = {
+  kind: "session-profile",
+  id: makeResourceId("profile-1"),
+  generation: 0,
+  ownerScope: "session-profile:profile-1",
+  state: "open"
+} as const
+
+const makeRecordingWebViewService = (received: {
+  current: WebViewCreateNavigationOptions | undefined
+}): WebViewServiceApi =>
+  ({
+    create: (_window, input) =>
+      Effect.sync(() => {
+        received.current = input
+        return webviewHandle
+      }),
+    loadRoute: () => Effect.void,
+    loadUrl: () => Effect.void,
+    reload: () => Effect.void,
+    stop: () => Effect.void,
+    goBack: () => Effect.void,
+    goForward: () => Effect.void,
+    getNavigationState: () =>
+      Effect.succeed({ canGoBack: false, canGoForward: false, loading: false }),
+    print: () => Effect.void,
+    setZoom: () => Effect.void,
+    openDevTools: () => Effect.void,
+    closeDevTools: () => Effect.void,
+    setNavigationPolicy: () => Effect.void,
+    destroy: () => Effect.void,
+    onNavigationBlocked: () => Stream.empty,
+    onApiCall: () => Stream.empty,
+    onRuntimeEvent: () => Stream.empty,
+    onFrameEvent: () => Stream.empty
+  }) satisfies WebViewServiceApi
+
+test("WebView.create handler forwards the session profile to the WebView service", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const received: { current: WebViewCreateNavigationOptions | undefined } = {
+        current: undefined
+      }
+      const handlers = Layer.provide(
+        WebViewHandlersLive,
+        Layer.succeed(WebView)(makeRecordingWebViewService(received))
+      )
+
+      yield* Effect.gen(function* () {
+        const client = yield* RpcTest.makeClient(WebViewRpcs)
+        return yield* client["WebView.create"]({
+          window: windowHandle,
+          url: "app://localhost/",
+          originPolicy: { allowedOrigins: ["app://localhost"], onDisallowed: "block" },
+          profile: sessionProfileHandle
+        })
+      }).pipe(Effect.provide(handlers), Effect.scoped)
+
+      expect(received.current).toBeDefined()
+      expect(received.current?.profile).toBeDefined()
+      expect(received.current?.profile?.id).toBe(sessionProfileHandle.id)
     })
   ))
 

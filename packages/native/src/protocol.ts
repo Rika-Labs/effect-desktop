@@ -284,8 +284,14 @@ type DecodeUrlPathResult =
   | { readonly _tag: "Right"; readonly right: string }
 
 const decodeUrlPath = (path: string, field: string, operation: string): DecodeUrlPathResult => {
+  let current = path
   try {
-    return { _tag: "Right", right: decodeURIComponent(path) }
+    let decoded = decodeURIComponent(current)
+    while (decoded !== current) {
+      current = decoded
+      decoded = decodeURIComponent(current)
+    }
+    return { _tag: "Right", right: decoded }
   } catch {
     return {
       _tag: "Left",

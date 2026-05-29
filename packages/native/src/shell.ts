@@ -286,7 +286,13 @@ const normalizeOpenPathOptions = (
   options?.allowExecutable === undefined ? {} : { allowExecutable: options.allowExecutable }
 
 const isExecutablePath = (path: string): boolean => {
-  const lower = path.toLowerCase()
+  const basename = path
+    .split(/[\\/]+/u)
+    .reduceRight<string>(
+      (selected, segment) => (selected === "" && segment !== "" ? segment : selected),
+      ""
+    )
+  const lower = basename.toLowerCase()
   return ExecutableExtensions.some((extension) => lower.endsWith(extension))
 }
 

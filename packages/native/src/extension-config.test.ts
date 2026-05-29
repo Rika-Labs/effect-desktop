@@ -809,6 +809,81 @@ test("ExtensionConfig reset restores deleted secrets when config reset fails", (
     })
   ))
 
+test("ExtensionConfig audits the denied safe-storage capability when a secret write is denied", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const rows: AuditEvent[] = []
+      const permissions = yield* nativeOnlyPermissions([])
+      const auditRows: AuditEvent[] = []
+      const client = yield* makeExtensionConfigMemoryClient()
+      const secrets = memorySecretStore()
+
+      const exit = yield* runScoped(
+        Effect.gen(function* () {
+          const config = yield* ExtensionConfig
+          return yield* Effect.exit(config.write(writeRequest()))
+        }),
+        makeExtensionConfigServiceLayer(client, {
+          permissions,
+          secrets,
+          audit: memoryAudit(auditRows),
+          nextTraceId: () => "trace-config"
+        })
+      )
+
+      expectExitFailure(exit, (error) => {
+        expect(error).toMatchObject({
+          tag: "PermissionDenied",
+          capability: "safeStorage.write"
+        })
+      })
+      const denial = auditRows.find((row) => row.kind === "permission-denied")
+      expect(denial).toBeDefined()
+      expect(denial?.source).toBe("ExtensionConfig.write")
+      expect((denial?.normalizedCapability as { kind?: string } | undefined)?.kind).toBe(
+        "safeStorage.write"
+      )
+      expect(rows).toEqual([])
+    })
+  ))
+
+test("ExtensionConfig audits a denied secret reset as the reset operation", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const permissions = yield* nativeOnlyPermissions([])
+      const auditRows: AuditEvent[] = []
+      const client = yield* makeExtensionConfigMemoryClient()
+      const secrets = memorySecretStore()
+
+      const exit = yield* runScoped(
+        Effect.gen(function* () {
+          const config = yield* ExtensionConfig
+          return yield* Effect.exit(config.reset(resetRequest()))
+        }),
+        makeExtensionConfigServiceLayer(client, {
+          permissions,
+          secrets,
+          audit: memoryAudit(auditRows),
+          nextTraceId: () => "trace-config"
+        })
+      )
+
+      expectExitFailure(exit, (error) => {
+        expect(error).toMatchObject({
+          tag: "PermissionDenied",
+          operation: "ExtensionConfig.secret.write",
+          capability: "safeStorage.write"
+        })
+      })
+      const denial = auditRows.find((row) => row.kind === "permission-denied")
+      expect(denial).toBeDefined()
+      expect(denial?.source).toBe("ExtensionConfig.reset")
+      expect((denial?.normalizedCapability as { kind?: string } | undefined)?.kind).toBe(
+        "safeStorage.write"
+      )
+    })
+  ))
+
 const actor = (): ExtensionConfigActor =>
   new ExtensionConfigActor({ kind: "extension", id: "extension-1" })
 
@@ -910,6 +985,22 @@ const nativeReadPermissions = () =>
   Effect.gen(function* () {
     const permissions = yield* makePermissionRegistry()
     yield* permissions.declare(P.nativeInvoke({ primitive: "ExtensionConfig", methods: ["read"] }))
+    return permissions
+  })
+
+const nativeOnlyPermissions = (rows: AuditEvent[]) =>
+  Effect.gen(function* () {
+    const permissions = yield* makePermissionRegistry({
+      audit: memoryAudit(rows),
+      traceId: () => "trace-permission",
+      nextToken: () => "grant-1"
+    })
+    yield* permissions.declare(
+      P.nativeInvoke({
+        primitive: "ExtensionConfig",
+        methods: ["read", "write", "reset", "redact"]
+      })
+    )
     return permissions
   })
 

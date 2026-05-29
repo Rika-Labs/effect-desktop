@@ -720,6 +720,40 @@ test("ActivationRegistry rejects actor and permission context mismatches before 
     })
   ))
 
+test("ActivationRegistry rejects duplicate surface registration without destroying the original", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const fixture = yield* configuredRuntime([])
+      const client = yield* makeActivationRegistryMemoryClient()
+
+      const runtime = ManagedRuntime.make(activationRegistryLayer(client, fixture))
+      const result = yield* Effect.promise(() =>
+        runtime.runPromise(
+          Effect.gen(function* () {
+            const registry = yield* ActivationRegistry
+            const first = yield* registry.registerSurface(surfaceRegistration())
+            const exit = yield* Effect.exit(registry.registerSurface(surfaceRegistration()))
+            const listed = yield* registry.listSurfaces()
+            const resources = yield* fixture.resources.list()
+            return { first, exit, listed, resources }
+          })
+        )
+      )
+      yield* Effect.promise(() => runtime.dispose())
+
+      expect(result.first.id).toBe(makeResourceId("palette"))
+      expectExitFailure(result.exit, (error) => {
+        expect(error).toMatchObject({
+          tag: "InvalidArgument",
+          field: "surfaceId",
+          operation: "ActivationRegistry.registerSurface"
+        })
+      })
+      expect(result.listed.surfaces.map((entry) => entry.surfaceId)).toEqual(["palette"])
+      expect(result.resources.entries).toHaveLength(1)
+    })
+  ))
+
 const configuredRuntime = (
   rows: AuditEvent[],
   options: { readonly declareActivation?: boolean } = {}

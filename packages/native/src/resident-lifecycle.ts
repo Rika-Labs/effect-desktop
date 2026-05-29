@@ -345,21 +345,30 @@ const disableResident = (
   Effect.gen(function* () {
     const request = yield* validateDisable(input)
     yield* authorize(options, "disable", request.traceId)
-    const handle = yield* Ref.getAndSet(currentHandle, undefined)
-    const state = yield* client.disable(request).pipe(
-      Effect.tapError((error) =>
-        emitLifecycleFailureAudit(options, "disable", request.traceId, error)
-      ),
-      Effect.tapError(() => (handle === undefined ? Effect.void : Ref.set(currentHandle, handle)))
+    return yield* Effect.uninterruptibleMask((restore) =>
+      Effect.gen(function* () {
+        const handle = yield* Ref.getAndSet(currentHandle, undefined)
+        const restoreHandle = handle === undefined ? Effect.void : Ref.set(currentHandle, handle)
+        const state = yield* restore(client.disable(request)).pipe(
+          Effect.tapError((error) =>
+            emitLifecycleFailureAudit(options, "disable", request.traceId, error)
+          ),
+          Effect.tapError(() => restoreHandle),
+          Effect.onInterrupt(() => restoreHandle)
+        )
+        if (handle !== undefined) {
+          yield* emitLifecycleAudit(
+            options,
+            "disabled",
+            capability("disable"),
+            request.traceId
+          ).pipe(Effect.ensuring(options.resources.dispose(handle.handle.id).pipe(Effect.ignore)))
+          return state
+        }
+        yield* emitLifecycleAudit(options, "disabled", capability("disable"), request.traceId)
+        return state
+      })
     )
-    if (handle !== undefined) {
-      yield* emitLifecycleAudit(options, "disabled", capability("disable"), request.traceId).pipe(
-        Effect.ensuring(options.resources.dispose(handle.handle.id).pipe(Effect.ignore))
-      )
-      return state
-    }
-    yield* emitLifecycleAudit(options, "disabled", capability("disable"), request.traceId)
-    return state
   })
 
 const cleanupResidentLifecycle = (

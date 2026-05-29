@@ -494,7 +494,8 @@ export const WebViewHandlersLive = WebViewRpcGroup.toLayer({
       return yield* webview.create(input.window, {
         url: input.url,
         originPolicy: input.originPolicy,
-        ...(input.isolation === undefined ? {} : { isolation: input.isolation })
+        ...(input.isolation === undefined ? {} : { isolation: input.isolation }),
+        ...(input.profile === undefined ? {} : { profile: input.profile })
       })
     }),
   "WebView.loadRoute": (input) =>

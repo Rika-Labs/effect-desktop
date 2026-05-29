@@ -207,18 +207,19 @@ const buildAssetResponse = (
     const nonce = yield* mintCspNonce
     const timestamp = yield* Clock.currentTimeMillis
     const headers = cspHeaders(policy, nonce)
-    yield* inspector.emit(
-      cspInspectorEvent({
-        kind: "csp",
-        decision:
-          headers["content-security-policy"] === undefined ? "policy-applied" : "nonce-issued",
-        source: "AppHttpServer",
-        traceId: `csp:${nonce.value}`,
-        outcome: headers["content-security-policy"] === undefined ? "disabled" : "applied",
-        timestamp,
-        directives: policy.directives
-      })
-    )
+    if (headers["content-security-policy"] !== undefined) {
+      yield* inspector.emit(
+        cspInspectorEvent({
+          kind: "csp",
+          decision: "nonce-issued",
+          source: "AppHttpServer",
+          traceId: `csp:${nonce.value}`,
+          outcome: "applied",
+          timestamp,
+          directives: policy.directives
+        })
+      )
+    }
 
     if (!asset.contentType.startsWith("text/html")) {
       const etag = computeEtag(asset.bytes)

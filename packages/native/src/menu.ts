@@ -12,9 +12,7 @@ import {
 } from "@orika/core"
 import {
   type BridgeClientExchange,
-  makeHostProtocolInternalError,
   makeHostProtocolInvalidArgumentError,
-  makeHostProtocolInvalidOutputError,
   type RpcCapabilityMetadata,
   type RpcSupportMetadata,
   RpcGroup,
@@ -24,6 +22,7 @@ import { Context, Effect, Layer, Schema, Stream } from "effect"
 
 import { NativeSurface } from "./native-surface.js"
 import type { NativeRpcHandlers } from "./native-surface.js"
+import { decodeNativeInput, runNativeRpc, runNativeRpcStream } from "./native-client.js"
 export * from "./contracts/menu.js"
 import { bindScopedCommand } from "./command-binding.js"
 import { commandBindingWarningError } from "./command-binding-log.js"
@@ -43,7 +42,7 @@ import {
 } from "./contracts/menu.js"
 import type { WindowHandle } from "./window.js"
 
-const StrictParseOptions = { onExcessProperty: "error" } as const
+const Surface = "Menu"
 const HostAdapterUnimplementedReason = "host-adapter-unimplemented"
 const MacosMenuClearOnlyReason = "macos-menu-clear-only"
 const MacosMenuActivationOnlyReason = "macos-menu-activation-only"
@@ -407,12 +406,7 @@ const decodeInput = <A>(
   schema: Schema.Codec<A, unknown, never, never>,
   input: unknown,
   operation: string
-): Effect.Effect<A, MenuError, never> =>
-  Schema.decodeUnknownEffect(schema)(input, StrictParseOptions).pipe(
-    Effect.mapError((error) =>
-      makeHostProtocolInvalidArgumentError("payload", formatUnknownError(error), operation)
-    )
-  )
+): Effect.Effect<A, MenuError, never> => decodeNativeInput(schema, input, operation)
 
 function menuRpc<
   const Method extends string,
@@ -432,33 +426,9 @@ function menuRpc<
 const runMenuRpc = <A, E>(
   effect: Effect.Effect<A, E, never>,
   operation: string
-): Effect.Effect<A, MenuError, never> =>
-  effect.pipe(
-    Effect.mapError(mapMenuRpcClientError),
-    Effect.catchDefect((defect) =>
-      Effect.fail(makeHostProtocolInvalidOutputError(operation, formatUnknownError(defect)))
-    )
-  )
+): Effect.Effect<A, MenuError, never> => runNativeRpc(effect, operation, Surface)
 
 const runMenuRpcStream = <A, E>(
   stream: Stream.Stream<A, E, never>,
-  _operation: string
-): Stream.Stream<A, MenuError, never> => stream.pipe(Stream.mapError(mapMenuRpcClientError))
-
-const mapMenuRpcClientError = (error: unknown): MenuError =>
-  isMenuError(error) ? error : makeHostProtocolInternalError("Menu RPC client failed", "Menu")
-
-const isMenuError = (error: unknown): error is MenuError =>
-  typeof error === "object" &&
-  error !== null &&
-  "tag" in error &&
-  "operation" in error &&
-  "recoverable" in error
-
-const formatUnknownError = (error: unknown): string => {
-  if (error instanceof Error) {
-    return error.message
-  }
-
-  return String(error)
-}
+  operation: string
+): Stream.Stream<A, MenuError, never> => runNativeRpcStream(stream, operation, Surface)

@@ -467,13 +467,20 @@ const makeJobService = (
         validateStart(input).pipe(
           Effect.flatMap((request) =>
             authorize(options, "start", request.traceId).pipe(
-              Effect.andThen(client.start(request)),
-              Effect.tap((snapshot) =>
-                registerJobResource(options, client, terminalResourceDisposals, snapshot)
-              ),
-              Effect.tap((snapshot) => appendJobJournal(options, "started", snapshot)),
-              Effect.tap((snapshot) => emitUseAudit(options, "start", snapshot, request.traceId)),
-              Effect.tapError((error) => emitFailureAudit(options, "start", request.jobId, error))
+              Effect.andThen(
+                client.start(request).pipe(
+                  Effect.tap((snapshot) =>
+                    registerJobResource(options, client, terminalResourceDisposals, snapshot)
+                  ),
+                  Effect.tap((snapshot) => appendJobJournal(options, "started", snapshot)),
+                  Effect.tap((snapshot) =>
+                    emitUseAudit(options, "start", snapshot, request.traceId)
+                  ),
+                  Effect.tapError((error) =>
+                    emitFailureAudit(options, "start", request.jobId, error)
+                  )
+                )
+              )
             )
           )
         ),
@@ -493,13 +500,16 @@ const makeJobService = (
         validateProgress(input).pipe(
           Effect.flatMap((request) =>
             authorize(options, "reportProgress", request.traceId).pipe(
-              Effect.andThen(client.reportProgress(request)),
-              Effect.tap((snapshot) => appendJobJournal(options, "progress", snapshot)),
-              Effect.tap((snapshot) =>
-                emitUseAudit(options, "reportProgress", snapshot, request.traceId)
-              ),
-              Effect.tapError((error) =>
-                emitFailureAudit(options, "reportProgress", request.jobId, error)
+              Effect.andThen(
+                client.reportProgress(request).pipe(
+                  Effect.tap((snapshot) => appendJobJournal(options, "progress", snapshot)),
+                  Effect.tap((snapshot) =>
+                    emitUseAudit(options, "reportProgress", snapshot, request.traceId)
+                  ),
+                  Effect.tapError((error) =>
+                    emitFailureAudit(options, "reportProgress", request.jobId, error)
+                  )
+                )
               )
             )
           )
@@ -508,9 +518,12 @@ const makeJobService = (
         validateGet(input).pipe(
           Effect.flatMap((request) =>
             authorize(options, "get", request.traceId).pipe(
-              Effect.andThen(client.get(request)),
-              Effect.tap((snapshot) => emitUseAudit(options, "get", snapshot, request.traceId)),
-              Effect.tapError((error) => emitFailureAudit(options, "get", request.jobId, error))
+              Effect.andThen(
+                client.get(request).pipe(
+                  Effect.tap((snapshot) => emitUseAudit(options, "get", snapshot, request.traceId)),
+                  Effect.tapError((error) => emitFailureAudit(options, "get", request.jobId, error))
+                )
+              )
             )
           )
         ),
@@ -529,13 +542,16 @@ const controlService = (
   validateControl(input, `Job.${name}`).pipe(
     Effect.flatMap((request) =>
       authorize(options, name, request.traceId).pipe(
-        Effect.andThen(method(request)),
-        Effect.tap((snapshot) => appendJobJournal(options, phaseFromMethod(name), snapshot)),
-        Effect.tap((snapshot) =>
-          disposeTerminalJobResource(options, terminalResourceDisposals, snapshot)
-        ),
-        Effect.tap((snapshot) => emitUseAudit(options, name, snapshot, request.traceId)),
-        Effect.tapError((error) => emitFailureAudit(options, name, request.jobId, error))
+        Effect.andThen(
+          method(request).pipe(
+            Effect.tap((snapshot) => appendJobJournal(options, phaseFromMethod(name), snapshot)),
+            Effect.tap((snapshot) =>
+              disposeTerminalJobResource(options, terminalResourceDisposals, snapshot)
+            ),
+            Effect.tap((snapshot) => emitUseAudit(options, name, snapshot, request.traceId)),
+            Effect.tapError((error) => emitFailureAudit(options, name, request.jobId, error))
+          )
+        )
       )
     )
   )
