@@ -42,16 +42,6 @@
       "name": "IndexedDbVersion",
       "kind": "value",
       "signature": "import type { NonEmptyReadonlyArray } from \"effect/Array\"; import type { Pipeable } from \"effect/Pipeable\"; import type * as IndexedDbTable from \"./IndexedDbTable.ts\"; declare const TypeId = \"~@effect/platform-browser/IndexedDbVersion\"; /** * @since 4.0.0 * @category interface */ export interface IndexedDbVersion<out Tables extends IndexedDbTable.AnyWithProps> extends Pipeable { new (_: never): {}; readonly [TypeId]: typeof TypeId; readonly tables: ReadonlyMap<string, Tables>; } /** * @since 4.0.0 * @category models */ export interface Any { readonly [TypeId]: typeof TypeId; } /** * @since 4.0.0 * @category models */ export type AnyWithProps = IndexedDbVersion<IndexedDbTable.AnyWithProps>; /** * @since 4.0.0 * @category models */ export type Tables<Db extends Any> = Db extends IndexedDbVersion<infer _Tables> ? _Tables : never; /** * @since 4.0.0 * @category models */ export type TableWithName<Db extends Any, TableName extends string> = IndexedDbTable.WithName<Tables<Db>, TableName>; /** * @since 4.0.0 * @category models */ export type SchemaWithName<Db extends Any, TableName extends string> = IndexedDbTable.TableSchema<IndexedDbTable.WithName<Tables<Db>, TableName>>; /** * @since 4.0.0 * @category constructors */ export declare const make: <const Tables extends NonEmptyReadonlyArray<IndexedDbTable.AnyWithProps>>(...tables: Tables) => IndexedDbVersion<Tables[number]>; export {}; //# sourceMappingURL=IndexedDbVersion.d.ts.map"
-    },
-    {
-      "name": "PgliteClientConfig",
-      "kind": "type",
-      "signature": "export type PgliteClientConfig = PgliteClientConfig.Create | PgliteClientConfig.Live;"
-    },
-    {
-      "name": "RendererPgliteLive",
-      "kind": "value",
-      "signature": "const RendererPgliteLive: (options?: PgliteClientConfig) => Layer.Layer<PgliteClient | SqlClient, SqlError>"
     }
   ]
 }
