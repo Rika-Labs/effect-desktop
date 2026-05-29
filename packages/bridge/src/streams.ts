@@ -141,6 +141,7 @@ export const makeBridgeStreamRegistry = (
         SubscriptionRef.modifySome(state, (current) => {
           let removed = 0
           const entries = new Map(current.entries)
+          const generations = new Map(current.generations)
           for (const [streamId, entry] of current.entries) {
             if (
               entry.state === "terminal" &&
@@ -148,13 +149,14 @@ export const makeBridgeStreamRegistry = (
               now - entry.terminalAt >= cleanupGraceMs
             ) {
               entries.delete(streamId)
+              generations.delete(streamId)
               removed += 1
             }
           }
           if (removed === 0) {
             return [0, Option.none()] as const
           }
-          return [removed, Option.some({ ...current, entries })] as const
+          return [removed, Option.some({ entries, generations })] as const
         }),
       snapshot: () => SubscriptionRef.get(state).pipe(Effect.map(registrySnapshot)),
       observe: () => SubscriptionRef.changes(state).pipe(Stream.map(registrySnapshot))

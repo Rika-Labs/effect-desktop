@@ -106,7 +106,9 @@ const isJsonValue = (value: unknown, seen = new Set<object>(), allowUndefined = 
 
   if (Array.isArray(value)) {
     seen.add(value)
-    return value.every((item) => isJsonValue(item, seen))
+    const serializable = value.every((item) => isJsonValue(item, seen))
+    seen.delete(value)
+    return serializable
   }
 
   if (Object.prototype.toString.call(value) !== "[object Object]") {
@@ -117,7 +119,9 @@ const isJsonValue = (value: unknown, seen = new Set<object>(), allowUndefined = 
   }
 
   seen.add(value)
-  return Object.values(value).every((item) => isJsonValue(item, seen, true))
+  const serializable = Object.values(value).every((item) => isJsonValue(item, seen, true))
+  seen.delete(value)
+  return serializable
 }
 
 const formatUnknownError = (error: unknown): string => {
