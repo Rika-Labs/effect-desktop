@@ -77,7 +77,7 @@ Per-call frame size is bounded by `MAX_FRAME_BYTES` (4 MiB) unless a smaller `ma
 - `InvalidOutput` — handler return value failed schema validation (`method`, `reason`).
 - `MethodNotFound` — no registered handler for `method`.
 - `Unsupported` — operation isn't supported on this platform (`reason`).
-- `Cancelled` — fiber was interrupted (`source: "renderer" | "runtime" | "host"`).
+- `Cancelled` — fiber was interrupted (`source: string`; the framework only emits `"renderer"`, `"runtime"`, or `"host"`).
 
 `hostProtocolErrorRecoverableDefault(tag)` returns the policy-defined recoverable flag.
 

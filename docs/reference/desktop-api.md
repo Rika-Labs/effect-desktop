@@ -26,7 +26,7 @@ function make<RIn = never, E = never, RpcHandlerR = unknown>(
 ): DesktopAppDescriptor<RIn, E, RpcHandlerR>
 ```
 
-`id` defaults to `"app"` when omitted. All declaration fields default to empty arrays.
+`id` defaults to `"app"` when omitted. `windows` is required. `native`, `rpcs`, `permissions`, and `workflows` default to empty arrays, and `providers` defaults to bun + system.
 
 | Field         | Type                            | Description                                                                                                                  |
 | ------------- | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
@@ -119,9 +119,11 @@ Duplicate native surfaces and duplicate RPC method names fail as typed `DesktopC
 Returns one immutable permission declaration. Compose multiple declarations with `Desktop.permissions(...)` and pass the result as `permissions:`.
 
 ```ts
+import { P } from "@orika/core"
+
 permissions: Desktop.permissions(
-  Desktop.permission(Permission.filesystemRead({ roots: ["/tmp/app"] })),
-  Desktop.permission(Permission.networkConnect({ hosts: ["api.example.com"] }))
+  Desktop.permission(P.filesystemRead({ roots: ["/tmp/app"] })),
+  Desktop.permission(P.networkConnect({ hosts: ["api.example.com"] }))
 )
 ```
 
@@ -144,18 +146,18 @@ Packages an `RpcGroup` into the layer-first artifacts: server layer, generated c
 
 Runtime entry helpers used by the framework's launcher. Application code rarely calls these directly.
 
-## `Desktop.runtimeGraph()`, `Desktop.runtimeGraphSnapshot()`
+## `Desktop.runtimeGraph(config)`, `Desktop.runtimeGraphSnapshot(config)`
 
-Returns the assembled runtime layer graph (nodes and edges) as data — useful for devtools and `inspect` commands.
+Both take the app descriptor (config) and return an `Effect` that yields the assembled runtime layer graph (nodes and edges) as data — useful for devtools and `inspect` commands. Run the snapshot effect to obtain a `LayerGraphSnapshot`.
 
 ```ts
-const snapshot = Desktop.runtimeGraphSnapshot()
+const snapshot = yield * Desktop.runtimeGraphSnapshot(App)
 // LayerGraphSnapshot — { providers: { runtime, webview }, nodes, providerFacts, failures }
 ```
 
-## `Desktop.Rpcs`, `Desktop.describeRpcs()`
+## `Desktop.describeRpcs(app, group)`
 
-Contract registry helpers for tooling — list every registered RPC group and its descriptor.
+Contract helper for tooling — returns the RPC endpoint descriptors for the given group of the app descriptor.
 
 ## Re-exports for convenience
 

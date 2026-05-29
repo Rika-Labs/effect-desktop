@@ -171,29 +171,29 @@ does not route them to partitioned browser state yet.
 
 ```ts
 import { Desktop } from "@orika/core"
-import { Native, WebView, WebViewError, WebViewRpcs } from "@orika/native"
+import { Native, WebView, WebViewRpcs } from "@orika/native"
 ```
 
 ## Methods
 
 The callable RPCs on this surface are:
 
-| Method                | Payload                                     | Success          |
-| --------------------- | ------------------------------------------- | ---------------- |
-| `create`              | `{ window, url, originPolicy, isolation? }` | webview handle   |
-| `loadRoute`           | `{ webview, route }`                        | `void`           |
-| `loadUrl`             | `{ webview, url }`                          | `void`           |
-| `reload`              | `{ webview }`                               | `void`           |
-| `stop`                | `{ webview }`                               | `void`           |
-| `goBack`              | `{ webview }`                               | `void`           |
-| `goForward`           | `{ webview }`                               | `void`           |
-| `getNavigationState`  | `{ webview }`                               | navigation state |
-| `print`               | `{ webview }`                               | `void`           |
-| `setZoom`             | `{ webview, zoom }`                         | `void`           |
-| `openDevTools`        | `{ webview }`                               | `void`           |
-| `closeDevTools`       | `{ webview }`                               | `void`           |
-| `setNavigationPolicy` | `{ webview, policy }`                       | `void`           |
-| `destroy`             | `{ webview }`                               | `void`           |
+| Method                | Payload                                               | Success          |
+| --------------------- | ----------------------------------------------------- | ---------------- |
+| `create`              | `{ window, url, originPolicy, profile?, isolation? }` | webview handle   |
+| `loadRoute`           | `{ webview, route }`                                  | `void`           |
+| `loadUrl`             | `{ webview, url }`                                    | `void`           |
+| `reload`              | `{ webview }`                                         | `void`           |
+| `stop`                | `{ webview }`                                         | `void`           |
+| `goBack`              | `{ webview }`                                         | `void`           |
+| `goForward`           | `{ webview }`                                         | `void`           |
+| `getNavigationState`  | `{ webview }`                                         | navigation state |
+| `print`               | `{ webview }`                                         | `void`           |
+| `setZoom`             | `{ webview, zoom }`                                   | `void`           |
+| `openDevTools`        | `{ webview }`                                         | `void`           |
+| `closeDevTools`       | `{ webview }`                                         | `void`           |
+| `setNavigationPolicy` | `{ webview, policy }`                                 | `void`           |
+| `destroy`             | `{ webview }`                                         | `void`           |
 
 ## Capability facts (non-callable)
 

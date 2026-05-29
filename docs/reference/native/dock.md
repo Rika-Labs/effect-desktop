@@ -12,13 +12,13 @@ Dock/taskbar-facing application state. The surface is intentionally explicit abo
 
 ## Methods
 
-| Method             | Payload                                                          | Success                  |
-| ------------------ | ---------------------------------------------------------------- | ------------------------ |
-| `setBadgeCount`    | `{ count: number }`                                              | `void`                   |
-| `setBadgeText`     | `{ text: string \| null }`                                       | `void`                   |
-| `setProgress`      | `{ value: number \| null, options?: { state?: ProgressState } }` | `void`                   |
-| `requestAttention` | `{ critical?: boolean }`                                         | `void`                   |
-| `isSupported`      | `{ method: DockMethod }`                                         | `{ supported: boolean }` |
+| Method             | Payload                                                              | Success                  |
+| ------------------ | -------------------------------------------------------------------- | ------------------------ |
+| `setBadgeCount`    | `{ count: number }`                                                  | `void`                   |
+| `setBadgeText`     | `{ text: string \| null }`                                           | `void`                   |
+| `setProgress`      | `{ value: number \| null, options?: { state?: DockProgressState } }` | `void`                   |
+| `requestAttention` | `{ critical?: boolean }`                                             | `void`                   |
+| `isSupported`      | `{ method: DockMethod }`                                             | `{ supported: boolean }` |
 
 ## Capability facts (non-callable)
 

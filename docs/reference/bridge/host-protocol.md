@@ -33,7 +33,7 @@ import {
 - `HOST_PING_METHOD = "host.ping"` — handshake liveness.
 - `HOST_VERSION_METHOD = "host.version"` — handshake version exchange.
 - `WINDOW_CREATE_METHOD = "Window.create"`, `WINDOW_DESTROY_METHOD = "Window.destroy"`, `WINDOW_EVENT_METHOD = "Window.Event"` — window lifecycle and the host window event stream.
-- The full `Window.*`, `Dock.*`, `Menu.*`, `WebView.*`, `Pty.*`, `SafeStorage.*`, `SessionProfile.*`, `CookieStore.*`, `BrowsingData.*`, `SessionPermission.*`, `Download.*`, `NetworkAuth.*`, `WebRequest.*`, and `NativeNetwork.*` method names are exported as `*_METHOD` constants from `@orika/bridge`. See `packages/bridge/src/protocol.ts` for the canonical list.
+- The full `Window.*`, `Dock.*`, `Menu.*`, `ContextMenu.*`, `WebView.*`, `Pty.*`, `SafeStorage.*`, `SessionProfile.*`, `CookieStore.*`, `BrowsingData.*`, `SessionPermission.*`, `Download.*`, `NetworkAuth.*`, `WebRequest.*`, and `NativeNetwork.*` method names are exported as `*_METHOD` constants from `@orika/bridge`. See `packages/bridge/src/protocol.ts` for the canonical list.
 - Renderer reconnect events: `RENDERER_DISCONNECTED_EVENT`, `RENDERER_RESUME_METHOD`, `RENDERER_RESUMED_EVENT`, `RENDERER_RESUME_DENIED_EVENT`. `DEFAULT_RECONNECT_WINDOW_MS` and `DEFAULT_MAX_BACKFILL_EVENTS` set the resume defaults.
 
 ## Handshake clients
@@ -46,7 +46,7 @@ import { makeHostHandshakeClient, makeHostWindowClient, negotiateHostVersion } f
 
 `negotiateHostVersion(client, expected?)` calls `client.version()` and fails with a `HostProtocolInvalidStateError` if the host's `protocolVersion` does not match `expected` (defaults to `HOST_PROTOCOL_VERSION`).
 
-`makeHostWindowClient(exchange, options?)` returns the raw host `Window` client used by native adapters. It covers `create`, `show`/`hide`/`focus`, lookup (`getCurrent`, `getById`, `list`, `getParent`, `getChildren`), bounds/state/chrome methods, attention/progress/decorations, fullscreen, vibrancy, and `subscribeEvents` for `Window.Event`.
+`makeHostWindowClient(exchange, options?)` returns the raw host `Window` client used by native adapters. It covers `create`, `show`/`hide`/`focus`, lookup (`getCurrent`, `getById`, `list`, `getParent`, `getChildren`), bounds/state/chrome methods, attention/progress/decorations, fullscreen, vibrancy, and `events()` for the `Window.Event` stream (the wire method is `Window.subscribeEvents`).
 
 ## Why constants
 

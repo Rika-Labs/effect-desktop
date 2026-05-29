@@ -71,7 +71,7 @@ Device state is a host snapshot at `open` and `selectDevice`; this adapter does 
 
 `RealtimeMediaSessionError` is the canonical host protocol error union. Permission denial, unsupported platforms, invalid input, and host failures are typed tagged failures.
 
-`isSupported` currently reports `reason: "host-media-unavailable"` when the host adapter is present but the runtime cannot open and release default microphone and speaker streams. It reports `reason: "host-media-startup-unverified"` on Windows and Linux because CPAL enqueues stream startup there instead of synchronously proving `play()`. OS access denial during stream open is reported as `PermissionDenied` when CPAL exposes a permission-shaped backend error. The older `"host-adapter-unimplemented"` reason remains for clients that explicitly install the unsupported test client.
+`isSupported` currently reports `reason: "host-media-unavailable"` when the host adapter is present but the runtime cannot open and release default microphone and speaker streams. It reports `reason: "host-media-startup-unverified"` on Windows and Linux because CPAL enqueues stream startup there instead of synchronously proving `play()`. OS access denial during stream open is reported as `PermissionDenied` when CPAL exposes a permission-shaped backend error. The older `"host-adapter-unimplemented"` reason is what the in-process test clients (both the memory client and the unsupported client) report from `isSupported`; the real host instead reports `host-media-unavailable` or `host-media-startup-unverified`.
 
 ## Testing
 

@@ -31,19 +31,19 @@ import {
 
 ## API
 
-| Method             | Signature                                                                                             | Description                                                     |
-| ------------------ | ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| `register`         | `(input: RegisterResourceInput) => Effect<ManagedResourceHandle, ResourceInvalidArgumentError>`       | Register a new resource and obtain a managed handle.            |
-| `get`              | `(id: ResourceId) => Effect<Option<ResourceEntry>>`                                                   | Look up a specific entry.                                       |
-| `list`             | `() => Effect<RegistrySnapshot>`                                                                      | Structural snapshot for devtools and tests.                     |
-| `dispose`          | `(id: ResourceId) => Effect<void>`                                                                    | Dispose a resource explicitly (idempotent).                     |
-| `observe`          | `() => Stream<RegistrySnapshot>`                                                                      | Stream of registry snapshots.                                   |
-| `observeLifecycle` | `() => Stream<ResourceLifecycleEvent>`                                                                | Stream of `ResourceRegistered`/`ResourceDisposed`/scope events. |
-| `declareScope`     | `(scope, parent?) => Effect<void, ResourceInvalidArgumentError>`                                      | Declare a scope and optional parent linkage.                    |
-| `closeScope`       | `(scope) => Effect<void>`                                                                             | Close a scope; disposes its (and descendants') resources.       |
-| `share`            | `(handle, targetScope) => Effect<ManagedResourceHandle, ResourceInvalidArgumentError \| StaleHandle>` | Re-key a resource under a different owner scope.                |
-| `assertFresh`      | `(handle) => Effect<ResourceEntry, StaleHandle>`                                                      | Validate handle generation before privileged operations.        |
-| `close`            | `() => Effect<void>`                                                                                  | Close the registry; release all retained scopes.                |
+| Method             | Signature                                                                                             | Description                                                                                                                                               |
+| ------------------ | ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `register`         | `(input: RegisterResourceInput) => Effect<ManagedResourceHandle, ResourceInvalidArgumentError>`       | Register a new resource and obtain a managed handle.                                                                                                      |
+| `get`              | `(id: ResourceId) => Effect<Option<ResourceEntry>>`                                                   | Look up a specific entry.                                                                                                                                 |
+| `list`             | `() => Effect<RegistrySnapshot>`                                                                      | Structural snapshot for devtools and tests.                                                                                                               |
+| `dispose`          | `(id: ResourceId) => Effect<void>`                                                                    | Dispose a resource explicitly (idempotent).                                                                                                               |
+| `observe`          | `() => Stream<RegistrySnapshot>`                                                                      | Stream of registry snapshots.                                                                                                                             |
+| `observeLifecycle` | `() => Stream<ResourceLifecycleEvent>`                                                                | Stream of `ResourceRegistered`/`ResourceDisposed`/scope events.                                                                                           |
+| `declareScope`     | `(scope, parent?) => Effect<void, ResourceInvalidArgumentError>`                                      | Declare a scope and optional parent linkage.                                                                                                              |
+| `closeScope`       | `(scope) => Effect<void>`                                                                             | Close a scope; disposes its (and descendants') resources.                                                                                                 |
+| `share`            | `(handle, targetScope) => Effect<ManagedResourceHandle, ResourceInvalidArgumentError \| StaleHandle>` | Create an additional handle for an existing resource under a different owner scope; the resource's cleanup runs only after the last sharing scope closes. |
+| `assertFresh`      | `(handle) => Effect<ResourceEntry, StaleHandle>`                                                      | Validate handle generation before privileged operations.                                                                                                  |
+| `close`            | `() => Effect<void>`                                                                                  | Close the registry; release all retained scopes.                                                                                                          |
 
 `RegisterResourceInput` carries `kind`, `ownerScope`, `state`, optional `id`/`reusableId`/`disposalGraceMs`, and an optional `dispose` finalizer. The runtime primitives (`Process`, `PTY`, `Worker`, `Sidecar`, `Filesystem.watch`, window services) call `register` and `assertFresh` on the caller's behalf.
 

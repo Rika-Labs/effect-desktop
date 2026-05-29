@@ -56,7 +56,7 @@ const FilesystemLive = MemoryFilesystem.layer({
 
 ## Why match the production contract
 
-So tests fail the same way production fails. A path traversal that returns `FilesystemPermissionDenied` in production also returns it in `MemoryFilesystem`.
+So tests fail the same way production fails. A path traversal that returns `PermissionDenied` in production also returns it in `MemoryFilesystem`.
 
 ## Related
 

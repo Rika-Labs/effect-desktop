@@ -63,15 +63,9 @@ await runtime.runPromise(
 - `TestDesktop.windows` — `Effect.Effect<readonly TestWindowRecord[]>` reading the `TestWindowState`.
 - `TestDesktop.expectNoLeakedResources` — fails with `ResourceLeakError` when handles remain open.
 
-## Why each module is run three ways in CI
+## Keeping test layers honest in CI
 
-Each `packages/native/src/<name>.test.ts` runs against:
-
-1. Direct service layer.
-2. Bridge client layer.
-3. Test layer.
-
-If the test layer drifts from the live contract, CI catches it. This is what keeps the test layers honest.
+The design intent is that a test layer never drifts from the live contract. Today this is enforced for Clipboard: a `CapabilityLaws` parity suite in `packages/test/src/index.test.ts` runs the same contract laws against both the test layer (`ClipboardTest()`) and the bridge client layer, so a divergence fails CI. See the Source link below for the suite.
 
 ## Capability law helpers
 

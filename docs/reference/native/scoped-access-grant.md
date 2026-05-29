@@ -77,14 +77,16 @@ accepts a request and later fails to provide durable access.
 | Windows  | `unsupported` | `host-adapter-unimplemented` |
 | Linux    | `unsupported` | `host-adapter-unimplemented` |
 
-`isSupported` returns `{ supported: false, reason: "host-adapter-unimplemented" }`. `grant`, `resolve`, and `revoke` are non-callable capability facts published with `support.status: "unsupported"`, not invocable RPCs. The bridge-backed `events` stream also fails typed `Unsupported` before opening a host subscription. The memory client still emits deterministic events for service tests.
+`isSupported` returns `{ supported: false, reason: "host-adapter-unimplemented" }`. `grant`, `resolve`, and `revoke` are non-callable capability facts published with `support.status: "unsupported"`, not invocable RPCs. The bridge-backed `events` stream also fails typed `Unsupported` before opening a host subscription. The memory client returns deterministic `isSupported(true)` and an empty event stream.
 
 ## Testing
 
-Use `makeScopedAccessGrantMemoryClient()` for deterministic `isSupported` and
-event tests without native prompts. Use `makeScopedAccessGrantUnsupportedClient()`
-when a test needs the typed unsupported path. Provide either client with
-`Layer.succeed(ScopedAccessGrant)(client)`.
+Use `makeScopedAccessGrantMemoryClient()` for deterministic `isSupported`
+without native prompts; it yields an empty event stream. Use
+`makeScopedAccessGrantUnsupportedClient()` when a test needs the typed
+unsupported path. Provide either client with
+`Layer.succeed(ScopedAccessGrant)(client)`. Drive event-stream tests via the
+direct RPC client (`ScopedAccessGrantSurface.clientLayer`) over a host stream.
 
 ## Related
 

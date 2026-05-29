@@ -61,9 +61,7 @@ Returns:
 - `clearResolution(token)` — drop a stored resolution (e.g. after surfacing a failure).
 
 ```tsx
-const queue = usePermissionApproval((token, approved) =>
-  Effect.flatMap(ApprovalBroker, (broker) => broker.respond(token, approved))
-)
+const queue = usePermissionApproval((token, approved) => host.decideApproval(token, approved))
 
 return queue.pending.map((req) => (
   <Modal key={req.token}>

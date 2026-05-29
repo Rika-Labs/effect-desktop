@@ -34,7 +34,7 @@ import {
   makeInMemoryTransportPair,
   encodeFrame,
   FrameDecoder
-} from "@orika/core"
+} from "@orika/core/runtime/transport"
 ```
 
 ## TransportApi
@@ -65,7 +65,7 @@ interface TransportConnection {
 }
 ```
 
-`Transport.connect` requires a `Socket.Socket` service in scope; pair it with `layerStdioSocket` (Node/Bun stdio) or `layerPostMessageSocket` (browser renderer) from `@orika/core`. `instrumentTransportConnection(conn, { inspector, target })` wraps a connection so transport `connect`, `backpressure`, and `disconnect` events flow to a `BridgeInspector`.
+`Transport.connect` requires a `Socket.Socket` service in scope; pair it with `layerStdioSocket` (Node/Bun stdio, from `@orika/core/runtime/stdio-socket`) or `layerPostMessageSocket` (browser renderer, from `@orika/core/runtime/postmessage-socket`). `instrumentTransportConnection(conn, { inspector, target })` wraps a connection so transport `connect`, `backpressure`, and `disconnect` events flow to a `BridgeInspector`.
 
 ## Tests
 

@@ -10,7 +10,7 @@ effect_version: 4
 
 `NetworkAuth` declares profile-scoped proxy policy, HTTP authentication decisions, certificate decisions, and events. The `SessionProfileHandle` is the session identity; network decisions do not live in global browser state.
 
-The public service is Layer-first and test-substitutable. The TypeScript service validates Schema contracts before transport, checks `native.invoke` permissions before client side effects, and exposes `NetworkAuth.events.Event` as the canonical RPC stream contract. The native bridge lowers that event contract to the existing `NetworkAuth.Event` wire method. The memory client proves success, denial, unsupported, host failure, and certificate-security behavior without native WebView provider hooks.
+The public service is Layer-first and test-substitutable. The TypeScript service validates Schema contracts before transport, checks `native.invoke` permissions before client side effects, and exposes `NetworkAuth.events.Event` as the canonical RPC stream contract. The native bridge lowers that event contract to the existing `NetworkAuth.Event` wire method. The memory client proves the success path (`isSupported`, `setProxy`) with empty event streams; `makeNetworkAuthUnsupportedClient` proves the typed unsupported path. Denial and certificate decisions are non-callable, so no client exercises them.
 
 ## Methods
 

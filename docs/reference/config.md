@@ -81,9 +81,9 @@ Decodes an untyped value (e.g. parsed JSON) through the schema. Returns a typed 
 const config = await Effect.runPromise(decodeDesktopConfig(rawJson))
 ```
 
-## `mergeDesktopConfig(...configs)`
+## `mergeDesktopConfig(shared, app)`
 
-Merges multiple partial configs left-to-right. Useful for composing per-environment overrides.
+Merges a shared base config with an app override. The `app` (second) argument wins on conflicts. Useful for composing a shared workspace config with per-app overrides.
 
 ## Runtime and WebView engines
 
@@ -113,11 +113,11 @@ The default `script-src` is nonce-based and includes `'wasm-unsafe-eval'` so pac
 interface ProductionCheckInput {
   readonly config: ProductionSecurityConfig
   readonly configPath?: string
-  readonly rendererFiles?: ReadonlyArray<ProductionCheckFile>
+  readonly rendererFiles?: readonly unknown[]
 }
 ```
 
-`config` is the `security` / `permissions` / `update` / `appProtocol` / `resources` / `contracts` slice of `DesktopConfig`. `rendererFiles` are scanned for renderer-side rule violations.
+`config` is the `security` / `permissions` / `update` / `appProtocol` / `resources` / `contracts` slice of `DesktopConfig`. `rendererFiles` are scanned for renderer-side rule violations; each entry must conform to `ProductionCheckFile` (`{ path, content }`) and is validated at runtime, not constrained at the type level.
 
 Returns:
 
@@ -152,7 +152,7 @@ class ProductionCheckReport {
 | `unsupported-capability-without-guard` | Platform-limited call without `isSupported` guard        |
 | `secret-pattern-not-redacted`          | Secret-shaped value emitted without redaction            |
 
-Rules that support acknowledgement (currently `weakened-csp` and `devtools-in-prod`) downgrade from `fail` to `acknowledged` when the config sets the rule-specific opt-in plus a justification. The release gate refuses unacknowledged failures.
+`weakened-csp` downgrades from `fail` to `acknowledged` when the config sets `security.csp.acknowledgeWeakening` plus a non-empty `security.csp.justification`. `devtools-in-prod` never fails: enabling `security.devtoolsInProd` surfaces an `acknowledged` entry with a framework-supplied justification, and devtools still require the `--devtools` launch flag at runtime. The release gate refuses unacknowledged failures.
 
 ## Acknowledging a weakened CSP
 
@@ -175,7 +175,7 @@ const text = formatProductionCheckReport(report)
 console.log(text)
 ```
 
-Renders the report as a human-readable table for terminals.
+Renders the report as a human-readable text report for terminals: a header line plus one labeled stanza (Location / Reason / Fix) per violation.
 
 ## Related
 

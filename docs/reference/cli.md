@@ -57,9 +57,11 @@ The CLI rejects unknown flags per command. The matrix below enumerates the exact
 | `doctor`   | `--config <path>`, `--ci`, `--json`                                                                                                                                                              |
 | `check`    | One of `--production`, `--repro`, `--api`, `--docs`, `--release`, `--a11y`, `--semver`; plus `--config <path>`, `--renderer <name>`, `--platform <id>`, `--artifact <kind>`, `--write`, `--json` |
 
+Every command also accepts `--help`/`-h`.
+
 `--platform` accepts a desktop target id such as `macos-arm64`, `macos-x64`, `windows-x64`, `linux-x64`, or `linux-arm64`. There is no `--target`, no `--channel`, and no `--baseline` flag — update channel comes from `desktop.config.ts#update.channel`.
 
-`--json` switches every command to a Schema-encoded JSON report on stdout (success) or stderr (failure). The check command modes are mutually exclusive; combining two (e.g. `--repro --api`) is a usage error.
+`--json` emits a JSON report on stdout (success) or stderr (failure). The doctor report is Schema-encoded; the others are serialized directly. The check command modes are mutually exclusive; combining two (e.g. `--repro --api`) is a usage error.
 
 ## `runDesktopBuild(options) → DesktopBuildReport`
 
@@ -120,12 +122,12 @@ Each command exports a closed error union:
 
 ## Format helpers
 
-Each report has a matching formatter:
+`formatDoctorReport` is the only formatter exported from `@orika/cli`:
 
 ```ts
-import { formatPackageReport, formatSignReport, formatDoctorReport } from "@orika/cli"
+import { formatDoctorReport } from "@orika/cli"
 
-console.log(formatPackageReport(report))
+console.log(formatDoctorReport(report))
 ```
 
 ## Related

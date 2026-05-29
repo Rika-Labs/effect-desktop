@@ -24,10 +24,11 @@ import {
 
 ## API
 
-| Method            | Signature                                                                 |
-| ----------------- | ------------------------------------------------------------------------- |
-| `get`             | `(kind, provider) => Effect<Provider, ProviderRegistryError>`             |
-| `capabilitiesFor` | `(kind, provider) => Effect<ProviderCapability[], ProviderRegistryError>` |
+| Member            | Signature                                                                   |
+| ----------------- | --------------------------------------------------------------------------- |
+| `providers`       | `ReadonlyArray<Provider>` (frozen array of registered provider descriptors) |
+| `get`             | `(kind, provider) => Effect<Provider, ProviderRegistryError>`               |
+| `capabilitiesFor` | `(kind, provider) => Effect<ProviderCapability[], ProviderRegistryError>`   |
 
 ## Provider kinds
 

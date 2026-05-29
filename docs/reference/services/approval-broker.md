@@ -69,7 +69,7 @@ class ApprovalRequest {
 - **Coalescing.** Identical `(operation, actor, resource)` requests share one prompt and resolve together.
 - **At most one active prompt per actor.** Distinct requests queue behind it up to `maxQueueDepthPerActor` (default `8`).
 - **Denied-for-scope cache.** An outcome of `denied-for-scope` is cached per `(operation, actor, resource)`; future identical requests resolve immediately with the cached `denied-for-scope` outcome from `source: "scope-cache"`.
-- **`devApproveAll` bypass.** Resolves every request as `approved-once` without touching the port; emits `approval-requested` then `approval-granted` audit events with `source: "dev-bypass"`.
+- **`devApproveAll` bypass.** Resolves every request as `approved-once` (outcome `source: "dev-bypass"`) without touching the port; emits `approval-requested` then `approval-granted` audit events.
 
 ## `ApprovalPromptPort`
 

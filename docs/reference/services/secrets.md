@@ -54,8 +54,8 @@ Storage keys are derived as `appId/namespace/key`; `list` filters the underlying
 
 - `makeSecretBytes(array)` — wrap a `Uint8Array` as `Redacted<Uint8Array>`.
 - `makeSecretBytesFromUtf8(string)` — encode a string as UTF-8 bytes and wrap.
-- `unsafeSecretBytes(bytes)` — `Redacted.value(...)` shortcut for handlers and tests.
-- `wipeSecretBytes(bytes)` — zero the underlying buffer in place.
+- `unsafeSecretBytes(bytes)` — returns a copy of the underlying bytes (via `Redacted.value(...)`); mutating it does not affect the stored secret.
+- `wipeSecretBytes(secret) => Effect<void>` — returns an Effect that zeroes the underlying buffer and wipes the `Redacted` value when run; must be yielded.
 
 ## Errors
 
@@ -75,7 +75,7 @@ Each call checks `secrets.read` (`get`, `list`) or `secrets.write` (`set`, `dele
 
 ## Audit
 
-Every operation emits a `secret/accessed` audit event with `operation`, `namespace`, `key` (when present), and `outcome` (`"ok"`, `"denied"`, `"error"`) — never the value. A non-fatal audit failure on a pre-check is logged as a warning and ignored; a post-commit audit failure becomes `SecretsCommittedAuditFailedError` so the caller knows storage and audit diverged.
+Every operation emits a `secrets-accessed` audit event with `operation`, `namespace`, `key` (when present), and `outcome` (`"ok"`, `"denied"`, `"error"`) — never the value. A non-fatal audit failure on a pre-check is logged as a warning and ignored; a post-commit audit failure becomes `SecretsCommittedAuditFailedError` so the caller knows storage and audit diverged.
 
 ## Layer
 
@@ -93,9 +93,8 @@ const secrets = yield * Secrets
 yield * secrets.set("tokens", "github", makeSecretBytesFromUtf8("ghp_..."))
 
 const stored = yield * secrets.get("tokens", "github")
-const bytes = Redacted.value(stored)
-const text = new TextDecoder().decode(bytes)
-wipeSecretBytes(bytes)
+const text = new TextDecoder().decode(Redacted.value(stored))
+yield * wipeSecretBytes(stored)
 ```
 
 ## Test layer

@@ -27,7 +27,7 @@ native/web protocol boundary detail.
 
 `create`, `run`, and `destroy` are advertised in the native capability manifest as capability facts with `support.status: "unsupported"` (reason `host-adapter-unimplemented`). They are not invocable RPCs: the surface registers no handlers or client methods for them, and the RPC group exposes only `isSupported`. They exist only so the manifest can describe the intended sandbox lifecycle and so permission tooling can reason about the `native.invoke` authority they would require.
 
-When OS isolation support lands, `create` would accept `{ actor, policy, sandboxId?, traceId? }` and return `{ sandboxId, policy, state: "created" }`, `run` would accept `{ sandboxId, command, args?, traceId? }` and return `{ sandboxId, runId, status, exitCode?, stdout, stderr }`, and `destroy` would accept `{ sandboxId, traceId? }` and return `{ sandboxId, destroyed }`.
+When OS isolation support lands, `create` would accept `{ actor, policy, sandboxId?, traceId? }` and return `{ sandboxId, policy, state: "created" }`, `run` would accept `{ sandboxId, command, args?, runId?, traceId? }` and return `{ sandboxId, runId, status, exitCode?, stdout, stderr }`, and `destroy` would accept `{ sandboxId, traceId? }` and return `{ sandboxId, destroyed }`.
 
 ## Policy
 

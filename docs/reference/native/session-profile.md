@@ -31,7 +31,7 @@ The public service is Layer-first and test-substitutable. The TypeScript service
 - `id: "session-profile:<partition>"`
 - `ownerScope`: the supplied scope, or `"app"`
 
-The host validates live handles on `destroy`, `list`, `WebView.create`, and profile-scoped browsing-data operations.
+The host validates live handles on `destroy`, `WebView.create`, and profile-scoped browsing-data operations.
 
 `events()` consumes `SessionProfile.events.Event` and emits `opened`, `closed`, and `failed` lifecycle events from the host.
 

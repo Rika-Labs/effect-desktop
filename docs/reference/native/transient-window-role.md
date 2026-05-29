@@ -2,7 +2,7 @@
 
 Transient window roles describe product-neutral floating windows such as launchers, palettes, popovers, utility panels, and companion windows. The role contract is data: focus, dismissal, z-order, placement, and restoration policy are explicit fields rather than app-specific behavior.
 
-The public service is Layer-first and test-substitutable. It checks `native.invoke` permissions before host side effects and exposes platform support through the typed `isSupported` query.
+The public service is Layer-first and test-substitutable. The mutation capability facts (`open`, `reposition`, `dismiss`) advertise `native.invoke` authority; the callable `isSupported` query and event stream require no permission and perform no host side effects yet. It exposes platform support through the typed `isSupported` query.
 
 ## Surface
 
@@ -44,7 +44,7 @@ role adapter can publish real role lifecycle events.
 
 ## Diagnostics
 
-Recent failures are observable through the typed service failure channel and the event stream for substitutable clients.
+Failures surface as `TransientWindowRoleError` on the typed failure channel and as `failed`-phase events on `events()`.
 
 ## Files
 

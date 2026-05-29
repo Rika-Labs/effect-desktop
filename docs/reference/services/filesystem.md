@@ -54,7 +54,7 @@ import {
 `FilesystemError` is the `HostProtocolError` union:
 
 - `HostProtocolPermissionDeniedError` — path is outside every declared root, or its symlink target escapes the root. Recursive `remove` additionally requires `allowRecursiveRemove: true` in the permission policy.
-- `HostProtocolSymlinkEscapesRootError` — the requested path is inside a permitted root but its resolved target is not.
+- `HostProtocolSymlinkEscapesRootError` — the requested path is inside a permitted root but its resolved target is not. A regular (non-symlink) file with more than one hard link (`nlink > 1`) inside a permitted root is also rejected with this error, since a hard link can alias content outside the root.
 - `HostProtocolFileNotFoundError` — `ENOENT` or `NotFound` for read, stat, watch.
 - `HostProtocolDiskFullError` — `ENOSPC` on write or atomic write (`recoverable: true`).
 - `HostProtocolInvalidArgumentError` — malformed path, non-decoding input, or other unmappable OS error.

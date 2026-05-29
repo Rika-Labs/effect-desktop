@@ -25,7 +25,7 @@ const layer = MockHostLive({
 
 Records every call. Maintains an in-memory window registry. Preserves trace ids. Implements the full host-protocol surface: `host.version`, `host.ping`, and every `Window.*` method (`create`, `destroy`, `focus`, `show`, `hide`, `getCurrent`, `list`, bounds, attention, title, vibrancy, fullscreen, state).
 
-Fixtures receive `(request, state)` and return either a payload or an `Effect<payload, HostProtocolError>`. Non-JSON payloads fail with `HostProtocolInvalidOutputError`. After running, inspect `host.calls()` (frozen request snapshots) and `host.windows()` (live `WindowCreateInput` map).
+Fixtures receive `(request, state)` and return either a payload or an `Effect<payload, HostProtocolError>`. Non-JSON payloads fail with `HostProtocolInvalidOutputError`. After running, inspect `host.calls()` (frozen request snapshots) and `host.windows()` (a snapshot copy of the current `WindowCreateInput` registry).
 
 ## MockBridge
 
@@ -59,9 +59,16 @@ A request that has no pinned response fails with `HostProtocolInvalidStateError(
 ## Inject into a renderer test
 
 ```ts
+import { Effect } from "effect"
+import { makeUnaryDesktopTransportFromBridgeClientExchange } from "@orika/bridge"
 import { ReactDesktop } from "@orika/react"
 
-const DesktopApp = ReactDesktop.from(Manifest, { transport: bridge.exchange })
+const DesktopApp = ReactDesktop.from(Manifest)
+const transport = await Effect.runPromise(
+  makeUnaryDesktopTransportFromBridgeClientExchange(bridge.exchange)
+)
+
+// <DesktopApp.DesktopRoot transport={transport}>{children}</DesktopApp.DesktopRoot>
 ```
 
 ## Related

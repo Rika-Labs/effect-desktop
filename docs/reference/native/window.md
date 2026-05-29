@@ -20,12 +20,11 @@ import {
   WindowMethodNames,
   Native,
   type WindowApi,
-  type WindowCreateOptions,
-  type WindowHandle,
   type WindowPosition,
   type WindowSize,
   type WindowError
 } from "@orika/native"
+import { type WindowCreateOptions, type WindowHandle } from "@orika/native/contracts"
 import { WindowRendererRpcs } from "@orika/native/renderer"
 ```
 

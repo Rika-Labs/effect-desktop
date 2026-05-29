@@ -8,7 +8,7 @@ effect_version: 4
 
 # `Menu`
 
-App and window menus. The Rust host routes application/window menu installation, menu clearing, the capability query, and macOS menu activation events for items with `commandId`. `Menu.events.Activated` is a callable RPC stream for template items that include a `commandId`; bridge clients keep host wire compatibility by subscribing to `Menu.Activated`. Menu items bind to command ids registered with `CommandRegistry` through the TypeScript `Menu` service, but `bindCommand` is not a callable native RPC.
+App and window menus. The Rust host routes application/window menu installation, menu clearing, and macOS menu activation events for items with `commandId`. `Menu.events.Activated` is a callable RPC stream for template items that include a `commandId`; bridge clients keep host wire compatibility by subscribing to `Menu.Activated`. Menu items bind to command ids registered with `CommandRegistry` through the TypeScript `Menu` service, but `bindCommand` is not a callable native RPC.
 
 ## Import
 
@@ -28,9 +28,9 @@ The callable RPCs on this surface are:
 | `clear`              | `{ window? }`          | `void`                   |
 | `capability`         | `{ name, platform? }`  | `{ supported: boolean }` |
 
-`MenuTemplate` is `{ items }`. Items use `{ type: "item", id, label, commandId?, accelerator? }`; submenus use `{ type: "submenu", id, label, items }`; separators use `{ type: "separator" }`.
+`MenuTemplate` is `{ items }`. Items use `{ type: "item", id, label, commandId?, enabled?, checked?, accelerator? }`; submenus use `{ type: "submenu", id, label, enabled?, items }`; separators use `{ type: "separator", id? }`.
 
-`setApplicationMenu`, `setWindowMenu`, and `capability` are routed by the Rust host and report supported capability metadata; `clear` is supported on macOS and reports `partial` (`macos-menu-clear-only`).
+`setApplicationMenu` and `setWindowMenu` are routed to the Rust host's `Menu` primitive and report supported capability metadata; `clear` is also host-routed and is supported on macOS, reporting `partial` (`macos-menu-clear-only`). `capability` is not a native invoke: it resolves in TypeScript by querying capability metadata.
 
 ## Events
 
@@ -42,12 +42,12 @@ The callable RPCs on this surface are:
 
 Native command binding is currently supported by the macOS menu adapter. Windows and Linux report the capability as unsupported until their menu adapters emit equivalent activation events.
 
-Architecture-debt sweep outcome for #1861 and #1927: removed `MenuRpcEvents`, the local `subscribeMenuEvent` helper, the empty `MenuCapabilityFacts` export, the `MenuLive` alias, and the static `menuCapability(...)` helper. The `Menu` service remains because it owns durable command-binding policy over scoped activation listeners.
+The `Menu` service owns durable command-binding policy over scoped activation listeners.
 
 ## Errors
 
 - `MenuError` — generic.
-- `MenuCommandBindingError` — command id not found in `CommandRegistry`.
+- `MenuCommandBindingError` — `MenuError | CommandRegistryError`; command-binding failures including command-not-found, permission-denied, and other registry errors.
 
 ## App composition
 

@@ -10,7 +10,7 @@ effect_version: 4
 
 Product-neutral broker for the active selection and surrounding document context. Callers choose `access: "metadata"` when they only need counts, IDs, source application, and document descriptors; they must request `access: "content"` to receive selected text or document text.
 
-The public service is Layer-first and test-substitutable. The TypeScript service validates Schema contracts before transport, checks `native.invoke` permissions before host side effects, audits both metadata and content access, emits typed events, and preserves typed host failures.
+The public service is Layer-first and test-substitutable. The callable TypeScript surface validates Schema contracts before transport, returns a fail-closed `isSupported` result, exposes `events()` as a typed `Unsupported` stream, and preserves typed host failures. The `native.invoke` permission checks and the separate auditing of metadata versus content access belong to the intended contract for the non-callable read methods below; they have no backing code in the callable surface today.
 
 ## Methods
 
@@ -34,7 +34,7 @@ The surface exposes only the genuinely callable methods below.
 
 ## Access
 
-`metadata` responses omit text. `content` responses may include text and are audited separately from metadata access.
+In the intended contract for the non-callable read methods, `metadata` responses omit text while `content` responses may include text and are audited separately from metadata access. The callable surface produces neither response today.
 
 The `watchFocus` capability fact's intended contract registers an active watch with the resource registry and releases it through `stopWatching` on scope close. These describe the intended contract; the methods cannot currently be invoked.
 

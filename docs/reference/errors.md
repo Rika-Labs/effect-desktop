@@ -77,7 +77,7 @@ Also exported: `InvalidBridgeMetadataError`.
 
 - `NativeBoundaryError` — closes over `HostProtocolError` at the native/TypeScript boundary with a `reason` of `denied | unsupported | missing-host-method | invalid-input | invalid-output | host-failed`. Use `NativeBoundaryErrors.normalize` to convert host errors to this shape.
 - `NativeCapabilityLookupError`, `NativeCapabilityManifestError`, `UnsupportedCapability`.
-- `WindowPersistenceError`, `UpdateError`, `AppEventWindowNotOpen`.
+- `WindowPersistenceError`.
 
 ## Desktop framework adapters — `@orika/core`
 
@@ -164,18 +164,23 @@ Process and PTY failures arrive as `HostProtocolError` on the failing operation.
 - `ResourceInvalidArgumentError` (`_tag: "InvalidArgument"`)
 - `ResourceOwnerInvalidArgumentError` (`_tag: "InvalidArgument"`)
 - `TelemetryInvalidArgumentError` (`_tag: "InvalidArgument"`)
-- `TransportInvalidArgumentError`, `TransportFrameTooLargeError`, `TransportFrameTruncatedError`, `TransportClosedError`, `TransportWriteError`, `TransportReadError`, `TransportCloseError`
-- `FrameTooLargeError`, `FrameTruncatedError`, `InvalidFrameLimitError` (transport framing)
 - `SidecarError` (`_tag: "SidecarError"`)
 - `ProviderRegistryError` (`_tag: "ProviderRegistryError"`)
-- `StartupWindowConfigError`, `DesktopObservabilityConfigError`, `DesktopConfigError`, `DesktopRpcSurfaceError`
-- `WindowStateReadFailed`, `WindowStateWriteFailed`, `WindowStateCorruptRenamed`, `WindowStateInvalidArgumentError`
+- `DesktopObservabilityConfigError`, `DesktopConfigError`, `DesktopRpcSurfaceError`
 - `InspectorSafetyPolicyInvalidArgumentError`, `InspectorTransportInvalidArgumentError`
-- `StdoutWriteError`, `AutoSaveError`, `SqliteInvalidArgumentError`
+- `SqliteInvalidArgumentError`
 - `NativeParityMatrixError`
-- Workflows: `RestoreError`, `BackupError`
 
-`SqlError` from `@effect/sql-sqlite-bun` is propagated as-is for SQL operations.
+The following are not on the package root; import each from its deep `@orika/core/runtime/*` subpath:
+
+- `@orika/core/runtime/transport`: `TransportInvalidArgumentError`, `TransportFrameTooLargeError`, `TransportFrameTruncatedError`, `TransportClosedError`, `TransportWriteError`, `TransportReadError`, `TransportCloseError`, `FrameTooLargeError`, `FrameTruncatedError`, `InvalidFrameLimitError`.
+- `@orika/core/runtime/window-state`: `WindowStateReadFailed`, `WindowStateWriteFailed`, `WindowStateCorruptRenamed`, `WindowStateInvalidArgumentError`.
+- `@orika/core/runtime/window-supervisor`: `StartupWindowConfigError`.
+- `@orika/core/runtime/stdio-socket`: `StdoutWriteError`.
+- `@orika/core/runtime/auto-save`: `AutoSaveError`.
+- `@orika/core/runtime/workflows/restore`: `RestoreError`; `@orika/core/runtime/workflows/backup`: `BackupError`.
+
+`SqlError` from `effect/unstable/sql/SqlError` (re-exported from `@orika/core`) is propagated as-is for SQL operations.
 
 ## Tests — `@orika/test`
 

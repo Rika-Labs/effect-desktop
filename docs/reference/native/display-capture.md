@@ -12,12 +12,14 @@ effect_version: 4
 
 The current Rust host adapter captures on macOS through the system `screencapture` tool. This keeps macOS Screen Recording consent in the OS path and returns typed `PermissionDenied` when the OS denies capture. Windows and Linux still return typed `Unsupported` until platform adapters are implemented.
 
-| Method           | Payload                                          | Success                  |
-| ---------------- | ------------------------------------------------ | ------------------------ |
-| `captureDisplay` | `{ actor, grant, target: { displayId }}`         | `{ image, metadata }`    |
-| `captureWindow`  | `{ actor, grant, target: { windowId }}`          | `{ image, metadata }`    |
-| `captureRegion`  | `{ actor, grant, target: { displayId, region }}` | `{ image, metadata }`    |
-| `isSupported`    | —                                                | `{ supported, reason? }` |
+| Method           | Payload                                                            | Success                  |
+| ---------------- | ------------------------------------------------------------------ | ------------------------ |
+| `captureDisplay` | `{ actor, grant, target: { source: "display", displayId }}`        | `{ image, metadata }`    |
+| `captureWindow`  | `{ actor, grant, target: { source: "window", windowId }}`          | `{ image, metadata }`    |
+| `captureRegion`  | `{ actor, grant, target: { source: "region", displayId, region }}` | `{ image, metadata }`    |
+| `isSupported`    | —                                                                  | `{ supported, reason? }` |
+
+Each capture request also accepts an optional top-level `traceId`. The `source` field on `target` is a required discriminant that must match the capture method, or the host rejects the request.
 
 `image` contains `mime: "image/png" | "image/jpeg"` and `bytes: number[]` with values from `0` through `255`. The public client rejects empty bytes and mismatched image headers. `metadata` records source identity and dimensions without storing image bytes.
 

@@ -18,7 +18,6 @@ import {
   ProcessLayer,
   ProcessLive,
   type ProcessApi,
-  type ProcessSpawnInput,
   type ProcessSpawnOptions,
   type ProcessExitStatus,
   type ProcessHandle,

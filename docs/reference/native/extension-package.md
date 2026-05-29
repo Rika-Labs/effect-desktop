@@ -43,7 +43,7 @@ Each package manifest declares:
 - `compatibility`: `minHostVersion?`, `maxHostVersion?`
 - `capabilities`: Schema-typed permission capability declarations
 
-Manifest IDs and actor IDs are restricted to letters, numbers, dots, underscores, and dashes. Versions must be SemVer. Entrypoints must be relative paths that stay inside the package. Duplicate capability declarations are rejected.
+Manifest IDs and actor IDs are restricted to letters, numbers, dots, underscores, and dashes. Versions must be SemVer. Entrypoints must be relative paths that stay inside the package. Each manifest must declare at least one capability; an empty `capabilities` array is rejected. Duplicate capability declarations are rejected. When both are present, `minHostVersion` must be less than or equal to `maxHostVersion`.
 
 ## Source Provenance
 

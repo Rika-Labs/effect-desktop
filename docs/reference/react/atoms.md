@@ -37,11 +37,11 @@ For state that:
 - Derives from other state through computation.
 - Is shared across the renderer but not handler-side.
 
-For RPC-shaped state, prefer `useQuery` / `useMutation` / `useStream`.
+For RPC-shaped state, prefer `useDesktopQuery` / `useMutation` / `useDesktopStream`.
 
 ## Provider
 
-`ReactDesktop.from(...).DesktopRoot` and the lower-level `DesktopProvider` both install `DesktopAtomRegistryProvider` (the upstream `RegistryContext.Provider` from `@effect/atom-react`) bound to a per-runtime `AtomRegistry`. Mount one of those at the root and every `useAtom*` hook below it reads from the same registry. Use `DesktopAtomRegistryProvider` directly only when wiring a custom registry outside the provider tree.
+`ReactDesktop.from(...).DesktopRoot` and the lower-level `DesktopProvider` both install `DesktopAtomRegistryContext.Provider` (the upstream `RegistryContext.Provider` from `@effect/atom-react`) bound to a per-runtime `AtomRegistry`. Mount one of those at the root and every `useAtom*` hook below it reads from the same registry. `DesktopAtomRegistryProvider` (the upstream `RegistryProvider`) is a separate component — reach for it only when wiring a custom registry outside the provider tree.
 
 ## Example
 

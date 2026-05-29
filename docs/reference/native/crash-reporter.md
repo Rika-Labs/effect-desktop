@@ -57,15 +57,16 @@ host.
 Breadcrumb `details` pass through `RedactionFilter` before host transport.
 Secret-shaped fields are scrubbed.
 
+## Runtime status
+
 The in-memory test client can validate breadcrumbs and flush recorded entries,
 but it does not capture process crashes, upload reports, or prove symbol
 boundaries. The Rust host persists local breadcrumb artifacts; native crash
 artifacts remain future work.
 
-Architecture-debt sweep outcome for #1906: removed the `CrashReporterLive`
-alias. Use `CrashReporter.layer` directly. The `CrashReporter` service remains
-because it owns permission checks, breadcrumb redaction before host transport,
-and typed host error mapping.
+Construct the service with `CrashReporter.layer`. The `CrashReporter` service
+owns permission checks, breadcrumb redaction before host transport, and typed
+host error mapping.
 
 ## Related
 

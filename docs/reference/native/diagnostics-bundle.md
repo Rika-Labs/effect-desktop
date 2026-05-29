@@ -66,7 +66,7 @@ or:
 }
 ```
 
-`host-state` is collected from the running host process. Logs, traces, crash reports, extension health, and audit events currently appear as explicit unavailable records until those durable host stores are connected.
+`host-state` is collected from the running host process. `crash-reports` is collected from the persisted crash report store (status `collected` when reports exist, `unavailable` only on a read error). Logs, traces, extension health, and audit events currently appear as explicit unavailable records until those durable host stores are connected.
 
 ## Events
 
@@ -85,7 +85,7 @@ Events carry the bundle id, timestamp, and source/write/error details needed to 
 
 ```ts
 {
-  id: "host-secret-patterns",
+  id: "default-secret-patterns",
   evidence: [{ path, action: "redacted", reason }]
 }
 ```

@@ -47,7 +47,7 @@ import {
 
 ## Errors
 
-`WindowStateError` is a union of `WindowStateReadFailed`, `WindowStateWriteFailed`, `WindowStateCorruptRenamed`, and `InvalidArgument` (`WindowStateInvalidArgumentError`). All four are tagged errors; window id and bundle id validation reject empty strings, whitespace-only ids, and C0/DEL control bytes before any read.
+`WindowStateError` is a union of `WindowStateReadFailed`, `WindowStateWriteFailed`, `WindowStateCorruptRenamed`, and `InvalidArgument` (`WindowStateInvalidArgumentError`). All four are tagged errors; window id validation rejects empty strings, whitespace-only ids, and C0/DEL control bytes; bundle id validation rejects empty strings, `.`/`..`, ids containing `..`, path separators (`/ \ :`), and C0/DEL control bytes — before any read.
 
 ## Wiring it up
 

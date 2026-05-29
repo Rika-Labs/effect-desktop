@@ -47,10 +47,11 @@ bridge maps those RPC tags to the host event methods such as
 
 ## Errors
 
-`PowerMonitorError` is the host protocol error union. `isSupported` carries the
-native authority `kind: "native"` for the `PowerMonitor` primitive rather than a
-per-method `native.invoke` capability, so support queries do not require an
-app-declared `native.invoke:PowerMonitor.isSupported` permission. The bridge
+`PowerMonitorError` is the host protocol error union. `isSupported`'s authority
+`NativeSurface.authority.native()` normalizes to a per-method `native.invoke`
+capability `{ kind: "native.invoke", primitive: "PowerMonitor", methods:
+["isSupported"] }`, so support queries require an app-declared
+`native.invoke:PowerMonitor` permission that covers the `isSupported` method. The bridge
 client checks `isSupported` for the requested method before opening any event
 stream; unsupported event sources fail as typed `Unsupported` and do not open a
 native event subscription. The direct host RPC client does not insert that

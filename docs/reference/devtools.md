@@ -76,17 +76,17 @@ const layers = snapshot.layerGraph.layerGraph
 
 The package ships these live panel services:
 
-| Panel              | Source                                  |
-| ------------------ | --------------------------------------- |
-| Diagnostics        | `Telemetry` summaries, runtime liveness |
-| Event log          | `EventLog` recent rows                  |
-| Workflows          | Active workflow executions              |
-| Reactivity         | Atom subscriptions                      |
-| Persistence        | Settings, Secrets store keys            |
-| Logs               | Structured logs from `Telemetry`        |
-| Cluster            | Sharding state                          |
-| Layer graph        | Runtime layer dependency snapshot       |
-| Embedded inspector | Recursive inspector view                |
+| Panel              | Source                                 |
+| ------------------ | -------------------------------------- |
+| Diagnostics        | `Telemetry` logs, traces, and metrics  |
+| Event log          | `EventLog` recent rows                 |
+| Workflows          | Active workflow executions             |
+| Reactivity         | Atom subscriptions                     |
+| Persistence        | `KeyValueStore` size and health        |
+| Logs               | Structured logs from Effect's `Logger` |
+| Cluster            | Sharding state                         |
+| Layer graph        | Runtime layer dependency snapshot      |
+| Embedded inspector | Flat projection of the live panels     |
 
 ## Adjacent services
 

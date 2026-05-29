@@ -8,7 +8,7 @@ effect_version: 4
 
 # Redaction
 
-`RedactionFilter` walks structured data and replaces secret-shaped values with Effect `Redacted` instances. When the value is later serialized (or materialized via `redactForJson`), the redacted slot reads as `<redacted>`.
+`RedactionFilter` walks structured data and replaces secret-shaped values with Effect `Redacted` instances. When the value is later serialized (or materialized via `redactForJson`), the redacted slot reads as a label-qualified `<redacted:LABEL>` placeholder (e.g. `<redacted:redacted>` for pattern matches, `<redacted:SecretBytes>` for secret bytes).
 
 ## Import
 
@@ -24,7 +24,7 @@ import {
 } from "@orika/bridge"
 ```
 
-`RedactionFilter` and `redact` are also re-exported as `Desktop.RedactionFilter` and `Desktop.redact` from `@orika/core`.
+`RedactionFilter` is also re-exported as `Desktop.RedactionFilter`, and `redact` as a top-level named export, from `@orika/core`.
 
 ## How matching works
 
@@ -42,7 +42,7 @@ Pass `RedactionFilterOptions.additionalPatterns` to extend matching, `allowlist`
 
 Redaction is opt-in per integration. The framework wires it through:
 
-- `AuditEvents` — when `redaction` is passed to `makeAuditEvents`, every event's `details` is filtered before append.
+- `AuditEvents` — when `redaction` is passed to `makeAuditEvents`, the whole event payload is routed through an inspector safety policy (redaction + high-risk omission) before append.
 - `CrashReporter` breadcrumb `details` (via `redactForJson` in `@orika/native`).
 - The inspector safety policy (`redactForJsonWithEvidence` in `@orika/core`), used by devtools snapshots and diagnostic bundles.
 

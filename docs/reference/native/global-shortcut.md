@@ -45,9 +45,9 @@ Architecture-debt sweep outcome for #1904: removed the `GlobalShortcutLive` alia
 
 ## Errors
 
-- `GlobalShortcutError`
-- `GlobalShortcutCommandBindingError`
-- `GlobalShortcutAlreadyRegisteredError`
+- `GlobalShortcutError` (= `HostProtocolError`)
+- `GlobalShortcutCommandBindingError` (= `GlobalShortcutError | CommandRegistryError`)
+- `makeGlobalShortcutAlreadyRegisteredError` — a factory that returns a `HostProtocolAlreadyExistsError` (tag `AlreadyExists`)
 
 ## Related
 

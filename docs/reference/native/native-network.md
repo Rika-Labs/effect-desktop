@@ -33,7 +33,7 @@ The surface exposes only the genuinely callable methods below.
 | `closeWebSocket`   | `{ socket }`                       | `unsupported` |
 | `localhostUrl`     | `{ port, path?, secure? }`         | `unsupported` |
 
-The intended contract: `fetch` accepts HTTP(S) URLs and methods `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, and `HEAD`, and `GET` requests must omit `body`. `upload` accepts HTTP(S) URLs, a string body, and optional `POST`, `PUT`, or `PATCH`. `connectWebSocket` accepts only `ws` and `wss` URLs. `localhostUrl` accepts ports from 1 through 65535 and absolute paths without traversal. These constraints describe the intended contract; the methods cannot currently be invoked.
+The intended contract: `fetch` accepts HTTP(S) URLs and methods `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, and `HEAD`. `upload` accepts HTTP(S) URLs, a string body, and optional `POST`, `PUT`, or `PATCH`. `connectWebSocket` accepts only `ws` and `wss` URLs. `localhostUrl` accepts ports from 1 through 65535 and absolute paths without traversal. These constraints describe the intended contract; the methods cannot currently be invoked.
 
 ## Support
 

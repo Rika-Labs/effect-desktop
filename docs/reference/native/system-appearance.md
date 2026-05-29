@@ -107,9 +107,10 @@ event subscription.
 
 ## React hook
 
-`useTheme()` and `useThemeMode()` from `@orika/react` consume the
-TypeScript appearance stream. Native appearance events are host-backed on macOS
-and Windows and fail as typed unsupported on Linux.
+`useTheme()` from `@orika/react` consumes the TypeScript appearance stream
+(`onAppearanceChanged`); `useThemeMode()` reads the current appearance mode
+snapshot via `getAppearance()`. Native appearance events are host-backed on
+macOS and Windows and fail as typed unsupported on Linux.
 
 ## Migration
 

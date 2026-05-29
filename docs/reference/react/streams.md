@@ -45,12 +45,12 @@ interface StreamState<A, E> {
 
 ```ts
 interface DesktopStreamOptions<A> {
-  readonly capacity?: number | "unbounded" // bounded buffer; default depends on runtime, "unbounded" disables trimming
+  readonly capacity?: number // bounded buffer; defaults to 1024
   readonly onItem?: (item: A) => void // side effect per emitted item
 }
 ```
 
-`capacity` is normalized by `normalizeDesktopStreamCapacity`; pass `0` or `"unbounded"` to disable trimming, otherwise items beyond the cap are dropped from the head.
+`capacity` is normalized by `normalizeDesktopStreamCapacity`; pass `0` to disable trimming, otherwise items beyond the cap are dropped from the head. A non-integer or negative capacity throws a `RangeError`.
 
 ## Conditional subscription
 

@@ -28,7 +28,7 @@ The public service is Layer-first and test-substitutable. The TypeScript service
 
 `url` must be absolute `http` or `https` and cookie paths must start with `/`.
 
-`events(profile?)` consumes `CookieStore.events.Event` and filters by profile when one is supplied. Successful `set` calls emit phase `"set"` with the cookie payload. Successful `remove` calls emit phase `"removed"` when the host deletes a matching cookie name. `get` does not emit events.
+`events(profile?)` consumes `CookieStore.events.Event` and filters by profile when one is supplied. Successful `set` calls emit phase `"set"` with the cookie payload. Successful `remove` calls emit phase `"removed"` when the host deletes a matching cookie name. Failed cookie operations emit phase `"failed"` carrying a `message` string. `get` does not emit events. Consumers of `events(profile?)` should handle all three phases (`set`, `removed`, `failed`).
 
 ## Cookie Shape
 

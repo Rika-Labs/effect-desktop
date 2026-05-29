@@ -10,7 +10,7 @@ effect_version: 4
 
 `WebRequest` declares the typed interception surface for ordered request and response interceptors scoped to a `SessionProfileHandle` — blocking requests, redirecting requests, modifying response headers, and observing interceptor lifecycle events.
 
-The public service is Layer-first and test-substitutable. The TypeScript service checks `native.invoke` permissions before client side effects and exposes `events(profile?)` as a typed stream. The payload schema is owned by the canonical `WebRequest.events.Event` RPC stream contract; the native bridge lowers that stream to the existing `WebRequest.Event` host event method. The memory client proves the support query and event paths without renderer monkeypatching.
+The public service is Layer-first and test-substitutable. The callable surface (`isSupported`, `events`) is permission-free (authority `none`); the `native.invoke` permission only attaches to the non-callable `onBeforeRequest`, `onHeadersReceived`, and `removeListener` capability facts. The TypeScript service exposes `events(profile?)` as a typed stream. The payload schema is owned by the canonical `WebRequest.events.Event` RPC stream contract; the native bridge lowers that stream to the existing `WebRequest.Event` host event method. The memory client proves the support query and event paths without renderer monkeypatching.
 
 ## Methods
 
@@ -21,13 +21,13 @@ The only callable RPC on this surface is the support query:
 | `isSupported` | `void`                          | `{ supported, reason? }` |
 | `events`      | optional `SessionProfileHandle` | stream of events         |
 
-`events(profile?)` emits `registered` and `removed` lifecycle events with order, request phase, action, URL pattern, profile, and interceptor handle. Direct generated clients consume `WebRequest.events.Event`; bridge-backed clients subscribe to `WebRequest.Event` and keep filtering by `profile.id` in TypeScript.
+`events(profile?)` emits the `WebRequestEventPhase` set — `registered`, `removed`, `matched`, and `failed` — with order, request phase, action, URL pattern, profile, and interceptor handle. `failed` events carry a required `message`; the other phases must not. Direct generated clients consume `WebRequest.events.Event`; bridge-backed clients subscribe to `WebRequest.Event` and keep filtering by `profile.id` in TypeScript.
 
 ## Capability facts (non-callable)
 
 `onBeforeRequest`, `onHeadersReceived`, and `removeListener` are not callable RPCs. They are advertised in the native capability manifest as capability facts with `support.status: "unsupported"` and reason `host-web-request-unavailable`, but no host adapter can be invoked. They describe the intended interception contract until WebView providers expose portable profile-bound request and response interception callbacks.
 
-Architecture-debt sweep outcome for #1877: removed the public `WebRequestCapabilityFacts` side export. The unsupported facts remain private to `WebRequestSurface` metadata because they publish truthful non-callable support metadata for the generated native capability manifest.
+There is no public `WebRequestCapabilityFacts` export. The unsupported facts live privately in `WebRequestSurface` metadata, where they publish truthful non-callable support metadata for the generated native capability manifest.
 
 | Capability fact     | Intended role                                                               |
 | ------------------- | --------------------------------------------------------------------------- |
