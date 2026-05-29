@@ -21,9 +21,9 @@ import {
   IndexedDbDatabase,
   IndexedDbQueryBuilder,
   IndexedDbTable,
-  IndexedDbVersion,
-  RendererPgliteLive
+  IndexedDbVersion
 } from "./index.js"
+import { RendererPgliteLive } from "./sql-pglite.js"
 
 const PlatformBrowserPackageExportTarget = Schema.Union([
   Schema.String,
@@ -294,6 +294,6 @@ test("IndexedDbQueryBuilder exports make", () => {
   expect(typeof IndexedDbQueryBuilder.make).toBe("function")
 })
 
-test("root exports the PGlite optional dependency boundary", () => {
+test("sql-pglite subpath exports the PGlite optional dependency boundary", () => {
   expect(typeof RendererPgliteLive).toBe("function")
 })

@@ -8,4 +8,3 @@ export {
   IndexedDbTable,
   IndexedDbVersion
 } from "@effect/platform-browser"
-export { RendererPgliteLive, type PgliteClientConfig } from "./sql-pglite.js"
