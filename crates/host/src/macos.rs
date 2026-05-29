@@ -193,6 +193,7 @@ pub(crate) fn set_window_bounds(
     platform::set_window_bounds(window, x, y, width, height, operation)
 }
 
+#[cfg(target_os = "macos")]
 pub(crate) fn set_maximized(
     window: &Window,
     maximized: bool,
