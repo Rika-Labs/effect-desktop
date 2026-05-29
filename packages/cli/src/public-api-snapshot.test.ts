@@ -20,8 +20,10 @@ const withWorkspace = <A>(use: (cwd: string) => Promise<A>): Promise<A> =>
   })
 
 test("runPublicApiCheck surfaces a typed access error instead of silently dropping a package", async () => {
-  if (isRoot) {
-    // Root bypasses POSIX permission checks, so EACCES cannot be provoked here.
+  if (isRoot || process.platform === "win32") {
+    // Root bypasses POSIX permission checks, and Windows does not honor
+    // chmod(0o000) on directories, so EACCES cannot be provoked here. The
+    // access-error surfacing is exercised on the POSIX CI runners.
     return
   }
 
