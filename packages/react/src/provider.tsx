@@ -45,7 +45,8 @@ export const disposeRuntime = (
 
       const cause = Cause.squash(exit.cause)
       if (onCleanupError === undefined) {
-        const reportable = cause instanceof Error ? cause : new Error("runtime cleanup failed")
+        const reportable =
+          cause instanceof Error ? cause : new Error("runtime cleanup failed", { cause })
         reportError(reportable)
       } else {
         onCleanupError(cause, "runtime cleanup")

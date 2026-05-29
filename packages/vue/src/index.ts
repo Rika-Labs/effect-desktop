@@ -267,7 +267,7 @@ const useMutation = <R, ER, I, A, E>(
       Effect.gen(function* () {
         state.value = { status: "running" }
         const [exit, isLatest] = yield* Effect.promise(() =>
-          operation.runLatestPromiseExit(makeEffect(input as I))
+          operation.runLatestPromiseExit(Effect.suspend(() => makeEffect(input as I)))
         )
 
         if (isLatest) {
