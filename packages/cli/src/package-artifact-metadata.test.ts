@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import { resolve } from "node:path"
 import { Effect } from "effect"
 
 import {
@@ -76,7 +77,7 @@ test("package artifact metadata resolves only contained artifact file names", as
     escapedFailure = String(error)
   }
 
-  expect(artifactPath).toBe("/release/linux/app/ORIKA-Playground.AppImage")
+  expect(artifactPath).toBe(resolve("/release/linux/app", "ORIKA-Playground.AppImage"))
   expect(escapedFailure).toContain(
     "artifact.json#fileName must be a single file name without path separators"
   )

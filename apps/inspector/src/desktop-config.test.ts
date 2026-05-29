@@ -1,4 +1,7 @@
 import { expect, test } from "bun:test"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { fileURLToPath } from "node:url"
 import { Effect, Random } from "effect"
 
 import config from "../desktop.config.js"
@@ -17,13 +20,15 @@ test("Inspector desktop config declares app-local entries required by desktop bu
 test("Inspector runtime entry preserves the shared runtime handshake when bundled", () =>
   Effect.runPromise(
     Effect.acquireUseRelease(
-      Random.nextUUIDv4.pipe(Effect.map((uuid) => `/tmp/orika-inspector-runtime-${uuid}.js`)),
+      Random.nextUUIDv4.pipe(
+        Effect.map((uuid) => join(tmpdir(), `orika-inspector-runtime-${uuid}.js`))
+      ),
       (outputPath) =>
         Effect.gen(function* () {
           const proc = Bun.spawn([
             "bun",
             "build",
-            new URL("runtime/main.ts", import.meta.url).pathname,
+            fileURLToPath(new URL("runtime/main.ts", import.meta.url)),
             "--target=bun",
             "--outfile",
             outputPath
