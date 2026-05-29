@@ -495,7 +495,9 @@ const validateRequiredTokens = (
 const hasRequiredTokenEvidence = (required: AccessibilityRequiredToken, body: string): boolean => {
   const uncommented = stripSourceComments(body)
   if (required.token === "prefers-reduced-motion" || required.token === "prefers-color-scheme") {
-    return new RegExp(`@media\\s*\\([^)]*\\b${escapeRegExp(required.token)}\\b`).test(uncommented)
+    return new RegExp(`@media\\b[^{]*\\([^{]*\\b${escapeRegExp(required.token)}\\b`).test(
+      uncommented
+    )
   }
   return uncommented.includes(required.token)
 }

@@ -165,7 +165,11 @@ export const FiberInspectorCollectorLive: Layer.Layer<FiberInspectorCollector, n
               Effect.gen(function* () {
                 yield* Deferred.await(started)
                 const exit = yield* Effect.exit(effect)
-                outcome = Exit.isSuccess(exit) ? "success" : "failure"
+                outcome = Exit.isSuccess(exit)
+                  ? "success"
+                  : Exit.hasInterrupts(exit)
+                    ? "interrupted"
+                    : "failure"
               }).pipe(
                 Effect.onExit(() =>
                   publish({

@@ -3976,6 +3976,38 @@ test("desktop check --a11y verifies template accessibility evidence", () =>
     })
   ))
 
+test("desktop check --a11y accepts compound and media-type @media reduced-motion/color-scheme rules", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const directory = yield* Effect.promise(() =>
+        mkdtemp(join(tmpdir(), "effect-desktop-cli-a11y-"))
+      )
+      try {
+        yield* writeAccessibilityFixture(directory, {
+          styles: [
+            "@media all and (prefers-color-scheme: dark) { :root { color-scheme: dark; } }",
+            "@media screen and (prefers-reduced-motion: reduce) { * { transition-duration: 0.01ms; } }"
+          ].join("\n")
+        })
+        const stderr: string[] = []
+
+        const exitCode = yield* runCli({
+          argv: ["check", "--a11y"],
+          cwd: directory,
+          writeStdout: () => {},
+          writeStderr: (text) => {
+            stderr.push(text)
+          }
+        })
+
+        expect(stderr.join("")).toBe("")
+        expect(exitCode).toBe(0)
+      } finally {
+        yield* Effect.promise(() => rm(directory, { recursive: true, force: true }))
+      }
+    })
+  ))
+
 test("desktop check --a11y rejects hardcoded template English outside i18n files", () =>
   Effect.runPromise(
     Effect.gen(function* () {

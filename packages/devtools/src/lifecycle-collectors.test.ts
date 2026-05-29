@@ -115,3 +115,34 @@ test("FiberCompleted is emitted for a fiber that is interrupted because its key 
     expect(startedA).toHaveLength(1)
     expect(completedA).toHaveLength(1)
   }))
+
+test("FiberCompleted reports interrupted (not failure) for a self-interrupting effect", () =>
+  Effect.runPromise(
+    runScoped(
+      Effect.gen(function* () {
+        const collector = yield* FiberInspectorCollector
+        const seen = yield* Ref.make<ReadonlyArray<FiberEvent>>([])
+        const consumer = yield* collector.events().pipe(
+          Stream.runForEach((event) => Ref.update(seen, (prev) => [...prev, event])),
+          Effect.forkChild({ startImmediately: true })
+        )
+
+        const fiber = yield* collector.run("selfint", Effect.interrupt)
+        yield* Fiber.await(fiber)
+        yield* Effect.replicateEffect(Effect.yieldNow, 8)
+        yield* Fiber.interrupt(consumer)
+
+        return { events: yield* Ref.get(seen), fiberId: fiber.id }
+      }),
+      FiberInspectorCollectorLive
+    )
+  ).then(({ events, fiberId }) => {
+    const completed = events.filter(
+      (event) => event._tag === "FiberCompleted" && event.fiberId === fiberId
+    )
+    expect(completed).toHaveLength(1)
+    const event = completed[0]
+    if (event !== undefined && event._tag === "FiberCompleted") {
+      expect(event.exit).toBe("interrupted")
+    }
+  }))
