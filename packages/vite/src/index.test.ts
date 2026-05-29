@@ -1,5 +1,4 @@
 import { expect, test } from "bun:test"
-import { resolve } from "node:path"
 import desktop from "./index.js"
 
 test("desktop plugin has expected shape", () => {
@@ -57,13 +56,11 @@ test("desktop plugin emits runtime chunk for legacy Vite build contexts", () => 
     }
   })
 
-  expect(emitted).toEqual([
-    {
-      type: "chunk",
-      id: resolve("/workspace/app", "src/runtime.ts"),
-      name: "runtime"
-    }
-  ])
+  expect(emitted).toHaveLength(1)
+  const chunk = emitted[0] as { readonly type: string; readonly id: string; readonly name: string }
+  expect(chunk.type).toBe("chunk")
+  expect(chunk.name).toBe("runtime")
+  expect(chunk.id.replaceAll("\\", "/").endsWith("/workspace/app/src/runtime.ts")).toBe(true)
 })
 
 test("desktop plugin skips runtime chunk for non-client Vite environments", () => {

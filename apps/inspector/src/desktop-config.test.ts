@@ -1,6 +1,4 @@
 import { expect, test } from "bun:test"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { Effect, Random } from "effect"
 
@@ -21,7 +19,9 @@ test("Inspector runtime entry preserves the shared runtime handshake when bundle
   Effect.runPromise(
     Effect.acquireUseRelease(
       Random.nextUUIDv4.pipe(
-        Effect.map((uuid) => join(tmpdir(), `orika-inspector-runtime-${uuid}.js`))
+        Effect.map((uuid) =>
+          fileURLToPath(new URL(`.tmp-orika-inspector-runtime-${uuid}.js`, import.meta.url))
+        )
       ),
       (outputPath) =>
         Effect.gen(function* () {
