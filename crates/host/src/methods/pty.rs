@@ -655,6 +655,7 @@ mod tests {
     use super::*;
     #[cfg(unix)]
     use host_protocol::{PtyIdPayload, PtyReadPayload};
+    #[cfg(unix)]
     use serde::de::DeserializeOwned;
 
     #[cfg(unix)]
@@ -756,6 +757,7 @@ mod tests {
         String::from_utf8_lossy(&output).into_owned()
     }
 
+    #[cfg(unix)]
     fn decode_test_payload<T: DeserializeOwned>(payload: Option<Value>) -> T {
         serde_json::from_value(payload.expect("response should include payload"))
             .expect("payload should decode")
