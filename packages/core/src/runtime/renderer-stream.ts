@@ -99,6 +99,7 @@ export const makeFrameworkScopedOperation = <R, ER>(
   const runLatestPromiseExit = <A, E>(
     effect: Effect.Effect<A, E, R>
   ): Promise<readonly [Exit.Exit<A, E | ER>, boolean]> => {
+    disposed = false
     interrupt()
     const currentGeneration = generation + 1
     generation = currentGeneration
@@ -120,6 +121,7 @@ export const makeFrameworkScopedOperation = <R, ER>(
       effect: Effect.Effect<A, E, R>,
       onExit: (exit: Exit.Exit<A, E | ER>) => void
     ): void => {
+      disposed = false
       interrupt()
       const currentGeneration = generation + 1
       generation = currentGeneration

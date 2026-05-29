@@ -149,6 +149,47 @@ test("scoped framework callback operations ignore stale interrupted exits", () =
     })
   ))
 
+test("scoped framework operations re-arm after dispose so a reused operation still reports results", () =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const runtime = ManagedRuntime.make(Layer.empty)
+      const frameworkRuntime = makeFrameworkRuntime(runtime)
+      const operation = makeFrameworkScopedOperation(frameworkRuntime)
+
+      const [, firstIsLatest] = yield* Effect.promise(() =>
+        operation.runLatestPromiseExit(Effect.succeed("first"))
+      )
+      expect(firstIsLatest).toBe(true)
+
+      operation.dispose()
+
+      const [rearmedExit, rearmedIsLatest] = yield* Effect.promise(() =>
+        operation.runLatestPromiseExit(Effect.succeed("rearmed"))
+      )
+      expect(rearmedIsLatest).toBe(true)
+      expect(Exit.isSuccess(rearmedExit)).toBe(true)
+      if (Exit.isSuccess(rearmedExit)) {
+        expect(rearmedExit.value).toBe("rearmed")
+      }
+
+      operation.dispose()
+      const callbackExits: Array<Exit.Exit<string, never>> = []
+      operation.runLatest(Effect.succeed("callback-rearmed"), (exit) => {
+        callbackExits.push(exit)
+      })
+      yield* waitFor(() => callbackExits.length === 1)
+      const cbExit = callbackExits[0]
+      expect(cbExit).toBeDefined()
+      if (cbExit !== undefined && Exit.isSuccess(cbExit)) {
+        expect(cbExit.value).toBe("callback-rearmed")
+      }
+
+      operation.dispose()
+      yield* frameworkRuntime.disposeEffect
+      yield* runtime.disposeEffect
+    })
+  ))
+
 const waitFor = (predicate: () => boolean): Effect.Effect<void, WaitForTimeout, never> =>
   Effect.suspend(() => (predicate() ? Effect.void : Effect.fail(new ConditionNotMet()))).pipe(
     Effect.retry(Schedule.spaced("0 millis").pipe(Schedule.both(Schedule.recurs(20)))),
